@@ -2,6 +2,7 @@
 
 import { emitEvent } from "@/lib/server/events";
 import { revalidatePath } from "next/cache";
+import { settleOrdersAfterOdoo } from "@/lib/server/odooAutoClose";
 import { getActiveLine } from "@/lib/server/line";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
@@ -149,6 +150,8 @@ export async function createOdooEntry(formData: FormData): Promise<OdooActionRes
     summary: `Logged ${f.qty} × ${f.product} on Odoo ${f.odooMo}${f.soi ? ` (${f.soi})` : ""}${line === "LV" ? " — LV" : ""}`,
     data: { line, odooMo: f.odooMo, product: f.product, qty: f.qty, soi: f.soi },
   });
+  // after its own event, so the order's close reads after the log that caused it
+  await settleOrdersAfterOdoo();
   return { ok: true, id: created.id };
 }
 
@@ -179,6 +182,7 @@ export async function updateOdooEntry(formData: FormData): Promise<OdooActionRes
   });
   if (res.count === 0) return { ok: false, error: STALE };
   revalidateOdoo();
+  await settleOrdersAfterOdoo();
   return { ok: true };
 }
 
@@ -221,6 +225,7 @@ export async function setOdooFgCode(formData: FormData): Promise<OdooActionResul
   if (!prev) return { ok: false, error: "That row no longer exists." };
   await prisma.odooEntry.update({ where: { id }, data: { fgCode, fgGuessed: false, recordedBy: guard.user?.name ?? null } });
   revalidateOdoo();
+  await settleOrdersAfterOdoo();
   return { ok: true };
 }
 
@@ -243,6 +248,7 @@ export async function setOdooStatus(formData: FormData): Promise<OdooActionResul
     return prisma.odooEntry.update({ where: { id: p.id }, data: { status, doneAt, recordedBy: by } });
   }));
   revalidateOdoo();
+  await settleOrdersAfterOdoo();
   return { ok: true };
 }
 
@@ -327,6 +333,7 @@ export async function updateOdooGroup(formData: FormData): Promise<OdooActionRes
     throw e;
   }
   revalidateOdoo();
+  await settleOrdersAfterOdoo();
   return { ok: true };
 }
 
@@ -353,7 +360,10 @@ export async function importOdooAction(formData: FormData): Promise<OdooImportRe
   const preview = formData.get("preview") === "true";
   try {
     const res = await importOdooSheet(await file.arrayBuffer(), fallbackDay, guard.user?.name ?? null, preview, line);
-    if (res.ok && !preview) revalidateOdoo();
+    if (res.ok && !preview) {
+      revalidateOdoo();
+      await settleOrdersAfterOdoo();
+    }
     return res;
   } catch (e) {
     return { ok: false, error: userMessage(e, "import the sheet") };

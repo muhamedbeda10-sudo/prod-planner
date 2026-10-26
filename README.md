@@ -77,6 +77,14 @@ mobile drawer still lists every view flat, since it has the vertical room.
    filtered view can never close an order that is still short. A merged row's cell records exactly the figure
    it shows (the same eligible orders, the same capped totals), and an order whose quantity was lowered below
    what is already recorded is refused with a message instead of being written around.
+   **A transformer order closes by itself** once it is finished on the tracker AND Odoo has closed all it
+   needs (`lib/server/odooAutoClose.ts`; the rule is `closesByItself` in `lib/domain/trackerOdoo.ts`): every
+   component it needs, its plan quantity closed in Odoo by the tracker's own Odoo allocation (outsourced
+   pieces counted, at least one piece closed in Odoo). Never an order on hold or with a plan qty waiting for
+   the planner. Checked when Odoo rows are logged, edited, closed or imported, and on the hourly
+   housekeeping tick; it records `order.closed` (reason "odoo") and stamps `MasterOrder.autoClosedAt`. It
+   never reopens an order by itself. An order reopened by hand while Odoo has it all closed stays open
+   (`MasterOrder.autoCloseOff`) until someone closes it again; any other reopen leaves it to close by itself.
    The grid is coloured by COMPONENT, not by stage: all four of an item's stage columns wear one wash, so
    twenty-four numbers read as six components instead of one field. The hues are ordered to separate
    NEIGHBOURING components best (every adjacent pair ≥ 8 ΔE OKLab in both themes; non-adjacent ones never

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ITEMS } from "./constants";
-import { normalizeOdooTrackingStart, odooPlanMonth, trackerOdooQuantities as allocateOdoo, trackerOdooTotal } from "./trackerOdoo";
+import { closedInOdoo, closesByItself, finishedAndClosedInOdoo, normalizeOdooTrackingStart, odooPlanMonth, trackerOdooQuantities as allocateOdoo, trackerOdooTotal } from "./trackerOdoo";
 const order = (mo = "MO-1", bom = "BOM-A", soi: string | null = "SO-1", month = "October 2026", planQty = 100) => ({ mo, bom, soi, line: "TR", source: month, months: month, planQty });
 const trackerOdooQuantities = (...args: Parameters<typeof allocateOdoo>) => allocateOdoo(args[0], args[1], args[2], args[3] === undefined ? "2000-01" : args[3]);
 const entry = (extra = {}) => ({ id: 1, date: "2026-09-06", line: "TR", ledgerId: null as number | null, soi: "SO-1", fgCode: "FB-022-BOM-A", product: "Tank", qty: 5, status: "Done", ...extra });
@@ -145,3 +145,43 @@ describe("Odoo closed quantities on the plan tracker", () => {
 function viewRows(orders: ReturnType<typeof order>[], progress: ReturnType<typeof trackerOdooQuantities>) {
   return orders.map((o) => ({ mo: o.mo, odooPlanMonth: odooPlanMonth(o), items: Object.fromEntries(ITEMS.map((it) => [it, { odooClosed: progress.counts.get(o.mo)?.[it] ?? 0 }])) as Record<(typeof ITEMS)[number], { odooClosed: number }>, odooUnallocated: progress.unallocated.filter((pool) => pool.mos.includes(o.mo)) }));
 }
+
+describe("closedInOdoo — an order that closes by itself", () => {
+  const needed = [{ item: "TN" as const, osp: 0 }, { item: "TC" as const, osp: 0 }, { item: "CF" as const, osp: 2 }];
+  it("is closed once every needed component's plan quantity is closed in Odoo, outsourced pieces counted", () => {
+    expect(closedInOdoo(5, needed, { TN: 5, TC: 5, CF: 3 })).toBe(true);
+    expect(closedInOdoo(5, needed, { TN: 5, TC: 4, CF: 3 })).toBe(false);
+    expect(closedInOdoo(5, needed, { TN: 5, TC: 5 })).toBe(false);
+  });
+  it("never closes an order with nothing to close, nothing needed, or nothing closed in Odoo", () => {
+    expect(closedInOdoo(0, needed, { TN: 5, TC: 5, CF: 5 })).toBe(false);
+    expect(closedInOdoo(5, [], { TN: 5 })).toBe(false);
+    expect(closedInOdoo(3, [{ item: "TN", osp: 3 }], {})).toBe(false);
+    expect(closedInOdoo(3, [{ item: "TN", osp: 3 }], undefined)).toBe(false);
+  });
+});
+
+describe("closesByItself — read off a Plan Tracker row", () => {
+  // an order of 2 needing its tank and top cover (core frame and cable box N/A)
+  const item = (o: Record<string, unknown> = {}) => ({ osp: 0, excluded: false, eligible: true, odooClosed: 0, ...o });
+  const row = (o: { status?: string; complete?: number; tn?: number; tc?: number; tnOsp?: number; onHold?: boolean; pendingQty?: unknown } = {}) => ({
+    status: o.status ?? "open", required: 2, complete: o.complete ?? 2, hold: { onHold: o.onHold ?? false }, pendingQty: o.pendingQty ?? null,
+    items: { TN: item({ odooClosed: o.tn ?? 2, osp: o.tnOsp ?? 0 }), TC: item({ odooClosed: o.tc ?? 2 }), CF: item({ excluded: true }), CB: item({ excluded: true }), AR: item({ eligible: false }), MB: item({ eligible: false }) },
+  });
+
+  it("an open order finished and closed in full in Odoo, outsourced pieces counted", () => {
+    expect(closesByItself(row())).toBe(true);
+    expect(closesByItself(row({ tn: 1, tnOsp: 1 }))).toBe(true);
+  });
+
+  it("never one short in Odoo, unfinished, on hold, with a plan qty waiting, or closed already", () => {
+    expect(closesByItself(row({ tc: 1 }))).toBe(false);
+    expect(closesByItself(row({ complete: 1 }))).toBe(false);
+    expect(closesByItself(row({ onHold: true }))).toBe(false);
+    expect(closesByItself(row({ pendingQty: { to: 4, month: "November 2026" } }))).toBe(false);
+    expect(closesByItself(row({ status: "closed" }))).toBe(false);
+    // what a reopen by hand reads, whatever the status
+    expect(finishedAndClosedInOdoo(row({ status: "closed" }))).toBe(true);
+    expect(finishedAndClosedInOdoo(row({ status: "closed", tc: 1 }))).toBe(false);
+  });
+});

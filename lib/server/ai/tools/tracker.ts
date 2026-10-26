@@ -146,7 +146,7 @@ export const setOrderStatusTool: WriteTool<StatusInput> = {
   name: "set_order_status",
   title: "Close or reopen orders",
   description:
-    "Close finished orders (they leave the daily screens; their logs stay) or reopen closed ones. Runs the tracker's own Close / Reopen, needing the person's close/reopen permission for the order's line.",
+    "Close finished orders (they leave the daily screens; their logs stay) or reopen closed ones. Runs the tracker's own Close / Reopen, needing the person's close/reopen permission for the order's line. A transformer order also closes by itself once it is finished and Odoo has closed all it needs (never one on hold or with a plan qty waiting); it never reopens by itself. One reopened by hand while Odoo has it all closed stays open (it no longer closes by itself) until it is closed again.",
   area: "tracker",
   risk: (i) => (i.status === "closed" || i.mos.length > 1 ? "high" : "low"),
   schema: {

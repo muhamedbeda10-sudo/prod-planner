@@ -11,6 +11,7 @@ import { getActiveLine } from "@/lib/server/line";
 import { isLvFamily } from "@/lib/domain/lv";
 import { linePermKey } from "@/lib/domain/permissions";
 import { fullyDeliveredOpenOrders } from "@/lib/server/deliveredOrders";
+import { finishedAndClosedInOdooOf } from "@/lib/server/odooAutoClose";
 import { orderDeletePreview, type OrderDeletePreview } from "@/lib/server/orderDelete";
 import { userMessage } from "@/lib/server/errors";
 import { ORDER_TEXT_KEYS, orderTextValue, type OrderTextField } from "@/lib/domain/orderFields";
@@ -30,17 +31,26 @@ export async function setOrderStatus(formData: FormData): Promise<{ ok: boolean;
     const guard = await requirePerm(linePermKey(line, "status"));
     if (guard.error) return { ok: false, error: guard.error };
   }
-  await prisma.masterOrder.updateMany({
-    where: { mo: { in: orders.map((o) => o.mo) } },
-    data: { status, closedAt: status === "closed" ? new Date() : null },
-  });
+  const found = orders.map((o) => o.mo);
+  if (status === "closed") {
+    await prisma.masterOrder.updateMany({ where: { mo: { in: found } }, data: { status, closedAt: new Date(), autoCloseOff: false, autoClosedAt: null } });
+  } else {
+    // reopened by hand while Odoo has it all closed, it stays open — it would
+    // close by itself again within the hour — until someone closes it again;
+    // any other reopen (an undo, an order taken off the plan) still closes by
+    // itself once it is finished and Odoo has closed it all
+    const odooFull = await finishedAndClosedInOdooOf(orders.filter((o) => o.line === "TR").map((o) => o.mo));
+    await prisma.$transaction([
+      prisma.masterOrder.updateMany({ where: { mo: { in: found.filter((m) => odooFull.has(m)) } }, data: { status, closedAt: null, autoCloseOff: true, autoClosedAt: null } }),
+      prisma.masterOrder.updateMany({ where: { mo: { in: found.filter((m) => !odooFull.has(m)) } }, data: { status, closedAt: null, autoCloseOff: false, autoClosedAt: null } }),
+    ]);
+  }
   for (const p of ["/tracker", "/orders", "/worklist/cut", "/trace"]) revalidatePath(p);
-  const done = orders.map((o) => o.mo);
   await emitEvent({
     type: status === "closed" ? "order.closed" : "order.reopened",
-    subject: listed(done),
-    summary: `${status === "closed" ? "Closed" : "Reopened"} ${listed(done, 6)}`,
-    data: { mos: done, reason: "tracker" },
+    subject: listed(found),
+    summary: `${status === "closed" ? "Closed" : "Reopened"} ${listed(found, 6)}`,
+    data: { mos: found, reason: "tracker" },
   });
   return { ok: true };
 }
@@ -524,7 +534,7 @@ export async function closeDeliveredOrders(): Promise<{ ok: boolean; error?: str
   const mos = done.map((o) => o.mo);
   await prisma.masterOrder.updateMany({
     where: { mo: { in: mos } },
-    data: { status: "closed", closedAt: at },
+    data: { status: "closed", closedAt: at, autoCloseOff: false, autoClosedAt: null },
   });
   for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/trace", "/"]) revalidatePath(p);
   // the same event a close on the tracker records, so "order closed" automations hear of these too

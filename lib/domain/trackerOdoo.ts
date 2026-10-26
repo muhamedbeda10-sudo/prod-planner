@@ -143,3 +143,40 @@ export function trackerOdooTotal(rows: readonly { mo: string; odooPlanMonth?: st
   }
   return { qty, unallocated };
 }
+
+/** An order every needed component of which is closed in Odoo for its whole
+ *  plan quantity — its outsourced pieces counted as they are on the tracker
+ *  (they never pass the paint shop, so no Odoo row is born for them). At
+ *  least one piece must have been closed in Odoo: an order wholly
+ *  outsourced is not "closed in Odoo" by that alone. */
+export function closedInOdoo(planQty: number, needed: readonly { item: Item; osp: number }[], counts: Partial<Record<Item, number>> | undefined): boolean {
+  if (planQty <= 0 || needed.length === 0) return false;
+  if (!needed.some(({ item }) => (counts?.[item] ?? 0) > 0)) return false;
+  return needed.every(({ item, osp }) => (counts?.[item] ?? 0) + osp >= planQty);
+}
+
+/** What the auto-close reads off a Plan Tracker row. */
+export interface TrackerCloseRow {
+  status: string;
+  required: number;
+  complete: number;
+  hold: { onHold: boolean };
+  pendingQty: unknown;
+  items: Record<Item, { osp: number; eligible: boolean; excluded: boolean; odooClosed?: number; odooTracked?: boolean }>;
+}
+
+const neededItems = (r: TrackerCloseRow) => ITEMS.filter((it) => r.items[it].eligible && !r.items[it].excluded);
+
+/** Finished on the tracker, and closed in full in Odoo — whatever its status. */
+export function finishedAndClosedInOdoo(r: TrackerCloseRow): boolean {
+  if (r.required <= 0 || r.complete < r.required) return false;
+  const counts = Object.fromEntries(ITEMS.map((it) => [it, r.items[it].odooClosed ?? 0]));
+  return closedInOdoo(r.required, neededItems(r).map((item) => ({ item, osp: r.items[item].osp })), counts);
+}
+
+/** An open order that closes by itself now: finished and closed in full in
+ *  Odoo, and nobody still deciding about it (on hold, a plan qty waiting). */
+export function closesByItself(r: TrackerCloseRow): boolean {
+  return r.status === "open" && !r.hold.onHold && r.pendingQty == null && finishedAndClosedInOdoo(r);
+}
+

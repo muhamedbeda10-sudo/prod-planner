@@ -13,13 +13,14 @@ const h = vi.hoisted(() => {
     prisma: {
       masterOrder: { findUnique: fn(), findMany: fn(), update: fn(), updateMany: fn() },
       handoverEntry: { groupBy: fn() },
-      $transaction: vi.fn(async (f: (t: typeof tx) => Promise<unknown>) => f(tx)),
+      $transaction: vi.fn(async (f: ((t: typeof tx) => Promise<unknown>) | Promise<unknown>[]) => (typeof f === "function" ? f(tx) : Promise.all(f))),
     },
     emitEvent: fn(),
     guard: fn(),
     getActiveLine: fn(),
     fullyDeliveredOpenOrders: fn(),
     importMonthlyPlan: fn(),
+    odooFull: fn(),
   };
 });
 vi.mock("server-only", () => ({}));
@@ -34,8 +35,9 @@ vi.mock("@/lib/server/line", () => ({ getActiveLine: h.getActiveLine }));
 vi.mock("@/lib/server/deliveredOrders", () => ({ fullyDeliveredOpenOrders: h.fullyDeliveredOpenOrders }));
 vi.mock("@/lib/server/orderDelete", () => ({ orderDeletePreview: vi.fn() }));
 vi.mock("@/lib/server/importMonthly", () => ({ importMonthlyPlan: h.importMonthlyPlan }));
+vi.mock("@/lib/server/odooAutoClose", () => ({ finishedAndClosedInOdooOf: h.odooFull }));
 
-import { closeDeliveredOrders, importMonthlyAction, pushOrderToWorklist, updateOrder } from "@/app/orders/actions";
+import { closeDeliveredOrders, importMonthlyAction, pushOrderToWorklist, setOrderStatus, updateOrder } from "@/app/orders/actions";
 
 const SEEN = new Date("2026-10-20T08:00:00.000Z");
 const order = {
@@ -62,7 +64,7 @@ describe("closeDeliveredOrders", () => {
     expect(await closeDeliveredOrders()).toEqual({ ok: true, closed: 2, mos: ["SF01/MO/1", "SF01/MO/2"] });
     expect(h.prisma.masterOrder.updateMany).toHaveBeenCalledWith({
       where: { mo: { in: ["SF01/MO/1", "SF01/MO/2"] } },
-      data: { status: "closed", closedAt: expect.any(Date) },
+      data: { status: "closed", closedAt: expect.any(Date), autoCloseOff: false, autoClosedAt: null },
     });
     expect(h.emitEvent).toHaveBeenCalledTimes(1);
     expect(h.emitEvent).toHaveBeenCalledWith({
@@ -179,5 +181,28 @@ describe("pushOrderToWorklist", () => {
     expect(h.tx.worklistPush.createMany).toHaveBeenCalledWith({
       data: [{ dept: "Cut", bom: "12011E16M13", mo: "P1", item: "TC", qty: 3, baseDone: 2, createdBy: "Sara" }],
     });
+  });
+});
+
+describe("setOrderStatus — closing by itself", () => {
+  const form = (status: string, mos = "SF01/MO/1") => {
+    const fd = new FormData();
+    fd.set("mos", mos);
+    fd.set("status", status);
+    return fd;
+  };
+  it("a reopen by hand of an order Odoo has closed in full keeps it open; any other reopen, and a close, leave it to close by itself", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([{ mo: "SF01/MO/1", line: "TR" }, { mo: "SF01/MO/2", line: "TR" }, { mo: "LV-1", line: "LV" }]);
+    h.odooFull.mockResolvedValue(new Set(["SF01/MO/1"]));
+    await setOrderStatus(form("open", "SF01/MO/1,SF01/MO/2,LV-1"));
+    // only the transformer orders are asked about
+    expect(h.odooFull).toHaveBeenCalledWith(["SF01/MO/1", "SF01/MO/2"]);
+    expect(h.prisma.masterOrder.updateMany.mock.calls[0][0]).toEqual({ where: { mo: { in: ["SF01/MO/1"] } }, data: { status: "open", closedAt: null, autoCloseOff: true, autoClosedAt: null } });
+    expect(h.prisma.masterOrder.updateMany.mock.calls[1][0]).toEqual({ where: { mo: { in: ["SF01/MO/2", "LV-1"] } }, data: { status: "open", closedAt: null, autoCloseOff: false, autoClosedAt: null } });
+    expect(h.emitEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "order.reopened", data: { mos: ["SF01/MO/1", "SF01/MO/2", "LV-1"], reason: "tracker" } }));
+
+    h.prisma.masterOrder.updateMany.mockClear();
+    await setOrderStatus(form("closed"));
+    expect(h.prisma.masterOrder.updateMany.mock.calls[0][0].data).toEqual({ status: "closed", closedAt: expect.any(Date), autoCloseOff: false, autoClosedAt: null });
   });
 });
