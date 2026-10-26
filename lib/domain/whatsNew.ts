@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-assistant-answers-2",
+    dateISO: "2026-10-26",
+    title: "The assistant answers like a colleague: the verdict first, its working shown, the next questions ready",
+    where: "AI assistant — every answer, and the box under it",
+    href: "/ai",
+    body: "Every answer now opens with the answer itself, then the detail, then — when you asked why or what to do — the cause and up to three concrete actions, and closes with a strip saying which line, period and moment the figures cover. Warnings, confirmations and problems stand out as coloured callouts. Under the answer: the next questions it offers as chips you tap, and a bar naming the model and how long it took, with Copy, Print, Share (kept in your own inbox as a report, posted in the team chat, or — with the automations key — sent to colleagues' inboxes as it reads, charts and all) and 👍 / 👎. While it works you see each look-up as a step with its time and its rows (folded once the answer is in), a seconds counter, and a Stop button — Esc stops too; Try again re-asks after a failure, and ↑ in the empty box brings the last question back. Tables fold past 15 rows, group their thousands and export to Excel. Beside the box, pick how hard to work the next question: Quick (a figure, a list), Standard, or Deep (thinking hard with more look-ups — analysis, plans, what-ifs). An empty chat suggests questions for the screen you are on. Chats can be pinned to the top and renamed; a long chat folds its old look-ups, so it goes on longer. Several look-ups in one go now run together, so answers come sooner.",
+  },
+  {
     id: "2026-10-26-orders-close-when-odoo-closes",
     dateISO: "2026-10-26",
     title: "An order closes by itself once Odoo has closed it all",

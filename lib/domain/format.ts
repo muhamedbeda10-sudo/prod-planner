@@ -91,3 +91,13 @@ export function formatQty(v: number | null | undefined): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return "—";
   return v.toLocaleString("en-US", { maximumFractionDigits: FIELD_DP.qty });
 }
+
+/** A duration as a person reads it: "0.8s", "12s", "2m 05s". */
+export function durationText(ms: number): string {
+  const s = Math.max(0, ms) / 1000;
+  if (s < 9.95) return `${s.toFixed(1)}s`;
+  const whole = Math.round(s);
+  if (whole < 60) return `${whole}s`;
+  const m = Math.floor(whole / 60);
+  return `${m}m ${String(whole - m * 60).padStart(2, "0")}s`;
+}

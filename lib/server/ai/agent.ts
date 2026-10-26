@@ -1,9 +1,10 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import type { AiSettings } from "@prisma/client";
-import { addTokens, aiEffort, aiModel, AI_CALLS_RANGE, NO_TOKENS, type AiEffort, type AiModelDef, type AiTokens } from "@/lib/domain/ai";
+import { addTokens, aiEffort, aiModel, AI_CALLS_RANGE, NO_TOKENS, type AiEffort, type AiModelDef, type AiStep, type AiTokens } from "@/lib/domain/ai";
 import { aiPageNote, type AiPageContext } from "@/lib/domain/aiScreen";
 import { readEvidence, type AiEvidence } from "@/lib/domain/aiEvidence";
+import { withoutFollowups } from "@/lib/domain/aiAnswer";
 import { canSeePath, TABS } from "@/lib/domain/tabs";
 import type { AiActionView } from "@/lib/domain/aiActions";
 import type { SimulatorShow } from "@/lib/domain/simulatorScreen";
@@ -93,8 +94,14 @@ The plant's words
 
 How you answer
 - Answer in the language of the question — Egyptian Arabic when asked in Arabic; keep MO numbers, BOMs, codes and item codes as they are.
-- Lead with the answer in a sentence or two, then the detail: a short Markdown table for lists of orders or figures, bullets otherwise. Keep it short — people read it on the floor, often on a phone.
-- When it helps, end with up to three concrete suggestions (what to push first, what looks wrong or missing in the data, what to check) under a "Suggestions" heading in the answer's language. Suggestions are your judgement; the facts in them still come from the data.
+- The shape of an answer, in this order: (1) the answer itself in one or two sentences — the figure, the verdict, the decision — never a preamble or the question said back; (2) the detail: a short Markdown table for lists of orders or figures, a chart where a picture reads faster, bullets otherwise; (3) when asked why, or what to do: the cause in a short paragraph, then up to three concrete next actions under a heading in the answer's language ("Suggestions" / "اقتراحات") — what to push first, what looks wrong or missing in the data, what to check; they are your judgement, the facts in them still from the data; (4) a numerical answer closes with ONE line of its own: "Scope: <line> · <period or filters> · read <HH:MM>" (in Arabic "النطاق: …") — TR or LV, the dates or filters the figures cover, and the factory time the data was read. The chat draws that line as a strip under the answer, so keep it to that form. Keep the whole short — people read it on the floor, often on a phone.
+- Callouts: a blockquote line starting with ⚠️ for a warning (a figure to doubt, a risk), ✅ for something confirmed in order, ❌ for a problem that needs acting on — one line each, at most two an answer; the chat colours them.
+- Before you write, check the answer: every number, name and date in it comes from a tool result in this conversation; totals add up to their parts; the scope matches the question (the line, the period, the filters) and you say so when it does not; an estimate or an assumption is called one; a figure you could not verify is said to be unverified. What you could not check or prepare goes in one line at the end, before the scope.
+- End a chat answer with up to three follow-up questions the person may want next — the next step of the analysis, the detail behind a figure, a change they could ask you to prepare — as a fenced block in the language "followups" holding a JSON list of short strings in the answer's language, after everything else:
+\`\`\`followups
+["إيه الأوردرات دي بالتفصيل؟", "Put the three late ones on hold"]
+\`\`\`
+The chat shows them as buttons: never list them as text, and nothing else goes in the block. Leave the block out when you asked the person something and wait for their answer, and in a report an automation sends.
 - Don't show the SQL unless asked.
 
 Charts and figures
@@ -153,6 +160,8 @@ export interface AskEvents {
   source?(source: AiEvidence): void;
   /** What the assistant is looking up or preparing now. */
   status(text: string): void;
+  /** A step of the work starting, done or failed — the chat's timeline. */
+  step?(step: AiStep): void;
   /** A piece of the answer. */
   text(delta: string): void;
   /** A change it prepared (or made) — the card the chat shows. */
@@ -178,8 +187,32 @@ export interface AskResult {
   /** The API refused the request itself (400) — a file it could not take,
    *  among others. */
   badRequest?: boolean;
-  /** The answer's text, joined — for an automation's report. */
+  /** The answer's text, joined, without the chat's follow-up block — for an
+   *  automation's report, a check's judge, the morning review. */
   text: string;
+  /** How long until the first word of the answer reached the person (null: none did), and the whole question. */
+  firstTokenMs: number | null;
+  totalMs: number;
+}
+
+/** How many rows a read brought back, from its result as the tools write
+ *  it ({columns, rowCount, rows} or a list) — the parsed result, or its
+ *  text — null when it is not counted. */
+export function rowsOf(result: unknown): number | null {
+  let v = result;
+  if (typeof v === "string") {
+    const t = v.trimStart();
+    if (!(t.startsWith("{") || t.startsWith("[")) || t.length > 400_000) return null;
+    try { v = JSON.parse(t); } catch { return null; }
+  }
+  if (Array.isArray(v)) return v.length;
+  if (v && typeof v === "object") {
+    const o = v as { rowCount?: unknown; rows?: unknown; data?: unknown };
+    if (typeof o.rowCount === "number") return o.rowCount;
+    if (Array.isArray(o.rows)) return o.rows.length;
+    if (Array.isArray(o.data)) return o.data.length;
+  }
+  return null;
 }
 
 /** The question as the API gets it: the person's words in their message
@@ -390,14 +423,18 @@ export async function ask(opts: {
   /** The text of an answer cut off at the length limit — kept, with the note. */
   let partial: ContentBlockParam[] | null = null;
   const expand = opts.expand ?? (async (msgs: MessageParam[]) => msgs);
+  const startedAt = Date.now();
+  let firstTokenMs: number | null = null;
 
   const events: AskEvents = {
     status: opts.events.status,
+    step: opts.events.step,
     action: opts.events.action,
     simulator: opts.events.simulator,
     memory: opts.events.memory,
     source: opts.events.source,
     text: (d) => {
+      if (firstTokenMs === null && d.trim()) firstTokenMs = Date.now() - startedAt;
       wroteText = true;
       answer += d;
       opts.events.text(d);
@@ -413,6 +450,8 @@ export async function ask(opts: {
       resumed = false;
       let msg: Message;
       const textBeforeCall = answer;
+      // the model reads the question, or what its look-ups brought back
+      events.status(step === 0 ? "Reading the question" : "Thinking it through");
       try {
         const sent = withKnownFinds(await expand([...history, ...turn]), names);
         const loaded = loadedTools(opts.tools, sent);
@@ -422,6 +461,8 @@ export async function ask(opts: {
       } catch (e) {
         // Once words reached the person, replaying the request would duplicate
         // them. An abort or an unrelated failure must never start another call.
+        // What was streamed before a stop is kept as the answer, with the note.
+        if (signal.aborted && answer !== textBeforeCall) partial = [{ type: "text", text: answer.slice(textBeforeCall.length) }];
         if (signal.aborted || answer !== textBeforeCall) throw e;
         // a 400 on the full request: the plain one, once, for the rest of the
         // question — a beta feature the account does not have, or history the
@@ -480,66 +521,120 @@ export async function ask(opts: {
         break;
       }
 
-      const results: ContentBlockParam[] = [];
+      // The calls of one turn, in the model's order: the reads that sit
+      // together run at the same time (a look-up waits on the database, not
+      // on the others), a change runs alone and after every read before it
+      // — and clears what those reads cached, since it may have changed it.
+      const results = new Map<string, ToolResult>();
       const readCache = new Map<string, ReadResult>();
-      let inProgress: string | undefined;
+      /** Calls handed to their tool — one without a result was interrupted. */
+      const started = new Set<string>();
+      const runRead = async (u: Anthropic.Beta.Messages.BetaToolUseBlock, tool: Extract<AiTool, { kind: "read" }>, firstByKey: Map<string, Promise<ReadResult>>, retryByKey: Map<string, Promise<ReadResult>>) => {
+        if (signal.aborted) return;
+        started.add(u.id);
+        const checked = checkToolInput(tool, u.input);
+        if (!checked.ok) {
+          results.set(u.id, { type: "tool_result", tool_use_id: u.id, is_error: true, content: `Invalid call — ${checked.error}` });
+          return;
+        }
+        const status = tool.status?.(checked.input);
+        const title = typeof status === "string" && status.trim() ? status.trim() : tool.title;
+        events.status(title);
+        events.step?.({ id: u.id, kind: "read", text: title, state: "start" });
+        const t0 = Date.now();
+        let r: ReadResult;
+        const key = JSON.stringify([tool.name, stableInput(checked.input)]);
+        const reusable = !!tool.cacheable && !tool.liveOnly;
+        // a failed look-up is a result too, never a throw
+        const run = async (): Promise<ReadResult> => {
+          queries++;
+          try {
+            const got = await tool.run(checked.input, opts.ctx);
+            if (reusable && got.ok && !got.simulator) readCache.set(key, got);
+            return got;
+          } catch (e) {
+            return { ok: false, text: `The look-up failed: ${e instanceof Error ? e.message : String(e)}` };
+          }
+        };
+        const cached = reusable ? readCache.get(key) : undefined;
+        if (cached) r = cached;
+        else if (reusable && firstByKey.has(key)) {
+          // the same read is already running in this batch: its result —
+          // or, when it failed, ONE more try shared by every duplicate
+          r = await firstByKey.get(key)!;
+          if (!r.ok) {
+            let retry = retryByKey.get(key);
+            if (!retry) {
+              retry = run();
+              retryByKey.set(key, retry);
+            }
+            r = await retry;
+          }
+        } else {
+          const p = run();
+          if (reusable) firstByKey.set(key, p);
+          r = await p;
+        }
+        if (r.ok && r.simulator) events.simulator?.({ toolUseId: u.id, ...r.simulator });
+        if (r.ok && r.memory) events.memory?.(r.memory);
+        let content = r.text;
+        // the result parsed once — for its source card and its row count
+        let parsed: unknown = r.text;
+        if (r.ok && events.source) {
+          const links = r.links ?? (tool.tabs ?? []).flatMap((id) => TABS.find((tab) => tab.id === id)?.paths.slice(0, 1).map((href) => ({ label: tool.title, href })) ?? []);
+          const sourced = readEvidence(u.id, title, r.text, links.filter((link) => canSeePath(opts.ctx.hidden, link.href) && (!link.href.startsWith("/trace") || !opts.ctx.hidden.has("tracker"))));
+          content = sourced.content;
+          parsed = sourced.data;
+          events.source(sourced.evidence);
+        }
+        const rows = r.ok ? rowsOf(parsed) : null;
+        events.step?.({ id: u.id, kind: "read", text: title, state: r.ok ? "done" : "error", ms: Date.now() - t0, ...(rows === null ? {} : { rows }) });
+        results.set(u.id, { type: "tool_result", tool_use_id: u.id, ...(r.ok ? {} : { is_error: true }), content });
+      };
       try {
-        for (const u of uses) {
+        let i = 0;
+        while (i < uses.length) {
           signal.throwIfAborted();
-          inProgress = u.id;
+          const u = uses[i];
           const tool = byName.get(u.name);
           if (!tool) {
-            results.push({ type: "tool_result", tool_use_id: u.id, is_error: true, content: `There is no tool "${u.name}" for this person.` } satisfies ToolResult);
+            results.set(u.id, { type: "tool_result", tool_use_id: u.id, is_error: true, content: `There is no tool "${u.name}" for this person.` });
+            i++;
             continue;
           }
           if (tool.kind === "read") {
-            const checked = checkToolInput(tool, u.input);
-            if (!checked.ok) {
-              results.push({ type: "tool_result", tool_use_id: u.id, is_error: true, content: `Invalid call — ${checked.error}` } satisfies ToolResult);
-              continue;
+            // this read and every read right after it, together
+            const batch: { u: Anthropic.Beta.Messages.BetaToolUseBlock; tool: Extract<AiTool, { kind: "read" }> }[] = [];
+            while (i < uses.length) {
+              const t = byName.get(uses[i].name);
+              if (!t || t.kind !== "read") break;
+              batch.push({ u: uses[i], tool: t });
+              i++;
             }
-            const status = tool.status?.(checked.input);
-            events.status(typeof status === "string" && status.trim() ? status.trim() : tool.title);
-            let r;
-            const key = JSON.stringify([tool.name, stableInput(checked.input)]);
-            try {
-              const cached = tool.cacheable && !tool.liveOnly ? readCache.get(key) : undefined;
-              if (cached) r = cached;
-              else {
-                queries++;
-                r = await tool.run(checked.input, opts.ctx);
-                if (tool.cacheable && !tool.liveOnly && r.ok && !r.simulator) readCache.set(key, r);
-              }
-            } catch (e) {
-              r = { ok: false, text: `The look-up failed: ${e instanceof Error ? e.message : String(e)}` };
-            }
-            if (r.ok && r.simulator) events.simulator?.({ toolUseId: u.id, ...r.simulator });
-            if (r.ok && r.memory) events.memory?.(r.memory);
-            let content = r.text;
-            if (r.ok && events.source) {
-              const links = r.links ?? (tool.tabs ?? []).flatMap((id) => TABS.find((tab) => tab.id === id)?.paths.slice(0, 1).map((href) => ({ label: tool.title, href })) ?? []);
-              const sourced = readEvidence(u.id, typeof status === "string" && status.trim() ? status : tool.title, r.text, links.filter((link) => canSeePath(opts.ctx.hidden, link.href) && (!link.href.startsWith("/trace") || !opts.ctx.hidden.has("tracker"))));
-              content = sourced.content;
-              events.source(sourced.evidence);
-            }
-            results.push({ type: "tool_result", tool_use_id: u.id, ...(r.ok ? {} : { is_error: true }), content } satisfies ToolResult);
+            const firstByKey = new Map<string, Promise<ReadResult>>();
+            const retryByKey = new Map<string, Promise<ReadResult>>();
+            await Promise.all(batch.map((b) => runRead(b.u, b.tool, firstByKey, retryByKey)));
             continue;
           }
+          started.add(u.id);
           events.status(`Preparing: ${tool.title}`);
+          events.step?.({ id: u.id, kind: "write", text: tool.title, state: "start" });
+          const t0 = Date.now();
           readCache.clear(); // a change can invalidate every previous read
           const r = await handleWriteCall(tool, u.input, opts.ctx, { toolUseId: u.id, settings: opts.settings, via: opts.via, allowAuto: opts.allowAuto });
           changes++;
           if (r.view) events.action?.(r.view);
-          results.push({ type: "tool_result", tool_use_id: u.id, ...(r.isError ? { is_error: true } : {}), content: r.text } satisfies ToolResult);
+          events.step?.({ id: u.id, kind: "write", text: tool.title, state: r.isError ? "error" : "done", ms: Date.now() - t0 });
+          results.set(u.id, { type: "tool_result", tool_use_id: u.id, ...(r.isError ? { is_error: true } : {}), content: r.text });
+          i++;
         }
       } finally {
-        const answered = new Set(results.filter((b): b is ToolResult => b.type === "tool_result").map((b) => b.tool_use_id));
-        for (const u of uses) if (!answered.has(u.id)) results.push({
+        const content: ContentBlockParam[] = uses.map((u) => results.get(u.id) ?? {
           type: "tool_result", tool_use_id: u.id, is_error: true,
-          content: u.id === inProgress ? "The call was interrupted; its outcome is unconfirmed. Check change cards and current data before repeating it." : "Not run because the answer was interrupted.",
+          content: started.has(u.id) ? "The call was interrupted; its outcome is unconfirmed. Check change cards and current data before repeating it." : "Not run because the answer was interrupted.",
         } satisfies ToolResult);
-        if (step + 1 === maxCalls - 1) results.push({ type: "text", text: "That is the last tool call for this question — answer now with what you have, and say what you could not check or prepare." });
-        turn.push({ role: "user", content: results });
+        if (step + 1 === maxCalls - 1) content.push({ type: "text", text: "That is the last tool call for this question — answer now with what you have, and say what you could not check or prepare." });
+        turn.push({ role: "user", content });
         safeTurnLength = turn.length;
       }
     }
@@ -557,14 +652,15 @@ export async function ask(opts: {
   const complete = !error && last.role === "assistant";
   const note: ContentBlockParam = { type: "text", text: `This answer did not finish: ${error} Any change cards retain their recorded status; check them before repeating a change.` };
   const kept: MessageParam[] = complete ? turn
-    : partial && partial.length > 0 && last.role === "assistant"
-      // the cut-off text the person was shown, then the note, as one turn
-      ? [...turn.slice(0, turn.length - 1), { role: "assistant", content: [...partial, note] }]
+    : partial && partial.length > 0
+      // the cut-off text the person was shown, then the note, as one turn —
+      // after the complete tool rounds before it
+      ? [...turn.slice(0, last.role === "assistant" ? turn.length - 1 : safeTurnLength), { role: "assistant", content: [...partial, note] }]
       : safeTurnLength > 1
         ? [...turn.slice(0, safeTurnLength), { role: "assistant", content: [note] }]
         : turn.slice(0, 1);
   const added = kept.map((t) => ({ role: t.role as "user" | "assistant" | "system", content: t.content as ContentBlockParam[] | string }));
-  return { added, tokens, calls, queries, changes, stop, error, ...(badRequest ? { badRequest } : {}), text: answer };
+  return { added, tokens, calls, queries, changes, stop, error, ...(badRequest ? { badRequest } : {}), text: withoutFollowups(answer), firstTokenMs, totalMs: Date.now() - startedAt };
 }
 
 /** JSON tool input, sorted so property order cannot defeat read deduplication. */

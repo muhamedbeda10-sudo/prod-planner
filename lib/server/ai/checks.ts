@@ -73,10 +73,11 @@ async function askAndJudge(
     maxCalls: o.maxCalls,
   });
 
+  const written = answer.text;
   let tokens = answer.tokens;
   let cost = costUsd(model, answer.tokens);
   let verdict: { pass: boolean; why: string };
-  if (answer.error || !answer.text.trim()) {
+  if (answer.error || !written.trim()) {
     verdict = { pass: false, why: answer.error ?? "It gave no answer." };
   } else {
     try {
@@ -84,7 +85,7 @@ async function askAndJudge(
       const msg = await client.messages.create({
         model: JUDGE,
         max_tokens: 400,
-        messages: [{ role: "user", content: judgePrompt({ question: check.question, expect: check.expect, reference: reference ? reference.text.slice(0, 6000) : null, answer: answer.text.slice(0, 12_000) }) }],
+        messages: [{ role: "user", content: judgePrompt({ question: check.question, expect: check.expect, reference: reference ? reference.text.slice(0, 6000) : null, answer: written.slice(0, 12_000) }) }],
       });
       const text = msg.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
       verdict = parseVerdict(text);
@@ -99,11 +100,11 @@ async function askAndJudge(
   await prisma.$transaction([
     prisma.aiUsage.update({
       where: { id: o.usageId },
-      data: { calls: answer.calls + 1, queries: answer.queries + (reference ? 1 : 0), ...tokens, costUsd: cost, error: answer.error?.slice(0, 1000) ?? null, finishedAt: new Date() },
+      data: { calls: answer.calls + 1, queries: answer.queries + (reference ? 1 : 0), ...tokens, costUsd: cost, error: answer.error?.slice(0, 1000) ?? null, firstTokenMs: answer.firstTokenMs, totalMs: answer.totalMs, finishedAt: new Date() },
     }),
     prisma.aiCheck.update({
       where: { id: check.id },
-      data: { lastRunAt: new Date(), lastPass: verdict.pass, lastWhy: verdict.why, lastAnswer: answer.text.slice(0, 12_000), lastModel: model, lastCostUsd: cost },
+      data: { lastRunAt: new Date(), lastPass: verdict.pass, lastWhy: verdict.why, lastAnswer: written.slice(0, 12_000), lastModel: model, lastCostUsd: cost },
     }),
   ]);
   return { ok: true, pass: verdict.pass, why: verdict.why, costUsd: cost };

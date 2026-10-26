@@ -2,8 +2,8 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, BookOpen, Bot, Brain, Clock, History, Maximize2, MessageSquare, Minimize2, Plus, Search, Settings, Trash2, X } from "lucide-react";
-import { AiChat, GROUPS, groupOf, type ChatListApi } from "@/components/AiChat";
+import { ArrowLeft, BookOpen, Bot, Brain, Clock, History, Maximize2, MessageSquare, Minimize2, Plus, Search, Settings, X } from "lucide-react";
+import { AiChat, ConvRow, GROUPS, groupOf, type ChatListApi } from "@/components/AiChat";
 import { AutomationsView } from "@/components/AutomationsView";
 import { PlaybookView } from "@/components/PlaybookView";
 import { MemoryDialog } from "@/components/AiFeedback";
@@ -72,29 +72,13 @@ function ChatList({ api, q, onPick }: { api: ChatListApi | null; q: string; onPi
   const convs = needle ? api.convs.filter((c) => c.title.toLowerCase().includes(needle)) : api.convs;
   if (convs.length === 0) return <EmptyState compact icon={Bot} title={needle ? "No chat matches" : "No chats yet"} hint={needle ? undefined : "Your questions will be kept here."} />;
   const now = new Date();
-  const grouped = GROUPS.map((g) => ({ g, items: convs.filter((c) => groupOf(c.updatedAt, now) === g) })).filter((x) => x.items.length > 0);
+  const grouped = GROUPS.map((g) => ({ g, items: convs.filter((c) => groupOf(c.updatedAt, now, c.pinned) === g) })).filter((x) => x.items.length > 0);
   return (
     <nav className="px-1.5 pb-2">
       {grouped.map(({ g, items }) => (
         <div key={g}>
           <div className="conv-group">{g}</div>
-          {items.map((c) => (
-            <div key={c.id} className={`conv-item ${c.id === api.activeId ? "conv-item-active" : ""}`}>
-              <button type="button" onClick={() => onPick(c.id)} className="flex-1 min-w-0 text-start px-2.5 py-1.5" disabled={api.busy}>
-                <div className={`text-[13px] truncate ${c.id === api.activeId ? "font-semibold text-brand-ink" : "font-medium"}`} dir="auto">{c.title}</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => api.remove(c)}
-                disabled={api.busy}
-                className="conv-del icon-btn icon-btn-danger me-1"
-                title="Delete this chat"
-                aria-label={`Delete the chat ${c.title}`}
-              >
-                <Trash2 size={13} />
-              </button>
-            </div>
-          ))}
+          {items.map((c) => <ConvRow key={c.id} c={c} active={c.id === api.activeId} busy={api.busy} onOpen={() => onPick(c.id)} onRemove={() => api.remove(c)} onRename={() => api.rename(c)} onPin={() => api.pin(c)} />)}
         </div>
       ))}
     </nav>

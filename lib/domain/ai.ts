@@ -303,6 +303,18 @@ export function readerUrl(base: string, password: string): string {
 
 // ---- the chat as people read it ----
 
+/** One step of the work on a question, as the chat draws its timeline: a
+ *  look-up or a prepared change starting, then done or failed, with how long
+ *  it took and, for a read, how many rows came back. */
+export interface AiStep {
+  id: string;
+  kind: "read" | "write";
+  text: string;
+  state: "start" | "done" | "error";
+  ms?: number;
+  rows?: number;
+}
+
 export interface AiChatTurn {
   sources?: AiEvidence[];
   role: "user" | "assistant";
@@ -467,7 +479,8 @@ export function writesArabic(text: string): boolean {
 }
 
 /** A conversation longer than this many kept messages takes a new chat —
- *  every question re-reads the whole of it. */
-export const AI_MAX_MESSAGES = 120;
+ *  every question re-reads the whole of it (its old look-ups folded,
+ *  lib/domain/aiHistory). */
+export const AI_MAX_MESSAGES = 200;
 /** The longest question taken, in characters. */
 export const AI_MAX_QUESTION = 4000;

@@ -101,7 +101,7 @@ export async function reviewFor(user: User, now: Date): Promise<void> {
   });
   await prisma.aiUsage.update({
     where: { id: usage.id },
-    data: { calls: answer.calls, queries: answer.queries, ...answer.tokens, costUsd: costUsd(settings.autoModel, answer.tokens), error: answer.error?.slice(0, 1000) ?? null, finishedAt: new Date() },
+    data: { calls: answer.calls, queries: answer.queries, ...answer.tokens, costUsd: costUsd(settings.autoModel, answer.tokens), error: answer.error?.slice(0, 1000) ?? null, firstTokenMs: answer.firstTokenMs, totalMs: answer.totalMs, finishedAt: new Date() },
   });
   if (answer.error) return;
   await deliverToInbox([{

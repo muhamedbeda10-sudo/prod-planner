@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   reserve: vi.fn(), ask: vi.fn(), messages: vi.fn(), link: vi.fn(), usage: vi.fn(), transaction: vi.fn(),
-  message: vi.fn(), update: vi.fn(), outcomes: vi.fn(), hidden: new Set<string>(), model: "claude-opus-5-5",
+  message: vi.fn(), update: vi.fn(), outcomes: vi.fn(), find: vi.fn(), hidden: new Set<string>(), model: "claude-opus-5-5",
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: {
-  aiUsage: { update: h.usage }, aiConversation: { update: h.update }, aiMessage: { create: h.message }, $transaction: h.transaction,
+  aiUsage: { update: h.usage }, aiConversation: { update: h.update, findFirst: h.find }, aiMessage: { create: h.message }, $transaction: h.transaction,
 } }));
 vi.mock("@/lib/server/auth", () => ({ getCurrentUser: async () => ({ id: 1, name: "Sara" }), hasPerm: () => false, hiddenTabsOf: () => h.hidden }));
 vi.mock("@/lib/server/line", () => ({ getActiveLine: async () => "LV" }));
-vi.mock("@/lib/server/ai/access", () => ({ aiStatusFor: async () => ({ ok: true }), apiKeyOf: () => "test", getAiSettings: async () => ({ model: h.model, actionsPaused: false }) }));
+vi.mock("@/lib/server/ai/access", () => ({ aiStatusFor: async () => ({ ok: true }), apiKeyOf: () => "test", getAiSettings: async () => ({ model: h.model, effort: "medium", maxCalls: 14, actionsPaused: false }) }));
 vi.mock("@/lib/server/ai/memory", () => ({ memoriesOf: async () => [{ id: 7, text: "Works in Welding" }] }));
 vi.mock("@/lib/server/ai/chatReservation", () => ({ reserveChatTurn: h.reserve }));
 vi.mock("@/lib/server/ai/agent", () => ({ ask: h.ask, questionMessages: h.messages }));
@@ -28,9 +28,11 @@ beforeEach(() => {
   h.messages.mockReturnValue([]);
   h.usage.mockResolvedValue({});
   h.outcomes.mockResolvedValue(undefined);
-  h.ask.mockResolvedValue({ tokens: { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 }, calls: 1, queries: 0, added: [], text: "Answer" });
+  h.ask.mockResolvedValue({ tokens: { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 }, calls: 1, queries: 0, added: [], text: "Answer", firstTokenMs: 420, totalMs: 3100 });
   h.transaction.mockResolvedValue([]);
+  h.find.mockResolvedValue(null);
 });
+const ask = (body: object) => POST(new Request("http://localhost/api/ai/chat", { method: "POST", body: JSON.stringify(body) }));
 function request() {
   return new Request("http://localhost/api/ai/chat", { method: "POST", body: JSON.stringify({ question: "إيه المتأخر هنا؟", page: { path: "/tracker", filters: { month: "October 2026", password: "not forwarded" } } }) });
 }
@@ -60,6 +62,43 @@ describe("the AI chat route", () => {
     // a short look-up on a new chat: the cheapest model
     expect(h.reserve.mock.calls[0][0].model).toBe("claude-haiku-5-5");
     expect(h.update).toHaveBeenCalledWith({ where: { id: 4 }, data: { model: "claude-haiku-5-5" } });
+  });
+  it("a Deep question on Auto takes the strongest model, thinks harder with more calls, and the chat steps up to it", async () => {
+    h.model = "auto";
+    h.update.mockResolvedValue({ id: 4, title: "Chat", model: "claude-opus-5-5" });
+    h.reserve.mockResolvedValue({ conversation: { id: 4, title: "Chat", model: "claude-haiku-5-5" }, usage: { id: 5 } });
+    await events(await ask({ question: "Hi", depth: "deep" }));
+    expect(h.reserve.mock.calls[0][0].model).toBe("claude-opus-5-5");
+    expect(h.update).toHaveBeenCalledWith({ where: { id: 4 }, data: { model: "claude-opus-5-5" } });
+    expect(h.ask.mock.calls[0][0]).toMatchObject({ model: "claude-opus-5-5", effort: "xhigh", maxCalls: 21 });
+  });
+  it("a Deep question keeps the model the owner chose; an unknown depth is Standard", async () => {
+    h.model = "claude-sonnet-5-5";
+    h.reserve.mockResolvedValue({ conversation: { id: 4, title: "Chat", model: "claude-sonnet-5-5" }, usage: { id: 5 } });
+    await events(await ask({ question: "Why?", depth: "deep" }));
+    expect(h.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ model: expect.anything() }) }));
+    expect(h.ask.mock.calls[0][0]).toMatchObject({ model: "claude-sonnet-5-5", effort: "xhigh", maxCalls: 21 });
+    await events(await ask({ question: "Why?", depth: "ultra" }));
+    expect(h.ask.mock.calls[1][0]).toMatchObject({ effort: "medium", maxCalls: 14 });
+  });
+  it("folds the old look-ups of a long chat before the model reads it, and keeps the timing", async () => {
+    const big = JSON.stringify({ data: { rows: Array.from({ length: 300 }, (_, i) => [i]) }, source: { id: "r1" } });
+    const turn = (q: string, id: string) => [
+      { role: "user", content: [{ type: "text", text: q }] },
+      { role: "assistant", content: [{ type: "tool_use", id, name: "query_database", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: big }] },
+      { role: "assistant", content: [{ type: "text", text: "Ten." }] },
+    ];
+    h.find.mockResolvedValue({ id: 4, title: "Chat", model: "claude-opus-5-5", messages: [...turn("One?", "a"), ...turn("Two?", "b"), ...turn("Three?", "c")] });
+    const sent = await events(await ask({ conversationId: 4, question: "Four?" }));
+    const history = h.ask.mock.calls[0][0].history;
+    expect(history[2].content[0].content).toContain("omitted");
+    expect(history[6].content[0].content).toBe(big);
+    expect(history[10].content[0].content).toBe(big);
+    expect(sent.at(-1)).toMatchObject({ type: "done", totalMs: 3100 });
+    expect(h.usage).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ firstTokenMs: 420, totalMs: 3100 }) }));
+    // the person's Stop reaches the model
+    expect(h.ask.mock.calls[0][0].signal).toBeInstanceOf(AbortSignal);
   });
   it("does not forward a hidden screen's context", async () => {
     h.hidden.add("tracker");

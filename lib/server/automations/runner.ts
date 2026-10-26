@@ -370,7 +370,7 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
     const cost = costUsd(settings.autoModel, answer.tokens);
     await prisma.aiUsage.update({
       where: { id: usage.id },
-      data: { calls: answer.calls, queries: answer.queries, ...answer.tokens, costUsd: cost, error: answer.error?.slice(0, 1000) ?? null, finishedAt: new Date() },
+      data: { calls: answer.calls, queries: answer.queries, ...answer.tokens, costUsd: cost, error: answer.error?.slice(0, 1000) ?? null, firstTokenMs: answer.firstTokenMs, totalMs: answer.totalMs, finishedAt: new Date() },
     });
     if (answer.error) return failRun(a, run.id, o, `The assistant could not finish: ${answer.error}`, next, cost);
     const text = answer.text.trim() || "(The assistant wrote nothing.)";

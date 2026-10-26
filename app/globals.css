@@ -1466,10 +1466,60 @@ main .composer textarea:focus, .composer textarea:focus { outline: none; box-sha
 .ai-md hr + ul, .ai-md ul + hr { margin-top: 0.75rem; }
 .ai-md .md-table tbody tr:hover td { background: var(--row-hover); }
 .ai-md code { font-size: 0.875em; }
+/* a long table folds to its first rows; the foot carries the count, the fold and the export */
+.ai-md .md-table-folded .md-table tbody tr.md-row-over { display: none; }
+.ai-md .md-table-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 2px; font-size: var(--fs-sm); }
+.ai-md .md-table-foot .btn { padding-inline: 6px; min-height: 26px; }
+html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: table-row; }
+/* a callout: the assistant's ⚠️ / ✅ / ❌ line, in its tone, in both themes */
+.ai-callout { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0; padding: 8px 12px; border-radius: 10px; border: 1px solid transparent; font-size: var(--fs-body); line-height: 1.5; }
+.ai-callout > div > p { margin: 0; }
+.ai-callout-icon { flex-shrink: 0; margin-top: 2px; }
+.ai-callout-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: color-mix(in srgb, var(--warn-fg) 25%, transparent); }
+.ai-callout-ok { background: var(--ok-bg); color: var(--ok-fg); border-color: color-mix(in srgb, var(--ok-fg) 22%, transparent); }
+.ai-callout-bad { background: var(--bad-bg); color: var(--bad-fg); border-color: color-mix(in srgb, var(--bad-fg) 22%, transparent); }
+.ai-callout strong { color: inherit; }
 
 /* the "looked up" line under an answer */
 .ai-lookups { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: var(--fs-sm); color: var(--muted); }
 .ai-lookups > span + span::before { content: "·"; margin-inline-end: 6px; opacity: 0.6; }
+
+/* ---- an answer's frame: its steps, its head, its scope, its follow-ups ---- */
+/* the steps the assistant took, as a timeline: a dot per step, lit while it runs */
+.ai-steps { margin: 0 0 8px; font-size: var(--fs-sm); color: var(--muted); }
+.ai-steps-head { display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px 2px 2px; border-radius: 6px; font-weight: 600; color: var(--muted); }
+.ai-steps-head:hover { background: var(--surface-2); color: var(--foreground); }
+.ai-steps-list { list-style: none; margin: 4px 0 0; padding: 0 0 0 7px; border-inline-start: 2px solid var(--border); display: flex; flex-direction: column; gap: 3px; }
+.ai-step { display: flex; align-items: center; gap: 8px; min-width: 0; position: relative; padding-inline-start: 10px; }
+.ai-step::before { content: ""; position: absolute; inset-inline-start: -12px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: var(--border-strong); }
+.ai-step-start::before { background: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent); animation: ai-pulse 1.2s ease-in-out infinite; }
+.ai-step-done::before { background: var(--ok-fg); }
+.ai-step-error::before { background: var(--bad-fg); }
+.ai-step-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-step-meta { flex-shrink: 0; font-variant-numeric: tabular-nums; opacity: 0.8; }
+@keyframes ai-pulse { 0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 25%, transparent); } 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand) 10%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .ai-step-start::before { animation: none; } }
+/* what the assistant does right now, with the seconds ticking */
+.ai-live { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; font-size: var(--fs-body); color: var(--muted); }
+.ai-live-time { font-variant-numeric: tabular-nums; opacity: 0.75; font-size: var(--fs-sm); }
+/* the strip under an answer: model, time, cost, then its buttons */
+.ai-answer-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; margin-top: 6px; margin-inline-start: -4px; }
+.ai-answer-meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding-inline: 4px 8px; font-size: var(--fs-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
+.ai-answer-meta .pill { font-size: var(--fs-label); padding: 1px 7px; }
+/* the scope line: a quiet strip, never prose */
+.ai-md p.ai-scope, .ai-scope { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 10px 0 0; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); font-size: var(--fs-sm); color: var(--muted); max-width: 100%; }
+.ai-scope svg { flex-shrink: 0; opacity: 0.8; }
+/* the follow-up questions the assistant offers, as chips */
+.ai-followups { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.ai-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--brand-ink); font-size: var(--fs-body); font-weight: 500; line-height: 1.35; text-align: start; transition: background-color 0.12s ease, border-color 0.12s ease; }
+.ai-chip:hover { background: var(--brand-light); border-color: var(--brand); }
+.ai-chip:disabled { opacity: 0.55; cursor: not-allowed; }
+.ai-chip svg { flex-shrink: 0; opacity: 0.8; }
+/* the composer's depth: Quick / Standard / Deep */
+.ai-depth > button { display: inline-flex; align-items: center; gap: 4px; }
+/* the stop button takes the send button's place while an answer is written */
+.composer-stop { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--bad-bg); color: var(--bad-fg); border: 1px solid color-mix(in srgb, var(--bad-fg) 30%, transparent); transition: opacity 0.15s ease; }
+.composer-stop:hover { opacity: 0.85; }
 
 /* a chat's grouped list of conversations */
 .conv-group { font-size: var(--fs-label); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 10px 10px 4px; }

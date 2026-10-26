@@ -3,7 +3,8 @@
 import { prisma } from "@/lib/db";
 import { getCurrentUser, requirePerm } from "@/lib/server/auth";
 import { pushPublicKey, readSubscription } from "@/lib/server/push";
-import { deliverToInbox, unreadInboxCount } from "@/lib/server/inbox";
+import { unreadInboxCount } from "@/lib/server/inbox";
+import { sendMessageFromPerson } from "@/lib/server/inboxMessage";
 
 // A person's own inbox — what the assistant and the automations sent them —
 // and the devices they turned notifications on for. Each person reads, marks
@@ -87,11 +88,8 @@ export async function removeInboxDevice(endpoint: string): Promise<InboxActionRe
   return { ok: true };
 }
 
-const MESSAGE_TO = 20;
 const MESSAGE_TITLE = 120;
 const MESSAGE_BODY = 4000;
-/** Messages one person may send in an hour — each one reaches phones. */
-const MESSAGES_AN_HOUR = 60;
 
 /** A message to colleagues' inboxes (and their devices) — what the assistant
  *  sends for a person who asked it to. The same key as automations: telling
@@ -102,15 +100,9 @@ export async function sendInboxMessage(fd: FormData): Promise<InboxActionResult 
   const to = String(fd.get("to") ?? "").split(",").map((x) => Number(x.trim())).filter((n) => Number.isInteger(n) && n > 0);
   const title = String(fd.get("title") ?? "").replace(/\s+/g, " ").trim();
   const body = String(fd.get("body") ?? "").trim();
-  if (to.length === 0 || to.length > MESSAGE_TO) return { ok: false, error: `Name 1 to ${MESSAGE_TO} people.` };
   if (!title || title.length > MESSAGE_TITLE) return { ok: false, error: `Give the message a title (at most ${MESSAGE_TITLE} characters).` };
   if (!body || body.length > MESSAGE_BODY) return { ok: false, error: `Write the message (at most ${MESSAGE_BODY} characters).` };
-  const people = await prisma.user.findMany({ where: { id: { in: to }, active: true }, select: { id: true } });
-  if (people.length !== new Set(to).size) return { ok: false, error: "One of them is not an active user." };
-  const lastHour = await prisma.aiInboxItem.count({ where: { fromUserId: guard.user!.id, createdAt: { gte: new Date(Date.now() - 3_600_000) } } });
-  if (lastHour + people.length > MESSAGES_AN_HOUR) return { ok: false, error: `That is more than ${MESSAGES_AN_HOUR} messages in an hour — wait a while.` };
-  const ids = await deliverToInbox(people.map((p) => ({ userId: p.id, kind: "message" as const, title, body, fromName: guard.user!.name, fromUserId: guard.user!.id })));
-  return { ok: true, ids };
+  return sendMessageFromPerson(guard.user!, { to, title, body });
 }
 
 /** Take messages back out of the inboxes they were sent to — the undo of a
