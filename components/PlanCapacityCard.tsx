@@ -37,7 +37,7 @@ export function PlanCapacityCard({ check }: { check: PlanCapacityCheck | null })
   return (
     <div className="print-keep bg-surface border rounded-[10px] px-3 py-2" data-ai-title="Capacity check" data-ai-about={about}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="leading-tight basis-full sm:basis-auto" title="Standard hours the plan needs vs the stage's capacity over the plan's working days">
+        <div className="leading-tight basis-full sm:basis-auto">
           <h2 className="!mb-0"><ChartAbout title="Capacity check" about={about} /></h2>
           <span className="text-[11px] text-muted">{check.workingDays} working day{check.workingDays === 1 ? "" : "s"}</span>
         </div>

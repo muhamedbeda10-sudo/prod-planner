@@ -1105,9 +1105,7 @@ main select.ctl { padding-right: 1.6rem; }
   box-shadow: var(--shadow-lg);
   font-size: var(--fs-body);
   pointer-events: auto;
-  animation: tipcard 0.14s ease-out;
 }
-@keyframes tipcard { from { opacity: 0; transform-origin: top; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .tooltip, .tooltip.tooltip-card { animation: none; } }
 @media print { .tooltip { display: none; } }
 

@@ -20,9 +20,10 @@ export function ChartAbout({ title, about, rows }: { title: string; about?: stri
   const trigger = useRef<HTMLButtonElement>(null);
   if (!about) return <>{title}</>;
 
-  const ask = () => {
+  const ask = (close: () => void) => {
     const card = trigger.current?.closest("section, [data-ai-title]");
     const text = card instanceof HTMLElement ? card.innerText : undefined;
+    close();
     ai?.ask(explainQuestion({ kind: "chart", title, about, rows, text }, pageName()), { explain: true });
   };
 
@@ -30,7 +31,8 @@ export function ChartAbout({ title, about, rows }: { title: string; about?: stri
     <Tooltip
       interactive
       side="bottom"
-      content={
+      label={`About: ${title}`}
+      content={(close) => (
         <span className="flex flex-col gap-2 text-start">
           <span className="flex items-center gap-2 font-bold">
             <Info size={15} className="shrink-0 text-brand-ink" aria-hidden />
@@ -38,12 +40,12 @@ export function ChartAbout({ title, about, rows }: { title: string; about?: stri
           </span>
           <span className="leading-relaxed text-muted">{about}</span>
           {ai?.canAsk && (
-            <button type="button" className="btn btn-sm btn-primary self-start" onClick={ask}>
+            <button type="button" className="btn btn-sm btn-primary self-start" onClick={() => ask(close)}>
               <Sparkles size={13} aria-hidden /> Ask AI about these numbers
             </button>
           )}
         </span>
-      }
+      )}
     >
       <button ref={trigger} type="button" className="inline-flex cursor-help items-center gap-1.5 text-start [letter-spacing:inherit] [text-transform:inherit] hover:text-brand-ink">
         {title}
