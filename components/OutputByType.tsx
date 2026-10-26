@@ -7,11 +7,9 @@ import { ExportButton } from "@/components/ExportButton";
 import { EmptyState } from "@/components/primitives";
 import { GroupBand, TableFrame, Th } from "@/components/DataTable";
 import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
-import {
-  LV_TYPE_STAGES, LV_TYPE_STAGE_LABEL, TR_TYPE_STAGES, TR_TYPE_STAGE_LABEL,
-  type TrTypeStage, type TypeGroup, type TypeRow,
-} from "@/lib/domain/outputByType";
-import type { LvStage } from "@/lib/domain/lv";
+import { LV_TYPE_STAGE_LABEL, TR_TYPE_STAGE_LABEL, type OutputByTypeData, type TypeRow } from "@/lib/domain/outputByType";
+import { STAGES, type Stage } from "@/lib/domain/kpis";
+import { LV_STAGES, type LvStage } from "@/lib/domain/lv";
 
 // What the floor made, item by item and type by type, against the month's
 // plan — both lines on one card, each in its own table: the transformers by
@@ -19,12 +17,10 @@ import type { LvStage } from "@/lib/domain/lv";
 // within an item, never across items or lines. The figures come from the
 // lines' floor periods (FloorPeriod.byType, LvFloorPeriod.byType).
 
-type ByType<S extends string> = { monthLabel: string; groups: TypeGroup<S>[] };
-
 /** One line's table: the stages' pieces made in the period, then its month's plan. */
 function LineTable<S extends string>({ line, data, stages, stageLabel, typeWord, finishWord, range, detail }: {
   line: ProductLine;
-  data: ByType<S>;
+  data: OutputByTypeData<S>;
   stages: readonly S[];
   stageLabel: Record<S, string>;
   typeWord: string;
@@ -97,23 +93,23 @@ function LineTable<S extends string>({ line, data, stages, stageLabel, typeWord,
 }
 
 /** The card's rows as one export — both lines, every type. */
-function exportRows(tr: ByType<TrTypeStage>, lv: ByType<LvStage>) {
-  const rows = <S extends string>(line: ProductLine, d: ByType<S>, stages: readonly S[], label: Record<S, string>) =>
+function exportRows(tr: OutputByTypeData<Stage>, lv: OutputByTypeData<LvStage>) {
+  const rows = <S extends string>(line: ProductLine, d: OutputByTypeData<S>, stages: readonly S[], label: Record<S, string>) =>
     d.groups.flatMap((g) => g.types.map((t) => ({
       Line: LINE_LABEL[line],
       Item: g.item,
       Type: t.type,
       ...Object.fromEntries(stages.map((s) => [`Made — ${label[s]}`, t.made[s]])),
-      [`Plan month`]: d.monthLabel,
+      "Plan month": d.monthLabel,
       Planned: t.plan?.required ?? "",
       Finished: t.plan ? t.plan.done[stages[stages.length - 1]] : "",
       Left: t.plan?.left ?? "",
-      "Done %": t.plan?.share === null || t.plan?.share === undefined ? "" : Math.round(t.plan.share * 100),
+      "Done %": t.plan?.share == null ? "" : Math.round(t.plan.share * 100),
     })));
-  return [...rows("TR", tr, TR_TYPE_STAGES, TR_TYPE_STAGE_LABEL), ...rows("LV", lv, LV_TYPE_STAGES, LV_TYPE_STAGE_LABEL)];
+  return [...rows("TR", tr, STAGES, TR_TYPE_STAGE_LABEL), ...rows("LV", lv, LV_STAGES, LV_TYPE_STAGE_LABEL)];
 }
 
-export function OutputByType({ tr, lv, range, stamp }: { tr: ByType<TrTypeStage>; lv: ByType<LvStage>; range: string; stamp: string }) {
+export function OutputByType({ tr, lv, range, stamp }: { tr: OutputByTypeData<Stage>; lv: OutputByTypeData<LvStage>; range: string; stamp: string }) {
   const [detail, setDetail] = useState(true);
   const months = tr.monthLabel === lv.monthLabel ? tr.monthLabel : `${tr.monthLabel} / ${lv.monthLabel}`;
   return (
@@ -131,8 +127,8 @@ export function OutputByType({ tr, lv, range, stamp }: { tr: ByType<TrTypeStage>
       }
     >
       <div className="grid gap-4 2xl:grid-cols-2">
-        <LineTable line="TR" data={tr} stages={TR_TYPE_STAGES} stageLabel={TR_TYPE_STAGE_LABEL} typeWord="KVA class" finishWord="Finished" range={range} detail={detail} />
-        <LineTable line="LV" data={lv} stages={LV_TYPE_STAGES} stageLabel={LV_TYPE_STAGE_LABEL} typeWord="panel type" finishWord="Painted" range={range} detail={detail} />
+        <LineTable line="TR" data={tr} stages={STAGES} stageLabel={TR_TYPE_STAGE_LABEL} typeWord="KVA class" finishWord="Finished" range={range} detail={detail} />
+        <LineTable line="LV" data={lv} stages={LV_STAGES} stageLabel={LV_TYPE_STAGE_LABEL} typeWord="panel type" finishWord="Painted" range={range} detail={detail} />
       </div>
     </ChartCard>
   );

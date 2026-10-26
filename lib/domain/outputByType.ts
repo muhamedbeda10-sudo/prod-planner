@@ -17,13 +17,15 @@
 //     an extra piece on one order never covers another's shortfall.
 
 import { ITEMS, ITEM_NAME, applicableItems, finishDeptOf, isItem, ospOf, type ItemRuleFields } from "./constants";
-import { LV_FAMILY_LABEL, LV_STAGES, isLvFamily, type LvStage, type LvState } from "./lv";
+import { STAGES, type Stage } from "./kpis";
+import { LV_FAMILY_LABEL, LV_STAGES, LV_STAGE_DONE, isLvFamily, lvStageOf, type LvStage, type LvState } from "./lv";
 
-/** The transformers' stages a component is tracked through. */
-export const TR_TYPE_STAGES = ["cut", "weld", "finish"] as const;
-export type TrTypeStage = (typeof TR_TYPE_STAGES)[number];
-export const TR_TYPE_STAGE_LABEL: Record<TrTypeStage, string> = { cut: "Cut", weld: "Welded", finish: "Finished" };
-export const LV_TYPE_STAGE_LABEL: Record<LvStage, string> = { Punching: "Punched", Bending: "Bent", Welding: "Welded", Painting: "Painted" };
+// The transformers are tracked through the plan's own three stages (kpis.ts
+// STAGES), the panels through their four (LV_STAGES); the columns read what
+// was done at each.
+const capital = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
+export const TR_TYPE_STAGE_LABEL: Record<Stage, string> = { cut: "Cut", weld: "Welded", finish: "Finished" };
+export const LV_TYPE_STAGE_LABEL = Object.fromEntries(LV_STAGES.map((s) => [s, capital(LV_STAGE_DONE[s])])) as Record<LvStage, string>;
 
 /** The type of an order whose class or panel type the records cannot tell. */
 export const NO_CLASS = "No class";
@@ -54,8 +56,14 @@ export interface TypeRow<S extends string> {
   /** The month's plan: what it asks, each stage's pieces on it (capped per
    *  line), what is left to finish and the share finished; null when the
    *  type is not on the month's plan. */
-  plan: { required: number; done: Record<S, number>; left: number; share: number | null } | null;
+  plan: TypePlan<S> | null;
 }
+
+/** What the month's plan asks of a type, and how far it is. */
+export interface TypePlan<S extends string> { required: number; done: Record<S, number>; left: number; share: number | null }
+
+/** A line's card: its items and types over the period, against one month's plan. */
+export interface OutputByTypeData<S extends string> { monthLabel: string; groups: TypeGroup<S>[] }
 
 export interface TypeGroup<S extends string> {
   item: string;
@@ -74,7 +82,7 @@ export function kvaTypeLabel(tier: number | null | undefined): string {
 /** The transformers' stage a Daily log record counts for: cutting, welding,
  *  or the component's own finishing stage — any other record (the shot blast
  *  before a tank's painting, the leak test) is not a stage of this card. */
-export function trTypeStageOf(dept: string, item: string): TrTypeStage | null {
+export function trTypeStageOf(dept: string, item: string): Stage | null {
   if (dept === "Cut") return "cut";
   if (dept === "Welding") return "weld";
   if (dept === finishDeptOf(item)) return "finish";
@@ -90,7 +98,7 @@ export function lvItemType(o: { product?: string | null; family?: string | null 
 
 /** A panel order's line of the month's plan, from its position on the chain. */
 export function lvPlanLine(o: { product?: string | null; family?: string | null; state: LvState }): TypePlanLine<LvStage> {
-  return { ...lvItemType(o), required: o.state.required, done: { Punching: o.state.punch, Bending: o.state.bend, Welding: o.state.weld, Painting: o.state.paint } };
+  return { ...lvItemType(o), required: o.state.required, done: Object.fromEntries(LV_STAGES.map((s) => [s, lvStageOf(o.state, s)])) as Record<LvStage, number> };
 }
 
 /** The item's place in the list: the line's own order, unknown ones after. */
@@ -121,6 +129,14 @@ export function outputByType<S extends string>(
   itemOrder: readonly string[],
 ): TypeGroup<S>[] {
   const last = stages[stages.length - 1];
+  /** Add a part of the plan (its pieces asked, done per stage, left) to a row. */
+  const addPlan = (r: TypeRow<S>, required: number, done: (s: S) => number, left: number) => {
+    const p = (r.plan ??= { required: 0, done: zero(stages), left: 0, share: null });
+    p.required += required;
+    p.left += left;
+    for (const s of stages) p.done[s] += done(s);
+    p.share = p.required > 0 ? p.done[last] / p.required : null;
+  };
   const rows = new Map<string, TypeRow<S>>();
   const row = (item: string, type: string) => {
     const k = `${item}|${type}`;
@@ -128,27 +144,24 @@ export function outputByType<S extends string>(
     return rows.get(k)!;
   };
   for (const r of records) {
-    if (!(r.qty !== 0) || !stages.includes(r.stage)) continue;
+    if (r.qty === 0 || !stages.includes(r.stage)) continue;
     row(r.item, r.type).made[r.stage] += r.qty;
   }
   for (const l of plan) {
     if (!(l.required > 0)) continue;
-    const p = (row(l.item, l.type).plan ??= { required: 0, done: zero(stages), left: 0, share: null });
-    p.required += l.required;
-    for (const s of stages) p.done[s] += Math.min(l.required, Math.max(0, l.done[s] ?? 0));
-    p.left += Math.max(0, l.required - Math.min(l.required, Math.max(0, l.done[last] ?? 0)));
+    // each line counted up to what it asks
+    const doneAt = (s: S) => Math.min(l.required, Math.max(0, l.done[s] ?? 0));
+    addPlan(row(l.item, l.type), l.required, doneAt, l.required - doneAt(last));
   }
+  const byItem = new Map<string, TypeRow<S>[]>();
   for (const r of rows.values()) {
     // a record taken back (a negative correction) never shows as less than nothing
     for (const s of stages) r.made[s] = Math.max(0, r.made[s]);
-    if (r.plan) r.plan.share = r.plan.required > 0 ? r.plan.done[last] / r.plan.required : null;
+    if (!r.plan && stages.every((s) => r.made[s] === 0)) continue;
+    if (!byItem.has(r.item)) byItem.set(r.item, []);
+    byItem.get(r.item)!.push(r);
   }
   const rank = rankOf(itemOrder);
-  const byItem = new Map<string, TypeRow<S>[]>();
-  for (const r of rows.values()) {
-    if (!r.plan && stages.every((s) => r.made[s] === 0)) continue;
-    byItem.set(r.item, [...(byItem.get(r.item) ?? []), r]);
-  }
   return [...byItem.entries()]
     .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
     .map(([item, types]) => {
@@ -156,13 +169,8 @@ export function outputByType<S extends string>(
       const total: TypeRow<S> = { item, type: "All types", made: zero(stages), plan: null };
       for (const t of types) {
         for (const s of stages) total.made[s] += t.made[s];
-        if (!t.plan) continue;
-        const p = (total.plan ??= { required: 0, done: zero(stages), left: 0, share: null });
-        p.required += t.plan.required;
-        p.left += t.plan.left;
-        for (const s of stages) p.done[s] += t.plan.done[s];
+        if (t.plan) addPlan(total, t.plan.required, (s) => t.plan!.done[s], t.plan.left);
       }
-      if (total.plan) total.plan.share = total.plan.required > 0 ? total.plan.done[last] / total.plan.required : null;
       return { item, total, types };
     });
 }
@@ -174,9 +182,6 @@ export const LV_ITEM_ORDER: readonly string[] = Object.values(LV_FAMILY_LABEL);
 
 /** A component code as the card names it. */
 export const trItemName = (item: string) => (isItem(item) ? ITEM_NAME[item] : item);
-
-/** Every panels' stage, in the order a panel passes them. */
-export const LV_TYPE_STAGES: readonly LvStage[] = LV_STAGES;
 
 /** The transformers' month plan as lines of this card, one per order and
  *  component at the order's class: what it asks (its pieces less the
@@ -190,8 +195,8 @@ export function trPlanLines(
   orders: readonly (ItemRuleFields & Parameters<typeof ospOf>[0] & { mo: string; bom: string; planQty: number })[],
   ledger: readonly { mo: string | null; bom: string; item: string; dept: string; qty: number }[],
   tierOf: (mo: string | null | undefined, bom: string) => number | null,
-): TypePlanLine<TrTypeStage>[] {
-  type Line = TypePlanLine<TrTypeStage> & { done: Record<TrTypeStage, number> };
+): TypePlanLine<Stage>[] {
+  type Line = TypePlanLine<Stage> & { done: Record<Stage, number> };
   const byOrder = new Map<string, Line>();
   const byProject = new Map<string, Line[]>();
   for (const o of [...orders].sort((a, b) => a.mo.localeCompare(b.mo))) {
@@ -200,34 +205,39 @@ export function trPlanLines(
       const required = Math.max(0, o.planQty - ospOf(o, item));
       if (!(required > 0)) continue;
       const k = `${o.mo}|${item}`;
-      const line = byOrder.get(k) ?? { item: trItemName(item), type, required: 0, done: { cut: 0, weld: 0, finish: 0 } };
+      const line = byOrder.get(k) ?? { item: trItemName(item), type, required: 0, done: zero(STAGES) };
       if (!byOrder.has(k)) {
         byOrder.set(k, line);
-        byProject.set(`${o.bom}|${item}`, [...(byProject.get(`${o.bom}|${item}`) ?? []), line]);
+        const project = `${o.bom}|${item}`;
+        if (!byProject.has(project)) byProject.set(project, []);
+        byProject.get(project)!.push(line);
       }
       line.required += required;
     }
   }
-  // a record of the order's own first; then the project's records without one
-  const loose: { bom: string; item: string; stage: TrTypeStage; qty: number }[] = [];
+  // a record of the order's own first; then the project's records without one, pooled by component
+  const loose = new Map<string, Record<Stage, number>>();
   for (const e of ledger) {
     const stage = trTypeStageOf(e.dept, e.item);
     if (!stage) continue;
     if (e.mo) {
       const line = byOrder.get(`${e.mo}|${e.item}`);
       if (line) line.done[stage] += e.qty;
-    } else loose.push({ bom: e.bom, item: e.item, stage, qty: e.qty });
+      continue;
+    }
+    const k = `${e.bom}|${e.item}`;
+    if (!loose.has(k)) loose.set(k, zero(STAGES));
+    loose.get(k)![stage] += e.qty;
   }
-  const pool = new Map<string, number>();
-  for (const r of loose) pool.set(`${r.bom}|${r.item}|${r.stage}`, (pool.get(`${r.bom}|${r.item}|${r.stage}`) ?? 0) + r.qty);
-  for (const [k, qty] of pool) {
-    const [bom, item, stage] = k.split("|") as [string, string, TrTypeStage];
-    let left = qty;
-    for (const line of byProject.get(`${bom}|${item}`) ?? []) {
-      if (!(left > 0)) break;
-      const take = Math.min(left, Math.max(0, line.required - line.done[stage]));
-      line.done[stage] += take;
-      left -= take;
+  for (const [k, pooled] of loose) {
+    for (const stage of STAGES) {
+      let left = pooled[stage];
+      for (const line of byProject.get(k) ?? []) {
+        if (!(left > 0)) break;
+        const take = Math.min(left, Math.max(0, line.required - line.done[stage]));
+        line.done[stage] += take;
+        left -= take;
+      }
     }
   }
   return [...byOrder.values()];

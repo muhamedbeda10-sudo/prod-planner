@@ -34,10 +34,9 @@ describe("the Production dashboard's filters in the page context", () => {
     expect(page?.filters).toEqual({ from: "2026-10-01", to: "2026-10-25", dept: "Welding", lvDept: "PaintingLV" });
     expect(aiPageNote(page!)).toContain('"LV department":"PaintingLV"');
   });
-  it("still names the line a page's address shows, never on a dashboard that shows both", async () => {
+  it("names the line a page's address shows, never on a page that shows both lines", async () => {
     const { aiPageContext, aiPageNote } = await import("./aiScreen");
     expect(aiPageNote(aiPageContext({ path: "/tracker", filters: { line: "LV" } })!)).toContain('"Line shown":"LV"');
     expect(aiPageContext({ path: "/dashboards/production", filters: { line: "LV", from: "2026-10-01" } })?.filters).toEqual({ from: "2026-10-01" });
-    expect(aiPageContext({ path: "/", filters: { line: "TR" } })?.filters).toEqual({});
   });
 });

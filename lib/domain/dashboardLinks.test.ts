@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lvDeptOfSearch, planningHref, productionHref, productionLegacyRedirect, productionRedirectOf } from "./dashboardLinks";
+import { planningHref, productionHref, productionLegacyRedirect, productionRedirectOf } from "./dashboardLinks";
 
 describe("the plant dashboards' addresses", () => {
   it("writes the filters that have a value, each line's department in its own parameter, and the section to open at", () => {
@@ -8,14 +8,6 @@ describe("the plant dashboards' addresses", () => {
     expect(productionHref({ lvDept: "WeldingLV", section: "lv" })).toBe("/dashboards/production?lvDept=WeldingLV#lv");
     expect(planningHref("tr")).toBe("/#tr");
     expect(planningHref()).toBe("/");
-  });
-
-  it("reads the panels' department from its own parameter only, so the transformers' filter never moves it", () => {
-    expect(lvDeptOfSearch({ lvDept: "Punching" })).toBe("Punching");
-    expect(lvDeptOfSearch({ lvDept: "nonsense" })).toBe("all");
-    expect(lvDeptOfSearch({ dept: "WeldingLV" })).toBe("all");
-    expect(lvDeptOfSearch({ dept: "Welding" })).toBe("all");
-    expect(lvDeptOfSearch({})).toBe("all");
   });
 
   it("moves an older link's panels' department to its own parameter, once", () => {

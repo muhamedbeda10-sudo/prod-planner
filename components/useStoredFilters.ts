@@ -17,8 +17,13 @@ function subscribeTo(key: string) {
     let set = listeners.get(key);
     if (!set) { set = new Set(); listeners.set(key, set); }
     set.add(cb);
-    window.addEventListener("storage", cb);
-    return () => { set!.delete(cb); window.removeEventListener("storage", cb); };
+    // another tab changed it: this tab's copy in memory is stale
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === key) memory.delete(key);
+      cb();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => { set!.delete(cb); window.removeEventListener("storage", onStorage); };
   };
 }
 
@@ -26,20 +31,31 @@ function readRaw(key: string): string {
   try { return localStorage.getItem(key) ?? memory.get(key) ?? ""; } catch { return memory.get(key) ?? ""; }
 }
 
+/** Write one stored value ("" removes it) and tell every reader of it. */
+export function writeStoredValue(key: string, value: string) {
+  memory.set(key, value);
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch { /* storage unavailable — holds for this page load only */ }
+  listeners.get(key)?.forEach((l) => l());
+}
+
+/** One value kept in this browser under `key` ("" when none) — the server
+ *  renders without it and the browser takes over after hydration. */
+export function useStoredValue(key: string): string {
+  const subscribe = useMemo(() => subscribeTo(key), [key]);
+  return useSyncExternalStore(subscribe, () => readRaw(key), () => "");
+}
+
 export function useStoredFilters<T>(rawKey: string, parse: (raw: string) => T, empty: T, line?: ProductLine): { filters: T; setFilters: (f: T) => void } {
   // one line's filters never apply to the other: a Product reading "Tank"
   // carried onto the panels' tab hid every panel row it had. `line` names
   // another line's filters than the screen's — set for the screen it opens.
   const key = useLineKey(rawKey, line);
-  const subscribe = useMemo(() => subscribeTo(key), [key]);
-  const raw = useSyncExternalStore(subscribe, () => readRaw(key), () => "");
+  const raw = useStoredValue(key);
   const filters = useMemo(() => (raw ? parse(raw) : empty), [raw, parse, empty]);
-  const setFilters = (f: T) => {
-    const next = JSON.stringify(f);
-    memory.set(key, next);
-    try { localStorage.setItem(key, next); } catch { /* storage unavailable — holds for this page load only */ }
-    listeners.get(key)?.forEach((l) => l());
-  };
+  const setFilters = (f: T) => writeStoredValue(key, JSON.stringify(f));
   return { filters, setFilters };
 }
 

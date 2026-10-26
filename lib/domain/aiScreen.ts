@@ -1,5 +1,4 @@
-import { BOTH_LINES_PATHS } from "./dashboardLinks";
-import type { ProductLine } from "./lines";
+import { showsBothLines, type ProductLine } from "./lines";
 import { tabForPath } from "./tabs";
 
 const LABELS: Record<string, string> = {
@@ -28,8 +27,8 @@ export function aiPageContext(raw: unknown, hidden: ReadonlySet<string> = new Se
   const filters: Record<string, string> = {};
   if (page.filters && typeof page.filters === "object" && !Array.isArray(page.filters)) {
     for (const key of Object.keys(LABELS)) {
-      // the two plant dashboards show both lines: a line an older address carries is not on screen
-      if (key === "line" && BOTH_LINES_PATHS.has(page.path)) continue;
+      // a page that shows both lines has none, whatever an older address carried
+      if (key === "line" && showsBothLines(page.path)) continue;
       const value = (page.filters as Record<string, unknown>)[key];
       if (typeof value === "string" && value.trim()) filters[key] = value.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 160);
     }

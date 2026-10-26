@@ -6,7 +6,7 @@ import { LV_ITEM, LV_STAGES, type LvStage } from "@/lib/domain/lv";
 import type { LvRate } from "@/lib/domain/lvStd";
 import { DEFAULT_SHIFT, isShiftCode, lineHours } from "@/lib/domain/shifts";
 import { HISTORY_DAYS, RECENT_DAYS, hoursStat, manpowerPlan, monthCalendar, monthOf, type CentreDay, type CockpitAction, type ManpowerRow } from "@/lib/domain/kpis";
-import { LV_ITEM_ORDER, LV_TYPE_STAGES, lvItemType, lvPlanLine, outputByType, type TypeGroup } from "@/lib/domain/outputByType";
+import { LV_ITEM_ORDER, lvItemType, lvPlanLine, outputByType, type OutputByTypeData } from "@/lib/domain/outputByType";
 import {
   FLOOR_TREND_WINDOW, efficiencyGrid, floorDays, floorRange, floorStat, productivityTrend as trendOf, recordedDates as datesWithHours,
   type FloorAttendance, type FloorStat, type HeatRow, type ProductivityPoint,
@@ -131,7 +131,7 @@ export interface LvFloorPeriod {
   /** What the period moved, plan by plan and panel type by type, against the
    *  plan of the month the period ends in — every stage, whatever the
    *  department picked. */
-  byType: { monthLabel: string; groups: TypeGroup<LvStage>[] };
+  byType: OutputByTypeData<LvStage>;
 }
 
 /** The panels' floor over a period and a department — the Production
@@ -147,7 +147,7 @@ export async function getLvFloorPeriod(q: { fromISO: string; toISO: string; dept
   const byType = {
     monthLabel: month.monthLabel,
     groups: outputByType(
-      LV_TYPE_STAGES,
+      LV_STAGES,
       read.moves.filter((m) => m.dateISO >= fromISO && m.dateISO <= toISO).map((m) => ({ ...lvItemType(m.mo ? orderOf.get(m.mo) : undefined), stage: m.stage, qty: m.qty })),
       tracker.filter((r) => r.months.includes(month.monthLabel)).map(lvPlanLine),
       LV_ITEM_ORDER,

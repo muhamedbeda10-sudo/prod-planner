@@ -1,17 +1,14 @@
 // The addresses of the two plant dashboards — Planning (/) and Production
 // (/dashboards/production). Each shows both product lines on one page: the
 // plant's figures first, then a section per line (#tr, #lv) that a link can
-// open at. They take no line of their own; a `?line=` an older link carries
-// is left alone.
+// open at. They take no line of their own (BOTH_LINES in lib/domain/lines.ts):
+// the proxy sends an older address naming one to that line's section.
 
-import { isLvFloorDept, type LvFloorFilter } from "./lvKpis";
-
-/** The dashboards that show both lines on one page — no line rides onto them. */
-export const BOTH_LINES_PATHS: ReadonlySet<string> = new Set(["/", "/dashboards/production"]);
+import type { LineSection } from "./lines";
+import { isLvFloorDept } from "./lvKpis";
 
 /** A line's section on either dashboard — the anchor a link opens at. */
-export type DashSection = "tr" | "lv";
-export const DASH_SECTION_ID: Record<"TR" | "LV", DashSection> = { TR: "tr", LV: "lv" };
+export type DashSection = LineSection;
 
 type Search = Record<string, string | string[] | undefined>;
 const one = (sp: Search, k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
@@ -35,12 +32,6 @@ export function productionHref(o: { from?: string | null; to?: string | null; de
   return href("/dashboards/production", { from: o.from, to: o.to, dept: o.dept === "all" ? null : o.dept, lvDept: o.lvDept === "all" ? null : o.lvDept }, o.section);
 }
 
-/** The panels' department a Production address picks (`lvDept`). */
-export function lvDeptOfSearch(sp: Search): LvFloorFilter {
-  const lv = one(sp, "lvDept");
-  return isLvFloorDept(lv) ? lv : "all";
-}
-
 /** Where an older Production link belongs — one from when the page showed one
  *  line, naming the panels' department in `dept`: the same view, its
  *  department moved to `lvDept`, opened at the panels' section. Null: stay. */
@@ -57,7 +48,5 @@ export function productionLegacyRedirect(sp: Search): string | null {
 export function productionRedirectOf(sp: Search): string | null {
   const dept = one(sp, "dept");
   if (!dept) return null;
-  return isLvFloorDept(dept)
-    ? productionHref({ from: one(sp, "from"), to: one(sp, "to"), lvDept: dept, section: "lv" })
-    : productionHref({ from: one(sp, "from"), to: one(sp, "to"), dept });
+  return productionLegacyRedirect(sp) ?? productionHref({ from: one(sp, "from"), to: one(sp, "to"), dept });
 }

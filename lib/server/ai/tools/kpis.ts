@@ -4,12 +4,13 @@ import { getLvFloorPeriod, getLvPlanning, lvWithoutFloor, type LvFloorPeriod, ty
 import { loadPlanningAll, loadProductionAll } from "@/lib/server/dashboards";
 import { WORK_CENTRES, WORK_CENTRE_LABEL, type WorkCentre } from "@/lib/domain/shifts";
 import { LOSS_DAYS } from "@/lib/domain/losses";
-import { OUTPUT_GROUPS, dailyOutput, isFloorAction, monthPace, weekChange, type KpiSnapshotData, type OutputDay } from "@/lib/domain/kpis";
+import { OUTPUT_GROUPS, STAGES, dailyOutput, isFloorAction, monthPace, weekChange, type KpiSnapshotData, type OutputDay } from "@/lib/domain/kpis";
 import { FLOOR_DEFAULT_DAYS, FLOOR_HISTORY_DAYS, FLOOR_MAX_DAYS, FLOOR_TREND_WINDOW, floorRequest } from "@/lib/domain/floorKpis";
 import { LV_FLOOR_DEPTS, isLvFloorDept, lvFloorDeptOf, type LvFloorFilter } from "@/lib/domain/lvKpis";
-import { BOTH_LINES_PATHS, DASH_SECTION_ID, planningHref, productionHref } from "@/lib/domain/dashboardLinks";
-import { DEFAULT_LINE, lineParam as namedLine } from "@/lib/domain/lines";
-import { LV_TYPE_STAGES, TR_TYPE_STAGES, type TypeGroup, type TypeRow } from "@/lib/domain/outputByType";
+import { planningHref, productionHref } from "@/lib/domain/dashboardLinks";
+import { DEFAULT_LINE, lineParam as namedLine, lineSection, showsBothLines } from "@/lib/domain/lines";
+import type { OutputByTypeData, TypeRow } from "@/lib/domain/outputByType";
+import { LV_STAGES } from "@/lib/domain/lv";
 import { linePart, plantEfficiency } from "@/lib/domain/plantKpis";
 import { factoryDayISO } from "@/lib/domain/dates";
 import type { DowntimeCause } from "@/lib/domain/downtime";
@@ -37,11 +38,11 @@ const scopeOf = (line: unknown, ctx: ToolCtx): Scope => {
   if (typeof line === "string" && line.trim().toLowerCase() === "all") return "all";
   const named = namedLine(line);
   if (named) return named;
-  return ctx.page && BOTH_LINES_PATHS.has(ctx.page.path) ? "all" : ctx.line ?? DEFAULT_LINE;
+  return ctx.page && showsBothLines(ctx.page.path) ? "all" : ctx.line ?? DEFAULT_LINE;
 };
 const lineParam = { type: "string" as const, enum: [...SCOPES], description: "TR (the transformers), LV (the panels) or all (the whole plant — each line in its own terms, the plant's figures only where they add). Left out: both lines when the person is on a dashboard (they show both on one page), else the line the app is showing." };
 /** Where a scope's figures are on a dashboard: a line's section, or the page's top. */
-const sectionOf = (s: Scope) => (s === "all" ? undefined : DASH_SECTION_ID[s]);
+const sectionOf = (s: Scope) => (s === "all" ? undefined : lineSection(s));
 
 /** The plant's rules, said once in every combined answer. */
 const PLANT_NOTES = [
@@ -218,7 +219,7 @@ const typeRowView = <S extends string>(r: TypeRow<S>) => ({
   plan: r.plan ? { planned: r.plan.required, doneByStage: r.plan.done, left: r.plan.left, shareDone: r2(r.plan.share) } : null,
 });
 /** What a period made item by item and type by type, against the month's plan. */
-function byTypeView<S extends string>(b: { monthLabel: string; groups: TypeGroup<S>[] }, stages: readonly S[], typeWord: string) {
+function byTypeView<S extends string>(b: OutputByTypeData<S>, stages: readonly S[], typeWord: string) {
   return {
     stages, planMonth: b.monthLabel, typeIs: typeWord,
     items: b.groups.map((g) => ({ item: g.item, ...typeRowView(g.total), types: g.types.map((t) => ({ type: t.type, ...typeRowView(t) })) })),
@@ -256,7 +257,7 @@ function trFloorView(f: FloorPeriod) {
     },
     daysWithDisagreeingRecords: f.gapDays,
     shareOfPiecesPriced: r2(f.pricedShare),
-    byItemAndType: byTypeView(f.byType, TR_TYPE_STAGES, "the order's KVA class"),
+    byItemAndType: byTypeView(f.byType, STAGES, "the order's KVA class"),
   };
 }
 
@@ -281,7 +282,7 @@ function lvFloorView(f: LvFloorPeriod) {
     panelsMovedPerStage: f.moved,
     daysWithDisagreeingRecords: f.gapDays,
     shareOfPanelsPriced: r2(f.pricedShare),
-    byItemAndType: byTypeView(f.byType, LV_TYPE_STAGES, "the panel type the plan sheet names"),
+    byItemAndType: byTypeView(f.byType, LV_STAGES, "the panel type the plan sheet names"),
     notAvailable: [
       "Machine stops and availability: recorded by department on shared machines — the plant's, under line all or TR.",
       "Quality (leak test, returns): the panels are recorded as quantities, with no serial, test or return of their own.",

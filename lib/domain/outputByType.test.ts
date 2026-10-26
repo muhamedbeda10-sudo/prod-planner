@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  LV_ITEM_ORDER, LV_TYPE_STAGES, NO_CLASS, NO_TYPE, TR_ITEM_ORDER, TR_TYPE_STAGES,
+  LV_ITEM_ORDER, NO_CLASS, NO_TYPE, TR_ITEM_ORDER,
   compareTypes, kvaTypeLabel, lvItemType, lvPlanLine, outputByType, trPlanLines, trTypeStageOf,
 } from "./outputByType";
+import { STAGES } from "./kpis";
+import { LV_STAGES } from "./lv";
 
 describe("the transformers' stages and classes", () => {
   it("counts cutting, welding and each component's own finishing stage only", () => {
@@ -40,7 +42,7 @@ describe("the panels' plans and types", () => {
 
 describe("what was made, item by item and type by type, against the month's plan", () => {
   it("adds the period's records per type and stage, and the item's types into its total", () => {
-    const groups = outputByType(TR_TYPE_STAGES, [
+    const groups = outputByType(STAGES, [
       { item: "Tank", type: "630 kVA", stage: "cut", qty: 5 },
       { item: "Tank", type: "630 kVA", stage: "cut", qty: 3 },
       { item: "Tank", type: "1000 kVA", stage: "weld", qty: 2 },
@@ -56,7 +58,7 @@ describe("what was made, item by item and type by type, against the month's plan
   });
 
   it("caps each plan line at what it asks, so one order's extra never covers another's shortfall", () => {
-    const [tank] = outputByType(TR_TYPE_STAGES, [], [
+    const [tank] = outputByType(STAGES, [], [
       { item: "Tank", type: "630 kVA", required: 10, done: { cut: 14, weld: 10, finish: 9 } },
       { item: "Tank", type: "630 kVA", required: 6, done: { cut: 2, weld: 0, finish: 0 } },
     ], TR_ITEM_ORDER);
@@ -65,7 +67,7 @@ describe("what was made, item by item and type by type, against the month's plan
   });
 
   it("shows a type on the plan with nothing made, and one made off the plan with no plan figures", () => {
-    const [panels] = outputByType(LV_TYPE_STAGES, [
+    const [panels] = outputByType(LV_STAGES, [
       { item: "LV panels", type: "USS", stage: "Punching", qty: 4 },
     ], [
       { item: "LV panels", type: "LSS", required: 5, done: {} },
@@ -75,7 +77,7 @@ describe("what was made, item by item and type by type, against the month's plan
   });
 
   it("leaves out a type with nothing made and nothing planned, and never shows a stage below nothing", () => {
-    const groups = outputByType(TR_TYPE_STAGES, [
+    const groups = outputByType(STAGES, [
       { item: "Tank", type: "630 kVA", stage: "cut", qty: 5 },
       { item: "Tank", type: "630 kVA", stage: "cut", qty: -3 },
       { item: "Tank", type: "630 kVA", stage: "weld", qty: -2 },
@@ -108,7 +110,7 @@ describe("the transformers' month plan, component by component", () => {
       { mo: "MO-1", bom: "B1", item: "TN", dept: "Painting", qty: 14 },
       { mo: "MO-3", bom: "B1", item: "TN", dept: "Painting", qty: 2 },
     ], tierOf);
-    const [tank] = outputByType(TR_TYPE_STAGES, [], lines, TR_ITEM_ORDER).filter((g) => g.item === "Tank");
+    const [tank] = outputByType(STAGES, [], lines, TR_ITEM_ORDER).filter((g) => g.item === "Tank");
     // MO-1 counts 10 of its 14, MO-3 its 2 of 6: 4 still to finish
     expect(tank.types[0].plan).toMatchObject({ required: 16, left: 4 });
     expect(tank.types[0].plan?.done.finish).toBe(12);

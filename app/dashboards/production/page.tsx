@@ -2,9 +2,10 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { getFloorPeriod } from "@/lib/server/kpis";
 import { getLvFloorPeriod } from "@/lib/server/lvKpis";
-import { assembleProduction } from "@/lib/server/dashboards";
+import { loadOrNull } from "@/lib/server/dashboards";
 import { FLOOR_HISTORY_DAYS, floorDefault, floorRequest } from "@/lib/domain/floorKpis";
-import { lvDeptOfSearch, productionLegacyRedirect } from "@/lib/domain/dashboardLinks";
+import { productionLegacyRedirect } from "@/lib/domain/dashboardLinks";
+import { lvFloorDeptOf } from "@/lib/domain/lvKpis";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { addDaysISO, slicerRangeLabel } from "@/lib/domain/dateSlicer";
 import { formatDate } from "@/lib/domain/format";
@@ -17,7 +18,7 @@ import { LossWaterfallCard } from "@/components/LossWaterfallCard";
 import { CockpitDecisions, PrintDecisions } from "@/components/CockpitDecisions";
 import { LineSection } from "@/components/LineSection";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
-import { ErrorState } from "@/components/DataTable";
+import { LoadFailed } from "@/components/DataTable";
 import { PageHead } from "@/components/ui";
 import { PrintButton } from "@/components/PrintButton";
 import { PrintHeader } from "@/components/PrintHeader";
@@ -27,14 +28,6 @@ export const metadata = { title: "Production dashboard — ATC" };
 export const dynamic = "force-dynamic";
 
 type Search = Record<string, string | string[] | undefined>;
-
-const failed = (what: string) => (
-  <div className="bg-surface border rounded-xl">
-    <ErrorState title={`${what} could not load`} detail="Reload the page to try again." />
-  </div>
-);
-/** A loader's failure is logged and shown as the error state, never a crash of the page. */
-const tryLoad = <T,>(what: string, p: Promise<T>) => p.catch((e: unknown) => { console.error(`production: ${what} could not load`, e); return null; });
 
 // The Production dashboard, in the Dashboards tab: what did we make, at what
 // efficiency, where did we lose time, what needs intervention — both lines
@@ -56,11 +49,10 @@ export default async function ProductionDashboardPage({ searchParams }: { search
   const req = floorRequest(sp, todayISO);
   // each line on its own: one that fails to load leaves the other on screen
   const [tr, lv] = await Promise.all([
-    tryLoad("the transformers' period", getFloorPeriod(req)),
-    tryLoad("the panels' period", getLvFloorPeriod({ ...req, dept: lvDeptOfSearch(sp) })),
+    loadOrNull("production", "the transformers' period", getFloorPeriod(req)),
+    loadOrNull("production", "the panels' period", getLvFloorPeriod({ ...req, dept: lvFloorDeptOf(sp.lvDept) })),
   ]);
-  const plant = tr && lv ? assembleProduction(tr, lv) : null;
-  const actions = plant?.actions ?? mergeActions(tr?.actions ?? [], lv?.actions ?? []);
+  const actions = mergeActions(tr?.actions ?? [], lv?.actions ?? []);
   const range = slicerRangeLabel(req.fromISO, req.toISO);
   const marks = [...new Set([...(tr?.dates ?? []), ...(lv?.dates ?? [])])].sort();
 
@@ -77,17 +69,17 @@ export default async function ProductionDashboardPage({ searchParams }: { search
       />
       <PrintDecisions actions={actions} kind="intervention" />
 
-      {plant ? (
+      {tr && lv ? (
         <PlantProduction
           // the browser gets what the plant's figures show; each section gets its own line's
-          tr={{ fromISO: plant.tr.fromISO, toISO: plant.tr.toISO, summary: plant.tr.summary, output: plant.tr.output, losses: plant.tr.losses, pricedShare: plant.tr.pricedShare, byType: plant.tr.byType }}
-          lv={{ summary: plant.lv.summary, output: plant.lv.output, pricedShare: plant.lv.pricedShare, byType: plant.lv.byType }}
-          actions={plant.actions}
+          tr={{ fromISO: tr.fromISO, toISO: tr.toISO, summary: tr.summary, output: tr.output, losses: tr.losses, pricedShare: tr.pricedShare, byType: tr.byType }}
+          lv={{ summary: lv.summary, output: lv.output, pricedShare: lv.pricedShare, byType: lv.byType }}
+          actions={actions}
         />
-      ) : failed("The plant's figures")}
+      ) : <LoadFailed what="The plant's figures" />}
 
       <LineSection id="tr" page="production" title="Transformers" sub="floor performance, the machines, quality and rework — in standard hours">
-        {tr === null ? failed("The transformers' figures") : (
+        {tr === null ? <LoadFailed what="The transformers' figures" /> : (
           <>
             <FloorPerformance period={tr} />
             <ProductionExtras period={tr} />
@@ -97,7 +89,7 @@ export default async function ProductionDashboardPage({ searchParams }: { search
       </LineSection>
 
       <LineSection id="lv" page="production" title="LV panels" sub="floor performance in the panels' standard hours">
-        {lv === null ? failed("The panels' figures") : <LvFloorPerformance period={lv} />}
+        {lv === null ? <LoadFailed what="The panels' figures" /> : <LvFloorPerformance period={lv} />}
       </LineSection>
     </div>
   );

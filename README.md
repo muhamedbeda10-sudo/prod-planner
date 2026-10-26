@@ -40,8 +40,9 @@ tab id: the Production dashboard with Shifts), and no dashboard is anywhere else
 (`/analytics`, `?view=dashboard`) land on them. Planning and Production each show **both lines on one page**: the
 plant's figures first, then a section for the transformers and one for the LV panels (`components/LineSection.tsx`;
 each folds away, remembered in the browser, and a link opens it at `#tr` or `#lv`). They have no line switch and
-take no `?line=` of their own (`lib/domain/dashboardLinks.ts` builds their addresses); the recording screens still
-work one line at a time. **Material** holds the nesting sheets, Physical Material
+take no line (`BOTH_LINES` in `lib/domain/lines.ts`): the proxy sends an older address naming one to that line's
+section, no line is carried onto them, and the assistant reads both lines there (`lib/domain/dashboardLinks.ts`
+builds their addresses). The recording screens still work one line at a time. **Material** holds the nesting sheets, Physical Material
 and Consumables; **Plan Tracker** carries the tracker, the **Daily log** it
 adds up and the
 **ODOO log** (`/odoo`, whose alerts' badge rides on the Plan Tracker tab). The rule: the tab's panel moves

@@ -1,42 +1,17 @@
 "use client";
 
-import { useEffect, useId, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useId, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
+import { useStoredValue, writeStoredValue } from "@/components/useStoredFilters";
 
 // One product line's part of a plant dashboard (Planning, Production): a
 // header that folds it away, so a planner who works one line can keep the
 // other out of sight without losing the plant's figures above. The fold is
-// remembered in this browser, per page and line (storage is the source of
-// truth, as for the stored filters — the server renders it open); a link
-// that names the section (#tr, #lv) opens it. On paper every section prints,
-// folded or not.
+// remembered in this browser, per page and line (the stored filters' own
+// store — the server renders it open); a link that names the section (#tr,
+// #lv) opens it. On paper every section prints, folded or not.
 
-const listeners = new Map<string, Set<() => void>>();
-const memory = new Map<string, boolean>();
 const storeKey = (page: string, id: string) => `fold:${page}:${id}`;
-
-function subscribeTo(key: string) {
-  return (cb: () => void) => {
-    let set = listeners.get(key);
-    if (!set) { set = new Set(); listeners.set(key, set); }
-    set.add(cb);
-    window.addEventListener("storage", cb);
-    return () => { set!.delete(cb); window.removeEventListener("storage", cb); };
-  };
-}
-
-function isFolded(key: string): boolean {
-  try { return localStorage.getItem(key) === "0"; } catch { return memory.get(key) ?? false; }
-}
-
-function setFolded(key: string, folded: boolean) {
-  memory.set(key, folded);
-  try {
-    if (folded) localStorage.setItem(key, "0");
-    else localStorage.removeItem(key);
-  } catch { /* storage unavailable — holds for this page load only */ }
-  listeners.get(key)?.forEach((l) => l());
-}
 
 export function LineSection({ id, page, title, sub, children }: {
   /** The anchor a link opens the section at. */
@@ -49,28 +24,21 @@ export function LineSection({ id, page, title, sub, children }: {
   children: ReactNode;
 }) {
   const key = storeKey(page, id);
-  const subscribe = useMemo(() => subscribeTo(key), [key]);
-  const folded = useSyncExternalStore(subscribe, () => isFolded(key), () => false);
+  const folded = useStoredValue(key) === "0";
   const bodyId = useId();
 
-  // a link naming the section opens it, whatever was remembered: an address
-  // that arrives with it, and a link to it on this page (the router moves
-  // within a page without a hashchange)
+  // a link naming the section opens it, whatever was remembered; the hash is
+  // then taken off the address, so the same link opens it again next time
   useEffect(() => {
-    const openIfNamed = () => { if (window.location.hash === `#${id}`) setFolded(key, false); };
-    const onClick = (e: MouseEvent) => {
-      const a = e.target instanceof Element ? e.target.closest("a[href]") : null;
-      if (!(a instanceof HTMLAnchorElement)) return;
-      const to = new URL(a.href, window.location.href);
-      if (to.hash === `#${id}` && to.pathname === window.location.pathname) setFolded(key, false);
+    const openIfNamed = () => {
+      if (window.location.hash !== `#${id}`) return;
+      writeStoredValue(key, "");
+      // a null state lets the router take the new address as its own
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
     };
     openIfNamed();
     window.addEventListener("hashchange", openIfNamed);
-    document.addEventListener("click", onClick);
-    return () => {
-      window.removeEventListener("hashchange", openIfNamed);
-      document.removeEventListener("click", onClick);
-    };
+    return () => window.removeEventListener("hashchange", openIfNamed);
   }, [id, key]);
 
   return (
@@ -78,7 +46,7 @@ export function LineSection({ id, page, title, sub, children }: {
       <h2 id={`${id}-title`} className="m-0">
         <button
           type="button"
-          onClick={() => setFolded(key, !folded)}
+          onClick={() => writeStoredValue(key, folded ? "" : "0")}
           aria-expanded={!folded}
           aria-controls={bodyId}
           className="no-print w-full flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-left bg-surface border rounded-xl px-4 py-2.5 hover:bg-surface-2 transition-colors"

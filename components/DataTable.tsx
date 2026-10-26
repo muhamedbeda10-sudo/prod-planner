@@ -362,6 +362,15 @@ export function TableEmpty({ title, hint, action, filtered = false }: { title: R
 
 export { TableSkeleton } from "@/components/TableSkeleton";
 
+/** A part of a page whose figures could not load — the rest of the page stays. */
+export function LoadFailed({ what }: { what: string }) {
+  return (
+    <div className="bg-surface border rounded-xl">
+      <ErrorState title={`${what} could not load`} detail="Reload the page to try again." />
+    </div>
+  );
+}
+
 /** Something failed: say so plainly and offer the retry. */
 export function ErrorState({ title = "This page could not load", detail, onRetry }: { title?: string; detail?: ReactNode; onRetry?: () => void }) {
   return (

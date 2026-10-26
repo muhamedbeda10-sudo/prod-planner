@@ -21,7 +21,6 @@ import { useInboxPanel } from "@/components/InboxPanel";
 import { useOdooAlerts } from "@/components/OdooAlerts";
 import { useActiveLine, useCarryLine } from "@/components/LineContext";
 import { Avatar, UserMenu } from "@/components/UserMenu";
-import { BOTH_LINES_PATHS } from "@/lib/domain/dashboardLinks";
 import { LINE_LABEL, PRODUCT_LINES, hrefWithLine, pinnedLine, type ProductLine } from "@/lib/domain/lines";
 import { signOut } from "@/lib/signOut";
 import { trapTab } from "@/components/Modal";
@@ -458,10 +457,8 @@ export function AppNav({
   }, [tabMenu]);
   useEffect(() => keepMenu, []); // no timer outlives the bar
   const menuCtl: MenuCtl = { open: tabMenu, pos: menuPos, onHover: hoverMenu, onOpen: openMenu, onLeave: closeMenuSoon, onKeep: keepMenu, onClose: () => setTabMenu(null) };
-  // inside the tab on screen, a place keeps the line the address names — but
-  // the two plant dashboards show both lines and take none
-  const carry = useCarryLine();
-  const placeHref = (href: string) => (BOTH_LINES_PATHS.has(href) ? href : carry(href));
+  // inside the tab on screen, a place keeps the line the address names
+  const placeHref = useCarryLine();
 
   const on = (base: string) =>
     base === "/" ? pathname === "/" : pathname === base || pathname.startsWith(base + "/");
