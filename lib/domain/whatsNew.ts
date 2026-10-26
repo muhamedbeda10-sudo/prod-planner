@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-lighter-polling",
+    dateISO: "2026-10-26",
+    title: "Open pages ask the server less often",
+    where: "Every page — the chat icon, the Odoo alerts, the open chat",
+    body: "A page in front now checks for new chat messages every half minute (it was every 15 seconds) and for Odoo alerts every minute as before; a page out of sight — another tab, a minimised window — checks every two and five minutes instead of at full pace, and an open chat thread waits until you are back, then catches up at once. Live delivery of chat messages, the pop-up cards, the chime and the system notifications all stay. The scheduler behind the automations also ticks every quarter hour in the small hours (about midnight to 4 am) instead of every minute — an automation due then may run up to 15 minutes after its time — and clears its own run log every night, keeping a week. All of it to keep the app well inside the free hosting and database plans.",
+  },
+  {
     id: "2026-10-26-database-backup-removed",
     dateISO: "2026-10-26",
     title: "Database backup is removed from Settings",

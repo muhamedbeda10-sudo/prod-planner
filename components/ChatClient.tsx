@@ -22,6 +22,7 @@ import {
   type ChatBroadcastPayload,
 } from "@/lib/chatRealtime";
 import { compressImage } from "@/lib/imageCompress";
+import { startPoll } from "@/lib/poll";
 /** The quick-reaction row shown on a message's menu. */
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 import { traceHref } from "@/lib/domain/links";
@@ -36,8 +37,11 @@ import type { ChatAttachment, ChatContact, ChatMessageDTO, ThreadKind } from "@/
 type Thread = { kind: ThreadKind; id: number };
 const sameThread = (a: Thread | null, b: Thread | null) => !!a && !!b && a.kind === b.kind && a.id === b.id;
 
-// with realtime the poll is only a safety net; without it, it IS the transport
-const POLL_MS = chatRealtimeConfigured ? 30000 : 5000;
+// with realtime the poll is only a safety net; without it, it IS the transport.
+// Out of sight the thread asks nothing — nobody is reading it, and the corner
+// icon's own poll still raises the system notification — and catches up the
+// moment the page is back in front.
+const PACE = { visibleMs: chatRealtimeConfigured ? 30_000 : 5_000, hiddenMs: null };
 
 // times and days on the factory clock, not the browser's: the server renders
 // the thread first, and a browser in another zone would hydrate other text
@@ -343,10 +347,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
   }, [me.id, appendUnique, touchContact, catchUp, threadOf]);
 
   // the poll: transport without realtime, safety net with it
-  useEffect(() => {
-    const t = setInterval(() => void catchUp(), POLL_MS);
-    return () => clearInterval(t);
-  }, [catchUp]);
+  useEffect(() => startPoll(catchUp, PACE, PACE.visibleMs), [catchUp]);
 
   const addFiles = useCallback(async (incoming: FileList | null) => {
     if (!incoming) return;

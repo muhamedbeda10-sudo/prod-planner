@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { armChime, playChime } from "@/lib/chime";
 import { appInBackground, onNotifyClick, systemNotify } from "@/lib/sysNotify";
+import { startPoll } from "@/lib/poll";
 import { closeOdooReady, fillOdooMo, odooRowMaterial, pollOdooAlerts } from "@/app/odoo/alertActions";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { ODOO_CHANGED_EVENT, alertKey, pruneSeen, unseenKeys, type ReadyRow } from "@/lib/domain/odooAlerts";
@@ -17,12 +18,14 @@ import { ODOO_CHANGED_EVENT, alertKey, pruneSeen, unseenKeys, type ReadyRow } fr
 //   popup closes it.
 // The ODOO tab carries the count and the browser tab's title starts with it;
 // when a row not seen yet appears, the popup opens with both lists. "Later"
-// hides it until the next new row. Checked every minute, when the window
-// comes back into view, and right after a change saved on the ODOO page. A
-// new row plays the alert chime once (muted with the chat sound) and, with
-// the app out of sight, raises a system notification.
+// hides it until the next new row. Checked every minute while the window is
+// in front, every five minutes while it is out of sight (each check is a
+// server call and two table reads, from every open page), when it comes back
+// into view, and right after a change saved on the ODOO page. A new row plays
+// the alert chime once (muted with the chat sound) and, with the app out of
+// sight, raises a system notification.
 
-const POLL_MS = 60_000;
+const PACE = { visibleMs: 60_000, hiddenMs: 5 * 60_000 };
 const seenKey = (userId: number) => `odoo.alerts.seen2.${userId}`;
 
 function readSeen(userId: number): Set<string> {
@@ -104,16 +107,11 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
   useEffect(() => {
     if (!enabled) return;
     armChime();
-    const first = setTimeout(() => void tick(), 1500); // after the page has painted
-    const every = setInterval(() => void tick(), POLL_MS);
-    const onVisible = () => { if (document.visibilityState === "visible") void tick(); };
+    const stop = startPoll(() => tick(), PACE, 1500); // the first after the page has painted
     const onChanged = () => void tick(true);
-    document.addEventListener("visibilitychange", onVisible);
     window.addEventListener(ODOO_CHANGED_EVENT, onChanged);
     return () => {
-      clearTimeout(first);
-      clearInterval(every);
-      document.removeEventListener("visibilitychange", onVisible);
+      stop();
       window.removeEventListener(ODOO_CHANGED_EVENT, onChanged);
     };
   }, [enabled, tick]);

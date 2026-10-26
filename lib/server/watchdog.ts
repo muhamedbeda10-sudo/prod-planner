@@ -34,7 +34,7 @@ const STAGE_LABEL: Record<string, string> = { cut: "Fabrication (Cut)", weld: "W
 const TASKS_OFFERED = 6;
 const SUMMARY_MODEL = "claude-haiku-5-5";
 
-/** The settings — read every minute by the scheduler, so a read, made once. */
+/** The settings — read on every tick of the scheduler, so a read, made once. */
 export async function getWatchSettings(): Promise<WatchSettings> {
   return (await prisma.watchSettings.findUnique({ where: { id: 1 } })) ?? prisma.watchSettings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
 }
@@ -176,7 +176,7 @@ export async function runWatch(o: { now: Date; force?: boolean }): Promise<Watch
   const s = await getWatchSettings();
   const today = factoryDayISO(o.now);
   if (!o.force) {
-    // the cheap checks first: this runs every minute
+    // the cheap checks first: this runs on every tick
     if (!s.enabled) return { ran: false, found: 0, reason: "off" };
     if (s.lastRunISO === today) return { ran: false, found: 0, reason: "done today" };
     if (factoryClockHHMM(o.now) < s.at || (await offDays(o.now))(today)) return { ran: false, found: 0, reason: "not yet" };

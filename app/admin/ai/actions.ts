@@ -237,7 +237,7 @@ export async function setupAutomationClock(): Promise<AiActionResult> {
   await getAiSettings();
   const r = await setupScheduler(url);
   if (!r.ok) return { ok: false, error: `${r.error} — on Supabase, the two extensions can also be turned on by hand (Database → Extensions: pg_cron and pg_net); then try again.` };
-  return done(`Set up: the database calls ${url} every minute.`);
+  return done(`Set up: the database calls ${url} every minute through the day and every quarter hour in the small hours.`);
 }
 
 /** Take the clock away — automations then run only while the app is open somewhere. */
