@@ -1,5 +1,6 @@
 import type { PlanCapacityCheck } from "@/lib/server/planCapacity";
 import { deptLabel, STAGE_COLOR } from "@/lib/domain/constants";
+import { ChartAbout } from "@/components/ChartAbout";
 
 /* The weekly plan's feasibility, before anyone promises it to the floor:
    standard hours the plan requires per stage vs the stage's capacity over the
@@ -36,8 +37,8 @@ export function PlanCapacityCard({ check }: { check: PlanCapacityCheck | null })
   return (
     <div className="print-keep bg-surface border rounded-[10px] px-3 py-2" data-ai-title="Capacity check" data-ai-about={about}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="leading-tight basis-full sm:basis-auto" title="Standard hours the plan needs vs the stage's capacity over the plan's working days">
-          <h2 className="!mb-0">Capacity check</h2>
+        <div className="leading-tight basis-full sm:basis-auto">
+          <h2 className="!mb-0"><ChartAbout title="Capacity check" about={about} /></h2>
           <span className="text-[11px] text-muted">{check.workingDays} working day{check.workingDays === 1 ? "" : "s"}</span>
         </div>
         <div className="flex-1 min-w-0 grid gap-2 grid-cols-[repeat(auto-fit,minmax(min(13rem,100%),1fr))]">

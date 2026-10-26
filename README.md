@@ -454,6 +454,9 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      in `data-ai-title` / `data-ai-about`. A row menu of its own (hold, close, trace…) carries the entry at its foot. The
      browser's own menu stays in a field, on selected text and on Shift + right-click; there is none of it for someone
      without the assistant. Each Ask AI is one question, from the person's AI allowance.
+   - **A chart's title explains it** (`components/ChartAbout.tsx`, the shared `Tooltip`'s `interactive` card): resting
+     the pointer on a chart card's title or its ⓘ (a tap on a phone, Tab from the keyboard) opens a card with the chart's
+     `about` and an **Ask AI about these numbers** button. It costs nothing until that button is pressed.
    - **Tools on demand** (`lib/server/ai/agent.ts`): the model starts each question with two tools — `query_database` and
      `get_machine_board` (`loaded` on the tool) — and finds every other one with the API's tool search (BM25, the tools
      sent with `defer_loading`), so a question carries only the definitions it uses (two tools and the search ≈ 0.5 k

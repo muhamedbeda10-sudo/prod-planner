@@ -25,6 +25,7 @@ import { LineSwitch } from "@/components/LineSwitch";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { useAiPanel } from "@/components/AiPanel";
 import { CockpitDecisions, type DecisionCopy } from "@/components/CockpitDecisions";
+import { ChartAbout } from "@/components/ChartAbout";
 import { BreakdownChart, ConsumedPerDayChart, OverrunChart, PartCompareChart } from "@/components/LazyCharts";
 import { aiTargetRef } from "@/lib/aiTarget";
 
@@ -274,14 +275,12 @@ function QualityStrip({ a, line }: { a: MaterialDashboardData; line: ProductLine
   const l = a.link, c = a.consumption, cov = a.coverage, v = a.versions;
   const { linkRows, linkQty, actualRate: actualShare, weightKnown, utilKnown, partial } = a.summary;
   const toneOf = coverageTone;
-  const ref = aiTargetRef({
-    kind: "figure", title: "Material data coverage",
-    about: `How much of the dashboard the data covers, for the ${LINE_LABEL[line]}. Linking is by MO only (a blank MO never links); the row share is not a weight or unit share — the weight of an unlinked closing is unknown because it has no rate. Rates: actual nesting rate vs estimated from BOM. Weight: the sheet's own, else size × thickness × density, else unknown. Utilization: share of nested weight with a known utilization. One copy of each MO is read: the living sheet, else the newest month that carries it.`,
-  });
+  const about = `How much of the dashboard the data covers, for the ${LINE_LABEL[line]}. Linking is by MO only — a backorder by the MO it came from, a blank MO never; the row share is not a weight or unit share — the weight of an unlinked closing is unknown because it has no rate. Rates: actual nesting rate vs estimated from BOM. Weight: the sheet's own, else size × thickness × density, else unknown. Utilization: share of nested weight with a known utilization. One copy of each MO is read: the living sheet, else the newest month that carries it.`;
+  const ref = aiTargetRef({ kind: "figure", title: "Material data coverage", about });
   return (
     <section ref={ref} className="bg-surface border rounded-xl" aria-label="Data coverage">
       <div className="flex flex-wrap items-center gap-2 px-3 pt-2">
-        <h2 className="text-sm font-bold">Data coverage</h2>
+        <h2 className="text-sm font-bold"><ChartAbout title="Data coverage" about={about} /></h2>
         {partial ? <Badge tone="warning" icon={<AlertTriangle size={12} />}>Partial data</Badge> : <Badge tone="success">Complete</Badge>}
         {line === "LV" && <span className="text-xs text-muted">The panels&apos; sheet carries no part codes, sheet weights or utilization: tonnes come from size × thickness × density, and scrap is unknown.</span>}
         <span className="ms-auto text-xs text-muted">
@@ -383,7 +382,7 @@ function DetailTable({ a, req, line, period, filtered }: { a: MaterialDashboardD
   return (
     <section id="detail" className="bg-surface border rounded-xl min-w-0 scroll-mt-24" data-ai-title="Material — detail by MO and part" data-ai-about={`One row per MO × part × sheet spec. ${req.view === "consumption" ? `The lines whose MO was closed on Odoo ${period}.` : "Every line of the current sheet."} Closed qty is the MO's, on each of its lines; the totals count each MO once.`}>
       <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2">
-        <h2 className="font-bold leading-tight">Detail by MO and part</h2>
+        <h2 className="font-bold leading-tight"><ChartAbout title="Detail by MO and part" about={`One row per MO × part × sheet spec. ${req.view === "consumption" ? `The lines whose MO was closed on Odoo ${period}.` : "Every line of the current sheet."} Closed qty is the MO's, on each of its lines; the totals count each MO once and add up to the tiles. Blank where a figure is unknown — never zero.`} /></h2>
         <Badge tone={req.view === "nesting" ? "info" : "neutral"}>{req.view === "nesting" ? "Now" : period}</Badge>
         <span className="text-xs text-muted">
           {fmt(T.lines)} lines · {fmt(T.mos)} MOs{a.rowsTotal > a.rows.length ? ` · showing the first ${fmt(MAX_DETAIL_ROWS)} — narrow the filters, or ask the assistant for the Excel` : ""}

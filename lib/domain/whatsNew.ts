@@ -24,6 +24,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The Material dashboard is rebuilt around four questions: what the BOM needs, what the nesting took, what the period's ODOO closings consumed by calculation (closed qty × the sheet's sheets per unit × one sheet's weight — not a store issue, not the sheets cut), and how much of it the data covers. Pick any period, Consumption in period or Nesting plan · Now, and narrow by material, thickness, size, part, MO or SOI — the address keeps it all. Six tiles: BOM planned, nested, nesting variance (on the same nested lines only), weighted utilization, calculated consumption and estimated scrap on known coverage; the period's tiles show their change against the period before, or N/A where there is none. A Data coverage strip says how many closings linked to the sheet by MO, how much was consumed at an actual nesting rate rather than estimated from the BOM, which lines have a weight and a utilization, and which sheet copies were read — an MO on an older month's sheet is now counted, never twice. What needs fixing (closings with no MO, lines with no weight or utilization, the worst overrun) opens from the Needs a look button in the bar. Click a tile or a bar for the rows behind it; each chart folds out its table; the detail table adds up to the tiles. The LV panels have a dashboard too, marked partial: their sheet has no weights or utilization. Ask the assistant for the Excel, or for the figures (\"steel consumed last month by thickness\").",
   },
   {
+    id: "2026-10-26-chart-about-card",
+    dateISO: "2026-10-26",
+    title: "Rest the pointer on a chart's title to see what it shows",
+    where: "Dashboards → Planning · Production · Material · ODOO · Consumables · Capacity check · Machine timeline",
+    body: "A chart's title now carries a small ⓘ: rest the pointer on it (or tap it on a phone, or reach it with Tab) and a card opens saying what the chart shows and how it is counted. Its Ask AI about these numbers button has the assistant explain what the chart says right now. The card stays open while you move onto it, and closes when you move away, click elsewhere or press Escape.",
+  },
+  {
     id: "2026-10-26-dashboards-both-lines-items",
     dateISO: "2026-10-26",
     title: "Planning and Production show both lines on one page, and Production tracks every item and type",
