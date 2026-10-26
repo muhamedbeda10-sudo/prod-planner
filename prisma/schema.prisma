@@ -516,12 +516,6 @@ model Settings {
   shiftLongH  Float @default(8)
   overtimeH   Float @default(3)
   nightOvertimeH Float @default(3)
-
-  // The nightly backup's own read-only login (backup_reader): when its
-  // password was last made, or the login turned off, and by whom. The
-  // password itself is kept nowhere but in GitHub's secret.
-  backupLoginAt DateTime?
-  backupLoginBy String?
 }
 
 // ---- Standard man-hours (the engineering timings sheet, editable in Admin →
@@ -1577,7 +1571,7 @@ model AiMessage {
 /// A file a person attached in the assistant's chat — a sheet the assistant
 /// reads, and the app's own importer runs on once its import is approved.
 /// The person's alone and their chat's; kept a fortnight (lib/domain/
-/// aiFiles.ts), then cleared — and left out of the nightly backup.
+/// aiFiles.ts), then cleared.
 model AiFile {
   id             Int             @id @default(autoincrement())
   userId         Int

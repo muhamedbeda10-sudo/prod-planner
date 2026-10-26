@@ -408,7 +408,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
      and messages — to colleagues' inboxes or, in a live chat and only when asked, the team chat — and, for the owner
      alone, in a live chat only, Users & Permissions (an account it makes has a password nobody knows; the owner sets
      the first one). Left out on purpose: the assistant's own settings (its key, limits, pause, model), approving its own
-     changes, passwords and signing in, the backup's login, and what is only a screen's own view (polls, preferences,
+     changes, passwords and signing in, and what is only a screen's own view (polls, preferences,
      marking things read).
      A write tool never writes by itself: `describe` shows the card (before → after) and keeps a
      snapshot of the data; on Approve it runs only if the data still reads the same, through the screen's own server action
@@ -460,8 +460,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
      change.
    - **Attached files and imports** (`lib/server/ai/files.ts`, `lib/server/ai/tools/imports.ts`): a photo, a PDF, an Excel
      or CSV sheet attached with the 📎 is checked by its bytes (a photo shrunk in the browser first; a photo or PDF also
-     measured by the model's own token count, so one it refuses never reaches a chat), kept in `AiFile` for 14 days (out
-     of the nightly backup, closed to `ai_reader`) and opened only in its own chat. Photos and PDFs go to the model with
+     measured by the model's own token count, so one it refuses never reaches a chat), kept in `AiFile` for 14 days (closed
+     to `ai_reader`) and opened only in its own chat. Photos and PDFs go to the model with
      the question — the chat keeps a reference (`aifile_<id>`) that is turned back into the file each time the chat is
      sent: the chat's newest, while they fit (20 files, 16 MB, 250 thousand tokens — the count measured at upload is kept
      in `AiFile.tokens`), older ones named only. It takes the figures off them as asked and records them with the write

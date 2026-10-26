@@ -7,10 +7,19 @@ name: CI
 # runs that suite on every change instead.
 #
 # No database needed: the domain tests are pure functions.
+#
+# Every run spends the account's monthly Actions minutes, so it runs once per
+# change, not twice: a PR is checked on its own pushes, and the squash commit
+# GitHub makes when it merges one — "Title (#123)", committed by web-flow, the
+# code that PR already passed — is not checked again on master. Anything else
+# pushed to master still is. Drafts are not checked, nor a push to master that
+# changes Markdown alone.
 on:
   push:
     branches: [master]
+    paths-ignore: ["**/*.md"]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # a newer push to the same branch makes the running check pointless
 concurrency:
@@ -20,7 +29,13 @@ concurrency:
 jobs:
   quality:
     name: Lint, types and tests
+    if: >-
+      (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+      (github.event_name == 'push' && !(github.event.head_commit.committer.username == 'web-flow' &&
+        contains(github.event.head_commit.message, ' (#')))
     runs-on: ubuntu-latest
+    # a stuck step must not burn the month's minutes
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 

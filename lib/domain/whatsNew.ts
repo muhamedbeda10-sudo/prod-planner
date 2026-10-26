@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-database-backup-removed",
+    dateISO: "2026-10-26",
+    title: "Database backup is removed from Settings",
+    where: "Admin → Settings",
+    body: "The Database backup card is gone from Settings, along with the nightly GitHub backup it set up and the backup's own read-only login to the database. Nothing else on Settings changes.",
+  },
+  {
     id: "2026-10-26-scan-handwritten-sheet",
     dateISO: "2026-10-26",
     title: "Scan a handwritten sheet: the assistant reads the paper and prepares the records",
