@@ -68,47 +68,6 @@ npm run seed -- "C:\المسار\إلى\Production_Master_Excel.xlsm"
 
 ---
 
-## النسخ الاحتياطي لقاعدة البيانات الحية (Supabase)
-الخطة المجانية في Supabase **مافيهاش أي باك أب**، و`scripts/backup.mjs` بياخد نسخة من PostgreSQL
-القديمة على `D:\SYS` بس. الباك أب الحقيقي للداتا الحية هو الـ workflow
-`.github/workflows/backup.yml`: كل ليلة (03:40 صيفي / 02:40 شتوي بتوقيت القاهرة) بياخد `pg_dump`
-للـ schema بتاعة الأبلكيشن، ويقفله في ملف 7-Zip بباسورد (AES-256)، ويحفظه 30 يوم في GitHub.
-الملفات اللي بتترفع في شات الـ AI (جدول `AiFile`) مش بتدخل الباك أب: بتتمسح لوحدها بعد 14 يوم،
-والجدول بيرجع فاضي مع الاسترجاع.
-
-### التجهيز (مرة واحدة)
-الباك أب بيدخل الداتابيز بحساب لوحده، `backup_reader`: بيقرا كل الجداول ومايقدرش يغيّر أي حاجة، فالعنوان
-اللي في GitHub مايقدرش يكتب ولا يمسح.
-1. من الأبلكيشن (لصاحب الأبلكيشن بس): **Settings → 🗄 Database backup → Make the password**. العنوان بيظهر
-   **مرة واحدة بس** — انسخه. الأبلكيشن بيجرّب يدخل بيه الأول ويقولك نجح ولا لأ.
-2. في GitHub: **Settings → Secrets and variables → Actions → New repository secret**:
-   - `BACKUP_DATABASE_URL` — العنوان من الخطوة 1.
-   - `BACKUP_PASSPHRASE` — باسورد طويل (16 حرف على الأقل). **احفظه في مكان تاني غير GitHub** —
-     من غيره الباك أب مايتفتحش.
-3. من تاب **Actions → Database backup → Run workflow** شغّله مرة يدوي وتأكد إنه أخضر.
-   الـ schedule بيشتغل من الفرع `master` بس.
-
-- العنوان ضاع أو اتسرّب؟ **Make a new password** (القديم بيبطل فوراً) وحدّث `BACKUP_DATABASE_URL` في GitHub.
-- **Turn off** بيقفل الحساب خالص؛ الباك أبات اللي اتعملت قبل كده مابتتأثرش.
-- أي عنوان Session pooler تاني (`…pooler.supabase.com:5432`، زي اللي بباسورد `postgres`) بينفع برضه، بس ده
-  بيقدر يكتب ويمسح — حساب الباك أب أأمن.
-
-### الاسترجاع
-1. من **Actions → Database backup** افتح التشغيلة وحمّل الـ artifact (`atc-db-<التاريخ>`).
-2. افتح الـ `.7z` بـ 7-Zip بالباسورد ← هتلاقي `atc.dump`.
-3. محتاج `pg_restore` نسخة **17** أو أحدث (من PostgreSQL 17، أو Docker: `postgres:17`).
-   - جدول واحد بس (مثلاً لو اتمسحت صفوف من الـ Daily log):
-     ```
-     pg_restore --list atc.dump | findstr HandoverEntry
-     pg_restore --data-only --table=HandoverEntry -f handover.sql atc.dump
-     ```
-     راجع `handover.sql` وخد منه الصفوف اللي محتاجها.
-   - الداتابيز كلها في مشروع جديد/فاضي:
-     ```
-     pg_restore --no-owner --clean --if-exists -d "<connection string>" atc.dump
-     ```
-     الاسترجاع على الداتابيز الحية بيكتب فوق الموجود — اعمله بس لو ده المقصود، وبعد ما توقف الشغل.
-
 ## الأوتوميشنز والإشعارات على الموبايل (مرة واحدة، من صاحب الأبلكيشن)
 ### ساعة الأوتوميشنز
 الكرون بتاع Vercel في الخطة المجانية بيشتغل مرة واحدة في اليوم، فالداتابيز هي اللي بتمسك الوقت:

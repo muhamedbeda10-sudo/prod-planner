@@ -2,20 +2,20 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, Bot, CircleAlert, Info } from "lucide-react";
+import { Info } from "lucide-react";
 import { ChartCard, Meter, StatTile, TONE_TEXT, TRACK, fmt, pct } from "@/components/charts/kit";
 import { LossWaterfallCard } from "@/components/LossWaterfallCard";
 import { BurnUpChart, LoadChart, OutputChart, PaceMultiples } from "@/components/LazyCharts";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/primitives";
 import { TableFrame, Th } from "@/components/DataTable";
-import { useAiPanel } from "@/components/AiPanel";
+import { DecisionList } from "@/components/CockpitDecisions";
 import { formatDate } from "@/lib/domain/format";
 import { stopDurationLabel } from "@/lib/domain/downtime";
 import { ITEM_NAME, isItem } from "@/lib/domain/constants";
 import { WORK_CENTRE_LABEL, type WorkCentre } from "@/lib/domain/shifts";
 import {
-  OUTPUT_GROUPS, OUTPUT_GROUP_LABEL, STAGE_LABEL, burnUp, dailyOutput, isFloorAction, loadSeries, monthPace, paretoOf, weekChange,
+  OUTPUT_GROUPS, OUTPUT_GROUP_LABEL, STAGE_LABEL, burnUp, dailyOutput, loadSeries, monthPace, paretoOf, weekChange,
   type KpiSnapshotData,
 } from "@/lib/domain/kpis";
 import type { CockpitData } from "@/lib/server/kpis";
@@ -29,9 +29,6 @@ import type { CockpitData } from "@/lib/server/kpis";
 //
 // The page is a 12-column grid: a short card sits beside a long one, so no
 // card leaves a hole under it, and every row fills the width.
-
-const ACTION_ICON = { bad: CircleAlert, warn: AlertTriangle, info: Info } as const;
-const ACTION_TONE = { bad: "text-bad-fg", warn: "text-warn-fg", info: "text-info-fg" } as const;
 
 const pctOrDash = (v: number | null | undefined) => (v === null || v === undefined ? "—" : pct(v));
 const itemName = (it: string) => (isItem(it) ? ITEM_NAME[it] : it);
@@ -79,9 +76,9 @@ function Bullet({ label, value, target, max, text, tone }: { label: string; valu
 /** `floor`: whether the account sees the Shifts screen — the shift log's
  *  figures (each centre's pace, the losses, who is present) are shown only then. */
 export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boolean }) {
-  const ai = useAiPanel();
   const finish = data.week.adherence.find((a) => a.stage === "finish");
-  const actions = floor ? data.actions : data.actions.filter((a) => !isFloorAction(a));
+  // already without the shift log's decisions for an account Shifts is closed to (withoutFloor)
+  const actions = data.actions;
   // the card shows the oldest lines behind; the export carries them all
   const lateShown = data.week.late.slice(0, 20);
   const recentDays = Math.max(...data.centres.map((c) => c.recent.days), 0);
@@ -103,32 +100,11 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
 
   return (
     <div className="space-y-3">
-      {/* today's decisions, worst first */}
-      <section className="bg-surface border rounded-xl p-3 md:p-4" aria-labelledby="decide">
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          <h2 id="decide" className="!mb-0">Needs a decision today</h2>
-          {ai && (
-            <button type="button" className="btn btn-sm btn-secondary ms-auto no-print" onClick={() => ai.open()} title="Ask the assistant about these figures — it reads the same cockpit">
-              <Bot size={14} aria-hidden /> Ask the assistant
-            </button>
-          )}
-        </div>
-        {actions.length === 0 ? (
-          <p className="text-sm text-ok-fg font-semibold">Nothing pressing — the plan, the centres and welding&apos;s parts are all on track.</p>
-        ) : (
-          <ul className="space-y-1.5">
-            {actions.map((a, i) => {
-              const Icon = ACTION_ICON[a.tone];
-              return (
-                <li key={i} className="flex items-start gap-2 text-sm">
-                  <Icon size={16} className={`mt-0.5 shrink-0 ${ACTION_TONE[a.tone]}`} aria-hidden />
-                  <span className="flex-1">{a.text}</span>
-                  <Link href={a.href} className="no-print shrink-0 text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">Open <ArrowRight size={13} aria-hidden /></Link>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+      {/* today's decisions sit behind the Decisions button in the page head
+          (CockpitDecisions); the paper carries them here */}
+      <section className="print-only" aria-label="Needs a decision today">
+        <h2>Needs a decision today</h2>
+        <DecisionList actions={actions} />
       </section>
 
       {/* the headline figures, each against a week ago */}
