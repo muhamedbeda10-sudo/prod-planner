@@ -19,7 +19,7 @@ const dOrDash = (v: number | null) => (v === null ? "—" : `${fmt(v, 1)} d`);
 /** A wait's line under its median: how many tanks, and the longest. */
 const cycleSub = (c: { n: number; maxDays: number | null }) => `median · ${c.n} tanks${c.maxDays !== null ? ` · max ${fmt(c.maxDays, 0)} d` : ""}`;
 
-export function ProductionExtras({ period }: { period: FloorPeriod }) {
+export function ProductionExtras({ period }: { period: Pick<FloorPeriod, "stops" | "quality"> }) {
   const { stops, quality: q } = period;
   const t = q.tanks;
   return (

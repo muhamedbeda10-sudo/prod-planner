@@ -86,7 +86,9 @@ describe("the proxy hands the address's line to the page", () => {
   });
 
   it("opens a screen that shows both lines at the section an older address names, the rest kept", () => {
-    expect(proxy(req("/dashboards/production?from=2026-10-01&line=LV")).headers.get("location")).toBe("http://plant.test/dashboards/production?from=2026-10-01#lv");
+    expect(proxy(req("/?from=2026-10-01&line=LV")).headers.get("location")).toBe("http://plant.test/?from=2026-10-01#lv");
+    // the Production dashboard has a line switch of its own: the line becomes its scope
+    expect(proxy(req("/dashboards/production?from=2026-10-01&line=LV")).headers.get("location")).toBe("http://plant.test/dashboards/production?from=2026-10-01&scope=LV");
     expect(proxy(req("/?line=all")).headers.get("location")).toBe("http://plant.test/");
     // with none named, the page is served as it is, with no line handed on
     expect(forwarded(proxy(req("/dashboards/production?from=2026-10-01")))).toBeNull();

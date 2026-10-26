@@ -154,6 +154,7 @@ export function Meter({ value, label }: { value: number; label?: string }) {
 export function StatTile({
   label,
   value,
+  unit,
   sub,
   delta,
   spark,
@@ -164,6 +165,8 @@ export function StatTile({
 }: {
   label: string;
   value: string;
+  /** The figure's unit, smaller beside it and never broken from it ("h", "std-h"). */
+  unit?: string;
   /** One short line — cut to the tile's width, the whole of it on hover. */
   sub?: React.ReactNode;
   /** A <DeltaChip>, beside the name. */
@@ -185,7 +188,7 @@ export function StatTile({
         {delta && <div className="shrink-0 -mt-0.5">{delta}</div>}
       </div>
       <div className="flex min-w-0 items-end justify-between gap-3">
-        <div className={`${compact ? "text-xl leading-tight" : hero ? "text-[length:calc(var(--fs-kpi)*1.45)] leading-none" : "text-[length:var(--fs-kpi)] leading-none"} min-w-0 [overflow-wrap:anywhere] font-semibold tabnum ltr`}>{value}</div>
+        <div className={`${compact ? "text-xl leading-tight" : hero ? "text-[length:calc(var(--fs-kpi)*1.45)] leading-none" : "text-[length:var(--fs-kpi)] leading-none"} min-w-0 [overflow-wrap:anywhere] font-semibold tabnum ltr`}>{value}{unit && <span className="text-sm font-semibold text-muted whitespace-nowrap ms-1">{unit}</span>}</div>
         {spark && <Sparkline values={spark} />}
       </div>
       {meter !== undefined && <Meter value={meter} />}

@@ -14,7 +14,7 @@ const h = vi.hoisted(() => {
       masterOrder: { findMany: fn(), findUnique: fn() },
     },
     perms: new Set<string>(),
-    production: fn(), decisions: fn(), recent: fn(), master: fn(), lv: fn(), weekly: fn(), trace: fn(), lvTrace: fn(), soi: fn(), rows: fn(), roster: fn(), stops: fn(), odooLog: fn(), odooDays: fn(),
+    production: fn(), dashboard: fn(), decisions: fn(), recent: fn(), master: fn(), lv: fn(), weekly: fn(), trace: fn(), lvTrace: fn(), soi: fn(), rows: fn(), roster: fn(), stops: fn(), odooLog: fn(), odooDays: fn(),
     lines: [] as string[],
   };
 });
@@ -44,6 +44,7 @@ vi.mock("@/lib/server/consumableLimits", () => ({ getCatalogue: vi.fn(), getCurr
 vi.mock("@/lib/server/consumableMonthly", () => ({ getMonthlyReport: vi.fn() }));
 vi.mock("@/lib/server/ai/reader", () => ({ runAiRows: h.rows }));
 vi.mock("@/lib/server/dashboards", () => ({ loadProductionAll: h.production }));
+vi.mock("@/lib/server/productionDashboard", () => ({ loadProductionDashboard: h.dashboard }));
 
 import type { User } from "@prisma/client";
 import { ITEMS } from "@/lib/domain/constants";
@@ -168,6 +169,29 @@ describe("make_excel", () => {
     // the shift log's screen closes it, as it closes the dashboard
     const closed = await makeSheetTool.run({ sheet: "output_by_type" }, ctxOf({ hidden: new Set(["shifts"]) }));
     expect(closed.ok).toBe(false);
+  });
+
+  it("makes the Production dashboard's department table a sheet, its total row the tiles", async () => {
+    const { productionView } = await import("@/lib/domain/productionDashboard");
+    h.dashboard.mockImplementation(async (req) => ({
+      req, failed: [],
+      view: productionView(req, [{
+        line: "LV", trackingSinceISO: "2026-10-01", lastRecordISO: "2026-10-24",
+        days: [{ line: "LV", dept: "Bending", unit: "Bending", dateISO: "2026-10-24", workedH: 16, earnedH: 20, people: 2, overtimeH: 0, rows: 2, absent: 0, absentH: 0, day: { people: 2, hours: 16, overtimeH: 0 }, night: { people: 0, hours: 0, overtimeH: 0 }, machineH: 0, downtimeH: 0, stops: {}, notSet: 1 }],
+        volume: [{ line: "LV", dateISO: "2026-10-24", stage: "Bending", depts: ["Bending"], component: "LV panels", qty: 6, priced: true }],
+      }], null, { todayISO: "2026-10-26", holidays: new Set() }),
+    }));
+    const r = await makeSheetTool.run({ sheet: "production", line: "LV", from: "2026-10-20" }, ctxOf());
+    expect(r.ok).toBe(true);
+    expect(h.dashboard).toHaveBeenCalledWith(expect.objectContaining({ scope: "LV", fromISO: "2026-10-20", toISO: "2026-10-26" }), expect.any(Date));
+    const kept = keptSheet();
+    expect(kept.data.name).toBe("production-2026-10-20_2026-10-26.xlsx");
+    expect(kept.rows[0]).toMatchObject({ Line: "LV", Department: "Bending", "Booked h": 16, "Earned std-h": 20, "Efficiency %": 125, Output: 6, Unit: "panels" });
+    expect(kept.rows[1]).toMatchObject({ Department: "Total", "Booked h": 16, "Earned std-h": 20 });
+    await makeSheetTool.run({ sheet: "production_days", line: "LV", from: "2026-10-20" }, ctxOf());
+    expect(keptSheet().rows[0]).toMatchObject({ Day: "2026-10-24", Unit: "Bending", "Not set": 1 });
+    // the shift log's screen closes it, as it closes the dashboard
+    expect((await makeSheetTool.run({ sheet: "production" }, ctxOf({ hidden: new Set(["shifts"]) }))).ok).toBe(false);
   });
 
   it("puts a query's rows on a sheet — numbers as numbers — within the screens the person sees and the row limit", async () => {

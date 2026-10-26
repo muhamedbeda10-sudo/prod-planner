@@ -89,7 +89,22 @@ export function pinnedLine(path: string): ProductLine | null {
  *  Planning and Production, a section per line. They take no line of their
  *  own: proxy.ts sends an address naming one to that line's section (#tr,
  *  #lv), and no line is carried onto them or from them. */
-export const BOTH_LINES: ReadonlySet<string> = new Set(["/", "/dashboards/production"]);
+/** How each of them takes a line an address names: Planning opens at its
+ *  section (#tr, #lv), Production sets its own line switch (?scope=). */
+const LINE_ON_BOTH: Record<string, "section" | "scope"> = { "/": "section", "/dashboards/production": "scope" };
+export const BOTH_LINES: ReadonlySet<string> = new Set(Object.keys(LINE_ON_BOTH));
+
+/** A screen that shows both lines, told of a line (an older link, a
+ *  bookmark): the address it is shown at — the line's section, or its own
+ *  switch — with the line parameter gone and the rest kept. */
+export function bothLinesAddress(url: URL, line: ProductLine | null): URL {
+  const to = new URL(url);
+  to.searchParams.delete(LINE_PARAM);
+  if (!line) return to;
+  if (LINE_ON_BOTH[to.pathname] === "scope") { if (!to.searchParams.has("scope")) to.searchParams.set("scope", line); }
+  else if (!to.hash) to.hash = lineSection(line);
+  return to;
+}
 
 /** A line's section on a screen that shows both — the anchor a link opens at. */
 export type LineSection = "tr" | "lv";

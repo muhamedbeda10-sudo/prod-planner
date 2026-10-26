@@ -2,13 +2,16 @@ import { describe, it, expect, vi } from "vitest";
 
 // ---- the assistant reads the cockpit through the very loader the page uses ----
 
-const h = vi.hoisted(() => ({ getCockpit: vi.fn(), getFloorPeriod: vi.fn(), getLvPlanning: vi.fn(), getLvFloorPeriod: vi.fn() }));
+const h = vi.hoisted(() => ({ getCockpit: vi.fn(), getFloorPeriod: vi.fn(), getLvPlanning: vi.fn(), getLvFloorPeriod: vi.fn(), loadProduction: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: {} }));
 vi.mock("@/lib/server/kpis", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/server/kpis")>()), getCockpit: h.getCockpit, getFloorPeriod: h.getFloorPeriod }));
 vi.mock("@/lib/server/lvKpis", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/server/lvKpis")>()), getLvPlanning: h.getLvPlanning, getLvFloorPeriod: h.getLvFloorPeriod }));
+vi.mock("@/lib/server/productionDashboard", () => ({ loadProductionDashboard: h.loadProduction, loadProductionFigures: h.loadProduction }));
 
-import { getFloorPerformanceTool, getKpisTool } from "@/lib/server/ai/tools/kpis";
+import { explainEfficiencyTool, getFloorPerformanceTool, getKpisTool } from "@/lib/server/ai/tools/kpis";
+import { linesOf, productionView, type LineFacts, type ProductionRequest } from "@/lib/domain/productionDashboard";
+import { mergeActions } from "@/lib/domain/plantKpis";
 
 const stat = (o = {}) => ({ centre: "Welding", days: 4, workedH: 100, earnedH: 90, efficiency: 0.9, downtimeH: 2, availability: null, people: 12, ...o });
 
@@ -192,83 +195,91 @@ describe("get_floor_performance", () => {
     },
   };
 
+  // the dashboard's own loader, answering with the line periods the request reads and the page's figures
+  const facts: LineFacts[] = [{
+    line: "TR", trackingSinceISO: "2026-10-01", lastRecordISO: "2026-10-24", volume: [],
+    days: [{ line: "TR", dept: "Welding", unit: "Welding", dateISO: "2026-10-24", workedH: 100, earnedH: 91.2, people: 12, overtimeH: 4, rows: 13, absent: 1, absentH: 8, day: { people: 12, hours: 100, overtimeH: 4 }, night: { people: 0, hours: 0, overtimeH: 0 }, machineH: 0, downtimeH: 0, stops: {}, notSet: 0 }],
+  }];
+  const answer = (o: { failed?: ("TR" | "LV")[] } = {}) => async (req: ProductionRequest) => {
+    const lines = linesOf(req.scope);
+    const tr = lines.includes("TR") ? { ...period, dept: req.trDept } : null;
+    const lv = lines.includes("LV") ? { ...lvPeriod, dept: req.lvDept } : null;
+    return {
+      req, todayISO: "2026-10-25", failed: o.failed ?? [], before: null,
+      view: productionView(req, facts.filter((f) => lines.includes(f.line)), null, { todayISO: "2026-10-25", holidays: new Set() }),
+      tr, lv, actions: mergeActions((tr?.actions ?? []) as never, (lv?.actions ?? []) as never),
+    };
+  };
+  const now = new Date("2026-10-25T08:00:00Z");
+
   it("reads the period and department asked for, through the page's own loader, with a link to that view", async () => {
-    h.getFloorPeriod.mockResolvedValue(period);
-    const now = new Date("2026-10-25T08:00:00Z");
+    h.loadProduction.mockImplementation(answer());
     const out = await getFloorPerformanceTool.run({ from: "2026-10-01", dept: "Welding" }, { now, hidden: new Set() } as never);
-    expect(h.getFloorPeriod).toHaveBeenCalledWith(expect.objectContaining({ fromISO: "2026-10-01", toISO: "2026-10-25", dept: "Welding" }), now);
+    expect(h.loadProduction).toHaveBeenLastCalledWith(expect.objectContaining({ fromISO: "2026-10-01", toISO: "2026-10-25", scope: "TR", trDept: "Welding" }), now);
     const j = JSON.parse(out.text);
-    expect(j).toMatchObject({ from: "2026-10-01", to: "2026-10-25", dept: "Welding", recordedDays: 1, periodAdjusted: false });
+    expect(j).toMatchObject({ line: "TR", from: "2026-10-01", to: "2026-10-25", dept: "Welding", recordedDays: 1, periodAdjusted: false });
     expect(j.trend[0]).toEqual({ day: "2026-10-24", efficiency: 0.91, rolling7: 0.91, stdHPerPersonDay: 7.6 });
-    expect(j.dailyOutput[0]).toMatchObject({ weldingH: 91.2, efficiency: 0.91 });
     expect(j.losses.byCause[0]).toEqual({ cause: "Breakdown", planned: false, hours: 2, stops: 1, share: 1 });
-    expect(j.summary).toMatchObject({ efficiency: 0.91, stdHPerPersonDay: 7.6, attendance: 0.92 });
     expect(j.departments[0]).toMatchObject({ dept: "Welding", pieces: 30, piecesPerPersonDay: 2.5 });
-    // a day without booked hours is left out of a centre's days
     expect(j.centres[0].days).toEqual([{ day: "2026-10-24", efficiency: 0.91, earnedH: 91.2, bookedH: 100 }]);
-    expect(out.links).toEqual([{ label: "Production dashboard (transformers)", href: "/dashboards/production?from=2026-10-01&to=2026-10-25&dept=Welding#tr" }]);
+    // the page's own tiles, table and coverage
+    expect(j.dashboard.showing).toBe("Welding (TR)");
+    expect(j.dashboard.tiles.find((t: { figure: string }) => t.figure === "efficiency")).toEqual({ figure: "efficiency", value: 0.91, before: null, change: "N/A" });
+    expect(j.dashboard.departments[0]).toMatchObject({ dept: "Welding", bookedH: 100, earnedH: 91.2 });
+    expect(j.dashboard.notAvailable.join(" ")).toContain("by shift");
+    expect(out.links).toEqual([{ label: "Production dashboard (Welding (TR))", href: "/dashboards/production?from=2026-10-01&to=2026-10-25&dept=Welding" }]);
   });
 
-  it("falls back to the last 7 days and every department on a bad or missing input, and links to the section without pinning its dates", async () => {
-    h.getFloorPeriod.mockResolvedValue({ ...period, fromISO: "2026-10-19", dept: "all" });
-    const now = new Date("2026-10-25T08:00:00Z");
-    const out = await getFloorPerformanceTool.run({ from: "soon", dept: "Cutting" }, { now, hidden: new Set() } as never);
-    expect(h.getFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ fromISO: "2026-10-19", toISO: "2026-10-25", dept: "all", isDefault: true }), now);
-    expect(out.links).toEqual([{ label: "Production dashboard (transformers)", href: "/dashboards/production#tr" }]);
+  it("falls back to the last 7 days and every department on a bad or missing input, and links without pinning its dates", async () => {
+    h.loadProduction.mockImplementation(answer());
+    const out = await getFloorPerformanceTool.run({ from: "soon", dept: "Cutting", line: "TR" }, { now, hidden: new Set() } as never);
+    expect(h.loadProduction).toHaveBeenLastCalledWith(expect.objectContaining({ fromISO: "2026-10-19", toISO: "2026-10-25", scope: "TR", trDept: "all", isDefault: true }), now);
+    expect(out.links).toEqual([{ label: "Production dashboard (Transformers)", href: "/dashboards/production?scope=TR" }]);
   });
 
-  it("reads the panels' side on the LV line (or when asked), through the panels' own loader, and says what is not the panels'", async () => {
-    h.getLvFloorPeriod.mockResolvedValue({ ...lvPeriod, dept: "WeldingLV" });
-    const now = new Date("2026-10-25T08:00:00Z");
-    const out = await getFloorPerformanceTool.run({ dept: "Welding" }, { now, hidden: new Set(), line: "LV" } as never);
-    expect(h.getLvFloorPeriod).toHaveBeenCalledWith(expect.objectContaining({ fromISO: "2026-10-19", toISO: "2026-10-25", dept: "WeldingLV" }), now);
+  it("reads the panels' side on the LV line (or when asked), and says what is not the panels'", async () => {
+    h.loadProduction.mockImplementation(answer());
+    const out = await getFloorPerformanceTool.run({ dept: "WeldingLV" }, { now, hidden: new Set(), line: "LV" } as never);
+    expect(h.loadProduction).toHaveBeenLastCalledWith(expect.objectContaining({ scope: "LV", lvDept: "WeldingLV" }), now);
     const j = JSON.parse(out.text);
     expect(j).toMatchObject({ line: "LV", summary: { efficiency: 0.5 }, departments: [{ dept: "WeldingLV", panels: 5 }], panelsMovedPerStage: { Welding: 5 } });
     expect(j.notAvailable.join(" ")).toContain("Machine stops");
-    // the panels' department in its own parameter, the page opened at the panels' section
-    expect(out.links).toEqual([{ label: "Production dashboard (LV panels)", href: "/dashboards/production?lvDept=WeldingLV#lv" }]);
-    // asked for the transformers while the app is on the panels
-    h.getFloorPeriod.mockResolvedValue(period);
-    const tr = await getFloorPerformanceTool.run({ line: "TR" }, { now, hidden: new Set(), line: "LV" } as never);
-    expect(tr.links).toEqual([{ label: "Production dashboard (transformers)", href: "/dashboards/production?dept=Welding#tr" }]);
+    expect(out.links).toEqual([{ label: "Production dashboard (Welding (LV))", href: "/dashboards/production?dept=WeldingLV" }]);
   });
 
-  it("combines the whole plant from the sums, never the mean of the two rates, with the stops counted once", async () => {
-    h.getFloorPeriod.mockResolvedValue(period);
-    h.getLvFloorPeriod.mockResolvedValue(lvPeriod);
-    const now = new Date("2026-10-25T08:00:00Z");
-    const out = await getFloorPerformanceTool.run({ line: "all", dept: "Welding" }, { now, hidden: new Set() } as never);
-    // each line keeps its own department, as the page does: the transformers' welding leaves the panels whole
-    expect(h.getFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ dept: "Welding" }), now);
-    expect(h.getLvFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ dept: "all" }), now);
+  it("reads the whole plant from the page's sums, the stops counted once, both lines' interventions tagged", async () => {
+    h.loadProduction.mockImplementation(answer());
+    const out = await getFloorPerformanceTool.run({ line: "all" }, { now, hidden: new Set() } as never);
+    expect(h.loadProduction).toHaveBeenLastCalledWith(expect.objectContaining({ scope: "all", trDept: "all", lvDept: "all" }), now);
     const j = JSON.parse(out.text);
     expect(j.line).toBe("all");
-    expect(j.dept).toMatchObject({ asked: "Welding", TR: "Welding", LV: "all" });
-    // 91.2 + 25 over 100 + 50 — not (0.912 + 0.5) / 2
-    expect(j.plant).toMatchObject({ efficiency: 0.77, earnedH: 116.2, bookedH: 150, machineStops: { unplannedH: 2 } });
+    expect(j.dashboard.showing).toBe("The whole plant");
+    expect(j.plant.machineStops).toMatchObject({ unplannedH: 2 });
     expect(j.transformers.line).toBe("TR");
     expect(j.lvPanels.line).toBe("LV");
     expect(j.interventions).toEqual(["TR bad: 1 machine is still stopped", "LV warn: Welding (LV) worked at 50% of the standard"]);
     expect(j.plant.notes.join(" ")).toContain("never the mean");
-    expect(out.links).toEqual([{ label: "Production dashboard (whole plant)", href: "/dashboards/production?dept=Welding" }]);
+    expect(out.links).toEqual([{ label: "Production dashboard (The whole plant)", href: "/dashboards/production" }]);
   });
 
-  it("reads the panels' department from its own parameter under all, as the page keeps it", async () => {
-    h.getFloorPeriod.mockResolvedValue({ ...period, dept: "all" });
-    h.getLvFloorPeriod.mockResolvedValue({ ...lvPeriod, dept: "PaintingLV" });
-    const now = new Date("2026-10-25T08:00:00Z");
-    const out = await getFloorPerformanceTool.run({ line: "all", lvDept: "PaintingLV" }, { now, hidden: new Set() } as never);
-    expect(h.getFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ dept: "all" }), now);
-    expect(h.getLvFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ dept: "PaintingLV" }), now);
-    expect(out.links).toEqual([{ label: "Production dashboard (whole plant)", href: "/dashboards/production?lvDept=PaintingLV" }]);
-    // a panels' department named in dept is the panels'
+  it("lets a department name its line, as the page does, and keeps each line's own under all", async () => {
+    h.loadProduction.mockImplementation(answer());
     await getFloorPerformanceTool.run({ line: "all", dept: "Bending" }, { now, hidden: new Set() } as never);
-    expect(h.getLvFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ dept: "Bending" }), now);
+    expect(h.loadProduction).toHaveBeenLastCalledWith(expect.objectContaining({ scope: "LV", lvDept: "Bending" }), now);
+    const out = await getFloorPerformanceTool.run({ line: "all", dept: "Welding", lvDept: "PaintingLV" }, { now, hidden: new Set() } as never);
+    expect(h.loadProduction).toHaveBeenLastCalledWith(expect.objectContaining({ scope: "all", trDept: "Welding", lvDept: "PaintingLV" }), now);
+    expect(out.links?.[0].href).toBe("/dashboards/production?dept=Welding&lvDept=PaintingLV");
+  });
+
+  it("says so when a line fails to load, rather than answering with half the plant", async () => {
+    h.loadProduction.mockImplementation(answer({ failed: ["LV"] }));
+    const out = await getFloorPerformanceTool.run({ line: "all" }, { now, hidden: new Set() } as never);
+    expect(out.ok).toBe(false);
   });
 
   it("carries the transformers' machines and quality", async () => {
-    h.getFloorPeriod.mockResolvedValue(period);
-    const j = JSON.parse((await getFloorPerformanceTool.run({ from: "2026-10-01", dept: "Welding" }, { now: new Date("2026-10-25T08:00:00Z"), hidden: new Set() } as never)).text);
+    h.loadProduction.mockImplementation(answer());
+    const j = JSON.parse((await getFloorPerformanceTool.run({ from: "2026-10-01", dept: "Welding" }, { now, hidden: new Set() } as never)).text);
     expect(j.machines.stoppedNow[0]).toMatchObject({ machine: "B4-10", hours: 3 });
     expect(j.quality.tanks.leakTestFirstPass).toMatchObject({ units: 8, passed: 6, rate: 0.75 });
     expect(j.daysWithDisagreeingRecords).toEqual([{ dateISO: "2026-10-22", kind: "output-no-hours" }]);
@@ -276,17 +287,26 @@ describe("get_floor_performance", () => {
   });
 
   it("hands the model what was made item by item and type by type, against the month's plan, on both lines", async () => {
-    h.getFloorPeriod.mockResolvedValue(period);
-    h.getLvFloorPeriod.mockResolvedValue(lvPeriod);
-    const j = JSON.parse((await getFloorPerformanceTool.run({ line: "all" }, { now: new Date("2026-10-25T08:00:00Z"), hidden: new Set() } as never)).text);
+    h.loadProduction.mockImplementation(answer());
+    const j = JSON.parse((await getFloorPerformanceTool.run({ line: "all" }, { now, hidden: new Set() } as never)).text);
     const tr = j.transformers.byItemAndType;
     expect(tr).toMatchObject({ stages: ["cut", "weld", "finish"], planMonth: "October 2026" });
     expect(tr.items[0]).toMatchObject({ item: "Tank", made: { weld: 8 }, plan: { planned: 40, left: 25, shareDone: 0.38 } });
     expect(tr.items[0].types[0]).toMatchObject({ type: "630 kVA", made: { cut: 10 }, plan: { planned: 30, doneByStage: { finish: 15 }, shareDone: 0.5 } });
     const lv = j.lvPanels.byItemAndType;
     expect(lv.stages).toEqual(["Punching", "Bending", "Welding", "Painting"]);
-    // a type made off the month's plan carries no plan figures
     expect(lv.items[0].types[0]).toEqual({ type: "USS", made: { Punching: 0, Bending: 0, Welding: 5, Painting: 0 }, plan: null });
+  });
+
+  it("explains where the hours went over the page's own choice — a period, or whole days up to yesterday", async () => {
+    h.loadProduction.mockImplementation(answer());
+    const out = await explainEfficiencyTool.run({ days: 14 }, { now, hidden: new Set() } as never);
+    expect(h.loadProduction).toHaveBeenLastCalledWith(expect.objectContaining({ fromISO: "2026-10-11", toISO: "2026-10-24", scope: "TR" }), now);
+    const j = JSON.parse(out.text);
+    expect(j.now).toMatchObject({ workedH: 100, earnedStdH: 91.2, absentH: 8, rosteredH: 104 });
+    expect(j.waterfall.map((x: { name: string }) => x.name)).toContain("Unexplained: slower than standard or not logged");
+    await explainEfficiencyTool.run({ from: "2026-10-01", to: "2026-10-20", centre: "Fins" }, { now, hidden: new Set() } as never);
+    expect(h.loadProduction).toHaveBeenLastCalledWith(expect.objectContaining({ fromISO: "2026-10-01", toISO: "2026-10-20", centre: "Fins", trDept: "Fabrication" }), now);
   });
 
   it("is closed with the Shifts screen", () => {
