@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { useCanSee } from "@/components/TabAccess";
-import { useCarryLine } from "@/components/LineContext";
+import { useActiveLine, useCarryLine } from "@/components/LineContext";
+import { pinnedLine } from "@/lib/domain/lines";
 
 // A top tab that holds several places — Material, Dashboards — draws this
 // strip at the top of each of their pages to move between them. Each place
 // keeps its own screens behind its own switch in the page head. A place
 // switched off for the account is not offered (one whose first screen is off
 // opens on the screen of it that is on), and with one place left the strip
-// is not drawn. A product line the address names rides along to the next place.
+// is not drawn. A product line the address names rides along to the next
+// place, and a place pinned to the other line (the Simulator, Production) is
+// not offered on this one.
 
 export interface Section<Id extends string> {
   id: Id;
@@ -22,7 +25,9 @@ export interface Section<Id extends string> {
 export function SectionStrip<Id extends string>({ sections, current, label }: { sections: readonly Section<Id>[]; current: Id; label: string }) {
   const canSee = useCanSee();
   const carry = useCarryLine();
+  const line = useActiveLine();
   const shown = sections
+    .filter((s) => s.id === current || (pinnedLine(s.href) ?? line) === line)
     .map((s) => ({ ...s, href: [s.href, ...(s.also ?? [])].find(canSee) }))
     .filter((s): s is Section<Id> & { href: string } => !!s.href);
   if (shown.length < 2) return null;

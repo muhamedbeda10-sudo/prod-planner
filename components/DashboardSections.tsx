@@ -1,8 +1,6 @@
 "use client";
 
 import { SectionStrip, type Section } from "@/components/SectionStrip";
-import { useActiveLine } from "@/components/LineContext";
-import { pinnedLine } from "@/lib/domain/lines";
 
 // The Dashboards tab: every dashboard of the app in one place, one place
 // each — the plan, the floor, the material, the consumables and Odoo. Each
@@ -21,8 +19,5 @@ const SECTIONS: readonly Section<DashboardSection>[] = [
 ];
 
 export function DashboardSections({ current }: { current: DashboardSection }) {
-  // a place pinned to the other line is not offered on this one
-  const line = useActiveLine();
-  const sections = SECTIONS.filter((s) => (pinnedLine(s.href) ?? line) === line || s.id === current);
-  return <SectionStrip sections={sections} current={current} label="Dashboards" />;
+  return <SectionStrip sections={SECTIONS} current={current} label="Dashboards" />;
 }

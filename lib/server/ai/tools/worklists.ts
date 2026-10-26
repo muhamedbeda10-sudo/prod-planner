@@ -1,5 +1,4 @@
 import "server-only";
-import { withLine } from "@/lib/server/line";
 import type { AiFile } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { hasPerm } from "@/lib/server/auth";
@@ -71,7 +70,7 @@ export const getCutWorklistTool: ReadTool<Record<string, never>> = {
   tabs: ["worklist.cut"],
   status: () => "Reading the fabrication worklist",
   async run(_i, ctx) {
-    const s = await withLine("TR", () => getCutSheet());
+    const s = await getCutSheet();
     return {
       ok: true,
       text: JSON.stringify({
@@ -156,7 +155,7 @@ export const setWorklistDateTool: WriteTool<DateInput> = {
     const denied = dateAdminDenied(ctx);
     if (denied) return { error: denied };
     const before = await readWorklistDates(i);
-    const sheet = await withLine("TR", () => getCutSheet());
+    const sheet = await getCutSheet();
     const same = (r: { bom: string; mo: string; item: string }) => r.bom === i.bom && r.mo === i.mo && r.item === i.item;
     let summary: string;
     if (i.origISO !== "") {

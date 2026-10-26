@@ -218,25 +218,25 @@ export function AppNav({
   // Floor tab; everyone else (admins, multi-dept, view-only) opens the tab
   // onto its departments.
   // the leak test and the barcodes are the tanks' — with tracking off they are not part of the app
-  const tankTabs = tankTracking;
+  const tankOk = (href: string) => tankTracking || !TANK_ONLY.has(href);
   // the line on screen — which of welding's or painting's two queues is lit
   const line = useActiveLine();
   // the screens the owner switched off for this account leave the menus too
   const canSee = useCanSee();
-  const worklistDepts = FLOOR_DEPTS.filter((d) => (tankTabs || !TANK_ONLY.has(d.path)) && canSee(d.path));
+  const worklistDepts = FLOOR_DEPTS.filter((d) => tankOk(d.path) && canSee(d.path));
   const deptOn = (d: FloorDept) => on(d.path) && line === d.line;
-  const shown = (l: { href: string }) => (tankTabs || !TANK_ONLY.has(l.href)) && (machinePlanning || !MACHINE_ONLY.has(l.href)) && canSee(l.href);
+  const shown = (l: { href: string }) => tankOk(l.href) && (machinePlanning || !MACHINE_ONLY.has(l.href)) && canSee(l.href);
   // a tab whose own screen is off but one of its views is on opens on that view
   const reachable = (l: Item): Item | null => {
     const to = [l.href, ...(l.also ?? [])].find(canSee);
     return to ? (to === l.href ? l : { ...l, href: to, match: l.match ?? l.href }) : null;
   };
-  const restTabs = REST.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && (machinePlanning || !MACHINE_ONLY.has(l.href)))
+  const restTabs = REST.filter((l) => tankOk(l.href) && (machinePlanning || !MACHINE_ONLY.has(l.href)))
     .map(reachable).filter((l): l is Item => l !== null);
   // the mobile drawer has vertical room — it lists the worklists directly
   const drawerDepts = machinePlanning ? worklistDepts : [];
   const drawerTabs = REST.filter(shown);
-  const drawerViews = DRAWER_VIEWS.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && canSee(l.href));
+  const drawerViews = DRAWER_VIEWS.filter((l) => tankOk(l.href) && canSee(l.href));
   const deptEdits = worklistDepts.filter((d) => user.perms.includes(d.perm));
   const singleDept = worklistDepts.length === 1 ? worklistDepts[0] : !user.isAdmin && deptEdits.length === 1 ? deptEdits[0] : null;
 

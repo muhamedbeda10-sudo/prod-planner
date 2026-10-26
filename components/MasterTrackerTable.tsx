@@ -9,6 +9,7 @@ import { decidePlanQty, setOrderStatus, setExcludedItems, setOrderQty, setOrderS
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { Num, PageHead, Soi } from "@/components/ui";
 import { LineSwitch } from "@/components/LineSwitch";
+import { TrackerSections } from "@/components/TrackerSections";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
 import { TrackerScope, type TrackerFilter } from "@/components/TrackerScope";
 import { ExportMenu } from "@/components/ExportMenu";
@@ -233,7 +234,6 @@ export function MasterTrackerTable({
   editableDepts = [],
   etas = {},
   etaWindowDays = 0,
-  sections,
   prefs = {},
   odooTrackingFrom = null,
 }: {
@@ -250,9 +250,6 @@ export function MasterTrackerTable({
   /** Stage columns this user may record on (their OWN tracker permissions —
    *  separate from the worklist ones): Cut | Welding | Painting | Delivered. */
   editableDepts?: string[];
-  /** The Plan Tracker tab's strip of places (components/TrackerSections) —
-   *  drawn inside the sheet, which is sized to fill the screen. */
-  sections?: React.ReactNode;
 }) {
   const can = (k: string) => features.includes(k);
   const router = useRouter();
@@ -789,7 +786,8 @@ export function MasterTrackerTable({
     // `print-flow` hands the height back to the paper: a fixed-height scroller
     // would print one page and clip everything under it.
     <div className="tracker-view print-flow md:flex md:flex-col md:h-[calc(100vh-5rem)]">
-      {sections}
+      {/* the tab's places — inside the sheet, which is sized to fill the screen */}
+      <TrackerSections current="tracker" />
       {/* a plan import brought a different qty for these orders — waiting on the planner */}
       <PendingQtyBanner rows={rows} />
       {/* what the sheet is showing — filters don't survive onto paper otherwise */}

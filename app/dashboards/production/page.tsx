@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { getFloorPeriod } from "@/lib/server/kpis";
-import { pinLine } from "@/lib/server/line";
 import { floorDefault, floorRequest } from "@/lib/domain/floorKpis";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { formatDate } from "@/lib/domain/format";
@@ -29,8 +28,7 @@ export default async function ProductionDashboardPage({ searchParams }: { search
   const todayISO = factoryDayISO(new Date());
 
   const sp = await searchParams;
-  // the floor's figures are the transformers': opened on the panels, it reopens on them
-  await pinLine("/dashboards/production", sp);
+  // the floor's figures are the transformers' (PINNED_LINE)
   const req = floorRequest(sp, todayISO);
   const period = await getFloorPeriod(req).catch((e: unknown) => { console.error("production: the floor's period could not load", e); return null; });
   return (

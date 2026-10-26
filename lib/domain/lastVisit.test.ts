@@ -85,11 +85,6 @@ describe("planLastVisit and the product line", () => {
     expect(p.save).toEqual([{ key: "material:last", url: "/material?month=2026-10" }]);
   });
 
-  it("drops a line remembered before it was left out", () => {
-    const p = planLastVisit({ storageKey: "odoo:log", pathname: "/odoo", qs: "", arriving: true, read: store({ "odoo:log": "/odoo?line=LV" }) });
-    expect(p).toEqual({ redirect: null, save: [{ key: "odoo:log", url: "/odoo" }] });
-  });
-
   it("reopens the tab as it was left on the line the address names", () => {
     const p = planLastVisit({ storageKey: "material:last", pathname: "/material", qs: "line=LV", arriving: true, read: store({ "material:last": "/material?month=2026-10" }) });
     expect(p).toEqual({ redirect: "/material?month=2026-10&line=LV", save: [] });

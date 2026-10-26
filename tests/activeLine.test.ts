@@ -4,15 +4,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // There is no switch in the top bar any more: a page shows the line its
 // address names (?line=LV, copied by the proxy into a header), and with none
 // the person's own line — the panels for someone who records only on the
-// panels. A screen that belongs to one line reopens on it, address kept.
+// panels. A screen that belongs to one line always gets it.
 
-const h = vi.hoisted(() => ({ header: vi.fn(), user: vi.fn(), redirect: vi.fn() }));
+const h = vi.hoisted(() => ({ header: vi.fn(), user: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ headers: async () => ({ get: h.header }) }));
-vi.mock("next/navigation", () => ({ redirect: h.redirect }));
 vi.mock("@/lib/server/auth", () => ({ getCurrentUser: h.user }));
 
-import { getActiveLine, pinLine, withLine } from "@/lib/server/line";
+import { getActiveLine, withLine } from "@/lib/server/line";
 import { proxy } from "@/proxy";
 import { NextRequest } from "next/server";
 
@@ -58,25 +57,6 @@ describe("getActiveLine", () => {
   });
 });
 
-describe("pinLine", () => {
-  it("does nothing on its own line", async () => {
-    h.header.mockReturnValue("TR");
-    await pinLine("/simulate");
-    expect(h.redirect).not.toHaveBeenCalled();
-  });
-
-  it("reopens the page on its line, the rest of the address kept", async () => {
-    h.header.mockReturnValue("LV");
-    await pinLine("/dashboards/production", { from: "2026-10-01", dept: "Welding", line: "LV", list: ["a", "b"] });
-    expect(h.redirect).toHaveBeenCalledWith("/dashboards/production?from=2026-10-01&dept=Welding&line=TR");
-  });
-
-  it("reopens a panels-only page for someone whose own line is the transformers'", async () => {
-    await pinLine("/worklist/punching");
-    expect(h.redirect).toHaveBeenCalledWith("/worklist/punching?line=LV");
-  });
-});
-
 describe("the proxy hands the address's line to the page", () => {
   const req = (url: string, headers: Record<string, string> = {}) =>
     new NextRequest(new URL(url, "http://plant.test"), { headers: { cookie: "atc_session=x", ...headers } });
@@ -93,6 +73,16 @@ describe("the proxy hands the address's line to the page", () => {
     const overridden = res.headers.get("x-middleware-override-headers");
     expect(overridden).not.toBeNull();
     expect(overridden!.split(",")).not.toContain("x-atc-line");
+  });
+
+  it("hands a screen pinned to one line its own line, whatever the address names", () => {
+    expect(forwarded(proxy(req("/simulate")))).toBe("TR");
+    expect(forwarded(proxy(req("/worklist/punching")))).toBe("LV");
+  });
+
+  it("sends an address naming the other line to the pinned screen's own, the rest kept", () => {
+    const res = proxy(req("/dashboards/production?from=2026-10-01&dept=Welding&line=LV"));
+    expect(res.headers.get("location")).toBe("http://plant.test/dashboards/production?from=2026-10-01&dept=Welding&line=TR");
   });
 
   it("clears the cookie the old top-bar switch left behind", () => {

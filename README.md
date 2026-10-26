@@ -52,7 +52,7 @@ Registry, the welding and painting worklists) carries a **Transformers | LV Pane
 request header that `getActiveLine` (`lib/server/line.ts`) reads, so the page's loaders and every server
 action posted from the page agree on it. With no line in the address a screen opens on the person's own line
 (`defaultLineOf`, `lib/domain/permissions.ts`): LV Panels for someone who records only on the panels, Transformers for
-everyone else. A screen that belongs to one line always shows it (`pinLine`): the Simulator, the weekly import,
+everyone else. A screen that belongs to one line always shows it (`PINNED_LINE`, which the proxy applies): the Simulator, the weekly import,
 the Production dashboard and Fabrication are the transformers', Punching and Bending the panels'. The Floor tab
 lists both lines' departments; the ODOO log shows both lines at once; a trace opens on its order's own line.
 

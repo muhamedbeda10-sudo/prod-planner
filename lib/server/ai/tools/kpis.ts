@@ -1,4 +1,5 @@
 import "server-only";
+import { hrefWithLine } from "@/lib/domain/lines";
 import { getCockpit, getFloorPeriod, getLossWaterfall, type CockpitData } from "@/lib/server/kpis";
 import { WORK_CENTRES, WORK_CENTRE_LABEL, type WorkCentre } from "@/lib/domain/shifts";
 import { LOSS_DAYS } from "@/lib/domain/losses";
@@ -99,7 +100,7 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
         },
         trend: c.trend.map(pt),
       }),
-      links: [{ label: "Planning dashboard", href: "/?line=TR" }],
+      links: [{ label: "Planning dashboard", href: hrefWithLine("/", "TR") }],
     };
   },
 };

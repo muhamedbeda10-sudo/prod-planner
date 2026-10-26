@@ -1,8 +1,7 @@
 import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { DEFAULT_LINE, LINE_HEADER, LINE_PARAM, PINNED_LINE, lineParam, type ProductLine } from "@/lib/domain/lines";
+import { DEFAULT_LINE, LINE_HEADER, lineParam, type ProductLine } from "@/lib/domain/lines";
 import { defaultLineOf, parsePerms } from "@/lib/domain/permissions";
 import type { User } from "@prisma/client";
 import { LV_ITEM } from "@/lib/domain/lv";
@@ -24,6 +23,12 @@ import { getCurrentUser } from "./auth";
 
 const override = new AsyncLocalStorage<ProductLine>();
 
+// The person's own line, once per request. React's cache dedupes only within
+// a render, and a server action or a route handler calls getActiveLine
+// several times (the guard, the write, the loaders behind it): keyed on the
+// request's headers object, they share one session lookup.
+const ownLineOfRequest = new WeakMap<object, Promise<ProductLine>>();
+
 /** The line the screens show this request — an override in force, else the
  *  address's, else the person's own, else transformers. Cheap enough to call
  *  anywhere. */
@@ -31,9 +36,15 @@ export async function getActiveLine(): Promise<ProductLine> {
   const forced = override.getStore();
   if (forced) return forced;
   try {
-    const named = lineParam((await headers()).get(LINE_HEADER));
+    const h = await headers();
+    const named = lineParam(h.get(LINE_HEADER));
     if (named) return named;
-    return ownLine(await getCurrentUser());
+    let own = ownLineOfRequest.get(h);
+    if (!own) {
+      own = getCurrentUser().then(ownLine);
+      ownLineOfRequest.set(h, own);
+    }
+    return await own;
   } catch {
     // outside a request (a script, a test) there is no address and no person
     return DEFAULT_LINE;
@@ -51,18 +62,6 @@ export function ownLine(user: User | null): ProductLine {
  *  says — how one screen shows both lines at once. */
 export function withLine<T>(line: ProductLine, fn: () => Promise<T>): Promise<T> {
   return override.run(line, fn);
-}
-
-/** A screen that belongs to one line only (PINNED_LINE): opened on the
- *  other, it reopens on its own line with the rest of its address kept — so
- *  the address, the page's switches and every action sent from it agree. */
-export async function pinLine(path: keyof typeof PINNED_LINE, sp: Record<string, string | string[] | undefined> = {}): Promise<void> {
-  const line = PINNED_LINE[path];
-  if ((await getActiveLine()) === line) return;
-  const q = new URLSearchParams();
-  for (const [k, v] of Object.entries(sp)) if (typeof v === "string" && k !== LINE_PARAM) q.set(k, v);
-  q.set(LINE_PARAM, line);
-  redirect(`${path}?${q}`);
 }
 
 /** The ledger rows that belong to a line, as a Prisma `where` fragment. The

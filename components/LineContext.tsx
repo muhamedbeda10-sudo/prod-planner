@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { DEFAULT_LINE, LINE_PARAM, hrefWithLine, lineParam, pinnedLine, type ProductLine } from "@/lib/domain/lines";
+import { DEFAULT_LINE, LINE_PARAM, hrefWithLine, lineKey, lineParam, pinnedLine, type ProductLine } from "@/lib/domain/lines";
 
 // Which product line the browser is looking at, for the client components that
 // must key something by it. The page's address names it (`?line=LV`); with
@@ -24,15 +24,19 @@ export function LineProvider({ line, children }: { line: ProductLine; children: 
   return <LineCtx.Provider value={line}>{children}</LineCtx.Provider>;
 }
 
-/** The line this screen is on: the address's, else the person's own. */
+/** The line this screen is on: a pinned screen's own, else the address's,
+ *  else the person's own — what the proxy hands the server. */
 export function useActiveLine(): ProductLine {
   const own = useContext(LineCtx);
-  return lineParam(useSearchParams().get(LINE_PARAM)) ?? own;
+  const named = lineParam(useSearchParams().get(LINE_PARAM));
+  return pinnedLine(usePathname()) ?? named ?? own;
 }
 
-/** A storage key of this line's own, so the other line's choices never apply. */
-export function useLineKey(key: string): string {
-  return `${useActiveLine()}:${key}`;
+/** A storage key of this line's own (the screen's, or `line`), so the other
+ *  line's choices never apply. */
+export function useLineKey(key: string, line?: ProductLine): string {
+  const active = useActiveLine();
+  return lineKey(line ?? active, key);
 }
 
 /** Links to the other screens of the same tab keep the line the address

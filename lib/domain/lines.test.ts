@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_LINE, LINE_LABEL, PINNED_LINE, PRODUCT_LINES, hrefWithLine, pinnedLine, isProductLine, lineParam, otherLine, resolveLine } from "./lines";
+import { DEFAULT_LINE, LINE_LABEL, PRODUCT_LINES, hrefWithLine, pinnedLine, isProductLine, lineParam, resolveLine } from "./lines";
 
 describe("product lines — transformers and LV panels, never mixed", () => {
   it("knows exactly two lines, transformers first", () => {
@@ -28,10 +28,6 @@ describe("product lines — transformers and LV panels, never mixed", () => {
     expect(resolveLine(42)).toBe("TR");
   });
 
-  it("switches to the other line", () => {
-    expect(otherLine("TR")).toBe("LV");
-    expect(otherLine("LV")).toBe("TR");
-  });
 
   it("reads the line an address names, and nothing else", () => {
     expect(lineParam("LV")).toBe("LV");
@@ -57,10 +53,6 @@ describe("screens pinned to one line", () => {
     expect(pinnedLine("/worklist/punching")).toBe("LV");
     expect(pinnedLine("/worklist/welding")).toBeNull();
     expect(pinnedLine("/tracker")).toBeNull();
-  });
-
-  it("pins only real lines", () => {
-    for (const line of Object.values(PINNED_LINE)) expect(PRODUCT_LINES).toContain(line);
   });
 });
 

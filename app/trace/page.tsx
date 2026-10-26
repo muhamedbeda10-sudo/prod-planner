@@ -25,10 +25,11 @@ export default async function TracePage({
   const planNo = Number(sp.plan) || 0;
   const mo = (sp.mo ?? "").trim();
   const bom = (sp.bom ?? "").trim();
-  // the line the link named; else an order's own line — an MO belongs to one,
-  // so a trace link from any screen opens on the right side; else the line on screen
-  const line: ProductLine = lineParam(sp.line)
-    ?? (mo ? lineParam((await prisma.masterOrder.findUnique({ where: { mo }, select: { line: true } }))?.line) : null)
+  // an order's own line — an MO belongs to one, so a trace of it opens on the
+  // right side from any screen; else the line the link named (a code, or an MO
+  // only in the log); else the line on screen
+  const line: ProductLine = (mo ? lineParam((await prisma.masterOrder.findUnique({ where: { mo }, select: { line: true } }))?.line) : null)
+    ?? lineParam(sp.line)
     ?? await getActiveLine();
   // which tracker view the visitor came from — `plan` alone can't say, and the
   // tracker opens MONTHLY unless the URL asks for weekly, so a reader who

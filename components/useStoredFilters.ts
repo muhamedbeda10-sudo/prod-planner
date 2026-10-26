@@ -30,8 +30,7 @@ export function useStoredFilters<T>(rawKey: string, parse: (raw: string) => T, e
   // one line's filters never apply to the other: a Product reading "Tank"
   // carried onto the panels' tab hid every panel row it had. `line` names
   // another line's filters than the screen's — set for the screen it opens.
-  const onScreen = useLineKey(rawKey);
-  const key = line ? `${line}:${rawKey}` : onScreen;
+  const key = useLineKey(rawKey, line);
   const subscribe = useMemo(() => subscribeTo(key), [key]);
   const raw = useSyncExternalStore(subscribe, () => readRaw(key), () => "");
   const filters = useMemo(() => (raw ? parse(raw) : empty), [raw, parse, empty]);

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useCarryLine } from "@/components/LineContext";
+import { useActiveLine } from "@/components/LineContext";
 import { traceHref } from "@/lib/domain/links";
 import type { ProductLine } from "@/lib/domain/lines";
 import { Search } from "lucide-react";
@@ -13,13 +13,13 @@ import { Search } from "lucide-react";
 export function TraceSearch({ initial = "", initialMode = "bom", line }: { initial?: string; initialMode?: "bom" | "mo"; line?: ProductLine }) {
   const router = useRouter();
   // a code is searched on the line the page is tracing (`line`, else the one
-  // its address names); an order opens on its own
-  const carry = useCarryLine();
+  // on screen); an order opens on its own
+  const active = useActiveLine();
   const [q, setQ] = useState(initial);
   const [mode, setMode] = useState<"bom" | "mo">(initialMode);
   const go = () => {
     const v = q.trim();
-    if (v) router.push(mode === "mo" ? traceHref({ mo: v }) : line ? traceHref({ bom: v, line }) : carry(traceHref({ bom: v })));
+    if (v) router.push(mode === "mo" ? traceHref({ mo: v }) : traceHref({ bom: v, line: line ?? active }));
   };
   return (
     <div className="flex items-center gap-1.5">

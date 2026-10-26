@@ -11,7 +11,6 @@ import { PrintHeader } from "@/components/PrintHeader";
 import { getCurrentUser, canEditDept, hasPerm, guardTab } from "@/lib/server/auth";
 import { getMachineBoard } from "@/lib/server/machineBoard";
 import { getWeeklyPlanTracker } from "@/lib/server/weeklyPlanTracker";
-import { pinLine } from "@/lib/server/line";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +24,7 @@ export default async function CutWorklistPage({ searchParams }: { searchParams: 
   await guardTab("/worklist/cut");
   const sp = await searchParams;
   // a panel is not cut on the lasers — its fabrication is punching, then
-  // bending: this worklist is the transformers' alone
-  await pinLine("/worklist/cut", sp);
+  // bending: this worklist is the transformers' alone (PINNED_LINE)
   const dayISO = factoryDayISO(new Date());
   // an unknown ?plan= falls back to the newest plan inside the loader
   const [returns, settings, user, week, extras, notes, soi] = await Promise.all([

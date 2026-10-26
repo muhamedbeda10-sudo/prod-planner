@@ -99,7 +99,6 @@ export default async function TrackerPage({
     <>
       <PrintHeader title="Plan Tracker — Monthly" date={issued} />
       <MasterTrackerTable
-        sections={<TrackerSections current="tracker" />}
         rows={rows}
         odooTrackingFrom={settings?.odooTrackingFrom ?? null}
         etas={Object.fromEntries(byMo)}

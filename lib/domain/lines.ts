@@ -40,9 +40,9 @@ export function resolveLine(raw: unknown): ProductLine {
   return lineParam(raw) ?? DEFAULT_LINE;
 }
 
-/** The other line. */
-export function otherLine(line: ProductLine): ProductLine {
-  return line === "TR" ? "LV" : "TR";
+/** A browser-storage key of one line's own, so the other line's choices never apply. */
+export function lineKey(line: ProductLine, key: string): string {
+  return `${line}:${key}`;
 }
 
 /** The address parameter that names the line on screen. */
@@ -71,7 +71,7 @@ export function hrefWithLine(href: string, line: ProductLine): string {
 }
 
 /** The screens that belong to one line and always show it, whatever the
- *  address asks (pinLine in lib/server/line.ts). A line named on one of them
+ *  address asks (proxy.ts hands them their own). A line named on one of them
  *  is the screen's own, not a choice to carry on to the next. */
 export const PINNED_LINE = {
   "/simulate": "TR",

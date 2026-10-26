@@ -5,7 +5,6 @@ import { ImportForm } from "@/components/ImportForm";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { getPlanNos } from "@/lib/server/data";
 import { ViewTabs, PLANS_VIEWS } from "@/components/ViewTabs";
-import { pinLine } from "@/lib/server/line";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +13,7 @@ export default async function ImportPage() {
   // admin-only page: invisible in the nav for others, and a direct URL bounces
   const me = await getCurrentUser();
   if (!me?.isAdmin) redirect("/");
-  // the weekly delivery schedule is the transformers' — the panels plan monthly
-  await pinLine("/import");
-
+  // the weekly delivery schedule is the transformers' (PINNED_LINE) — the panels plan monthly
   const plans = await getPlanNos();
   return (
     <ReadingColumn width="3xl" className="space-y-5">

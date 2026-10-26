@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { hrefWithLine } from "@/lib/domain/lines";
 import Link from "next/link";
 import { Layers } from "lucide-react";
 import { EmptyState } from "@/components/primitives";
@@ -58,7 +59,7 @@ export default async function MaterialDashboardPage({
         <LineSwitch />
         <nav className="seg" aria-label="Window">
           {WINDOWS.map((d) => (
-            <Link key={d} href={`/dashboards/material?days=${d}&line=TR`} className={d === days ? "on" : ""}>
+            <Link key={d} href={hrefWithLine(`/dashboards/material?days=${d}`, "TR")} className={d === days ? "on" : ""}>
               {label(d)}
             </Link>
           ))}

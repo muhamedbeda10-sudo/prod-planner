@@ -31,10 +31,15 @@ it("opens an order on its own line when the link names none", async () => {
   expect(h.withLine).toHaveBeenCalledWith("LV", expect.any(Function));
   expect(h.line).not.toHaveBeenCalled();
 });
-it("lets the link's line win over the order's", async () => {
+it("trusts the order's own line over the one the link named", async () => {
   h.order.mockResolvedValue({ line: "LV" });
   await TracePage({ searchParams: Promise.resolve({ mo: "LV-A", line: "TR" }) });
-  expect(h.withLine).toHaveBeenCalledWith("TR", expect.any(Function));
+  expect(h.withLine).toHaveBeenCalledWith("LV", expect.any(Function));
+});
+it("reads a code's line off the link, without looking for an order", async () => {
+  await TracePage({ searchParams: Promise.resolve({ bom: "B-1", line: "LV" }) });
+  expect(h.order).not.toHaveBeenCalled();
+  expect(h.withLine).toHaveBeenCalledWith("LV", expect.any(Function));
 });
 it("uses the line on screen when neither the link nor an order names one", async () => {
   h.line.mockResolvedValue("LV");

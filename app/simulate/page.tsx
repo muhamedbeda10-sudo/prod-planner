@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { getWhatIfInputs } from "@/lib/server/whatif";
-import { pinLine } from "@/lib/server/line";
 import { PageHead } from "@/components/ui";
 import { TrackerSections } from "@/components/TrackerSections";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
@@ -18,7 +17,6 @@ export default async function SimulatePage() {
   await guardTab("/simulate");
   const me = await getCurrentUser();
   if (!me) redirect("/login");
-  await pinLine("/simulate");
 
   const [inputs, saved, applied] = await Promise.all([
     getWhatIfInputs(),
