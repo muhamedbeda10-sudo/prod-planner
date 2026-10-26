@@ -1,11 +1,12 @@
 "use client";
 
 import {
-  Area, Bar, CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { CAT, Legend, TipBox, fmt, pct } from "@/components/charts/kit";
+import { CAT, Legend, TRACK, TipBox, fmt, pct } from "@/components/charts/kit";
 import { formatDate } from "@/lib/domain/format";
-import { OUTPUT_GROUPS, OUTPUT_GROUP_LABEL, type OutputDay, type OutputGroup } from "@/lib/domain/kpis";
+import { OUTPUT_GROUPS, OUTPUT_GROUP_LABEL, STAGES, STAGE_LABEL, type OutputDay, type OutputGroup } from "@/lib/domain/kpis";
+import type { StageDay } from "@/lib/domain/planningDashboard";
 import type { ProductivityPoint } from "@/lib/domain/floorKpis";
 
 // The cockpit's charts. One y-axis each (never two scales on one plot); the
@@ -25,44 +26,41 @@ const rowOf = <T,>(p: TipProps): T | null => (p.active && p.payload?.length ? (p
 
 // ---------------------------------------------------------------- the week's plan
 
-export interface BurnPoint { iso: string; label: string; req: number; covered: number; planCum: number; doneCum: number; isToday: boolean; isPast: boolean }
-
-/** The weekly plan delivery day by delivery day: what it asks, summed, against what is finished, summed. */
-export function BurnUpChart({ points }: { points: BurnPoint[] }) {
-  if (points.length === 0) return null;
-  const today = points.find((p) => p.isToday);
+/** The weekly plan delivery day by delivery day: what each day owes, and what
+ *  each stage has done of it — side by side, never stacked (a stage's pieces
+ *  are not the next stage's, nor finished transformers). Today has its slot. */
+export function StageByDayChart({ days }: { days: StageDay[] }) {
+  if (days.length === 0) return null;
+  const data = days.map((d) => ({ ...d, label: d.isToday ? "Today" : ddmm(d.dayISO) }));
+  const owed = days.reduce((s, d) => s + d.owed, 0), finished = days.reduce((s, d) => s + d.finish, 0);
+  const series = [
+    { key: "owed", label: "Owed", color: PLAN },
+    ...STAGES.map((s, i) => ({ key: s, label: STAGE_LABEL[s], color: CAT[i] })),
+  ] as const;
   return (
     <div className="space-y-2">
-      <Legend items={[{ label: "Asked for (summed)", color: PLAN, line: true }, { label: "Finished (summed)", color: ACCENT, line: true }]} />
-      <div className="viz w-full min-w-0" style={{ height: 230 }} role="group" aria-label={`Weekly plan: ${points.at(-1)!.doneCum} of ${points.at(-1)!.planCum} pieces finished; the numbers are under Table`}>
+      <Legend items={series.map((x) => ({ label: x.label, color: x.color }))} />
+      <div className="viz w-full min-w-0" style={{ height: 300 }} role="group" aria-label={`Weekly plan by delivery day: ${finished} of ${owed} pieces finished; each stage's pieces beside what the day owes`}>
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={points} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+          <ComposedChart data={data} margin={{ top: 16, right: 12, left: 0, bottom: 0 }} barGap={1} barCategoryGap="18%">
             <CartesianGrid vertical={false} />
-            <XAxis dataKey="label" tick={TICK} axisLine={AXIS} tickLine={false} />
+            <XAxis dataKey="label" tick={TICK} axisLine={AXIS} tickLine={false} interval="preserveStartEnd" minTickGap={8} />
             <YAxis tick={TICK} axisLine={false} tickLine={false} width={40} allowDecimals={false} />
             <Tooltip
-              cursor={{ stroke: "var(--border-strong)" }}
+              cursor={{ fill: "var(--surface-2)" }}
               content={(p: TipProps) => {
-                const r = rowOf<BurnPoint>(p);
+                const r = rowOf<(typeof data)[number]>(p);
                 if (!r) return null;
                 return (
                   <TipBox
-                    title={`${r.label} · ${formatDate(r.iso)}`}
-                    rows={[
-                      { label: "Asked that day", value: `${r.req} pcs` },
-                      { label: "Finished of them", value: `${r.covered} pcs` },
-                      { label: "Asked, summed", value: `${r.planCum} pcs`, color: PLAN, line: true },
-                      { label: "Finished, summed", value: `${r.doneCum} pcs`, color: ACCENT, line: true },
-                      // a day still to come is not late — what it lacks is still to make
-                      { label: r.isPast || r.isToday ? "Behind" : "Still to make", value: `${Math.max(0, r.planCum - r.doneCum)} pcs` },
-                    ]}
+                    title={`${r.isToday ? "Today · " : "Due "}${formatDate(r.dayISO)}`}
+                    rows={series.map((x) => ({ label: x.label, value: `${fmt(r[x.key])} pcs`, color: x.color }))}
                   />
                 );
               }}
             />
-            {today && <ReferenceLine x={today.label} stroke="var(--border-strong)" label={{ value: "today", position: "insideTopRight", fontSize: 11, fill: "var(--muted)" }} />}
-            <Area type="monotone" dataKey="doneCum" stroke={ACCENT} strokeWidth={2} fill={ACCENT} fillOpacity={0.12} isAnimationActive={false} dot={{ r: 3, strokeWidth: 2, stroke: "var(--surface)", fill: ACCENT }} />
-            <Line type="monotone" dataKey="planCum" stroke={PLAN} strokeWidth={2} isAnimationActive={false} dot={{ r: 3, strokeWidth: 2, stroke: "var(--surface)", fill: PLAN }} />
+            <ReferenceLine x="Today" stroke="var(--border-strong)" strokeDasharray="4 3" label={{ value: "today", position: "top", fontSize: 11, fill: "var(--muted)" }} />
+            {series.map((x) => <Bar key={x.key} dataKey={x.key} fill={x.color} radius={[2, 2, 0, 0]} isAnimationActive={false} maxBarSize={18} />)}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
@@ -70,63 +68,34 @@ export function BurnUpChart({ points }: { points: BurnPoint[] }) {
   );
 }
 
-// ---------------------------------------------------------------- the load ahead
+// ---------------------------------------------------------------- the panels' month
 
-export interface LoadPoint { dayISO: string; dueH: number; owedCum: number; canCum: number | null; tone: "bad" | "warn" | null }
-
-/** One centre's next working days as running totals: what it owes so far
- *  against what it can work so far. The days it is short are shaded. */
-export function LoadChart({ points, centre }: { points: LoadPoint[]; centre: string }) {
-  if (points.length === 0) return null;
-  // the days by their place in the horizon, so a day is a slot a band can cover
-  const data = points.map((p, i) => ({ ...p, i, label: ddmm(p.dayISO) }));
-  const measured = points.some((p) => p.canCum !== null);
-  // the runs of short days, each shaded across its days' whole slots
-  const bands: { from: number; to: number }[] = [];
-  for (const d of data) {
-    if (d.tone !== "bad") continue;
-    const last = bands.at(-1);
-    if (last && last.to === d.i - 1) last.to = d.i;
-    else bands.push({ from: d.i, to: d.i });
-  }
+/** The panels' month stage by stage: each stage's panels done of the month's,
+ *  the even pace of today marked across them. */
+export function LvMonthChart({ stages, panels, expectedShare }: { stages: { stage: string; required: number; done: number }[]; panels: number; expectedShare: number }) {
+  if (stages.length === 0 || panels <= 0) return null;
+  const pace = Math.round(panels * expectedShare);
+  const data = stages.map((s) => ({ ...s, left: Math.max(0, s.required - s.done) }));
   return (
     <div className="space-y-2">
-      <Legend items={[
-        { label: `${centre} owes, summed`, color: ACCENT, line: true },
-        ...(measured ? [{ label: "It can work, summed", color: PLAN, line: true }] : []),
-        ...(bands.length ? [{ label: "Short", color: "var(--bad-bg)" }] : []),
-      ]} />
-      <div className="viz w-full min-w-0" style={{ height: 240 }} role="group" aria-label={`${centre}: owes ${fmt(points.at(-1)!.owedCum, 1)} h over the horizon${points.at(-1)!.canCum === null ? "" : ` against ${fmt(points.at(-1)!.canCum!, 1)} h it can work`}; the numbers are under Table`}>
+      <Legend items={[{ label: "Done", color: ACCENT }, { label: "Still to do", color: TRACK }, { label: `Even pace today: ${fmt(pace)}`, color: "var(--foreground)", line: true }]} />
+      <div className="viz w-full min-w-0" style={{ height: 280 }} role="group" aria-label={`The month's ${panels} panels by stage against an even pace of ${pace} today`}>
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-            <CartesianGrid vertical={false} />
-            <XAxis type="number" dataKey="i" domain={[-0.5, data.length - 0.5]} ticks={data.map((d) => d.i)} tickFormatter={(i: number) => data[i]?.label ?? ""}
-              tick={TICK} axisLine={AXIS} tickLine={false} interval="preserveStartEnd" minTickGap={12} />
-            <YAxis tick={TICK} axisLine={false} tickLine={false} width={44} tickFormatter={(v: number) => fmt(v, 0)} />
-            {bands.map((b) => <ReferenceArea key={b.from} x1={b.from - 0.5} x2={b.to + 0.5} fill="var(--bad-bg)" fillOpacity={0.7} />)}
+          <ComposedChart data={data} layout="vertical" margin={{ top: 16, right: 16, left: 4, bottom: 0 }} barCategoryGap="28%">
+            <CartesianGrid horizontal={false} />
+            <XAxis type="number" domain={[0, panels]} tick={TICK} axisLine={AXIS} tickLine={false} allowDecimals={false} />
+            <YAxis type="category" dataKey="stage" tick={TICK} axisLine={false} tickLine={false} width={72} />
             <Tooltip
-              cursor={{ stroke: "var(--border-strong)" }}
+              cursor={{ fill: "var(--surface-2)" }}
               content={(p: TipProps) => {
                 const r = rowOf<(typeof data)[number]>(p);
                 if (!r) return null;
-                return (
-                  <TipBox
-                    title={`${centre} · ${formatDate(r.dayISO)}`}
-                    rows={[
-                      { label: "Due that day", value: h1(r.dueH) },
-                      { label: "Owes, summed", value: h1(r.owedCum), color: ACCENT, line: true },
-                      ...(r.canCum !== null ? [
-                        { label: "Can work, summed", value: h1(r.canCum), color: PLAN, line: true },
-                        { label: r.owedCum > r.canCum ? "Short by" : "Room left", value: h1(Math.abs(r.owedCum - r.canCum)) },
-                      ] : [{ label: "Can work", value: "not measured" }]),
-                    ]}
-                  />
-                );
+                return <TipBox title={r.stage} rows={[{ label: "Done", value: `${fmt(r.done)} of ${fmt(r.required)}`, color: ACCENT }, { label: "Even pace today", value: fmt(pace) }, { label: r.done >= pace ? "Ahead by" : "Behind by", value: fmt(Math.abs(r.done - pace)) }]} />;
               }}
             />
-            {/* a line, not a filled area: a fill over the short band would muddy both */}
-            <Line type="stepAfter" dataKey="owedCum" stroke={ACCENT} strokeWidth={2} dot={false} isAnimationActive={false} />
-            {measured && <Line type="linear" dataKey="canCum" stroke={PLAN} strokeWidth={2} dot={false} isAnimationActive={false} />}
+            <Bar dataKey="done" stackId="m" fill={ACCENT} isAnimationActive={false} />
+            <Bar dataKey="left" stackId="m" fill={TRACK} isAnimationActive={false} />
+            <ReferenceLine x={pace} stroke="var(--foreground)" strokeWidth={2} label={{ value: "even pace", position: "top", fontSize: 11, fill: "var(--muted)" }} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

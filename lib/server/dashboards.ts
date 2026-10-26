@@ -4,6 +4,7 @@ import { getLvFloorPeriod, getLvPlanning, lvWithoutFloor, type LvFloorPeriod, ty
 import type { CockpitAction } from "@/lib/domain/kpis";
 import type { FloorDept } from "@/lib/domain/floorKpis";
 import type { LvFloorFilter } from "@/lib/domain/lvKpis";
+import type { LvFamily } from "@/lib/domain/lv";
 import { mergeActions, plantPlanningSummary, type PlantPlanningSummary } from "@/lib/domain/plantKpis";
 
 // The whole plant's dashboards — Planning and Production each show both
@@ -35,9 +36,10 @@ export interface PlanningAll {
   summary: PlantPlanningSummary;
 }
 
-/** Planning for the whole plant. `floor`: whether the account sees Shifts. */
-export async function loadPlanningAll(floor: boolean, period: { from?: Date | null; to?: Date | null } = {}, now = new Date()): Promise<PlanningAll> {
-  const [trRaw, lvRaw] = await Promise.all([getCockpit(now), getLvPlanning(period, now)]);
+/** Planning for the whole plant. `floor`: whether the account sees Shifts;
+ *  `planNo` the transformers' weekly plan, `family` the panels' (the page's filters). */
+export async function loadPlanningAll(floor: boolean, period: { from?: Date | null; to?: Date | null; family?: LvFamily | null; planNo?: number | null } = {}, now = new Date()): Promise<PlanningAll> {
+  const [trRaw, lvRaw] = await Promise.all([getCockpit(now, { planNo: period.planNo }), getLvPlanning(period, now)]);
   const tr = trPlanningFor(trRaw, floor), lv = lvPlanningFor(lvRaw, floor);
   return { tr, lv, actions: mergeActions(tr.actions, lv.actions), summary: planningSummary(tr, lv) };
 }

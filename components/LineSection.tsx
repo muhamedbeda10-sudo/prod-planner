@@ -13,7 +13,7 @@ import { useStoredValue, writeStoredValue } from "@/components/useStoredFilters"
 
 const storeKey = (page: string, id: string) => `fold:${page}:${id}`;
 
-export function LineSection({ id, page, title, sub, children }: {
+export function LineSection({ id, page, title, sub, foldable = true, children }: {
   /** The anchor a link opens the section at. */
   id: string;
   /** Which dashboard — the fold is remembered per page. */
@@ -21,10 +21,13 @@ export function LineSection({ id, page, title, sub, children }: {
   title: string;
   /** A quiet line beside the title: the plan, the last recorded day. */
   sub?: ReactNode;
+  /** Whether it folds — not when it is the only line on the page (the page's own switch shows the other). */
+  foldable?: boolean;
   children: ReactNode;
 }) {
   const key = storeKey(page, id);
-  const folded = useStoredValue(key) === "0";
+  const stored = useStoredValue(key);
+  const folded = foldable && stored === "0";
   const bodyId = useId();
 
   // a link naming the section opens it, whatever was remembered; the hash is
@@ -44,6 +47,12 @@ export function LineSection({ id, page, title, sub, children }: {
   return (
     <section id={id} className="space-y-3 scroll-mt-16" aria-labelledby={`${id}-title`}>
       <h2 id={`${id}-title`} className="m-0">
+        {!foldable ? (
+          <span className="no-print w-full flex flex-wrap items-baseline gap-x-3 gap-y-0.5 bg-surface border rounded-xl px-4 py-2.5">
+            <span className="font-bold">{title}</span>
+            {sub && <span className="text-xs text-muted font-normal min-w-0">{sub}</span>}
+          </span>
+        ) : (
         <button
           type="button"
           onClick={() => writeStoredValue(key, folded ? "" : "0")}
@@ -56,6 +65,7 @@ export function LineSection({ id, page, title, sub, children }: {
           {sub && <span className="text-xs text-muted font-normal min-w-0">{sub}</span>}
           <span className="ms-auto text-xs text-muted font-normal" aria-hidden>{folded ? "Show" : "Hide"}</span>
         </button>
+        )}
         <span className="print-only text-base font-bold">{title}</span>
       </h2>
       <div id={bodyId} className={folded ? "hidden print:block print:space-y-3" : "space-y-3"}>

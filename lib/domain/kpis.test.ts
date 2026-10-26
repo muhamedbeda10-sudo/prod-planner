@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  burnUp, byStage, centreStat, cockpitActions, combinedStat, dailyOutput, workingDaysFrom, earnedOfRecord, efficiencyBand, inMonthPlan, isFloorAction, lateLines, loadAhead, loadSeries, loadTone,
+  byStage, centreStat, cockpitActions, combinedStat, dailyOutput, workingDaysFrom, earnedOfRecord, efficiencyBand, inMonthPlan, isFloorAction, lateLines, loadAhead, loadTone,
   manpowerPlan, monthPace, paretoOf, parseKpiSnapshot, weekChange,
   planAdherence, stageDueISO, weldingCoverage, zeroCentres, type CentreDay, type PlanCell,
   monthOf,
@@ -219,24 +219,15 @@ describe("the month's manpower", () => {
 });
 
 describe("the charts' series", () => {
-  it("sums the week's plan and what is finished day by day", () => {
-    const b = burnUp([
-      { iso: "2026-10-22", label: "Thu", req: 10, covered: 8, isToday: false },
-      { iso: "2026-10-24", label: "Sat", req: 5, covered: 5, isToday: true },
-      { iso: "2026-10-25", label: "Sun", req: 6, covered: 1, isToday: false },
-    ]);
-    expect(b.map((d) => [d.planCum, d.doneCum])).toEqual([[10, 8], [15, 13], [21, 14]]);
-    expect(b[1].isToday).toBe(true);
-  });
   it("keeps the running totals unrounded until shown, so a day that is not short never reads as short", () => {
     const l = loadAhead("Welding", ["2026-10-20", "2026-10-21", "2026-10-22"], [{ dayISO: "2026-10-22", dueH: 100 }], 100 / 3);
-    expect(loadSeries(l).at(-1)).toMatchObject({ owedCum: 100, canCum: 100, tone: "warn" });
+    expect(l.days.at(-1)).toMatchObject({ owedCum: 100, canCum: 100, tone: "warn" });
   });
   it("runs a centre's load as what it owes so far against what it could have worked so far", () => {
     const l = loadAhead("Welding", ["2026-10-20", "2026-10-21", "2026-10-22"], [{ dayISO: "2026-10-20", dueH: 80 }, { dayISO: "2026-10-22", dueH: 40 }], 50);
-    expect(loadSeries(l).map((d) => [d.owedCum, d.canCum, d.tone])).toEqual([[80, 50, "bad"], [80, 100, null], [120, 150, null]]);
+    expect(l.days.map((d) => [d.owedCum, d.canCum, d.tone])).toEqual([[80, 50, "bad"], [80, 100, null], [120, 150, null]]);
     // no capacity to judge by: the owed line alone
-    expect(loadSeries(loadAhead("Painting", ["2026-10-20"], [{ dayISO: "2026-10-20", dueH: 5 }], null))[0]).toMatchObject({ owedCum: 5, canCum: null });
+    expect(loadAhead("Painting", ["2026-10-20"], [{ dayISO: "2026-10-20", dueH: 5 }], null).days[0]).toMatchObject({ owedCum: 5, canCum: null });
   });
   it("adds a day's output up by department, Fabrication's three centres as one, against the hours booked", () => {
     const out = dailyOutput([

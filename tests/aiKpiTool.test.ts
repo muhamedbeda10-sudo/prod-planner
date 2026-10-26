@@ -15,7 +15,8 @@ const stat = (o = {}) => ({ centre: "Welding", days: 4, workedH: 100, earnedH: 9
 // the cockpit as the page gets it from getCockpit
 const cockpit = {
   todayISO: "2026-10-25", lastDayISO: "2026-10-24",
-  week: { planNo: 43, req: 280, covered: 28, days: [{ iso: "2026-10-22", label: "Thu", req: 45, covered: 9, isPast: true, isToday: false }], adherence: [{ stage: "finish", due: 90, done: 18, rate: 0.2 }], late: [{ dayISO: "2026-10-22", bom: "B1", soi: null, item: "TN", stage: "weld", short: 2, owed: 6 }], lateCount: 29 },
+  week: { planNo: 43, req: 280, covered: 28, days: [{ iso: "2026-10-22", label: "Thu", req: 45, covered: 9, isPast: true, isToday: false }], adherence: [{ stage: "finish", due: 90, done: 18, rate: 0.2 }], late: [{ dayISO: "2026-10-22", bom: "B1", soi: null, item: "TN", stage: "weld", short: 2, owed: 6 }], lateCount: 29, planNos: [43, 42], newest: true, lines: [] },
+  leads: { cut: 4, weld: 1 }, horizonDays: 10,
   centres: [{ centre: "Welding", last: stat({ efficiency: 0.5333 }), recent: stat(), trend: [{ dateISO: "2026-10-24", earnedH: 90, workedH: 100, efficiency: 0.9 }] }],
   fabrication: { workedH: 300, earnedH: 240, efficiency: 0.8 },
   load: [{ centre: "Welding", measured: true, days: [{ dayISO: "2026-10-25", dueH: 40, capacityH: 30, tone: "bad" }], loadRate: 0.734, behindH: 256.1, shortFromISO: "2026-10-25", clearsISO: "2026-11-02", shortH: 0 }],
@@ -34,7 +35,7 @@ describe("get_kpis", () => {
     h.getCockpit.mockResolvedValue(cockpit);
     const now = new Date("2026-10-25T08:00:00Z");
     const out = await getKpisTool.run({}, { now, hidden: new Set() } as never);
-    expect(h.getCockpit).toHaveBeenCalledWith(now);
+    expect(h.getCockpit).toHaveBeenCalledWith(now, { planNo: null });
     const j = JSON.parse(out.text);
     expect(j.decisions).toEqual(["bad: 29 plan line(s) are behind", "warn: No material cost 6 machine hours"]);
     expect(j.weeklyPlan).toMatchObject({ planNo: 43, behindCount: 29, adherence: [{ stage: "finish", rate: 0.2 }] });
@@ -48,7 +49,7 @@ describe("get_kpis", () => {
     expect(j.losses).toMatchObject({ unplannedH: 6.5, absentRate: 0.11, overtimeH: 126 });
     expect(j.trend[0]).toMatchObject({ day: "2026-10-25", behind: 29, efficiency: { Welding: 0.9 } });
     expect(j.workBetweenStages).toMatchObject({ cutNotWelded: [{ item: "TN", pcs: 12 }], returnsOpen: { count: 1, qty: 2 } });
-    expect(out.links).toEqual([{ label: "Planning dashboard (transformers)", href: "/#tr" }]);
+    expect(out.links).toEqual([{ label: "Planning dashboard (transformers)", href: "/?scope=tr" }]);
   });
 
   it("leaves the shift log's figures out for a person the Shifts screen is closed to", async () => {
@@ -69,7 +70,8 @@ describe("get_kpis", () => {
     const late = Array.from({ length: 23 }, (_, i) => ({ dayISO: `2026-10-${String(i + 1).padStart(2, "0")}`, bom: `B${i}`, soi: null, item: "TN", stage: "weld", short: 1, owed: 1 }));
     h.getCockpit.mockResolvedValue({
       todayISO: "2026-10-25", lastDayISO: null,
-      week: { planNo: 43, req: 0, covered: 0, days: [], adherence: [], late, lateCount: late.length },
+      week: { planNo: 43, req: 0, covered: 0, days: [], adherence: [], late, lateCount: late.length, planNos: [43], newest: true, lines: [] },
+      leads: { cut: 4, weld: 1 }, horizonDays: 10,
       centres: [], fabrication: { workedH: 0, earnedH: 0, efficiency: null }, load: [], coverage: { wipH: 0, ratePerDay: 0, days: 0, band: "ok", byItem: [] },
       manpower: { monthLabel: "October 2026", monthWd: 25, leftWd: 5, hoursPerPersonDay: 8, pieces: 0, rows: [] },
       losses: { causes: [], unplannedH: 0, plannedH: 0, absentRate: null, overtimeH: 0, fromISO: null },
@@ -93,6 +95,7 @@ describe("get_kpis on the panels and the plant", () => {
     manpower: { hoursPerPersonDay: 8, rows: [{ centre: "WeldingLV", requiredH: 120, doneH: 60, doneBeforeH: 0, leftH: 60, needed: 0.6, neededNow: 1.5, present: 0.5, gap: -1, tone: "bad" }], coverage: { orders: 3, priced: 2, panels: 30, pricedPanels: 20 } },
     depts: [{ dept: "WeldingLV", days: 4, efficiency: 0.5, workedH: 100, earnedH: 50, people: 3 }],
     actions: [{ tone: "bad", text: "October 2026's plan is behind its pace", href: "/tracker" }],
+    orders: [], family: null,
     days: { days: [{ dateISO: "2026-10-24", byStage: { Punching: 2, Bending: 0, Welding: 1, Painting: 0, Delivered: 0 } }], fromISO: "2026-10-11", toISO: "2026-10-25", ranged: false, clamped: false, period: {}, month: {}, monthLabel: "October 2026", open: { orders: 3, panels: 30, byStage: {}, urgent: 1 } },
   };
   it("reads the panels' own month, chain and people when the app is on LV, and says what the panels have no figure for", async () => {
@@ -106,8 +109,8 @@ describe("get_kpis on the panels and the plant", () => {
     expect(j.manpower.coverage).toEqual({ orders: 3, priced: 2, panels: 30, pricedPanels: 20 });
     expect(j.manpower.departments[0]).toMatchObject({ dept: "WeldingLV", peoplePresent: 0.5, gap: -1 });
     expect(j.notAvailable.join(" ")).toContain("no delivery dates");
-    // the link opens the page at the panels' section
-    expect(out.links).toEqual([{ label: "Planning dashboard (LV panels)", href: "/#lv" }]);
+    // the link opens the page on the panels
+    expect(out.links).toEqual([{ label: "Planning dashboard (LV panels)", href: "/?scope=lv" }]);
     // the shift log's figures leave with the Shifts screen
     const closed = JSON.parse((await getKpisTool.run({ line: "LV" }, { now: new Date(), hidden: new Set(["shifts"]) } as never)).text);
     expect(closed.departmentsRecent).toBeUndefined();
@@ -123,7 +126,8 @@ describe("get_kpis on the panels and the plant", () => {
     expect(j.lvPanels.line).toBe("LV");
     // the cockpit's one centre recent 90/100 and the panels' 50/100: 140/200, not (0.9 + 0.5) / 2
     expect(j.plant.efficiencyRecentDays).toMatchObject({ TR: 0.9, LV: 0.5, plant: 0.7 });
-    expect(j.plant.peopleShortFromToday).toMatchObject({ TR: 3, LV: 1, total: 4 });
+    expect(j.plant.peopleToAddFromToday).toMatchObject({ TR: 3, LV: 1, total: 4 });
+    expect(j.plant.stdHoursLeftThisMonth).toMatchObject({ TR: 1000, LV: 60, total: 1060 });
     expect(j.decisions[0]).toBe("TR bad: 29 plan line(s) are behind");
     expect(j.decisions).toContain("LV bad: October 2026's plan is behind its pace");
     expect(j.plant.notes.join(" ")).toContain("Pieces are never added across the lines");
@@ -133,13 +137,23 @@ describe("get_kpis on the panels and the plant", () => {
     h.getCockpit.mockResolvedValue(cockpit);
     const out = await getKpisTool.run({ line: "TR" }, { now: new Date("2026-10-25T08:00:00Z"), hidden: new Set(), line: "LV" } as never);
     expect(JSON.parse(out.text).line).toBe("TR");
-    expect(out.links).toEqual([{ label: "Planning dashboard (transformers)", href: "/#tr" }]);
+    expect(out.links).toEqual([{ label: "Planning dashboard (transformers)", href: "/?scope=tr" }]);
   });
   it("reads both lines when the person is on a dashboard and the question names none — the page shows both", async () => {
     h.getCockpit.mockResolvedValue(cockpit);
     h.getLvPlanning.mockResolvedValue(lv);
     const onPlanning = await getKpisTool.run({}, { now: new Date("2026-10-25T08:00:00Z"), hidden: new Set(), line: "LV", page: { path: "/", filters: {} } } as never);
     expect(JSON.parse(onPlanning.text).line).toBe("all");
+    // the Planning page's own scope and filters, as the person has them on screen
+    h.getLvPlanning.mockClear();
+    const onPanels = await getKpisTool.run({}, { now: new Date("2026-10-25T08:00:00Z"), hidden: new Set(), page: { path: "/", filters: { scope: "lv", family: "mb" } } } as never);
+    expect(JSON.parse(onPanels.text).line).toBe("LV");
+    expect(h.getLvPlanning).toHaveBeenCalledWith({ family: "MB" }, expect.any(Date));
+    const onPlan = await getKpisTool.run({}, { now: new Date("2026-10-25T08:00:00Z"), hidden: new Set(), page: { path: "/", filters: { scope: "tr", plan: "42", centre: "Welding" } } } as never);
+    const tr = JSON.parse(onPlan.text);
+    expect(h.getCockpit).toHaveBeenLastCalledWith(expect.any(Date), { planNo: 42 });
+    expect(tr.filters).toMatchObject({ workCentre: "Welding" });
+    expect(onPlan.links).toEqual([{ label: "Planning dashboard (transformers)", href: "/?scope=tr&plan=42&centre=Welding" }]);
     // elsewhere, the line the app is on
     const onTracker = await getKpisTool.run({}, { now: new Date("2026-10-25T08:00:00Z"), hidden: new Set(), line: "LV", page: { path: "/tracker", filters: {} } } as never);
     expect(JSON.parse(onTracker.text).line).toBe("LV");

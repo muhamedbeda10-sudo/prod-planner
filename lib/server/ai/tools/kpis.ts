@@ -7,10 +7,11 @@ import { LOSS_DAYS } from "@/lib/domain/losses";
 import { OUTPUT_GROUPS, STAGES, dailyOutput, isFloorAction, monthPace, weekChange, type KpiSnapshotData, type OutputDay } from "@/lib/domain/kpis";
 import { FLOOR_DEFAULT_DAYS, FLOOR_HISTORY_DAYS, FLOOR_MAX_DAYS, FLOOR_TREND_WINDOW, floorRequest } from "@/lib/domain/floorKpis";
 import { LV_FLOOR_DEPTS, isLvFloorDept, lvFloorDeptOf, type LvFloorFilter } from "@/lib/domain/lvKpis";
-import { planningHref, productionHref } from "@/lib/domain/dashboardLinks";
-import { DEFAULT_LINE, lineParam as namedLine, lineSection, showsBothLines } from "@/lib/domain/lines";
+import { productionHref } from "@/lib/domain/dashboardLinks";
+import { NO_FILTERS, lvView, pageLineOf, planningFiltersOf, planningUrl, plantTotals, scopeOfLine, trView, type PlanningFilters } from "@/lib/domain/planningDashboard";
+import { DEFAULT_LINE, lineParam as namedLine, lineSection } from "@/lib/domain/lines";
 import type { OutputByTypeData, TypeRow } from "@/lib/domain/outputByType";
-import { LV_STAGES } from "@/lib/domain/lv";
+import { LV_FAMILY_LABEL, LV_STAGES } from "@/lib/domain/lv";
 import { linePart, plantEfficiency } from "@/lib/domain/plantKpis";
 import { factoryDayISO } from "@/lib/domain/dates";
 import type { DowntimeCause } from "@/lib/domain/downtime";
@@ -38,8 +39,12 @@ const scopeOf = (line: unknown, ctx: ToolCtx): Scope => {
   if (typeof line === "string" && line.trim().toLowerCase() === "all") return "all";
   const named = namedLine(line);
   if (named) return named;
-  return ctx.page && showsBothLines(ctx.page.path) ? "all" : ctx.line ?? DEFAULT_LINE;
+  // the line the page shows: Planning's own scope, both on a plant dashboard
+  const shown = pageLineOf(ctx.page);
+  return shown === "both" ? "all" : shown ?? ctx.line ?? DEFAULT_LINE;
 };
+/** The Planning dashboard's filters when the person is on it — the same view the page shows. */
+const pageFilters = (ctx: ToolCtx): PlanningFilters => (ctx.page?.path === "/" ? { ...planningFiltersOf(ctx.page.filters), detail: null } : NO_FILTERS);
 const lineParam = { type: "string" as const, enum: [...SCOPES], description: "TR (the transformers), LV (the panels) or all (the whole plant — each line in its own terms, the plant's figures only where they add). Left out: both lines when the person is on a dashboard (they show both on one page), else the line the app is showing." };
 /** Where a scope's figures are on a dashboard: a line's section, or the page's top. */
 const sectionOf = (s: Scope) => (s === "all" ? undefined : lineSection(s));
@@ -56,8 +61,9 @@ type Picker = (p: KpiSnapshotData) => number | null | undefined;
 const WEEK_FIGURES: [string, Picker][] = [["planDeliveredOnItsDay", (p) => p.adherence.finish], ["linesBehind", (p) => p.late], ["weldingCoverageDays", (p) => p.coverageDays]];
 const FLOOR_WEEK_FIGURES: [string, Picker][] = [["fabricationEfficiency", (p) => p.fabEfficiency], ["machineHoursLost", (p) => p.unplannedH]];
 
-/** The transformers' Planning dashboard as the model reads it. */
-function trPlanningView(c: CockpitData, floor: boolean) {
+/** The transformers' Planning dashboard as the model reads it, under the page's filters. */
+function trPlanningView(c: CockpitData, floor: boolean, f: PlanningFilters = NO_FILTERS) {
+  const v = trView(c, f, { floor });
   const pt = (t: CockpitData["trend"][number]) => ({
     day: t.dateISO, behind: t.late, coverageDays: t.coverageDays,
     adherence: Object.fromEntries(Object.entries(t.adherence).map(([k, v]) => [k, r2(v)])),
@@ -68,6 +74,21 @@ function trPlanningView(c: CockpitData, floor: boolean) {
     today: c.todayISO,
     lastRecordedDay: c.lastDayISO,
     decisions: c.actions.filter((a) => floor || !isFloorAction(a)).map((a) => `${a.tone}: ${a.text}`),
+    filters: { planNo: c.week.planNo, newestPlan: c.week.newest, component: f.item, workCentre: f.centre, search: f.q || null, note: "The page's filters narrow the plan lines (component, search) and the hours, load and people (work centre); weeklyPlan below is the whole plan." },
+    leadDays: c.leads,
+    // under the page's filters, as its tiles and tables read them
+    onTheFilters: {
+      // the plan's adherence under a component or search filter (unfiltered, it is weeklyPlan's)
+      ...(f.item || f.q ? { adherence: v.adherence.map((a) => ({ stage: a.stage, dueByToday: a.due, done: a.done, rate: r2(a.rate) })) } : {}),
+      linesBehind: v.late.length,
+      workHoursLeft: v.hoursLeft.total, unpricedLines: v.hoursLeft.unpriced,
+      capacityShortH: v.capacity.shortH, centresNotMeasured: v.capacity.unmeasured,
+      ...(floor ? { peopleToAdd: v.people.toAdd } : {}),
+      dataNotes: v.quality.map((q) => q.label),
+      atRiskCount: v.atRisk.length,
+      // the first 25 keep the answer readable; atRiskCount says how many there are
+      atRisk: v.atRisk.slice(0, 25).map((r) => ({ status: r.status, mo: r.mo, soi: r.soi, bom: r.bom, item: r.item, stageDue: r.stageDueISO, required: r.required, done: r.done, left: r.remaining, heldAt: r.stage, stdHoursLeft: r.hoursLeft, why: r.reason })),
+    },
     weeklyPlan: {
       planNo: c.week.planNo, piecesRequired: c.week.req, piecesFinished: c.week.covered,
       adherence: c.week.adherence.map((a) => ({ stage: a.stage, dueByToday: a.due, done: a.done, rate: r2(a.rate) })),
@@ -121,9 +142,10 @@ function trPlanningView(c: CockpitData, floor: boolean) {
   };
 }
 
-/** The panels' Planning dashboard as the model reads it. */
-function lvPlanningView(d: LvPlanningData, floor: boolean) {
+/** The panels' Planning dashboard as the model reads it, under the page's filters. */
+function lvPlanningView(d: LvPlanningData, floor: boolean, f: PlanningFilters = NO_FILTERS) {
   const m = d.month;
+  const v = lvView(d, f, { floor });
   return {
     line: "LV",
     today: d.todayISO,
@@ -138,6 +160,13 @@ function lvPlanningView(d: LvPlanningData, floor: boolean) {
     // netted order by order along the chain — panels, where they stand (not since when)
     workBetweenStages: { notStarted: d.wip.notStarted, waitingBend: d.wip.waitingBend, waitingWeld: d.wip.waitingWeld, waitingPaint: d.wip.waitingPaint, waitingDelivery: d.wip.waitingDelivery, onHoldPanels: d.wip.onHold, ordersOnHold: d.wip.heldOrders },
     urgentOrdersShort: d.urgentStuck.slice(0, 20),
+    filters: { family: d.family === null ? null : LV_FAMILY_LABEL[d.family], department: f.lvDept },
+    onTheFilters: {
+      ...(floor ? { peopleToAdd: v.people.toAdd } : {}),
+      dataNotes: v.quality.map((q) => q.label),
+      ordersShortCount: v.atRisk.length,
+      ordersShort: v.atRisk.slice(0, 25).map((r) => ({ status: r.status, mo: r.mo, bom: r.bom, product: r.item, required: r.required, painted: r.done, left: r.remaining, heldAt: r.stage, stdHoursLeft: r.hoursLeft, why: r.reason })),
+    },
     manpower: {
       hoursPerPersonDay: d.manpower.hoursPerPersonDay,
       coverage: d.manpower.coverage,
@@ -158,7 +187,7 @@ export const getKpisTool: ReadTool<{ line?: Scope }> = {
   name: "get_kpis",
   title: "Reading the Planning dashboard",
   description:
-    "The planner's KPIs as the Planning dashboard (the home page, /, the first place of the Dashboards tab) shows them, for one line or the whole plant (line: TR, LV or all — the page shows both lines, the plant's figures first and a section per line; left out, both on a dashboard, else the line the app is on). " +
+    "The planner's KPIs as the Planning dashboard (the home page, /, the first place of the Dashboards tab) shows them, for one line or the whole plant (line: TR, LV or all — the page has an All | Transformers | LV Panels switch, the plant's figures first under All and a section per line; left out, the scope the Planning page shows (with its filters: weekly plan, component, work centre, search; the panels' family and department — read under onTheFilters, with every line at risk and what the figures rest on), both lines on another dashboard, else the line the app is on). " +
     "TR (the transformers), all in STANDARD HOURS (what the work is worth, never pieces): the decisions it flags today; the newest weekly plan — each stage's pieces due by today against done (adherence), and the lines behind with the stage they are stuck at (the oldest 20; behindCount counts them all); " +
     "each work centre (laser / punch, bending, fin folding, welding, shot blast, painting) — earned std-hours against the man-hours the shift log booked there (efficiency, 100% = the standard pace) on the last recorded day and over the recent recorded days, people a day, machine availability, the daily trend, and Fabrication's three centres together; " +
     "the load ahead — each centre's remaining plan hours over the next 10 working days against what it can work (falling behind and when it catches up, or short at the end; not measured without booked hours); " +
@@ -175,17 +204,19 @@ export const getKpisTool: ReadTool<{ line?: Scope }> = {
     const scope = scopeOf(input.line, ctx);
     // the shift log's figures stay with the people who see Shifts, as on the page
     const floor = !ctx.hidden.has("shifts");
-    const link = (s: Scope) => ({ label: `Planning dashboard (${SCOPE_NAME[s]})`, href: planningHref(sectionOf(s)) });
+    const f = pageFilters(ctx);
+    const link = (s: Scope) => ({ label: `Planning dashboard (${SCOPE_NAME[s]})`, href: planningUrl(f, { scope: scopeOfLine(s === "all" ? null : s) }) });
     if (scope === "LV") {
-      const d = await getLvPlanning({}, ctx.now);
-      return { ok: true, text: JSON.stringify(lvPlanningView(floor ? d : lvWithoutFloor(d), floor)), links: [link("LV")] };
+      const d = await getLvPlanning({ family: f.family }, ctx.now);
+      return { ok: true, text: JSON.stringify(lvPlanningView(floor ? d : lvWithoutFloor(d), floor, f)), links: [link("LV")] };
     }
     if (scope === "TR") {
-      const c = await getCockpit(ctx.now);
-      return { ok: true, text: JSON.stringify(trPlanningView(floor ? c : withoutFloor(c), floor)), links: [link("TR")] };
+      const c = await getCockpit(ctx.now, { planNo: f.plan });
+      return { ok: true, text: JSON.stringify(trPlanningView(floor ? c : withoutFloor(c), floor, f)), links: [link("TR")] };
     }
     // the plant as the page assembles it (lib/server/dashboards.ts): stripped, merged, summed by the same rules
-    const { tr, lv, actions, summary } = await loadPlanningAll(floor, {}, ctx.now);
+    const { tr, lv, actions, summary } = await loadPlanningAll(floor, { family: f.family, planNo: f.plan }, ctx.now);
+    const plant = plantTotals(trView(tr, f, { floor }), lvView(lv, f, { floor }));
     return {
       ok: true,
       text: JSON.stringify({
@@ -194,14 +225,16 @@ export const getKpisTool: ReadTool<{ line?: Scope }> = {
         decisions: actions.map((a) => `${a.line} ${a.tone}: ${a.text}`),
         plant: {
           ...(floor ? {
-            peopleShortFromToday: { ...summary.peopleShort, note: "Each line's own departments, so they add." },
+            // the page's own plant figures, under its filters (plantTotals)
+            peopleToAddFromToday: { ...plant.toAdd, note: "Each line's own departments, so they add; no overtime assumed." },
             efficiencyRecentDays: { TR: r2(summary.recentEfficiency.TR), LV: r2(summary.recentEfficiency.LV), plant: r2(summary.recentEfficiency.plant), note: "Each over its last recorded days; the plant's is Σ earned ÷ Σ worked." },
           } : {}),
+          stdHoursLeftThisMonth: { ...plant.hoursLeft, note: "Each line priced by its own sheet; hours add across the lines, pieces never." },
           planProgress: { TR: tr.week.adherence.find((a) => a.stage === "finish") ?? null, LV: { month: lv.month.monthLabel, painted: lv.month.complete, planned: lv.month.panels, doneShare: r2(lv.month.pace.doneShare), evenPaceShare: r2(lv.month.pace.expectedShare) }, note: "Judged per line — no single percentage." },
           notes: PLANT_NOTES,
         },
-        transformers: trPlanningView(tr, floor),
-        lvPanels: lvPlanningView(lv, floor),
+        transformers: trPlanningView(tr, floor, f),
+        lvPanels: lvPlanningView(lv, floor, f),
       }),
       links: [link("all")],
     };

@@ -8,6 +8,8 @@ const LABELS: Record<string, string> = {
   dept: "Department", plan: "Plan", date: "Date",
   // the Production dashboard keeps the panels' department apart from the transformers'
   lvDept: "LV department",
+  // the Planning dashboard's scope (All | Transformers | LV Panels) and its transformers' filters
+  scope: "Scope shown", item: "Component", centre: "Work centre",
   // the line a page's address names (its Transformers | LV Panels switch)
   line: "Line shown",
 };

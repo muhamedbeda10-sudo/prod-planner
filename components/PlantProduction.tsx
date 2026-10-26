@@ -2,13 +2,11 @@
 
 import { Info } from "lucide-react";
 import { ChartCard, StatTile, fmt, pctOrDash } from "@/components/charts/kit";
-import { DecisionList } from "@/components/CockpitDecisions";
 import { OutputChart } from "@/components/LazyCharts";
 import { OutputByType } from "@/components/OutputByType";
 import { EmptyState } from "@/components/primitives";
 import { slicerRangeLabel } from "@/lib/domain/dateSlicer";
 import { stopDurationLabel } from "@/lib/domain/downtime";
-import type { CockpitAction } from "@/lib/domain/kpis";
 import { LINE_LABEL } from "@/lib/domain/lines";
 import { linePart, plantDailyOutput, plantEfficiency } from "@/lib/domain/plantKpis";
 import type { FloorPeriod } from "@/lib/server/kpis";
@@ -21,13 +19,13 @@ export type PlantProductionLv = Pick<LvFloorPeriod, "summary" | "output" | "pric
 // The plant's figures at the top of the Production dashboard, over the
 // page's period: the plant's efficiency from the two lines' SUMS (never the
 // mean of their rates), its standard hours and man-hours added, what was
-// made item by item against the month's plan, both lines' interventions in
-// one list and the output day by day. The machines' stops are recorded by
+// made item by item against the month's plan and the output day by day (both
+// lines' interventions are the bar's Interventions button). The machines' stops are recorded by
 // department on shared machines, so they are the plant's, counted once;
 // pieces are shown per line and per item and never added across them. Each
 // line's own figures follow in its section.
 
-export function PlantProduction({ tr, lv, actions }: { tr: PlantProductionTr; lv: PlantProductionLv; actions: readonly CockpitAction[] }) {
+export function PlantProduction({ tr, lv }: { tr: PlantProductionTr; lv: PlantProductionLv }) {
   const plant = plantEfficiency([linePart("TR", tr), linePart("LV", lv)]);
   const range = slicerRangeLabel(tr.fromISO, tr.toISO);
   // each line's earned hours per day, side by side; the man-hours added (the domain's rule)
@@ -54,15 +52,11 @@ export function PlantProduction({ tr, lv, actions }: { tr: PlantProductionTr; lv
 
       <OutputByType tr={tr.byType} lv={lv.byType} range={range} />
 
-      <div className="grid gap-3 xl:grid-cols-12">
-        <ChartCard className="xl:col-span-5" title="Needs intervention in production" about="Both lines' interventions in one list, worst first, each tagged with its line.">
-          <DecisionList actions={actions} nothing="Nothing pressing on the floor." />
-        </ChartCard>
-        <ChartCard className="xl:col-span-7" title="What did the plant turn out each day?" about="Standard hours earned by each line against the man-hours both booked — one unit, so the lines stack. The shot-blast crew's hours are on the transformers' side, the panels' blasting included."
+      {/* what needs intervention is the bar's Interventions button, a popup — not a card of its own */}
+      <ChartCard title="What did the plant turn out each day?" about="Standard hours earned by each line against the man-hours both booked — one unit, so the lines stack. The shot-blast crew's hours are on the transformers' side, the panels' blasting included."
           data={noDays ? undefined : output.map((d) => ({ Day: d.dateISO, "TR h": Math.round(d.values.TR * 10) / 10, "LV h": Math.round(d.values.LV * 10) / 10, "Earned h": Math.round(d.earnedH * 10) / 10, "Booked h": Math.round(d.workedH * 10) / 10, "Efficiency %": d.efficiency === null ? "" : Math.round(d.efficiency * 100) }))}>
           {noDays ? <EmptyState compact icon={Info} title="No shift day recorded in this period" hint="Pick a longer period, or record the attendance on Shifts." /> : <OutputChart days={output} groups={["TR", "LV"]} labels={LINE_LABEL} groupWord="line" />}
-        </ChartCard>
-      </div>
+      </ChartCard>
     </section>
   );
 }

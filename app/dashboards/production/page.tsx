@@ -73,7 +73,6 @@ export default async function ProductionDashboardPage({ searchParams }: { search
           // the browser gets what the plant's figures show; each section gets its own line's
           tr={{ fromISO: tr.fromISO, toISO: tr.toISO, summary: tr.summary, output: tr.output, losses: tr.losses, pricedShare: tr.pricedShare, byType: tr.byType }}
           lv={{ summary: lv.summary, output: lv.output, pricedShare: lv.pricedShare, byType: lv.byType }}
-          actions={actions}
         />
       ) : <LoadFailed what="The plant's figures" />}
 

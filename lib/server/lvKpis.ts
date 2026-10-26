@@ -1,8 +1,9 @@
 import "server-only";
+import type { LvOrderLine } from "@/lib/domain/planningDashboard";
 import { prisma } from "@/lib/db";
 import { factoryDayISO, toISODate } from "@/lib/domain/dates";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
-import { LV_ITEM, LV_STAGES, type LvStage } from "@/lib/domain/lv";
+import { LV_ITEM, LV_STAGES, type LvFamily, type LvStage } from "@/lib/domain/lv";
 import type { LvRate } from "@/lib/domain/lvStd";
 import { DEFAULT_SHIFT, isShiftCode, lineHours } from "@/lib/domain/shifts";
 import { HISTORY_DAYS, RECENT_DAYS, hoursStat, manpowerPlan, monthCalendar, monthOf, type CentreDay, type CockpitAction, type ManpowerRow } from "@/lib/domain/kpis";
@@ -233,6 +234,11 @@ export interface LvPlanningData {
   actions: CockpitAction[];
   /** The panels moved per stage over the last two weeks (or the period asked for). */
   days: LvDashboardData;
+  /** The month's orders and every open one, each where it stands — what the
+   *  month's details and the orders still short are read from. */
+  orders: LvOrderLine[];
+  /** The plan family the figures are narrowed to; null: every family. */
+  family: LvFamily | null;
 }
 
 const urgentOrder = (a: { remaining: number; mo: string }, b: typeof a) => b.remaining - a.remaining || a.mo.localeCompare(b.mo);
@@ -240,11 +246,15 @@ const urgentOrder = (a: { remaining: number; mo: string }, b: typeof a) => b.rem
 /** The panels' Planning dashboard: the month's plan against its pace, the
  *  work between the stages, the people the month needs, and what needs a
  *  decision — the panels' answer to "will we make the plan?". */
-export async function getLvPlanning(o: { from?: Date | null; to?: Date | null } = {}, now = new Date()): Promise<LvPlanningData> {
+/** `family`: one plan family's orders (the panels', the meter boxes') — the
+ *  order figures narrow to it; the departments' recent days are the floor's. */
+export async function getLvPlanning(o: { from?: Date | null; to?: Date | null; family?: LvFamily | null } = {}, now = new Date()): Promise<LvPlanningData> {
   const todayISO = factoryDayISO(now);
-  const [tracker, rated, settings, holidays, read, days] = await Promise.all([
-    getLvTracker(), getLvOrderRates(), getSettings(), loadHolidays(), readLvDeptDays(addDaysISO(todayISO, -HISTORY_DAYS), todayISO), getLvDashboard(o, now),
+  const family = o.family ?? null;
+  const [all, rated, settings, holidays, read, days] = await Promise.all([
+    getLvTracker(), getLvOrderRates(), getSettings(), loadHolidays(), readLvDeptDays(addDaysISO(todayISO, -HISTORY_DAYS), todayISO), getLvDashboard({ from: o.from, to: o.to }, now),
   ]);
+  const tracker = family === null ? all : all.filter((r) => r.family === family);
   const rates = new Map(rated.map((o) => [o.mo, o.rate]));
   const rateOf = (r: LvTrackerRow) => rates.get(r.mo) ?? null;
 
@@ -277,7 +287,8 @@ export async function getLvPlanning(o: { from?: Date | null; to?: Date | null } 
     const s = hoursStat(read.all.filter((d) => d.centre === dept && recent.has(d.dateISO)));
     return { dept, days: s.days, efficiency: s.efficiency, workedH: s.workedH, earnedH: s.earnedH, people: s.people };
   });
-  const present = Object.fromEntries(depts.map((d) => [d.dept, d.days > 0 ? d.people : null])) as Partial<Record<LvFloorDept, number | null>>;
+  // who comes is the whole floor's — never one plan family's, so a family's plan has no one present to set against it
+  const present = (family === null ? Object.fromEntries(depts.map((d) => [d.dept, d.days > 0 ? d.people : null])) : {}) as Partial<Record<LvFloorDept, number | null>>;
   const { inputs, coverage } = lvManpowerInputs(monthInputs, present);
   const manpowerRows = manpowerPlan(inputs, cal);
 
@@ -303,6 +314,12 @@ export async function getLvPlanning(o: { from?: Date | null; to?: Date | null } 
     depts,
     actions,
     days,
+    // the month's orders (closed ones too — the month's figures count them) and every open one
+    orders: [...new Map([...monthRows, ...open].map((r) => [r.mo, r])).values()].map((r) => ({
+      mo: r.mo, bom: r.bom, soi: r.soi, product: r.product, urgent: r.urgent, held: r.hold.onHold, open: r.status === "open",
+      inMonth: r.months.includes(monthLabel), state: r.state, rate: rateOf(r),
+    })),
+    family,
   };
 }
 
