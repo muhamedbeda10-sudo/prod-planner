@@ -406,12 +406,14 @@ export function questionContext(o: {
   notes: readonly string[];
   /** The chat keeps a working what-if scenario (keep_scenario). */
   workingScenario?: boolean;
-  line?: "TR" | "LV";
+  /** The line the screen shows, or "both" on a screen that shows both lines (showsBothLines). */
+  line?: "TR" | "LV" | "both";
   /** What the assistant keeps about this person (lib/domain/aiLearn memoryNote). */
   memory?: string;
 }): string {
   const lines = [`Asked by ${o.askedBy} on ${FACTORY_CLOCK.format(o.now)}, Cairo time.`];
-  if (o.line) lines.push(`The app's selected production line is ${o.line === "LV" ? "LV panels (including meter boxes)" : "TR transformers"}. Use that line by default for this question unless the person explicitly asks for the other line or both. Filter SQL by the correct line; pass line explicitly to tools that accept it.`);
+  if (o.line === "both") lines.push("The person is on a page that shows both production lines (the plant dashboards: the plant's figures, then a section per line). Read both lines by default for this question (line all where a tool takes it) unless the person asks about one; say which line each figure is.");
+  else if (o.line) lines.push(`The app's selected production line is ${o.line === "LV" ? "LV panels (including meter boxes)" : "TR transformers"}. Use that line by default for this question unless the person explicitly asks for the other line or both. Filter SQL by the correct line; pass line explicitly to tools that accept it.`);
   if (o.paused) lines.push("The owner has paused every change by the assistant: you can only read and advise right now.");
   else if (o.areas.length === 0) lines.push("You may not change anything for this person — you only read and advise.");
   else {

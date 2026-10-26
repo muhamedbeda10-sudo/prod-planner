@@ -198,6 +198,14 @@ describe("questionContext", () => {
     expect(t).toContain("Every change waits for the person's approval.");
     expect(t).toContain("- Change #3 was rejected.");
   });
+  it("says the screen's line, or that a plant dashboard shows both", () => {
+    const base = { askedBy: "Sara", now: new Date("2026-10-26T08:00:00Z"), areas: [], canDelete: false, noconfirm: false, paused: false, notes: [] };
+    expect(questionContext({ ...base, line: "LV" })).toContain("selected production line is LV panels");
+    const both = questionContext({ ...base, line: "both" });
+    expect(both).toContain("shows both production lines");
+    expect(both).not.toContain("selected production line");
+  });
+
   it("says so when the owner paused the changes, or none were given", () => {
     expect(questionContext({ askedBy: "S", now, areas: ["tracker"], canDelete: true, noconfirm: true, paused: true, notes: [] })).toContain("paused");
     expect(questionContext({ askedBy: "S", now, areas: [], canDelete: false, noconfirm: false, paused: false, notes: [] })).toContain("only read and advise");

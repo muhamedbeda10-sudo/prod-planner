@@ -3,6 +3,7 @@ import {
   burnUp, byStage, centreStat, cockpitActions, combinedStat, dailyOutput, workingDaysFrom, earnedOfRecord, efficiencyBand, inMonthPlan, isFloorAction, lateLines, loadAhead, loadSeries, loadTone,
   manpowerPlan, monthPace, paretoOf, parseKpiSnapshot, weekChange,
   planAdherence, stageDueISO, weldingCoverage, zeroCentres, type CentreDay, type PlanCell,
+  monthOf,
 } from "./kpis";
 
 const per = { ...zeroCentres(), Cutting: 1, Bending: 0.5, Fins: 0.25, Welding: 4, ShotBlast: 0.2, Painting: 0.8 };
@@ -292,5 +293,14 @@ describe("the stored trend", () => {
       .toEqual({ late: 4, adherence: { cut: 0.5, weld: null }, coverageDays: 2.2, efficiency: { Welding: 0.9 }, fabEfficiency: 0.7, unplannedH: 3 });
     expect(parseKpiSnapshot({ late: 4 })).toEqual({ late: 4, adherence: {}, coverageDays: null, efficiency: {}, fabEfficiency: null, unplannedH: null });
     expect(parseKpiSnapshot(null).late).toBeNull();
+  });
+});
+
+describe("the month a day belongs to", () => {
+  it("names it as the plans do, with its first and last day", () => {
+    expect(monthOf("2026-10-26")).toEqual({ monthLabel: "October 2026", monthStartISO: "2026-10-01", monthEndISO: "2026-10-31" });
+    expect(monthOf("2028-02-03")).toMatchObject({ monthStartISO: "2028-02-01", monthEndISO: "2028-02-29" });
+    // the year's turn
+    expect(monthOf("2026-12-31")).toEqual({ monthLabel: "December 2026", monthStartISO: "2026-12-01", monthEndISO: "2026-12-31" });
   });
 });

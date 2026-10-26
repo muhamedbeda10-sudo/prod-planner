@@ -1,4 +1,7 @@
 import "server-only";
+import { floorRequest } from "@/lib/domain/floorKpis";
+import { outputByTypeRows } from "@/lib/domain/outputByType";
+import { loadProductionAll } from "@/lib/server/dashboards";
 import { prisma } from "@/lib/db";
 import { hasPerm } from "@/lib/server/auth";
 import { getCatalogue, getCurrentStandings } from "@/lib/server/consumableLimits";
@@ -82,6 +85,7 @@ const SHEETS = {
   powder_scrap: { tab: "consumables", params: ["month"], about: "a month of powder scrap: the sections' totals, then each weighing — month" },
   shift_attendance: { tab: "shifts", params: ["day", "section"], about: "a day's attendance as saved: a row per worker — day, section" },
   machine_stops: { tab: "shifts", params: ["day", "section"], about: "a day's machine stops (an open one counted up to now) — day, section" },
+  output_by_type: { tab: "shifts", params: ["from", "to"], about: "the Production dashboard's What did we make, item by item?: each line's pieces per stage in the period by item and type (transformers by component and KVA class, panels by plan and panel type) against the month's plan — from/to (default the last 7 days)" },
   query: { tab: null, params: ["sql"], about: "anything else: the rows of ONE read-only SELECT (sql), as query_database reads them" },
 } as const satisfies Record<string, { tab: string | null; admin?: true; params: readonly Param[]; about: string }>;
 type SheetKind = keyof typeof SHEETS;
@@ -347,6 +351,12 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       const depts: readonly string[] = rosterDepts(at.filter);
       const data = await getDowntimeDay(at.day);
       return { rows: downtimeRows({ ...data, rows: data.rows.filter((r) => depts.includes(r.dept)) }, ctx.now), name: `machine-stops-${at.day}`, sheet: "Stops", scope: `Machine stops ${at.day}` };
+    }
+    case "output_by_type": {
+      // the dashboard's own period rule and loaders: every department, both lines
+      const req = floorRequest({ from: i.from, to: i.to }, today);
+      const { tr, lv } = await loadProductionAll(req, "all", ctx.now);
+      return { rows: outputByTypeRows(tr.byType, lv.byType), name: `output-by-type-${tr.fromISO}_${tr.toISO}`, sheet: "By item", scope: `Output by item and type, ${tr.fromISO} – ${tr.toISO}` };
     }
     case "query": {
       const closed = blockedTableIn(i.sql!, blockedTablesFor(ctx.hidden));

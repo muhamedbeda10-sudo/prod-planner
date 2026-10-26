@@ -14,7 +14,7 @@ const h = vi.hoisted(() => {
       masterOrder: { findMany: fn(), findUnique: fn() },
     },
     perms: new Set<string>(),
-    recent: fn(), master: fn(), lv: fn(), weekly: fn(), trace: fn(), lvTrace: fn(), soi: fn(), rows: fn(), roster: fn(), stops: fn(), odooLog: fn(), odooDays: fn(),
+    production: fn(), recent: fn(), master: fn(), lv: fn(), weekly: fn(), trace: fn(), lvTrace: fn(), soi: fn(), rows: fn(), roster: fn(), stops: fn(), odooLog: fn(), odooDays: fn(),
     lines: [] as string[],
   };
 });
@@ -43,6 +43,7 @@ vi.mock("@/lib/server/consumables", () => ({ getConsumablesData: vi.fn(), getCon
 vi.mock("@/lib/server/consumableLimits", () => ({ getCatalogue: vi.fn(), getCurrentStandings: vi.fn() }));
 vi.mock("@/lib/server/consumableMonthly", () => ({ getMonthlyReport: vi.fn() }));
 vi.mock("@/lib/server/ai/reader", () => ({ runAiRows: h.rows }));
+vi.mock("@/lib/server/dashboards", () => ({ loadProductionAll: h.production }));
 
 import type { User } from "@prisma/client";
 import { ITEMS } from "@/lib/domain/constants";
@@ -149,6 +150,24 @@ describe("make_excel", () => {
     expect(h.trace).not.toHaveBeenCalled();
     h.lvTrace.mockResolvedValue({ exists: false, key: "MO/9", timeline: [] });
     expect(await makeSheetTool.run({ sheet: "trace", mo: "MO/9" }, ctxOf())).toEqual({ ok: false, text: expect.stringContaining("No LV panel order") });
+  });
+
+  it("makes the Production dashboard's item card a sheet, both lines over the period, every department", async () => {
+    const plan = { required: 30, done: { cut: 25, weld: 20, finish: 15 }, left: 15, share: 0.5 };
+    h.production.mockResolvedValue({
+      tr: { fromISO: "2026-10-01", toISO: "2026-10-26", byType: { monthLabel: "October 2026", groups: [{ item: "Tank", total: { item: "Tank", type: "All types", made: { cut: 10, weld: 8, finish: 5 }, plan }, types: [{ item: "Tank", type: "630 kVA", made: { cut: 10, weld: 8, finish: 5 }, plan }] }] } },
+      lv: { byType: { monthLabel: "October 2026", groups: [{ item: "LV panels", total: { item: "LV panels", type: "All types", made: { Punching: 4, Bending: 0, Welding: 0, Painting: 0 }, plan: null }, types: [{ item: "LV panels", type: "USS", made: { Punching: 4, Bending: 0, Welding: 0, Painting: 0 }, plan: null }] }] } },
+    });
+    const r = await makeSheetTool.run({ sheet: "output_by_type", from: "2026-10-01" }, ctxOf());
+    expect(r.ok).toBe(true);
+    expect(h.production).toHaveBeenCalledWith(expect.objectContaining({ fromISO: "2026-10-01", toISO: "2026-10-26", dept: "all" }), "all", expect.any(Date));
+    const kept = keptSheet();
+    expect(kept.data.name).toBe("output-by-type-2026-10-01_2026-10-26.xlsx");
+    expect(kept.rows[0]).toMatchObject({ Line: "Transformers", Item: "Tank", Type: "630 kVA", "Made — Welded": 8, Planned: 30, Left: 15, "Done %": 50 });
+    expect(kept.rows[1]).toMatchObject({ Line: "LV Panels", Type: "USS", "Made — Punched": 4 });
+    // the shift log's screen closes it, as it closes the dashboard
+    const closed = await makeSheetTool.run({ sheet: "output_by_type" }, ctxOf({ hidden: new Set(["shifts"]) }));
+    expect(closed.ok).toBe(false);
   });
 
   it("puts a query's rows on a sheet — numbers as numbers — within the screens the person sees and the row limit", async () => {

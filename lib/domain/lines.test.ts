@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_LINE, LINE_LABEL, PRODUCT_LINES, hrefWithLine, pinnedLine, isProductLine, lineParam, resolveLine } from "./lines";
+import { DEFAULT_LINE, LINE_LABEL, PRODUCT_LINES, hrefWithLine, pinnedLine, showsBothLines, isProductLine, lineParam, resolveLine } from "./lines";
 
 describe("product lines — transformers and LV panels, never mixed", () => {
   it("knows exactly two lines, transformers first", () => {
@@ -56,3 +56,13 @@ describe("screens pinned to one line", () => {
   });
 });
 
+
+describe("the screens that show both lines", () => {
+  it("are the plant dashboards, read off a path or an href", () => {
+    expect(showsBothLines("/")).toBe(true);
+    expect(showsBothLines("/dashboards/production?from=2026-10-01#lv")).toBe(true);
+    expect(showsBothLines("/?dept=Welding")).toBe(true);
+    expect(showsBothLines("/dashboards/material")).toBe(false);
+    expect(showsBothLines("/tracker")).toBe(false);
+  });
+});

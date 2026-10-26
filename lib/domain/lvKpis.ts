@@ -24,7 +24,7 @@ import type { RosterDept } from "./shifts";
 /** The panels' four departments on the shift log, in shop-floor order. */
 export const LV_FLOOR_DEPTS = ["Punching", "Bending", "WeldingLV", "PaintingLV"] as const satisfies readonly RosterDept[];
 export type LvFloorDept = (typeof LV_FLOOR_DEPTS)[number];
-function isLvFloorDept(x: unknown): x is LvFloorDept {
+export function isLvFloorDept(x: unknown): x is LvFloorDept {
   return typeof x === "string" && (LV_FLOOR_DEPTS as readonly string[]).includes(x);
 }
 export const LV_FLOOR_DEPT_LABEL: Record<LvFloorDept, string> = { Punching: "Punching", Bending: "Bending", WeldingLV: "Welding (LV)", PaintingLV: "Painting (LV)" };
