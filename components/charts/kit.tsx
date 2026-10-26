@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/Badge";
+import { ChartAbout } from "@/components/ChartAbout";
 import { aiTargetRef } from "@/lib/aiTarget";
 
 // The dashboards' shared parts, so every dashboard reads the same way:
@@ -9,8 +10,8 @@ import { aiTargetRef } from "@/lib/aiTarget";
 //    dark — slots 7 and 8 are too close to 6 for a legend to separate), then
 //    "Other" in the neutral. A series keeps its slot for the whole view.
 //  - a card that carries only its title and its chart: what it means and
-//    how it is counted (`about`), and its numbers (`data`), go to the
-//    assistant on a right-click's "Ask AI" (lib/aiTarget), not on screen;
+//    how it is counted (`about`) opens from its title (ChartAbout), and with
+//    its numbers (`data`) goes to the assistant on "Ask AI" (lib/aiTarget);
 //  - stat tiles with a sparkline or a meter; a legend; a tooltip shell;
 //    a heatmap in one hue, light → dark; data bars for tables.
 
@@ -73,7 +74,7 @@ export function ChartCard({
     <section ref={ref} className={`bg-surface border rounded-xl p-4 min-w-0 ${className}`}>
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <div className="min-w-0">
-          <h2 className="font-bold leading-tight">{title}</h2>
+          <h2 className="font-bold leading-tight"><ChartAbout title={title} about={about} /></h2>
           {sub && <p className="text-xs text-muted mt-0.5">{sub}</p>}
         </div>
         {right && <div className="flex items-center gap-2 no-print">{right}</div>}

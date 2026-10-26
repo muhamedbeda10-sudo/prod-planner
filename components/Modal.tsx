@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 // a table row included, without breaking the markup there. Only ever
 // rendered after a click, so the document is there.
 
-const FOCUSABLE = "a[href], button:not([disabled]), input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+export const FOCUSABLE = "a[href], button:not([disabled]), input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
 // Keeps Tab and Shift+Tab inside `box` while it is open as a dialog: the page
 // behind is only dimmed, not inert, so without this the keys walk focus out

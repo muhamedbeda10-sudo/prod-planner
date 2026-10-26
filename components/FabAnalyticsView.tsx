@@ -8,6 +8,7 @@ import Link from "next/link";
 import type { MaterialDashboardData } from "@/lib/server/fabAnalytics";
 import type { Breakdown, MoRow } from "@/lib/domain/materialDashboard";
 import { SheetsPerDayChart, ThicknessChart } from "@/components/LazyCharts";
+import { ChartAbout } from "@/components/ChartAbout";
 
 // 📊 The MATERIAL dashboard.
 //
@@ -42,7 +43,7 @@ function Tile({ head, value, unit, sub, tone }: { head: string; value: string; u
 function Section({ title, about, children }: { title: string; about?: string; children: React.ReactNode }) {
   return (
     <section className="bg-surface border rounded-xl p-3 min-w-0" data-ai-title={title} data-ai-about={about}>
-      <h2 className="text-sm font-extrabold mb-2">{title}</h2>
+      <h2 className="text-sm font-extrabold mb-2"><ChartAbout title={title} about={about} /></h2>
       {children}
     </section>
   );
