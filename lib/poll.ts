@@ -1,9 +1,7 @@
-// Browser side of a page's polling (lib/domain/poll.ts decides the pace): one
-// loop that asks at the visible pace while the page is in front, at the hidden
-// pace (or not at all) while it is out of sight, and asks at once when the page
-// comes back to the front with a stale answer. One ask at a time: a return to
-// the front during an ask lets that ask finish and takes the new pace from
-// there. Client-only module.
+// Browser side of a page's polling — lib/domain/poll.ts says what the pace
+// is; this loop keeps it: one ask at a time, the next scheduled when the last
+// is answered, and a return to the front during an ask lets that ask finish and
+// takes the new pace from there. Client-only module.
 //
 // Two pollers stay on their own loops on purpose: components/UpdateNotice.tsx
 // (its tick alternates a version check with the idle-reload decision, and has
@@ -23,15 +21,16 @@ export function startPoll(ask: () => void | Promise<void>, pace: PollPace, first
 
   const schedule = () => {
     window.clearTimeout(timer);
-    timer = undefined;
     if (stopped || asking) return;
     const delay = pollDelay(visible(), pace, lastAskedAt === null ? 0 : Date.now() - lastAskedAt);
     if (delay !== null) timer = window.setTimeout(tick, delay);
   };
   const tick = async () => {
     if (stopped || asking) return;
+    // a page that polls nothing out of sight does not start either (opened in
+    // the background, say): its first ask comes when it is first shown
+    if (!visible() && pace.hiddenMs === null) return;
     window.clearTimeout(timer);
-    timer = undefined;
     asking = true;
     lastAskedAt = Date.now();
     try {

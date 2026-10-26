@@ -23,17 +23,23 @@ import { prisma } from "@/lib/db";
 // each night.
 
 const JOB = "atc-automations-tick";
-const NIGHT_JOB = "atc-automations-tick-night";
-const CLEANUP_JOB = "atc-cron-cleanup";
-const DAY_SCHEDULE = "* 2-21 * * *";
-const NIGHT_SCHEDULE = "*/15 22,23,0,1 * * *";
-/** pg_cron's run log: a week is enough to see what went wrong. */
-const CLEANUP_SCHEDULE = "30 2 * * *";
+/** The UTC hours the clock ticks every minute through; the rest is the night. */
+const DAY_UTC_HOURS = { from: 2, to: 21 };
+const NIGHT_UTC_HOURS = [...Array(24).keys()].filter((h) => h < DAY_UTC_HOURS.from || h > DAY_UTC_HOURS.to);
+/** The jobs set-up schedules, removal takes away and the status compares against. */
+const JOBS = [
+  { name: JOB, schedule: `* ${DAY_UTC_HOURS.from}-${DAY_UTC_HOURS.to} * * *`, tick: true },
+  { name: "atc-automations-tick-night", schedule: `*/15 ${NIGHT_UTC_HOURS.join(",")} * * *`, tick: true },
+  // pg_cron's run log: a week is enough to see what went wrong
+  { name: "atc-cron-cleanup", schedule: "30 2 * * *", tick: false },
+] as const;
 const CLEANUP_COMMAND = "DELETE FROM cron.job_run_details WHERE end_time < now() - interval '7 days'";
-const TICK_JOBS = [JOB, NIGHT_JOB] as const;
-const ALL_JOBS = [JOB, NIGHT_JOB, CLEANUP_JOB] as const;
+const ALL_JOBS = JOBS.map((j) => j.name);
+const TICK_JOBS = JOBS.filter((j) => j.tick).map((j) => j.name);
 /** `jobname = $1 OR jobname = $2 …` for a list of names bound in that order. */
 const namesAre = (names: readonly string[], column = "jobname") => names.map((_, i) => `${column} = $${i + 1}`).join(" OR ");
+/** Whether the clock ticks every minute at this moment (else every quarter hour). */
+export const everyMinuteAt = (at: Date) => at.getUTCHours() >= DAY_UTC_HOURS.from && at.getUTCHours() <= DAY_UTC_HOURS.to;
 const SECRET_NAME = "atc_automations_tick_secret";
 const URL_NAME = "atc_automations_tick_url";
 
@@ -88,7 +94,7 @@ export async function setupScheduler(tickUrl: string): Promise<{ ok: true } | { 
     await vaultPut(SECRET_NAME, secret);
     await vaultPut(URL_NAME, tickUrl);
     step = "scheduling the job";
-    for (const job of ALL_JOBS) await prisma.$executeRawUnsafe(`SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname = $1`, job);
+    await prisma.$executeRawUnsafe(`SELECT cron.unschedule(jobid) FROM cron.job WHERE ${namesAre(ALL_JOBS)}`, ...ALL_JOBS);
     const command = [
       "SELECT net.http_post(",
       `  url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = '${URL_NAME}'),`,
@@ -97,9 +103,7 @@ export async function setupScheduler(tickUrl: string): Promise<{ ok: true } | { 
       "  timeout_milliseconds := 10000",
       ")",
     ].join("\n");
-    await prisma.$executeRawUnsafe(`SELECT cron.schedule($1, '${DAY_SCHEDULE}', $2)`, JOB, command);
-    await prisma.$executeRawUnsafe(`SELECT cron.schedule($1, '${NIGHT_SCHEDULE}', $2)`, NIGHT_JOB, command);
-    await prisma.$executeRawUnsafe(`SELECT cron.schedule($1, '${CLEANUP_SCHEDULE}', $2)`, CLEANUP_JOB, CLEANUP_COMMAND);
+    for (const job of JOBS) await prisma.$executeRawUnsafe(`SELECT cron.schedule($1, '${job.schedule}', $2)`, job.name, job.tick ? command : CLEANUP_COMMAND);
     step = "saving";
     await prisma.aiSettings.update({ where: { id: 1 }, data: { tickSecretHash: sha256(secret) } });
     return { ok: true };
@@ -112,7 +116,7 @@ export async function setupScheduler(tickUrl: string): Promise<{ ok: true } | { 
 export async function removeScheduler(): Promise<{ ok: true } | { ok: false; error: string }> {
   await prisma.aiSettings.update({ where: { id: 1 }, data: { tickSecretHash: "" } });
   try {
-    for (const job of ALL_JOBS) await prisma.$executeRawUnsafe(`SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname = $1`, job);
+    await prisma.$executeRawUnsafe(`SELECT cron.unschedule(jobid) FROM cron.job WHERE ${namesAre(ALL_JOBS)}`, ...ALL_JOBS);
     return { ok: true };
   } catch (e) {
     // no pg_cron at all: nothing scheduled to take away
@@ -139,10 +143,10 @@ export async function schedulerStatus(): Promise<SchedulerStatus> {
   const out: SchedulerStatus = { scheduled: false, outdated: false, lastTickAt: s?.lastTickAt?.toISOString() ?? null, lastJobRuns: [], error: null };
   try {
     const jobs = await prisma.$queryRawUnsafe<{ jobname: string; schedule: string }[]>(`SELECT jobname, schedule FROM cron.job WHERE ${namesAre(ALL_JOBS)}`, ...ALL_JOBS);
-    const has = (name: string) => jobs.find((j) => j.jobname === name);
-    out.scheduled = !!has(JOB) && !!s?.tickSecretHash;
-    out.outdated = out.scheduled && (has(JOB)?.schedule !== DAY_SCHEDULE || !has(NIGHT_JOB) || !has(CLEANUP_JOB));
-    if (jobs.some((j) => (TICK_JOBS as readonly string[]).includes(j.jobname))) {
+    const live = new Map(jobs.map((j) => [j.jobname, j.schedule]));
+    out.scheduled = live.has(JOB) && !!s?.tickSecretHash;
+    out.outdated = out.scheduled && JOBS.some((j) => live.get(j.name) !== j.schedule);
+    if (TICK_JOBS.some((name) => live.has(name))) {
       const runs = await prisma.$queryRawUnsafe<{ at: Date; status: string; message: string | null }[]>(
         `SELECT d.start_time AS at, d.status, d.return_message AS message FROM cron.job_run_details d JOIN cron.job j ON j.jobid = d.jobid WHERE ${namesAre(TICK_JOBS, "j.jobname")} ORDER BY d.start_time DESC LIMIT 3`,
         ...TICK_JOBS,

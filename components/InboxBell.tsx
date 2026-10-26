@@ -22,11 +22,9 @@ export function InboxBell({ initial, active, onOpen }: { initial: number; active
   const [unread, setUnread] = useState(initial);
 
   useEffect(() => {
-    let stop = false;
     const refresh = async () => {
       try {
-        const r = await pollInbox();
-        if (!stop) setUnread(r.unread);
+        setUnread((await pollInbox()).unread);
       } catch {
         /* offline for a moment — the next tick tries again */
       }
@@ -38,7 +36,6 @@ export function InboxBell({ initial, active, onOpen }: { initial: number; active
     window.addEventListener(INBOX_CHANGED, onChanged);
     window.addEventListener(INBOX_UNREAD, fromChat);
     return () => {
-      stop = true;
       stopPoll();
       window.removeEventListener(INBOX_CHANGED, onChanged);
       window.removeEventListener(INBOX_UNREAD, fromChat);

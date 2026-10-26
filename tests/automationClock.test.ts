@@ -26,12 +26,13 @@ vi.mock("next/server", () => ({ after: (f: () => Promise<void>) => h.after.push(
 vi.mock("@/lib/server/automations/runner", () => ({ runDueAutomations: h.runDue }));
 vi.mock("@/lib/server/automations/review", () => ({ REVIEW_KEY: "ai.suggestions" }));
 
-import { removeScheduler, schedulerStatus, setupScheduler, sha256, tickSecretOk, tickUrlFor } from "@/lib/server/automations/scheduler";
+import { everyMinuteAt, removeScheduler, schedulerStatus, setupScheduler, sha256, tickSecretOk, tickUrlFor } from "@/lib/server/automations/scheduler";
+import { factoryClockHHMM } from "@/lib/domain/dates";
 import { POST } from "@/app/api/automations/tick/route";
 
 const SECRET = "A".repeat(43);
-/** The job names taken away, in order. */
-const unscheduledNames = () => h.prisma.$executeRawUnsafe.mock.calls.filter((c) => String(c[0]).includes("cron.unschedule")).map((c) => c[1]);
+/** The names the one unschedule statement is bound to. */
+const unscheduledNames = () => h.prisma.$executeRawUnsafe.mock.calls.filter((c) => String(c[0]).includes("cron.unschedule")).flatMap((c) => c.slice(1));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -82,7 +83,7 @@ describe("setting the scheduler up", () => {
     expect(schedules.map((c) => c[1])).toEqual(["atc-automations-tick", "atc-automations-tick-night", "atc-cron-cleanup"]);
     // every minute through the plant's day (UTC), a quarter hour at night, the run log cleared nightly
     expect(schedules[0][0]).toContain("'* 2-21 * * *'");
-    expect(schedules[1][0]).toContain("'*/15 22,23,0,1 * * *'");
+    expect(schedules[1][0]).toContain("'*/15 0,1,22,23 * * *'");
     expect(schedules[2][0]).toContain("'30 2 * * *'");
     expect(schedules[2][2]).toBe("DELETE FROM cron.job_run_details WHERE end_time < now() - interval '7 days'");
     // the tick jobs read the secret from Vault — it is not written into the job
@@ -116,29 +117,47 @@ describe("setting the scheduler up", () => {
     expect(h.prisma.aiSettings.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { tickSecretHash: "" } });
   });
 
-  it("reports the clock on with the day job and the secret, out of date while set up by an earlier version, and the tick jobs' last runs", async () => {
+  const live = (rows: { jobname: string; schedule: string }[], runs: unknown[] = []) =>
+    h.prisma.$queryRawUnsafe.mockReset().mockResolvedValueOnce(rows).mockResolvedValueOnce(runs);
+  const allThree = [
+    { jobname: "atc-cron-cleanup", schedule: "30 2 * * *" },
+    { jobname: "atc-automations-tick-night", schedule: "*/15 0,1,22,23 * * *" },
+    { jobname: "atc-automations-tick", schedule: "* 2-21 * * *" },
+  ];
+
+  it("reports the clock on with the day job and the secret, with the tick jobs' last runs", async () => {
     h.prisma.aiSettings.findUnique.mockResolvedValue({ tickSecretHash: sha256(SECRET), lastTickAt: new Date("2026-10-26T06:00:00Z") });
-    // as this version sets it up
-    h.prisma.$queryRawUnsafe
-      .mockResolvedValueOnce([
-        { jobname: "atc-cron-cleanup", schedule: "30 2 * * *" },
-        { jobname: "atc-automations-tick-night", schedule: "*/15 22,23,0,1 * * *" },
-        { jobname: "atc-automations-tick", schedule: "* 2-21 * * *" },
-      ])
-      .mockResolvedValueOnce([{ at: new Date("2026-10-26T06:00:00Z"), status: "succeeded", message: null }]);
-    let s = await schedulerStatus();
+    live(allThree, [{ at: new Date("2026-10-26T06:00:00Z"), status: "succeeded", message: null }]);
+    const s = await schedulerStatus();
     expect(s).toMatchObject({ scheduled: true, outdated: false, lastTickAt: "2026-10-26T06:00:00.000Z", error: null });
     expect(s.lastJobRuns).toEqual([{ at: "2026-10-26T06:00:00.000Z", status: "succeeded", message: null }]);
     expect(h.prisma.$queryRawUnsafe.mock.calls[0].slice(1)).toEqual(["atc-automations-tick", "atc-automations-tick-night", "atc-cron-cleanup"]);
     expect(h.prisma.$queryRawUnsafe.mock.calls[1].slice(1)).toEqual(["atc-automations-tick", "atc-automations-tick-night"]);
-    // as the earlier version set it up: one job, every minute
-    h.prisma.$queryRawUnsafe.mockReset().mockResolvedValueOnce([{ jobname: "atc-automations-tick", schedule: "* * * * *" }]).mockResolvedValueOnce([]);
-    s = await schedulerStatus();
-    expect(s).toMatchObject({ scheduled: true, outdated: true });
-    // the night job alone is no clock
-    h.prisma.$queryRawUnsafe.mockReset().mockResolvedValueOnce([{ jobname: "atc-automations-tick-night", schedule: "*/15 22,23,0,1 * * *" }]).mockResolvedValueOnce([]);
-    s = await schedulerStatus();
-    expect(s).toMatchObject({ scheduled: false, outdated: false });
+  });
+
+  it("calls the clock out of date when an earlier version set it up — one job, every minute — or a schedule differs", async () => {
+    live([{ jobname: "atc-automations-tick", schedule: "* * * * *" }]);
+    expect(await schedulerStatus()).toMatchObject({ scheduled: true, outdated: true });
+    live(allThree.map((j) => (j.jobname === "atc-cron-cleanup" ? { ...j, schedule: "0 3 * * *" } : j)));
+    expect(await schedulerStatus()).toMatchObject({ scheduled: true, outdated: true });
+  });
+
+  it("does not take the night job alone for a clock", async () => {
+    live([{ jobname: "atc-automations-tick-night", schedule: "*/15 0,1,22,23 * * *" }]);
+    expect(await schedulerStatus()).toMatchObject({ scheduled: false, outdated: false });
+  });
+
+  it("ticks every minute through the plant's day on the factory clock, winter and summer alike", () => {
+    // every minute of two days (Cairo is UTC+2 in January, UTC+3 in July): the
+    // plant's day, 05:00-23:59 on the factory clock, is always on the minute clock
+    for (const day of ["2026-01-14", "2026-07-15"]) {
+      for (let m = 0; m < 24 * 60; m++) {
+        const at = new Date(`${day}T00:00:00Z`);
+        at.setUTCMinutes(m);
+        const hhmm = factoryClockHHMM(at);
+        if (hhmm >= "05:00" && hhmm <= "23:59") expect(everyMinuteAt(at), `${day} ${hhmm} (${at.toISOString()})`).toBe(true);
+      }
+    }
   });
 
   it("removing it stops the secret at once, even with no pg_cron at all", async () => {

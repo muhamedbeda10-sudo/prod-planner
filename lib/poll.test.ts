@@ -74,6 +74,17 @@ describe("a page's poll loop", () => {
     expect(ask).toHaveBeenCalledTimes(3);
   });
 
+  it("opened out of sight with nothing to ask hidden, waits for its first showing", async () => {
+    const ask = vi.fn(async () => {});
+    visibility = "hidden";
+    startPoll(ask, { visibleMs: 5_000, hiddenMs: null }, 1_000);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(ask).toHaveBeenCalledTimes(0);
+    setVisibility("visible");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ask).toHaveBeenCalledTimes(1);
+  });
+
   it("does not ask twice on a quick switch away and back, and keeps its cadence", async () => {
     const ask = vi.fn(async () => {});
     startPoll(ask, pace);
