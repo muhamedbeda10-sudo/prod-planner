@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planningHref, productionHref, productionRedirectOf } from "./dashboardLinks";
+import { productionHref, productionRedirectOf } from "./dashboardLinks";
 
 describe("the plant dashboards' addresses", () => {
   it("writes the filters that have a value; a department names its line", () => {
@@ -10,8 +10,6 @@ describe("the plant dashboards' addresses", () => {
     expect(productionHref({ scope: "all", shift: "night", centre: "Fins" })).toBe("/dashboards/production?centre=Fins&shift=night");
     // each line's own department, both on All
     expect(productionHref({ dept: "Welding", lvDept: "PaintingLV" })).toBe("/dashboards/production?dept=Welding&lvDept=PaintingLV");
-    expect(planningHref("tr")).toBe("/#tr");
-    expect(planningHref()).toBe("/");
   });
 });
 

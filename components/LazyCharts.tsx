@@ -13,8 +13,8 @@ function Placeholder({ h }: { h: number }) {
   return <div className="rounded-xl bg-surface-2/60 animate-pulse" style={{ height: h }} aria-hidden />;
 }
 
-export const BurnUpChart = dynamic(() => import("./CockpitCharts").then((m) => m.BurnUpChart), { ssr: false, loading: () => <Placeholder h={260} /> });
-export const LoadChart = dynamic(() => import("./CockpitCharts").then((m) => m.LoadChart), { ssr: false, loading: () => <Placeholder h={270} /> });
+export const StageByDayChart = dynamic(() => import("./CockpitCharts").then((m) => m.StageByDayChart), { ssr: false, loading: () => <Placeholder h={330} /> });
+export const LvMonthChart = dynamic(() => import("./CockpitCharts").then((m) => m.LvMonthChart), { ssr: false, loading: () => <Placeholder h={310} /> });
 export const OutputChart = dynamic(() => import("./CockpitCharts").then((m) => m.OutputChart), { ssr: false, loading: () => <Placeholder h={290} /> });
 export const ProductivityTrendChart = dynamic(() => import("./CockpitCharts").then((m) => m.ProductivityTrendChart), { ssr: false, loading: () => <Placeholder h={260} /> });
 export const ConsumedPerDayChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.ConsumedPerDayChart), { ssr: false, loading: () => <Placeholder h={330} /> });

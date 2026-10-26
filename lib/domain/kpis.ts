@@ -244,14 +244,15 @@ export interface LateLine {
 }
 
 /** The plan's lines past their stage date and still short — the earliest
- *  stage that is behind names where the line is stuck. Oldest first. */
-export function lateLines(cells: readonly PlanCell[], todayISO: string, leads: { cut: number; weld: number }): LateLine[] {
-  const out: LateLine[] = [];
+ *  stage that is behind names where the line is stuck. Oldest first; each
+ *  with the cell it was read from. */
+export function lateLines<C extends PlanCell>(cells: readonly C[], todayISO: string, leads: { cut: number; weld: number }): (LateLine & { cell: C })[] {
+  const out: (LateLine & { cell: C })[] = [];
   for (const c of cells) {
     if (c.owed <= 0) continue;
     const stage = STAGES.find((s) => stageDueISO(c.dayISO, s, leads) <= todayISO && c.done[s] < c.owed);
     if (!stage) continue;
-    out.push({ dayISO: c.dayISO, bom: c.bom, item: c.item, owed: c.owed, stage, short: c.owed - Math.max(0, c.done[stage]) });
+    out.push({ dayISO: c.dayISO, bom: c.bom, item: c.item, owed: c.owed, stage, short: c.owed - Math.max(0, c.done[stage]), cell: c });
   }
   return out.sort((a, b) => a.dayISO.localeCompare(b.dayISO) || a.bom.localeCompare(b.bom));
 }
@@ -616,24 +617,6 @@ export function weekChange(trend: readonly KpiSnapshotPoint[], todayISO: string,
 }
 
 // ------------------------------------------------------------------ the charts' series
-
-/** The weekly plan, delivery day by delivery day: pieces asked and finished, each summed from the first day. */
-export function burnUp(days: readonly { iso: string; label: string; req: number; covered: number; isToday: boolean }[]): { iso: string; label: string; req: number; covered: number; planCum: number; doneCum: number; isToday: boolean }[] {
-  let plan = 0;
-  let done = 0;
-  return days.map((d) => {
-    plan += d.req;
-    done += d.covered;
-    return { iso: d.iso, label: d.label, req: d.req, covered: d.covered, planCum: plan, doneCum: done, isToday: d.isToday };
-  });
-}
-
-/** A centre's load ahead as running totals — what it owes so far against what
- *  it could have worked so far, the comparison its "short" is judged on. */
-export function loadSeries(l: Pick<LoadAhead, "days">): { dayISO: string; dueH: number; owedCum: number; canCum: number | null; tone: LoadTone }[] {
-  // the running totals loadAhead judged the tone on, unrounded until shown
-  return l.days.map((d) => ({ dayISO: d.dayISO, dueH: d.dueH, owedCum: d.owedCum, canCum: d.canCum, tone: d.tone }));
-}
 
 /** The departments a day's output is told in: Fabrication's three centres as one. */
 export const OUTPUT_GROUPS = ["Fabrication", "Welding", "ShotBlast", "Painting"] as const;

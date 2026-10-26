@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-planning-dashboard-at-risk",
+    dateISO: "2026-10-26",
+    title: "Planning: All | Transformers | LV Panels, filters in one bar, every line at risk, and the rows behind each figure",
+    where: "Dashboards → Planning",
+    href: "/",
+    body: "The Planning dashboard has one bar again: All | Transformers | LV Panels first, then the transformers' weekly plan, component, work centre and MO / BOM / SOI search, and the panels' family and department — the address keeps them, so a link or a reload opens the same view. Decisions stay a button at the end of the bar that opens a popup (on Production, Interventions the same way); they are no longer a card on the page. Each line's section starts with what its figures rest on (the share priced, centres not measured, OSP, on hold, the last shift day), then up to six figures — the transformers' plan on its date, lines behind, work hours left, welding covered, capacity short and people to add; the panels' month, painted, left, done against time gone, urgent short and people to add. Click a figure to open the rows it adds up from. New: planned against achieved by due day with today marked, the load against capacity for the next 10 working days centre by centre, and an At risk table — late, at risk from a short centre, or on hold — with the stage holding each line, its hours left, why, and links to its trace and worklist. Orders on hold now stay out of the load. A ▲ / ▼ against a week ago shows only where a reading was kept on the same basis; otherwise it says N/A.",
+  },
+  {
     id: "2026-10-26-production-dashboard-effort-output",
     dateISO: "2026-10-26",
     title: "Production: what we made, at what efficiency, and where the effort and the output parted",

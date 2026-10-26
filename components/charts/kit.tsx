@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Badge } from "@/components/Badge";
 import { ChartAbout } from "@/components/ChartAbout";
 import { TableFrame, Th } from "@/components/DataTable";
@@ -162,6 +163,8 @@ export function StatTile({
   hero,
   compact,
   about,
+  href,
+  onClick,
 }: {
   label: string;
   value: string;
@@ -179,10 +182,15 @@ export function StatTile({
   compact?: boolean;
   /** What the figure means and how it is counted, for "Ask AI". */
   about?: string;
+  /** Where the rows behind the figure open — the tile becomes a link to them. */
+  href?: string;
+  /** With `href`: run instead of navigating when it calls preventDefault (a popup opened in place). */
+  onClick?: React.MouseEventHandler<HTMLAnchorElement>;
 }) {
   const ref = aiTargetRef({ kind: "figure", title: label, about });
-  return (
-    <div ref={ref} className={`bg-surface border ${compact ? "rounded-lg px-3 py-2 min-w-[8rem] gap-1" : "rounded-xl px-4 py-3 min-w-[10.5rem] gap-2"} flex-1 flex flex-col ${hero ? "sm:min-w-[15rem]" : ""}`}>
+  const cls = `bg-surface border ${compact ? "rounded-lg px-3 py-2 min-w-[8rem] gap-1" : "rounded-xl px-4 py-3 min-w-[10.5rem] gap-2"} flex-1 flex flex-col ${hero ? "sm:min-w-[15rem]" : ""}`;
+  const body = (
+    <>
       <div className="flex min-w-0 items-start justify-between gap-2">
         <div className="text-xs font-bold text-muted leading-tight">{label}</div>
         {delta && <div className="shrink-0 -mt-0.5">{delta}</div>}
@@ -193,9 +201,23 @@ export function StatTile({
       </div>
       {meter !== undefined && <Meter value={meter} />}
       {sub && <div className="text-xs text-muted truncate" title={typeof sub === "string" ? sub : undefined}>{sub}</div>}
-    </div>
+    </>
   );
+  return href
+    ? <Link ref={ref} href={href} onClick={onClick} scroll={false} className={`${cls} text-foreground hover:border-brand transition-colors`}>{body}</Link>
+    : <div ref={ref} className={cls}>{body}</div>;
 }
+
+/** A change against an earlier reading, as a share of it ("▲ 12%") — "N/A"
+ *  where there is no earlier reading or it was zero: nothing to read it on. */
+export function RelativeChip({ value, up, title }: { value: number | null; up?: "good" | "bad"; title: string }) {
+  if (value === null) return <Badge tone="neutral" title={title}>N/A</Badge>;
+  return <DeltaChip value={Math.round(value * 100)} unit="%" up={up} title={title} />;
+}
+
+/** The change chip of a figure no earlier reading is kept of: "N/A", never a guessed trend. */
+export const NO_BASE = <RelativeChip value={null} title="No earlier reading of this figure is kept to compare with" />;
+
 
 /** A change as a badge — "▲ 3 pts", "▼ 12%", "• 0" — green where it is
  *  good news, red where bad, grey where `up` does not say (or nothing moved);

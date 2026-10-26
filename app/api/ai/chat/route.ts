@@ -11,7 +11,7 @@ import { AI_FILE_LIMITS, attachmentNote, fileRef } from "@/lib/domain/aiFiles";
 import { AI_DENY_TEXT, AI_MAX_MESSAGES, AI_MAX_QUESTION, costUsd, questionContext } from "@/lib/domain/ai";
 import { aiPageContext } from "@/lib/domain/aiScreen";
 import { getActiveLine } from "@/lib/server/line";
-import { showsBothLines } from "@/lib/domain/lines";
+import { pageLineOf } from "@/lib/domain/planningDashboard";
 import { reserveChatTurn } from "@/lib/server/ai/chatReservation";
 import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
 import { factoryDayISO } from "@/lib/domain/dates";
@@ -139,8 +139,8 @@ export async function POST(request: Request) {
       paused: settings.actionsPaused,
       notes: outcomes.notes,
       workingScenario: working.scenario !== null,
-      // a plant dashboard shows both lines, whatever line the person's screens open on
-      line: page && showsBothLines(page.path) ? "both" : line,
+      // a plant dashboard shows both lines (or Planning one line's scope), whatever line the person's screens open on
+      line: pageLineOf(page) ?? line,
       memory: memoryNote(memories),
     });
 

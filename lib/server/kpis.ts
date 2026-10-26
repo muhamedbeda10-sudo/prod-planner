@@ -4,7 +4,7 @@ import { factoryDayISO, toISODate } from "@/lib/domain/dates";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { formatDate } from "@/lib/domain/format";
 import { LV_ITEM } from "@/lib/domain/lv";
-import { applicableItems, finishDeptOf, isPaintExempt, ospOf, type Item } from "@/lib/domain/constants";
+import { applicableItems, finishDeptOf, ospOf } from "@/lib/domain/constants";
 import { itemCentreHoursFor, tierForOrder } from "@/lib/domain/stdEngine";
 import {
   DEFAULT_SHIFT, DEPT_CENTRES, SHIFT_DEPTS, WORK_CENTRES, centreOf, deptCentre, isShiftCode, isWorkCentre, lineHours, machineWorkCentre, round1, type WorkCentre,
@@ -19,9 +19,9 @@ import { getQualityPeriod, type QualityPeriod } from "./quality";
 import { TR_ITEM_ORDER, kvaTypeLabel, outputByType, trItemName, trPlanLines, trTypeStageOf, type OutputByTypeData, type TypeRecord } from "@/lib/domain/outputByType";
 import { FACTOR_MAX, FACTOR_MIN, MIN_CALIBRATION_DAYS } from "@/lib/domain/calibration";
 import {
-  HISTORY_DAYS, RECENT_DAYS, STAGES, centreCells, centreStat, cockpitActions, combinedStat, dailyOutput, earnedOfRecord, inMonthPlan, isFloorAction, lateLines, loadAhead, manpowerPlan, monthCalendar, monthOf, parseKpiSnapshot, planAdherence, stageDueISO, weldingCoverage, workingDaysFrom, zeroCentres,
+  HISTORY_DAYS, RECENT_DAYS, STAGES, centreCells, centreStat, cockpitActions, combinedStat, dailyOutput, earnedOfRecord, inMonthPlan, isFloorAction, lateLines, loadAhead, manpowerPlan, monthCalendar, monthOf, parseKpiSnapshot, planAdherence, weldingCoverage, workingDaysFrom, zeroCentres,
   type CentreDay, type CentreHours, type CentreStat, type CockpitAction, type Coverage, type CoverageInput, type KpiSnapshotData, type KpiSnapshotPoint,
-  type LateLine, type LoadAhead, type ManpowerRow, type OutputDay, type OutputGroup, type PlanCell, type Stage, type StageAdherence, OUTPUT_GROUP_LABEL, groupOfCentre,
+  type LateLine, type LoadAhead, type ManpowerRow, type OutputDay, type OutputGroup, type Stage, type StageAdherence, OUTPUT_GROUP_LABEL, groupOfCentre,
 } from "@/lib/domain/kpis";
 import {
   FLOOR_TREND_WINDOW, centresOf, efficiencyGrid, floorDays, floorPieces, floorRange, floorStat, groupProductivity, groupsOf, ledgerGroups, productivityTrend, recordedDates as datesWithHours,
@@ -34,6 +34,7 @@ import { getWeeklyPlanTracker } from "./weeklyPlanTracker";
 import { CALIBRATION_WINDOW_DAYS } from "./calibration";
 import { earnedLvOnDays } from "./lvStd";
 import { withLine } from "./line";
+import { lineDueHours, type PlanLine } from "@/lib/domain/planningDashboard";
 
 // The planner's cockpit, read from what the floor records: the shift log's
 // hours by work centre, the Daily log's output priced in standard hours, the
@@ -77,7 +78,16 @@ export interface CockpitData {
     late: (LateLine & { soi: string | null })[];
     /** How many, so a reader of a prefix knows what it is a prefix of. */
     lateCount: number;
+    /** The plans there are, newest first, and whether this one is the newest. */
+    planNos: number[];
+    newest: boolean;
+    /** Every line of the plan still owing something — what the dashboard's filters narrow. */
+    lines: PlanLine[];
   };
+  /** The lead days in Settings: a stage owes a line this long before its oven date. */
+  leads: { cut: number; weld: number };
+  /** Working days the load ahead looks over. */
+  horizonDays: number;
   centres: CentreKpi[];
   /** Laser / punch, bending and fin folding together, over the recent days. */
   fabrication: { workedH: number; earnedH: number; efficiency: number | null };
@@ -382,13 +392,15 @@ export async function getCentrePace(now = new Date()): Promise<{ fromISO: string
   };
 }
 
-export async function getCockpit(now = new Date()): Promise<CockpitData> {
+/** `planNo`: a weekly plan of the planner's choosing — the newest when left
+ *  out. Only the newest plan's figures are today's (the trend keeps those). */
+export async function getCockpit(now = new Date(), o: { planNo?: number | null } = {}): Promise<CockpitData> {
   const todayISO = factoryDayISO(now);
   const fromISO = addDaysISO(todayISO, -HISTORY_DAYS);
   const [read, settings, holidays, plan, returnsOpen] = await Promise.all([
     readCentreDays(fromISO), getSettings(), loadHolidays(),
     // the transformers' plan, whichever line is on screen
-    withLine("TR", () => getWeeklyPlanTracker()),
+    withLine("TR", () => getWeeklyPlanTracker(o.planNo ?? null)),
     prisma.returnEntry.aggregate({ where: { status: "open" }, _count: { _all: true }, _sum: { qty: true } }),
   ]);
   const { orders, stops, days, all, recordedDates, tierByBom, tierOf, perPiece, absent, rowsRecent, overtimeH, pricedQty, recentQty, lvShotBlast } = read;
@@ -408,24 +420,34 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
 
   // ---- the weekly plan ----
   const leads = { cut: settings.leadCut, weld: settings.leadWeld };
-  const cells: (PlanCell & { tier: number | null; soi: string | null })[] = [];
+  // an order the planner paused is out of every queue and the load, and stays on the plan
+  const heldMos = new Set(orders.filter((o) => o.status === "open" && o.holdAt).map((o) => o.mo));
+  const cells: PlanLine[] = [];
+  // what each line owes each centre, by the day — read once for its hours left and the load
+  const owedByLine: ReturnType<typeof lineDueHours>[] = [];
   for (const d of plan.days) {
     for (const row of d.rows) {
       for (const [item, c] of Object.entries(row.items)) {
         if (!c) continue;
         const owed = Math.max(0, c.req - c.na - c.over);
         if (owed <= 0) continue;
+        const tier = tierOf(c.mos[0], row.bom);
+        // pieces made outside need no cutting here (welding's and finishing's counts carry them already)
+        const done = { cut: Math.min(owed, c.cut + c.osp), weld: c.weld, finish: c.finish };
+        const per = perPiece(tier, item);
+        const dues = per ? lineDueHours({ dayISO: d.iso, item, owed, done }, per, leads) : [];
+        const leftH: PlanLine["leftH"] = per ? {} : null;
+        if (leftH) for (const due of dues) leftH[due.centre] = round1((leftH[due.centre] ?? 0) + due.dueH);
+        owedByLine.push(dues);
         cells.push({
-          dayISO: d.iso, bom: row.bom, item, owed, soi: row.soi,
-          // pieces made outside need no cutting here
-          done: { cut: Math.min(owed, c.cut + c.osp), weld: c.weld, finish: c.finish },
-          tier: tierOf(c.mos[0], row.bom),
+          dayISO: d.iso, bom: row.bom, item, owed, soi: row.soi, done,
+          mos: c.mos, osp: c.osp, na: c.na, held: c.mos.length > 0 && c.mos.every((mo) => heldMos.has(mo)), leftH,
         });
       }
     }
   }
   const adherence = planAdherence(cells, todayISO, leads);
-  const late = lateLines(cells, todayISO, leads).map((l) => ({ ...l, soi: cells.find((c) => c.dayISO === l.dayISO && c.bom === l.bom && c.item === l.item)?.soi ?? null }));
+  const late = lateLines(cells, todayISO, leads).map(({ cell, ...l }) => ({ ...l, soi: cell.soi }));
 
   // ---- the load ahead, centre by centre ----
   const horizon = workingDaysFrom(todayISO, HORIZON, holidaySet);
@@ -435,14 +457,10 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
     if (!dueByCentre.has(c)) dueByCentre.set(c, []);
     dueByCentre.get(c)!.push({ dayISO, dueH: h });
   };
-  for (const c of cells) {
-    const per = perPiece(c.tier, c.item);
-    if (!per) continue;
-    const left = (s: Stage) => Math.max(0, c.owed - c.done[s]);
-    for (const centre of DEPT_CENTRES.Cut) owe(centre, stageDueISO(c.dayISO, "cut", leads), left("cut") * per[centre]);
-    owe("Welding", stageDueISO(c.dayISO, "weld", leads), left("weld") * per.Welding);
-    owe("ShotBlast", c.dayISO, left("finish") * per.ShotBlast);
-    if (!isPaintExempt(c.item as Item)) owe("Painting", c.dayISO, left("finish") * per.Painting);
+  for (const [i, c] of cells.entries()) {
+    // a line on hold waits out of the queues: it asks no capacity
+    if (c.held) continue;
+    for (const due of owedByLine[i]) owe(due.centre, due.dayISO, due.dueH);
   }
   const load = WORK_CENTRES.map((c) => {
     const k = centres.find((x) => x.centre === c)!;
@@ -581,7 +599,12 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
       adherence,
       late,
       lateCount: late.length,
+      planNos: plan.planNos,
+      newest: plan.planNo === (plan.planNos[0] ?? null),
+      lines: cells,
     },
+    leads,
+    horizonDays: HORIZON,
     centres,
     fabrication,
     load,

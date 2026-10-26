@@ -39,11 +39,13 @@ feature 13), **Material** (`/dashboards/material`, feature 5), **Consumables**
 tab id: the Production dashboard with Shifts), and no dashboard is anywhere else; the old addresses
 (`/analytics`, `?view=dashboard`) land on them. Planning shows **both lines on one page**: the
 plant's figures first, then a section for the transformers and one for the LV panels (`components/LineSection.tsx`;
-each folds away, remembered in the browser, and a link opens it at `#tr` or `#lv`). Production reads both lines
+each folds away, remembered in the browser, and a link opens it at `#tr` or `#lv`); its bar's **All | Transformers |
+LV Panels** switch (`?scope=`) shows one line's section alone. Production reads both lines
 through its own **All | TR | LV** switch (`?scope=`, first in its bar). Neither takes the app's line
 (`BOTH_LINES` in `lib/domain/lines.ts`): the proxy sends an older address naming one to that line's section on
 Planning, and to `?scope=` on Production; no line is carried onto them, and the assistant reads both lines there
-(`lib/domain/dashboardLinks.ts` builds their addresses). The recording screens still work one line at a time. **Material** holds the nesting sheets, Physical Material
+(`lib/domain/dashboardLinks.ts` builds Production's addresses, `planningUrl` in `lib/domain/planningDashboard.ts`
+Planning's). The recording screens still work one line at a time. **Material** holds the nesting sheets, Physical Material
 and Consumables; **Plan Tracker** carries the tracker, the **Daily log** it
 adds up and the
 **ODOO log** (`/odoo`, whose alerts' badge rides on the Plan Tracker tab). The rule: the tab's panel moves
@@ -619,10 +621,28 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      through the assistant.
 
 13. **Planning and Production dashboards** (`/` and `/dashboards/production`, the first two places of the Dashboards
-   tab; each shows both lines on one page — the plant's figures, then the transformers' section and the LV panels'). On the
+   tab; each shows both lines on one page — the plant's figures, then the transformers' section and the LV panels').
+   **Planning** has one bar, all of it in the address (`lib/domain/planningDashboard.ts`, tested): the scope first
+   (All | Transformers | LV Panels, `?scope=`), the transformers' weekly plan (`?plan=`, the newest by default — an
+   earlier one shows its lines as they stand now), component (`?item=`), work centre (`?centre=`) and MO / BOM / SOI
+   search (`?q=`), the panels' family (`?family=panels|mb`) and department (`?lvDept=`), then when the page was read
+   and the **Decisions** button — the decisions are a popup, never a card on the page. Each section opens on what its
+   figures rest on (the share of the work priced, centres with no hours to measure capacity, OSP and N/A pieces, orders
+   on hold, the last recorded shift day), up to six headline tiles — each one a link to the rows it is the sum of
+   (`?detail=`, a popup that keeps the filters; the totals are the tile's) and a ▲ / ▼ against a week ago where a
+   reading was kept on the same basis, **N/A** otherwise — then the plan against achieved (the transformers by oven day,
+   each stage on its own, today marked; the panels by stage against the month's even pace), the **load against
+   capacity** (each centre × the next 10 working days: the hours due over what it can work a day, short or tight on the
+   running totals), the work waiting between the stages (**Now**), the month's pace and its people, and **At risk**: every
+   line late at a stage, made late by a centre already short before its date (the catch-up day an estimate at the
+   measured pace, no overtime), or on hold — out of the queues and the load, still on the plan — with its MO, SOI, BOM,
+   component, stage date, required, done, left, the stage holding it, its std-h left, why, and its trace and worklist.
+   The panels' list is the month's orders and the urgent ones still short (no dates, so nothing "late"). Under All the
+   plant's tiles keep each line's headline apart and add only what adds: the month's std-h left and the people to add.
+   On the
    transformers, Planning is the **cockpit** — the planner's one page, every figure in **standard hours**
    (what the work is worth, from the hours a piece per work centre — typed, else the estimate), so Fabrication's
-   ten projects a day add up and departments compare. The **Decisions** button in its head (icon: the worst news; badge: how many) opens what needs a decision today (lines behind, a centre
+   ten projects a day add up and departments compare. The **Decisions** button in its bar (icon: the worst news; badge: how many) opens what needs a decision today (lines behind, a centre
    short at the end of the horizon or falling behind in it and when it catches up, thin or heavy welding coverage, a slow centre, the
    biggest loss, an unrecorded day) in a popup, the printout carrying the list. The headline tiles: the plan delivered on
    its day, the lines behind, welding's coverage, and — over the last 7 recorded days — Fabrication's efficiency, the

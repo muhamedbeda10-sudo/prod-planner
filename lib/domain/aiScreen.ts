@@ -8,11 +8,12 @@ const LABELS: Record<string, string> = {
   dept: "Department", plan: "Plan", date: "Date",
   // the Production dashboard keeps the panels' department apart from the transformers'
   lvDept: "LV department",
-  // the Production dashboard's own line switch, work centre, attendance shift and output stage
+  // the line switch of the plant dashboards (All | TR | LV — Planning's ?scope= too), the work centre,
+  // and Production's attendance shift and output stage
   scope: "Line (All | TR | LV)", centre: "Work centre", shift: "Shift", stage: "Output stage",
   // the line a page's address names (its Transformers | LV Panels switch)
   line: "Line shown",
-  // the Consumables dashboard's item and catalogue filters
+  // the Consumables dashboard's item (Planning's component) and catalogue filters
   item: "Item", link: "Catalogue link",
 };
 

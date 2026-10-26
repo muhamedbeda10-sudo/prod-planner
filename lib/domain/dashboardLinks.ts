@@ -1,29 +1,27 @@
 // The addresses of the two plant dashboards — Planning (/) and Production
-// (/dashboards/production). Both show both product lines: Planning a section
-// per line (#tr, #lv) that a link can open at, Production a line switch of
-// its own (All | TR | LV, ?scope=). They take no ?line= (BOTH_LINES in
-// lib/domain/lines.ts): the proxy sends an older address naming one to that
-// line's section, or on Production to its scope.
+// (/dashboards/production). Both show both product lines, each with a line
+// switch of its own (All | TR | LV, ?scope=); Planning under All keeps a
+// section per line (#tr, #lv) that a link can open at. They take no ?line=
+// (BOTH_LINES in lib/domain/lines.ts): the proxy sends an older address
+// naming one to that line's section, or on Production to its scope.
+// Production's addresses are built here, Planning's by its filters
+// (planningUrl in lib/domain/planningDashboard.ts) on the same `href`.
 
 import type { LineSection } from "./lines";
 
 /** A line's section on either dashboard — the anchor a link opens at. */
 export type DashSection = LineSection;
 
-type Search = Record<string, string | string[] | undefined>;
-const one = (sp: Search, k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
+export type Search = Record<string, string | string[] | undefined>;
+/** One parameter an address carries, as given. */
+export const one = (sp: Search, k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
 
 /** A dashboard's address with its filters (empty ones left out), opened at a line's section. */
-function href(path: string, params: Record<string, string | null | undefined>, section?: DashSection): string {
+export function href(path: string, params: Record<string, string | null | undefined>, section?: DashSection): string {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v) q.set(k, v);
   const s = q.toString();
   return `${path}${s ? `?${s}` : ""}${section ? `#${section}` : ""}`;
-}
-
-/** The Planning dashboard, opened at a line's section. */
-export function planningHref(section?: DashSection): string {
-  return href("/", {}, section);
 }
 
 /** The Production dashboard over a period and a choice: the line (`scope`,
