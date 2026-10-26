@@ -2,7 +2,6 @@ import "server-only";
 import type { User } from "@prisma/client";
 import type { AiArea, AiChange, AiRisk } from "@/lib/domain/aiActions";
 import type { ObjectSchema } from "@/lib/domain/aiInput";
-import type { SimulatorShow } from "@/lib/domain/simulatorScreen";
 import type { AiPageContext } from "@/lib/domain/aiScreen";
 import type { ProductLine } from "@/lib/domain/lines";
 
@@ -33,17 +32,14 @@ export interface ToolCtx {
   automationId: number | null;
   line?: ProductLine;
   page?: AiPageContext | null;
-  /** What the person has open beside the chat, as their browser sent it with
-   *  the question — only in a chat they are in. A tool that changes it
-   *  (show_on_simulator) keeps it up to date for the calls after it. */
-  screen?: ScreenState;
+  /** The what-if this chat is working on — as kept on the conversation, then
+   *  the one keep_scenario keeps, for the calls after it; null for none. Only
+   *  in a chat the person is in. */
+  working?: WorkingScenario;
 }
 
-export interface ScreenState {
-  /** The What-if Simulator: open beside the chat or not, and the scenario on
-   *  it — as the browser sent it, then the one the assistant put there (or,
-   *  while it is not open, last offered the person); null while none is. */
-  simulator: { open: boolean; scenario: unknown };
+export interface WorkingScenario {
+  scenario: unknown;
 }
 
 export interface ReadResult {
@@ -52,8 +48,6 @@ export interface ReadResult {
   text: string;
   /** Links produced by the app, not by the model, supporting this result. */
   links?: { label: string; href: string }[];
-  /** A scenario to put on the person's Simulator (show_on_simulator). */
-  simulator?: Omit<SimulatorShow, "toolUseId">;
   /** A line the assistant now remembers about the person — shown to them under the answer. */
   memory?: string;
 }
@@ -109,6 +103,9 @@ export interface ReadTool<I = Record<string, unknown>> extends ToolBase<I> {
   /** Identical successful reads may be reused within ONE model tool batch.
    * Never for a tool that changes a screen, and never across questions. */
   cacheable?: true;
+  /** Runs alone, never beside the turn's other reads: it changes what they
+   *  start from (the chat's working what-if). */
+  serial?: true;
   /** The line shown while it runs (defaults to the title). */
   status?(input: I): string;
   run(input: I, ctx: ToolCtx): Promise<ReadResult>;

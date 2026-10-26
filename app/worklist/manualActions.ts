@@ -27,7 +27,7 @@ export interface ManualActionResult {
 const DEPTS = ["Cut", "Welding", "Painting", "ShotBlast"] as const;
 
 function revalidate() {
-  for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines", "/simulate", "/shifts"]) revalidatePath(p);
+  for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines", "/shifts"]) revalidatePath(p);
 }
 
 const text = (fd: FormData, k: string, max = 200) => String(fd.get(k) ?? "").trim().slice(0, max);

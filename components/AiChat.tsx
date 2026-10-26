@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   AlertCircle, ArrowDown, BarChart3, Bot, Brain, Boxes, Check, ChevronRight, Clock, Copy, CornerDownRight, Crosshair, Factory, FileSpreadsheet, FileText, Image as ImageIcon,
-  Layers, ListChecks, Loader2, MonitorPlay, PanelLeft, Paperclip, Pencil, Pin, PinOff, Plus, RotateCcw, ScanLine, Search, Send, Share2, Sparkles, Square, Telescope, Trash2, X, Zap,
+  Layers, ListChecks, Loader2, PanelLeft, Paperclip, Pencil, Pin, PinOff, Plus, RotateCcw, ScanLine, Search, Send, Share2, Sparkles, Square, Telescope, Trash2, X, Zap,
 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
@@ -19,9 +19,8 @@ import { AI_CONVERSATION_TITLE_MAX, AI_DEPTHS, AI_DEPTH_META, DEFAULT_AI_DEPTH, 
 import { factoryDaysBefore } from "@/lib/domain/dates";
 import { durationText } from "@/lib/domain/format";
 import { AI_FILE_ACCEPT, AI_FILE_LIMITS, AI_IMAGE_MAX_SIDE, AI_IMAGE_QUALITY, SCAN_SHEET_QUESTION, fileSizeText } from "@/lib/domain/aiFiles";
-import { isSimulatorShow, SIMULATOR_HREF, type SimulatorShow } from "@/lib/domain/simulatorScreen";
 import { compressImage } from "@/lib/imageCompress";
-import { openSimulator, stageOnSimulator } from "@/lib/simulatorBridge";
+import { onHandedQuestion, takeHandedQuestion } from "@/lib/aiAsk";
 import type { AiActionView } from "@/lib/domain/aiActions";
 import type { AiChatStatus } from "@/lib/server/ai/panel";
 import { captureAiPage } from "@/lib/domain/aiScreen";
@@ -47,16 +46,12 @@ import type { AiFeedbackRating } from "@/lib/domain/aiLearn";
 // Quick / Standard / Deep — says how hard to work the next question.
 // A photo, a PDF or a sheet can go with a question: the paperclip sends it
 // to the app first (a photo shrunk to what reads well), and the question
-// carries its number; the photo shows on the question after. With the
-// What-if Simulator open on the page, a question carries the scenario on
-// it, and a scenario the assistant shows goes straight onto it — or, with
-// it closed, comes as a button that opens it with that scenario.
+// carries its number; the photo shows on the question after. A question
+// handed over from elsewhere on the page (a cockpit decision's "Ask") lands
+// in the box, for the person to send.
 
 interface Turn extends AiChatTurn {
   error?: string;
-  /** Scenarios the assistant showed on the Simulator during this answer —
-   *  kept for this page's life only. */
-  simulator?: SimulatorNote[];
   /** What it began to remember about the person during this answer. */
   remembered?: string[];
   /** The steps of a live answer — each look-up or change with its timing. */
@@ -69,11 +64,6 @@ interface Turn extends AiChatTurn {
   stopped?: boolean;
   /** When the question went — the live line counts from it. */
   startedAt?: number;
-}
-
-/** A scenario the assistant showed, and whether it is on the Simulator yet. */
-interface SimulatorNote extends SimulatorShow {
-  shown: boolean;
 }
 
 export interface Conv {
@@ -151,7 +141,6 @@ export function AiChat({
   /** Told the list and its moves whenever they change. */
   onApi?: (api: ChatListApi) => void;
 }) {
-  const router = useRouter();
   const pathname = usePathname() ?? "/ai";
   const line = useActiveLine();
   const carryLine = useCarryLine();
@@ -198,6 +187,28 @@ export function AiChat({
     (status.userDayCap > 0 && spent.userToday >= status.userDayCap) ||
     (status.plantDayCap > 0 && spent.plantToday >= status.plantDayCap);
   const canAsk = status.ok && !capReached;
+
+  // a question handed over from the page (a cockpit decision's "Ask"): in a
+  // new chat, in the box beside any draft, ready to send — taken when the
+  // chat is made, when one is handed over, and once an answer being written
+  // ends (never into it)
+  const takeHanded = useRef<() => void>(() => {});
+  takeHanded.current = () => {
+    if (busy || sending.current) return;
+    const q = takeHandedQuestion();
+    if (!q) return;
+    if (turns.length > 0) newChat();
+    setInput((draft) => (draft.trim() ? `${draft.trimEnd()}\n\n${q}` : q));
+    // the window may still be opening: focus once it shows
+    requestAnimationFrame(() => box.current?.focus());
+  };
+  useEffect(() => {
+    takeHanded.current();
+    return onHandedQuestion(() => takeHanded.current());
+  }, []);
+  useEffect(() => {
+    if (!busy) takeHanded.current();
+  }, [busy]);
 
   // the depth the person last picked, on this browser
   useEffect(() => {
@@ -357,13 +368,6 @@ export function AiChat({
         const id = v.toolUseId;
         patchLast((t) => ({ ...t, actionIds: [...(t.actionIds ?? []).filter((x) => x !== id), id] }));
       }
-    } else if (ev.type === "simulator") {
-      if (!isSimulatorShow(ev.show)) return;
-      const show = ev.show;
-      // on the Simulator at once when it is open on the page; a button otherwise
-      const sim = openSimulator();
-      if (sim) sim.show(show.scenario, show.label);
-      patchLast((t) => ({ ...t, simulator: [...(t.simulator ?? []), { ...show, shown: sim !== null }] }));
     } else if (ev.type === "memory") {
       const text = String(ev.text ?? "");
       if (text) patchLast((t) => ({ ...t, remembered: [...(t.remembered ?? []), text] }));
@@ -427,20 +431,6 @@ export function AiChat({
     void discardAiFile(id);
   }
 
-  /** A scenario the assistant showed, put on the Simulator: on it at once
-   *  when it is open on the page, else left for it as it opens. */
-  function showOnSimulator(s: SimulatorNote) {
-    const sim = openSimulator();
-    if (sim) sim.show(s.scenario, s.label);
-    else {
-      stageOnSimulator(s.scenario, s.label);
-      router.push(SIMULATOR_HREF);
-    }
-    setTurns((all) =>
-      all.map((t) => (t.simulator?.some((x) => x.toolUseId === s.toolUseId) ? { ...t, simulator: t.simulator.map((x) => (x.toolUseId === s.toolUseId ? { ...x, shown: true } : x)) } : t)),
-    );
-  }
-
   /** Stop the answer being written: the server stops the model too, keeps
    *  what was written in this chat, and frees the next question. */
   function stop() {
@@ -477,8 +467,6 @@ export function AiChat({
       { role: "user", text: question, lookups: [], ...(sent.length ? { files: sent.map(({ id, name, kind }) => ({ id, name, kind })) } : {}) },
       { role: "assistant", text: "", lookups: [], steps: [], startedAt: Date.now() },
     ]);
-    // the Simulator open on the page: the assistant starts from what it shows
-    const sim = openSimulator();
     const controller = new AbortController();
     aborter.current = controller;
     started.current = false;
@@ -489,7 +477,7 @@ export function AiChat({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
-        body: JSON.stringify({ conversationId: activeId, question, fileIds: sent.map((f) => f.id), depth, page: captureAiPage(pathname, line, window.location.search, (key) => sessionStorage.getItem(key)), ...(sim ? { screen: { simulator: sim.scenario() } } : {}) }),
+        body: JSON.stringify({ conversationId: activeId, question, fileIds: sent.map((f) => f.id), depth, page: captureAiPage(pathname, line, window.location.search, (key) => sessionStorage.getItem(key)) }),
       });
       if (!res.ok || !res.body) {
         // refused before it began: the files wait for the next try
@@ -619,7 +607,6 @@ export function AiChat({
                     isOwner={isOwner}
                     actions={(t.actionIds ?? []).flatMap((id) => (actions[id] ? [actions[id]] : []))}
                     onAction={putAction}
-                    onSimulator={showOnSimulator}
                     onFollowup={(q) => (canAsk && !busy ? askQuestion(q) : setInput(q))}
                     onRetry={!busy && canAsk && turns[i - 1]?.role === "user" ? () => askQuestion(turns[i - 1].text, turns[i - 1].files ?? []) : null}
                     rating={activeId !== null && !(busy && i === turns.length - 1) ? {
@@ -891,7 +878,6 @@ function Answer({
   isOwner,
   actions,
   onAction,
-  onSimulator,
   onFollowup,
   onRetry,
   rating,
@@ -904,7 +890,6 @@ function Answer({
   isOwner: boolean;
   actions: AiActionView[];
   onAction: (v: AiActionView) => void;
-  onSimulator: (s: SimulatorNote) => void;
   onFollowup: (q: string) => void;
   /** Ask the question again — after a failure, or a stop. */
   onRetry: (() => void) | null;
@@ -927,7 +912,6 @@ function Answer({
         {turn.text && <AiMarkdown text={turn.text} streaming={streaming} />}
         <AiSources sources={turn.sources ?? []} />
         {live && <Live text={live} since={turn.startedAt} />}
-        {turn.simulator?.map((s) => <SimulatorLine key={s.toolUseId} note={s} onShow={() => onSimulator(s)} />)}
         {turn.remembered?.map((m, k) => (
           <p key={k} className="mt-2 flex items-start gap-1.5 text-xs text-muted" dir="auto">
             <Brain size={13} className="mt-0.5 shrink-0" aria-hidden />
@@ -990,28 +974,6 @@ function Answer({
         )}
         {sharing && <ShareDialog title={title} question={question} body={printable} onClose={() => setSharing(false)} />}
       </div>
-    </div>
-  );
-}
-
-/** A scenario the assistant showed: on the Simulator already, or a button
- *  that opens the Simulator with it — and puts it back on after a change. */
-function SimulatorLine({ note, onShow }: { note: SimulatorNote; onShow: () => void }) {
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border px-3 py-2 text-sm">
-      <MonitorPlay size={15} className="text-brand-ink shrink-0" aria-hidden />
-      <span className="flex-1 min-w-0">
-        <span className="font-semibold">{note.shown ? "On your Simulator" : "For your Simulator"}</span>
-        <span className="text-muted"> · {note.label}</span>
-      </span>
-      <button
-        type="button"
-        className={`btn btn-sm ${note.shown ? "btn-ghost" : "btn-primary"}`}
-        onClick={onShow}
-        title={note.shown ? "Put this scenario on the Simulator again" : "Open the What-if Simulator with this scenario"}
-      >
-        {note.shown ? "Show it again" : "Open on the Simulator"}
-      </button>
     </div>
   );
 }

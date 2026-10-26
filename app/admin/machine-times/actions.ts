@@ -60,6 +60,6 @@ export async function saveMachineItemTimes(fd: FormData): Promise<TimesActionRes
     return gone;
   });
 
-  for (const p of ["/admin/machine-times", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/simulate"]) revalidatePath(p);
+  for (const p of ["/admin/machine-times", "/worklist/cut", "/worklist/welding", "/worklist/painting"]) revalidatePath(p);
   return { ok: true, saved: set.length, cleared };
 }

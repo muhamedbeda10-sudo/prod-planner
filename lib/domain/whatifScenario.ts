@@ -1,14 +1,14 @@
 // A what-if scenario as data — pure, beside the simulator's arithmetic
 // (lib/domain/whatif.ts):
 //
-//   parseScenario  checks a scenario before it is saved, from the Simulator's
-//                  Save button or the assistant — a saved scenario is shared
+//   parseScenario  checks a scenario before it is saved, through the
+//                  assistant — a saved scenario is shared
 //                  by everyone, so a malformed or oversized one never lands;
 //   withKnobs      turns the few knobs a person (or the assistant) names —
 //                  "two more welders, Fridays on, the laser down Sunday to
 //                  Tuesday, rush MO 4471" — into a whole scenario, and
 //                  knobsOfScenario reads them back out of one;
-//   kpisOf, describeScenario, scenarioCost — how the Simulator sums one up.
+//   kpisOf, describeScenario, scenarioCost — how a what-if is summed up.
 
 import { deptLabel } from "./constants";
 import { parseISODate, toISODate } from "./dates";
@@ -167,7 +167,7 @@ export function withKnobs(inputs: WhatIfInputs, start: Scenario, k: ScenarioKnob
     }
   }
 
-  // the queue over the jobs as they now stand, the way the Simulator keeps
+  // the queue over the jobs as they now stand, the way the what-if model keeps
   // it: a job split since takes its batches in its own place, a split undone
   // puts the job back where its first batch was, a job no longer open drops
   // out, and a job new since joins the back
@@ -207,7 +207,7 @@ export function withKnobs(inputs: WhatIfInputs, start: Scenario, k: ScenarioKnob
 }
 
 /** The scenario a saved one's data stands for today — unreadable knobs fall
- *  back to reality, the way the Simulator loads one. */
+ *  back to reality, the way the what-if model loads one. */
 export function loadScenario(inputs: WhatIfInputs, raw: unknown): Scenario {
   const d = defaultScenario(inputs);
   if (!isObject(raw)) return d;

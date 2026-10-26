@@ -404,8 +404,8 @@ export function questionContext(o: {
   noconfirm: boolean;
   paused: boolean;
   notes: readonly string[];
-  /** The What-if Simulator is open beside the chat. */
-  simulatorOpen?: boolean;
+  /** The chat keeps a working what-if scenario (keep_scenario). */
+  workingScenario?: boolean;
   line?: "TR" | "LV";
   /** What the assistant keeps about this person (lib/domain/aiLearn memoryNote). */
   memory?: string;
@@ -418,8 +418,8 @@ export function questionContext(o: {
     lines.push(`You may prepare changes for this person on: ${o.areas.map((a) => AI_AREA_LABEL[a]).join("; ")}.${o.canDelete ? " Deletions too — each one waits for their approval." : " No deletions."}`);
     lines.push(o.noconfirm ? "A small, low-risk change runs at once (the person opted into that); everything else waits for their approval." : "Every change waits for the person's approval.");
   }
-  if (o.simulatorOpen) {
-    lines.push("The person has the What-if Simulator open beside this chat: show_on_simulator changes what it shows, at once and with no card (the plant's data does not change, and the scenario it replaces stays one click away), and it and simulate_scenario start from what it shows unless told otherwise.");
+  if (o.workingScenario) {
+    lines.push("This chat keeps a working what-if scenario (kept with keep_scenario earlier): simulate_scenario, keep_scenario, compare_scenarios and plan_for_deadlines start from it unless told otherwise (from: plant starts afresh). Read it with simulate_scenario before you describe it.");
   }
   if (o.notes.length > 0) lines.push("Since your last answer:", ...o.notes.map((n) => `- ${n}`));
   if (o.memory) lines.push(o.memory);

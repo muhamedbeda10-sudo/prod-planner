@@ -34,7 +34,7 @@ const BOARD_DEPTS = ["Cut", "Welding", "Painting", "ShotBlast"] as const;
 type BoardDept = (typeof BOARD_DEPTS)[number];
 
 function revalidate() {
-  for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/simulate"]) revalidatePath(p);
+  for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting"]) revalidatePath(p);
 }
 
 /** A bay's machine rows the account may plan, and the other line's it may

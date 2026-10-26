@@ -1,4 +1,5 @@
 import "server-only";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { hasPerm } from "@/lib/server/auth";
 import { getWhatIfInputs } from "@/lib/server/whatif";
@@ -10,19 +11,64 @@ import type { AiChange } from "@/lib/domain/aiActions";
 import type { ArraySchema, ObjectSchema } from "@/lib/domain/aiInput";
 import { formOf, type ReadTool, type ToolCtx, type WriteTool } from "./types";
 
-// The What-if Simulator for the assistant: run a scenario — workers added or
-// taken away, Fridays, stoppages, material holds, split batches, jobs rushed
-// to the front, the queue optimised — against today's open jobs with the
-// screen's own arithmetic; put one on the person's own Simulator, as they
-// would turn its knobs themselves (nothing in the plant moves, so no card);
-// keep one under a name for everyone (Simulator — save and delete
+// The what-if engine, run by the assistant alone (there is no Simulator
+// screen): run a scenario — workers added or taken away, Fridays, stoppages,
+// material holds, split batches, jobs rushed to the front, the queue
+// optimised — against today's open jobs; keep one as the chat's working
+// scenario, what the next what-if builds on (nothing in the plant moves, so
+// no card); keep one under a name for everyone (What-if — save and delete
 // scenarios); and, for an admin, make one THE run order every worklist
-// follows. Saving and the run order go through the screen's own actions as
-// the person; each is undone by putting back what was there.
+// follows. Saving and the run order go through the app's own actions as the
+// person; each is undone by putting back what was there.
 
 const TABS = ["simulate"] as const;
-const NO_SAVE = "Saving and deleting scenarios needs the Simulator — save and delete scenarios permission (Users & Permissions).";
+const NO_SAVE = "Saving and deleting scenarios needs the \"What-ifs — save and delete scenarios\" permission (Users & Permissions).";
 const ADMIN_ONLY = "Only an admin sets the run order the worklists follow.";
+/** The largest working scenario a chat keeps, as JSON — room for an edited
+ *  queue of some 1500 orders, far beyond the plant's open book. */
+const MAX_KEPT_CHARS = 200_000;
+
+const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, k) => x === b[k]);
+
+/** A scenario as a chat keeps it: its job order only when someone changed it
+ *  (else the day's own order is used when it is read again, so an order
+ *  imported tomorrow takes its place by its due day), and nothing at all
+ *  when it is the plant as it stands. */
+export function keptForm(inputs: WhatIfInputs, scenario: Scenario): Scenario | null {
+  const d = defaultScenario(inputs);
+  const queueChanged = !sameList(scenario.queue, d.queue);
+  const kept: Scenario = { ...scenario, queue: queueChanged ? scenario.queue : [] };
+  const plain = !queueChanged && scenario.workFridays === d.workFridays && scenario.shiftHours === d.shiftHours
+    && Object.values(scenario.workersDelta).every((v) => v === 0)
+    && Object.keys(scenario.splits).length === 0 && Object.keys(scenario.holds).length === 0 && scenario.downtimes.length === 0;
+  return plain ? null : kept;
+}
+
+/** Keep a scenario as the chat's working one — on the person's own chat,
+ *  and for the calls after this one; what is wrong, or null. */
+async function keepOnChat(inputs: WhatIfInputs, scenario: Scenario, ctx: ToolCtx): Promise<string | null> {
+  if (!ctx.working || ctx.conversationId === null) return "A working scenario is kept only in a chat the person is in.";
+  const kept = keptForm(inputs, scenario);
+  if (kept && JSON.stringify(kept).length > MAX_KEPT_CHARS) return "This scenario is too large to keep on the chat — narrow its holds, splits or job order.";
+  const row = await prisma.aiConversation.updateMany({ where: { id: ctx.conversationId, userId: ctx.user.id }, data: { scenario: kept === null ? Prisma.DbNull : (kept as unknown as Prisma.InputJsonValue) } });
+  if (row.count === 0) return "This chat is not there any more.";
+  ctx.working.scenario = kept;
+  return null;
+}
+
+/** The chat's working scenario as kept on the conversation — what a change
+ *  built "from the chat" stands on, read again when it is approved. */
+async function keptOnChat(ctx: ToolCtx): Promise<unknown> {
+  if (ctx.conversationId === null) return null;
+  const row = await prisma.aiConversation.findFirst({ where: { id: ctx.conversationId, userId: ctx.user.id }, select: { scenario: true } });
+  return row?.scenario ?? null;
+}
+
+const FROM_CHAT = {
+  type: "boolean",
+  description: "true = build it on this chat's working scenario exactly as kept (its queue too — the only way to save or apply a queue optimised, rushed or found by plan_for_deadlines), with any knobs given turned on top. Not with saved.",
+} as const;
+
 /** How long the queue optimiser may search inside one request. */
 const OPTIMIZE_MS = 8000;
 /** Run-order lines the app takes at most (app/simulate/actions.ts). */
@@ -73,22 +119,22 @@ export const KNOB_PROPS: ObjectSchema["properties"] = {
   } satisfies ArraySchema,
 };
 
-const OPTIMIZE = { type: "boolean", description: "Reorder the queue for the fewest late jobs, then the least lateness (the screen's ⚡ optimiser). Not with first." } as const;
+const OPTIMIZE = { type: "boolean", description: "Reorder the queue for the fewest late jobs, then the least lateness (the optimiser). Not with first." } as const;
 
 export const FROM = {
   type: "string",
-  enum: ["screen", "plant"],
+  enum: ["chat", "plant"],
   description:
-    "What it starts from: screen (the default) = the scenario on the person's Simulator — while it is not open, the one last offered them in this answer, else the plant; plant = the plant as it stands, nothing turned. Not with saved.",
+    "What it starts from: chat (the default) = this chat's working scenario (keep_scenario keeps one), else the plant; plant = the plant as it stands, nothing turned. Not with saved.",
 } as const;
 
 interface KnobInput extends ScenarioKnobs {
   saved?: string;
 }
 
-/** A scenario that may start from the person's Simulator. */
-export interface ScreenInput extends KnobInput {
-  from?: "screen" | "plant";
+/** A scenario that may start from the chat's working one. */
+export interface StartInput extends KnobInput {
+  from?: "chat" | "plant";
   optimize?: boolean;
 }
 
@@ -100,32 +146,32 @@ function knobsOf(i: KnobInput): ScenarioKnobs {
   };
 }
 
-export function parseScreenInput(r: Record<string, unknown>): ScreenInput | string {
+export function parseStartInput(r: Record<string, unknown>): StartInput | string {
   if (r.optimize === true && Array.isArray(r.first) && r.first.length > 0) return "Either rush jobs with first, or let optimize order the queue — not both.";
-  if (r.saved !== undefined && r.from !== undefined) return "Start from a saved scenario (saved), or from the screen or the plant (from) — not both.";
-  return r as unknown as ScreenInput;
+  if (r.saved !== undefined && r.from !== undefined) return "Start from a saved scenario (saved), or from the chat's or the plant (from) — not both.";
+  return r as unknown as StartInput;
 }
 
-/** The scenario on the person's Simulator a call starts from — null when it
- *  starts from a saved one or the plant, or there is none (an automation, a
- *  Simulator that is not open). */
-export function screenStart(i: ScreenInput, ctx: ToolCtx): unknown {
-  return i.saved || i.from === "plant" ? null : (ctx.screen?.simulator.scenario ?? null);
+/** The chat's working scenario a call starts from — null when it starts
+ *  from a saved one or the plant, or there is none (an automation, a chat
+ *  that has kept none). */
+export function workingStart(i: StartInput, ctx: ToolCtx): unknown {
+  return i.saved || i.from === "plant" ? null : (ctx.working?.scenario ?? null);
 }
 
 interface Built {
   inputs: WhatIfInputs;
   scenario: Scenario;
-  /** The saved scenario it started from, as stored — null from the plant as it stands or the screen. */
+  /** The saved scenario it started from, as stored — null from the plant as it stands or the chat's. */
   from: unknown;
   /** What it started from, in words. */
   start: string;
 }
 
 /** The scenario the input names: its starting point (a saved scenario, the
- *  one on the person's Simulator, or the plant as it stands) with the knobs
- *  turned. The screen's is read against today's jobs as a saved one is. */
-export async function buildScenario(i: KnobInput, screen: unknown = null, snapshot?: WhatIfInputs): Promise<Built | { error: string }> {
+ *  chat's working one, or the plant as it stands) with the knobs turned. The
+ *  chat's is read against today's jobs as a saved one is. */
+export async function buildScenario(i: KnobInput, working: unknown = null, snapshot?: WhatIfInputs): Promise<Built | { error: string }> {
   const inputs = snapshot ?? await getWhatIfInputs();
   let start = defaultScenario(inputs);
   let from: unknown = null;
@@ -136,11 +182,11 @@ export async function buildScenario(i: KnobInput, screen: unknown = null, snapsh
     start = loadScenario(inputs, row.data);
     from = row.data;
     named = `the saved scenario "${scenarioName(i.saved)}"`;
-  } else if (screen !== null) {
-    const own = withKnobs(inputs, loadScenario(inputs, screen), {});
-    if (!own.ok) return { error: `The scenario on the person's Simulator cannot be read (${own.error}) — start from the plant (from: plant) or a saved scenario.` };
+  } else if (working !== null) {
+    const own = withKnobs(inputs, loadScenario(inputs, working), {});
+    if (!own.ok) return { error: `This chat's working scenario cannot be read against today's jobs (${own.error}) — start from the plant (from: plant) or a saved scenario.` };
     start = own.scenario;
-    named = "the scenario on the person's Simulator";
+    named = "this chat's working scenario";
   }
   const built = withKnobs(inputs, start, knobsOf(i));
   if (!built.ok) return { error: built.error };
@@ -166,7 +212,7 @@ const MAX_KNOB_ROWS = 100;
 type JobsShown = "late" | "changed" | "all";
 
 /** What a scenario does against today's reality, and its knobs — the answer
- *  of simulate_scenario and show_on_simulator. */
+ *  of simulate_scenario and keep_scenario. */
 function scenarioReport(b: Built, scenario: Scenario, ctx: ToolCtx, o: { show?: JobsShown; optimized: { complete: boolean } | null }) {
   const { inputs } = b;
   const result = simulate(inputs, scenario);
@@ -210,7 +256,7 @@ export const listScenariosTool: ReadTool<Record<string, never>> = {
   kind: "read",
   name: "list_scenarios",
   title: "Looking at the saved scenarios",
-  description: "The what-if scenarios saved on the Simulator (name, who saved it and when, what it changes), and the run order the worklists follow now, if one is set.",
+  description: "The what-if scenarios saved for everyone (name, who saved it and when, what it changes), and the run order the worklists follow now, if one is set.",
   schema: { type: "object", properties: {}, additionalProperties: false },
   tabs: TABS,
   async run() {
@@ -230,7 +276,7 @@ export const listScenariosTool: ReadTool<Record<string, never>> = {
   },
 };
 
-interface SimulateInput extends ScreenInput {
+interface SimulateInput extends StartInput {
   show?: JobsShown;
 }
 
@@ -239,7 +285,7 @@ export const simulateScenarioTool: ReadTool<SimulateInput> = {
   name: "simulate_scenario",
   title: "Running a what-if scenario",
   description:
-    "Run a what-if on the Simulator's own arithmetic — it changes nothing, not even the person's screen (show_on_simulator puts one there). Start from what the person's Simulator shows (the default; the plant as it stands when there is none), the plant (from: plant) or a saved scenario, and turn the knobs: workers per department, hours a worker adds, Fridays, stoppages, material holds, split batches, jobs rushed to the front, or the optimised queue. Returns the scenario and its knobs against today's reality: orders late and when the last clears, the weekly plan's load per department, and the jobs that are late or move (each with its due day, today's forecast and the scenario's). A job is one component of one order, \"MO|ITEM\".",
+    "Run a what-if on the plant's model — it changes nothing, not even this chat's working scenario (keep_scenario keeps one). Start from this chat's working scenario (the default; the plant as it stands when there is none), the plant (from: plant) or a saved scenario, and turn the knobs: workers per department, hours a worker adds, Fridays, stoppages, material holds, split batches, jobs rushed to the front, or the optimised queue. Returns the scenario and its knobs against today's reality: orders late and when the last clears, the weekly plan's load per department, and the jobs that are late or move (each with its due day, today's forecast and the scenario's). A job is one component of one order, \"MO|ITEM\".",
   schema: {
     type: "object",
     properties: {
@@ -251,65 +297,61 @@ export const simulateScenarioTool: ReadTool<SimulateInput> = {
     additionalProperties: false,
   },
   tabs: TABS,
-  parse: (r) => parseScreenInput(r) as SimulateInput | string,
+  parse: (r) => parseStartInput(r) as SimulateInput | string,
   status: (i) => (i.optimize ? "Optimising the queue" : "Running the scenario"),
   async run(i, ctx) {
-    const built = await buildScenario(i, screenStart(i, ctx));
+    const built = await buildScenario(i, workingStart(i, ctx));
     if ("error" in built) return { ok: false, text: built.error };
     const { scenario, optimized } = optimised(built, i.optimize);
     return { ok: true, text: JSON.stringify(scenarioReport(built, scenario, ctx, { show: i.show, optimized })) };
   },
 };
 
-export const showOnSimulatorTool: ReadTool<ScreenInput> = {
+export const keepScenarioTool: ReadTool<StartInput> = {
   kind: "read",
-  name: "show_on_simulator",
-  title: "Putting it on the Simulator",
+  name: "keep_scenario",
+  title: "Keeping the what-if for this chat",
   description:
-    "Put a what-if scenario on the person's What-if Simulator, at once and with no card — nothing in the plant changes: it is their own screen, and the scenario it replaces stays one click away there. While the Simulator is open beside the chat, what they see changes; while it is not, the chat shows them a button that opens it with this scenario. Built like simulate_scenario: from what the Simulator shows (the default), the plant as it stands (from: plant — the screen's changes dropped) or a saved scenario (saved — how one is opened on it), with the knobs turned. A knob given replaces that knob of the start — stoppages, holds and splits as whole lists, so send back the result's knobs with the one change; a knob left out keeps it. Returns what it does against today's reality.",
+    "Make a what-if this chat's working scenario — what the next what-if, comparison or deadline search starts from — and say what it does. Nothing in the plant changes and no card is needed: it is kept on this chat alone. Use it when the person asks for a what-if (\"add two welders\", \"and Fridays too\"), so the next question builds on it; weigh variants without keeping them with simulate_scenario. Built like simulate_scenario: from the working scenario (the default), the plant as it stands (from: plant — start afresh) or a saved scenario, with the knobs turned. A knob given replaces that knob of the start — stoppages, holds and splits as whole lists, so send back the result's knobs with the one change; a knob left out keeps it. Returns what it does against today's reality.",
   schema: { type: "object", properties: { ...KNOB_PROPS, from: FROM, optimize: OPTIMIZE }, additionalProperties: false },
   tabs: TABS,
-  // the person's screen — never in an automation, where nobody has one
+  // a chat's own — never in an automation, where there is no chat
   liveOnly: true,
-  parse: parseScreenInput,
-  status: (i) => (i.optimize ? "Optimising the queue" : "Putting it on the Simulator"),
+  // the reads beside it would start from the scenario it replaces
+  serial: true,
+  parse: parseStartInput,
+  status: (i) => (i.optimize ? "Optimising the queue" : "Running the what-if"),
   async run(i, ctx) {
-    if (!ctx.screen) return { ok: false, text: "The Simulator can be changed only in a chat the person is in." };
-    const built = await buildScenario(i, screenStart(i, ctx));
+    if (!ctx.working || ctx.conversationId === null) return { ok: false, text: "A working scenario is kept only in a chat the person is in." };
+    const built = await buildScenario(i, workingStart(i, ctx));
     if ("error" in built) return { ok: false, text: built.error };
     const { scenario, optimized } = optimised(built, i.optimize);
-    const { open } = ctx.screen.simulator;
-    // what the Simulator shows now — or would open with — for the calls after
-    ctx.screen.simulator = { open, scenario };
-    const named = describeScenario(scenario, built.inputs);
+    // the person's own chat alone; the calls after this one start from it
+    const wrong = await keepOnChat(built.inputs, scenario, ctx);
+    if (wrong) return { ok: false, text: wrong };
     return {
       ok: true,
-      text: JSON.stringify({
-        screen: open
-          ? "On the person's Simulator now; the scenario it replaced is one click away there."
-          : "The Simulator is not open on the person's screen: the chat shows them a button that opens it with this scenario.",
-        ...scenarioReport(built, scenario, ctx, { optimized }),
-      }),
-      simulator: { scenario, label: optimized ? named.replace("queue edited", "queue optimised") : named },
+      text: JSON.stringify({ kept: "This chat's working scenario now — the next what-if starts from it.", ...scenarioReport(built, scenario, ctx, { optimized }) }),
     };
   },
 };
 
-interface DeadlineInput extends ScreenInput {
+interface DeadlineInput extends StartInput {
   mos?: string[];
   fridays?: boolean;
+  keep?: boolean;
 }
 
 /** How long the deadline search may take inside one request. */
 const DEADLINE_MS = 5000;
 
-/** The cheapest way to meet the deadlines — searched on the Simulator's model. */
+/** The cheapest way to meet the deadlines — searched on the what-if model. */
 export const planForDeadlinesTool: ReadTool<DeadlineInput> = {
   kind: "read",
   name: "plan_for_deadlines",
   title: "Finding what it takes to meet the deadlines",
   description:
-    "What it takes to bring the late orders back on time — or only the orders named — searched on the Simulator's own model: first what costs nothing (the order the jobs are worked in), then one step at a time the addition that rescues the most per man-hour: more workers at a department, or Fridays worked (overtime for today's crew is not in the Simulator's model). Returns each step with what it does (late orders and days late after it), the man-hours a week it adds, the knobs of the result (put them on the person's Simulator with show_on_simulator) and the orders still late, if any. It changes nothing. Starts like simulate_scenario (the person's Simulator, the plant, or a saved scenario, with knobs turned).",
+    "What it takes to bring the late orders back on time — or only the orders named — searched on the plant's what-if model: first what costs nothing (the order the jobs are worked in), then one step at a time the addition that rescues the most per man-hour: more workers at a department, or Fridays worked (overtime for today's crew is not in the model). Returns each step with what it does (late orders and days late after it), the man-hours a week it adds, the knobs of the result and the orders still late, if any. It changes nothing in the plant; keep: true keeps the result as this chat's working scenario exactly (its job order too). Starts like simulate_scenario (the chat's working scenario, the plant, or a saved scenario, with knobs turned).",
   schema: {
     type: "object",
     properties: {
@@ -317,22 +359,26 @@ export const planForDeadlinesTool: ReadTool<DeadlineInput> = {
       from: FROM,
       mos: { type: "array", maxItems: 50, items: { type: "string", minLength: 3, maxLength: 60 }, description: "Only these orders (their MOs) must make their due day; leave out for every order with a due day." },
       fridays: { type: "boolean", description: "May it suggest working Fridays (default yes)." },
+      keep: { type: "boolean", description: "true = keep the result as this chat's working scenario, exactly as found (its job order too, which its knobs alone cannot carry) — so the next question, save_scenario or apply_run_order (fromChat) builds on it." },
     },
     additionalProperties: false,
   },
   tabs: TABS,
+  // kept, it changes what the reads beside it start from
+  serial: true,
   parse: (r) => {
-    const base = parseScreenInput(r);
+    const base = parseStartInput(r);
     if (typeof base === "string") return base;
     return {
       ...base,
       ...(Array.isArray(r.mos) && r.mos.length ? { mos: [...new Set((r.mos as string[]).map((m) => m.trim()).filter(Boolean))] } : {}),
       ...(r.fridays === false ? { fridays: false } : {}),
+      ...(r.keep === true ? { keep: true } : {}),
     };
   },
   status: () => "Searching for what meets the deadlines",
   async run(i, ctx) {
-    const built = await buildScenario(i, screenStart(i, ctx));
+    const built = await buildScenario(i, workingStart(i, ctx));
     if ("error" in built) return { ok: false, text: built.error };
     if (i.mos) {
       const open = new Set(built.inputs.jobs.map((j) => j.mo));
@@ -341,6 +387,7 @@ export const planForDeadlinesTool: ReadTool<DeadlineInput> = {
     }
     const p = planForDeadlines(built.inputs, built.scenario, { mos: i.mos, budgetMs: DEADLINE_MS, allowFridays: i.fridays !== false });
     const knobs = knobsOfScenario(p.scenario, built.inputs);
+    const keepError = i.keep ? await keepOnChat(built.inputs, p.scenario, ctx) : null;
     return {
       ok: true,
       text: JSON.stringify({
@@ -354,6 +401,7 @@ export const planForDeadlinesTool: ReadTool<DeadlineInput> = {
         addsManHoursAWeek: Math.round(p.costMhWeek),
         scenario: describeScenario(p.scenario, built.inputs),
         knobs: { ...knobs, holds: knobs.holds.slice(0, MAX_KNOB_ROWS), splits: knobs.splits.slice(0, MAX_KNOB_ROWS) },
+        ...(i.keep ? { kept: keepError ?? "This chat's working scenario now — exactly as found, its job order too." } : {}),
       }),
     };
   },
@@ -364,14 +412,28 @@ export const planForDeadlinesTool: ReadTool<DeadlineInput> = {
 interface SaveInput extends KnobInput {
   name: string;
   optimize?: boolean;
+  fromChat?: boolean;
 }
 
 const SAVE_SCHEMA: ObjectSchema = {
   type: "object",
-  properties: { name: { type: "string", minLength: 1, maxLength: 60, description: "The name to save it under — an existing name is overwritten." }, ...KNOB_PROPS, optimize: OPTIMIZE },
+  properties: { name: { type: "string", minLength: 1, maxLength: 60, description: "The name to save it under — an existing name is overwritten." }, ...KNOB_PROPS, optimize: OPTIMIZE, fromChat: FROM_CHAT },
   required: ["name"],
   additionalProperties: false,
 };
+
+/** A change's scenario: on the chat's working one as kept (fromChat), or
+ *  from the plant or a saved one — the knobs turned on top either way. */
+async function changeScenario(i: KnobInput & { fromChat?: boolean }, ctx: ToolCtx): Promise<Built | { error: string }> {
+  if (!i.fromChat) return buildScenario(i);
+  const kept = await keptOnChat(ctx);
+  if (kept === null) return { error: "This chat keeps no working scenario — keep one with keep_scenario first, or build it from the knobs." };
+  const built = await buildScenario(i, kept);
+  // what the change stands on: the kept scenario must still be so when it is approved
+  return "error" in built ? built : { ...built, from: kept, start: "this chat's working scenario" };
+}
+
+const fromChatOrSaved = (r: Record<string, unknown>): string | null => (r.fromChat === true && r.saved !== undefined ? "Build it on the chat's working scenario (fromChat) or a saved one (saved) — not both." : null);
 
 const savedLine = (inputs: WhatIfInputs, row: { data: unknown; savedBy: string | null } | null) =>
   row ? `${describeScenario(loadScenario(inputs, row.data), inputs)}${row.savedBy ? ` (saved by ${row.savedBy})` : ""}` : "—";
@@ -381,28 +443,28 @@ export const saveScenarioTool: WriteTool<SaveInput> = {
   name: "save_scenario",
   title: "Save a what-if scenario",
   description:
-    "Save a what-if scenario on the Simulator under a name, for everyone to load — built from the plant as it stands or a saved one, with the knobs turned (optionally the optimised queue). It does not read the person's screen: to keep what their Simulator shows, send the knobs simulate_scenario or show_on_simulator report — a queue reordered by hand (queueEdited) cannot be sent, so then the person saves it with the Simulator's own Save. A scenario of that name is overwritten. Show it to the person first (show_on_simulator, or simulate_scenario).",
+    "Save a what-if scenario under a name, for everyone to load — this chat's working scenario exactly as kept (fromChat: its queue too), or built from the plant as it stands or a saved one, with the knobs turned (optionally the optimised queue). A scenario of that name is overwritten. Show it to the person first (keep_scenario, or simulate_scenario).",
   area: "simulator",
   risk: "low",
   tabs: TABS,
   schema: SAVE_SCHEMA,
-  parse: (r) => (r.optimize === true && Array.isArray(r.first) && r.first.length > 0 ? "Either rush jobs with first, or let optimize order the queue — not both." : { ...(r as unknown as SaveInput), name: scenarioName(r.name) }),
+  parse: (r) => fromChatOrSaved(r) ?? (r.optimize === true && Array.isArray(r.first) && r.first.length > 0 ? "Either rush jobs with first, or let optimize order the queue — not both." : { ...(r as unknown as SaveInput), name: scenarioName(r.name) }),
   async describe(i, ctx) {
     if (!hasPerm(ctx.user, "simulator.edit")) return { error: NO_SAVE };
-    const built = await buildScenario(i);
+    const built = await changeScenario(i, ctx);
     if ("error" in built) return built;
     const existing = await prisma.simScenario.findUnique({ where: { name: i.name }, select: { data: true, savedBy: true } });
     const what = `${describeScenario(built.scenario, built.inputs)}${i.optimize ? " · queue optimised" : ""}`;
     return {
       title: `Save scenario "${i.name}"`,
-      summary: `Save the scenario "${i.name}" (${what}) on the Simulator${existing ? `, replacing the one saved${existing.savedBy ? ` by ${existing.savedBy}` : ""}` : ""}.`,
+      summary: `Save the scenario "${i.name}" (${what}) for everyone${existing ? `, replacing the one saved${existing.savedBy ? ` by ${existing.savedBy}` : ""}` : ""}.`,
       changes: [{ label: i.name, before: savedLine(built.inputs, existing), after: what }],
       // what it overwrites, and what it is built from, must still be so
       snapshot: { name: i.name, existing: existing?.data ?? null, from: built.from },
     };
   },
-  async execute(i) {
-    const built = await buildScenario(i);
+  async execute(i, ctx) {
+    const built = await changeScenario(i, ctx);
     if ("error" in built) return { ok: false, error: built.error };
     let scenario = built.scenario;
     if (i.optimize) scenario = { ...scenario, queue: optimizeQueueWithin(built.inputs, scenario, OPTIMIZE_MS).queue };
@@ -411,7 +473,7 @@ export const saveScenarioTool: WriteTool<SaveInput> = {
     if (!r.ok) return { ok: false, error: r.error };
     return {
       ok: true,
-      message: `Saved "${i.name}" — it is on the Simulator's list of saved scenarios.`,
+      message: `Saved "${i.name}" — it is on the list of saved scenarios.`,
       undo: { tool: "restore_scenario", input: { name: i.name, data: before ? JSON.stringify(before.data) : null } },
     };
   },
@@ -421,7 +483,7 @@ export const deleteScenarioTool: WriteTool<{ name: string }> = {
   kind: "write",
   name: "delete_scenario",
   title: "Delete a saved scenario",
-  description: "Delete a saved what-if scenario from the Simulator, by its exact name.",
+  description: "Delete a saved what-if scenario, by its exact name.",
   area: "simulator",
   risk: "destructive",
   tabs: TABS,
@@ -434,7 +496,7 @@ export const deleteScenarioTool: WriteTool<{ name: string }> = {
     const inputs = await getWhatIfInputs();
     return {
       title: `Delete scenario "${i.name}"`,
-      summary: `Delete the saved scenario "${i.name}"${row.savedBy ? ` (saved by ${row.savedBy})` : ""} from the Simulator.`,
+      summary: `Delete the saved scenario "${i.name}"${row.savedBy ? ` (saved by ${row.savedBy})` : ""}.`,
       changes: [{ label: i.name, before: savedLine(inputs, row), after: "deleted" }],
       snapshot: { name: i.name, data: row.data },
     };
@@ -502,26 +564,27 @@ function orderChanges(now: RunOrderLine[], next: RunOrderLine[]): AiChange[] {
 }
 
 /** The run order a scenario stands for: its open jobs in its queue order —
- *  what the screen's "Apply as the run order" commits. */
+ *  what apply_run_order commits. */
 function runOrderOf(inputs: WhatIfInputs, scenario: Scenario): RunOrderLine[] {
   return simulate(inputs, scenario).jobs
     .filter((j) => !j.done)
     .map((j) => ({ mo: j.mo, item: j.item, batchQty: j.batch !== null ? j.qty : null, batchNo: j.batch }));
 }
 
-export const applyRunOrderTool: WriteTool<KnobInput> = {
+export const applyRunOrderTool: WriteTool<KnobInput & { fromChat?: boolean }> = {
   kind: "write",
   name: "apply_run_order",
   title: "Make a scenario the run order",
   description:
-    "Admin only. Make a scenario's queue THE run order: every department's worklist then shows its slice of it, in this order, until it is replaced or removed — it moves the real factory. Name a saved scenario (save an optimised one first with save_scenario), or the knobs (not optimize). The card lists the new order against the one live now.",
+    "Admin only. Make a scenario's queue THE run order: every department's worklist then shows its slice of it, in this order, until it is replaced or removed — it moves the real factory. Take this chat's working scenario exactly as kept (fromChat — its queue too, the way to apply one optimised, rushed or found by plan_for_deadlines), a saved scenario, or the knobs (not optimize). The card lists the new order against the one live now.",
   area: "simulator",
   risk: "high",
   tabs: TABS,
-  schema: { type: "object", properties: { ...KNOB_PROPS }, additionalProperties: false },
+  schema: { type: "object", properties: { ...KNOB_PROPS, fromChat: FROM_CHAT }, additionalProperties: false },
+  parse: (r) => fromChatOrSaved(r) ?? (r as KnobInput & { fromChat?: boolean }),
   async describe(i, ctx) {
     if (!ctx.user.isAdmin) return { error: ADMIN_ONLY };
-    const built = await buildScenario(i);
+    const built = await changeScenario(i, ctx);
     if ("error" in built) return built;
     const next = runOrderOf(built.inputs, built.scenario);
     if (next.length === 0) return { error: "Nothing open to put in a run order." };
@@ -538,8 +601,8 @@ export const applyRunOrderTool: WriteTool<KnobInput> = {
       snapshot: { now, from: built.from },
     };
   },
-  async execute(i) {
-    const built = await buildScenario(i);
+  async execute(i, ctx) {
+    const built = await changeScenario(i, ctx);
     if ("error" in built) return { ok: false, error: built.error };
     const next = runOrderOf(built.inputs, built.scenario);
     const before = await liveRunOrder();
@@ -616,7 +679,7 @@ export const restoreRunOrderTool: WriteTool<{ entries: string }> = {
 export const SIMULATOR_TOOLS = [
   listScenariosTool,
   simulateScenarioTool,
-  showOnSimulatorTool,
+  keepScenarioTool,
   planForDeadlinesTool,
   saveScenarioTool,
   deleteScenarioTool,

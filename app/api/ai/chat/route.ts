@@ -13,9 +13,8 @@ import { aiPageContext } from "@/lib/domain/aiScreen";
 import { getActiveLine } from "@/lib/server/line";
 import { reserveChatTurn } from "@/lib/server/ai/chatReservation";
 import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
-import { simulatorOnScreen } from "@/lib/domain/simulatorScreen";
 import { factoryDayISO } from "@/lib/domain/dates";
-import type { ScreenState } from "@/lib/server/ai/tools/types";
+import type { WorkingScenario } from "@/lib/server/ai/tools/types";
 import { AI_AUTO_MODEL, memoryNote, routeModel } from "@/lib/domain/aiLearn";
 import { DEFAULT_AI_DEPTH, depthPlan, isAiDepth } from "@/lib/domain/aiAnswer";
 import { compactHistory } from "@/lib/domain/aiHistory";
@@ -28,13 +27,11 @@ import { memoriesOf } from "@/lib/server/ai/memory";
 //                           — a look-up or a change starting, done or failed
 //   {type:"text", delta}    — a piece of the answer
 //   {type:"action", action} — a change it prepared (or made), as its card
-//   {type:"simulator", show} — a scenario for the person's Simulator: put on
-//                              it at once when it is open, else a button
 //   {type:"done", costUsd, totalMs?, error?}
 // The question may say how deep to go (depth: quick | standard | deep —
 // lib/domain/aiAnswer depthPlan), inside the owner's settings.
-// The question may carry what the person has open beside the chat (the
-// Simulator's scenario). The access and the month's caps are checked before
+// The chat's working what-if (keep_scenario) is read off the conversation
+// and handed to the tools. The access and the month's caps are checked before
 // anything is spent; the question, the answer and what it cost are kept when
 // it ends.
 
@@ -45,7 +42,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
 /** The largest request read, in bytes and in characters — a question, its
- *  files' numbers and the Simulator's scenario fit well inside. */
+ *  files' numbers and the page's context fit well inside. */
 const MAX_BODY = 1_000_000;
 
 const fail = (status: number, error: string) => Response.json({ error }, { status });
@@ -55,7 +52,7 @@ export async function POST(request: Request) {
   if (!user) return fail(401, "You are not logged in — refresh the page.");
 
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY) return fail(413, "The request is too large.");
-  let body: { conversationId?: unknown; question?: unknown; fileIds?: unknown; screen?: unknown; page?: unknown; depth?: unknown };
+  let body: { conversationId?: unknown; question?: unknown; fileIds?: unknown; page?: unknown; depth?: unknown };
   try {
     const raw = await request.text();
     if (raw.length > MAX_BODY) return fail(413, "The request is too large.");
@@ -126,10 +123,9 @@ export async function POST(request: Request) {
     const tools = toolsFor(user, { hidden, actionsPaused: settings.actionsPaused });
     const areas = [...new Set(tools.flatMap((t) => (t.kind === "write" ? [t.area] : [])))] as AiArea[];
     const [outcomes, playbook, memories] = await Promise.all([existing ? pendingOutcomes(conversation.id) : { ids: [], notes: [] }, getPlaybookText(), memoriesOf(user.id)]);
-    // the Simulator open beside the chat — its scenario as this browser has it
-    // (read against today's jobs only where a tool starts from it)
-    const onScreen = hidden.has("simulate") ? null : simulatorOnScreen(body.screen);
-    const screen: ScreenState = { simulator: { open: onScreen !== null, scenario: onScreen } };
+    // the what-if this chat is working on (read against today's jobs only
+    // where a tool starts from it) — none for someone the what-ifs are closed to
+    const working: WorkingScenario = { scenario: hidden.has("simulate") ? null : (existing?.scenario ?? null) };
     const context = questionContext({
       askedBy: user.name,
       now,
@@ -138,7 +134,7 @@ export async function POST(request: Request) {
       noconfirm: hasPerm(user, AI_NOCONFIRM_KEY),
       paused: settings.actionsPaused,
       notes: outcomes.notes,
-      simulatorOpen: onScreen !== null,
+      workingScenario: working.scenario !== null,
       line,
       memory: memoryNote(memories),
     });
@@ -178,7 +174,7 @@ export async function POST(request: Request) {
           // the photos and PDFs go to the model as the files themselves
           expand: fileExpander(user.id),
           tools,
-          ctx: { user, hidden, now, todayISO: factoryDayISO(now), conversationId: conversation.id, automationId: null, screen, line, page },
+          ctx: { user, hidden, now, todayISO: factoryDayISO(now), conversationId: conversation.id, automationId: null, working, line, page },
           settings,
           playbook,
           events: {
@@ -187,7 +183,6 @@ export async function POST(request: Request) {
             step: (step) => send({ type: "step", ...step }),
             text: (delta) => send({ type: "text", delta }),
             action: (action) => send({ type: "action", action }),
-            simulator: (show) => send({ type: "simulator", show }),
             memory: (text) => send({ type: "memory", text }),
           },
         }).catch(async () => {

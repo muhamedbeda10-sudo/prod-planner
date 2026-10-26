@@ -110,7 +110,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
       { key: "logs.import", label: "Daily Logs — Excel import", desc: "Bulk-import handover logs from Excel (writes to all departments)" },
       { key: "calendar.manage", label: "Calendar — manage", desc: "Add and remove factory holidays" },
       { key: "machines.manage", label: "Machines — manage", desc: "Add, edit and retire the machines and lines of each department (the shift log and the worklists read the list), and keep each machine's rules — which work it takes, never takes or is preferred for — that ⚡ Plan follows" },
-      { key: "simulator.edit", label: "Simulator — save and delete scenarios", desc: "Save what-if scenarios on the Simulator under a name, overwrite them and delete them. Applying a scenario as the run order stays the admin's" },
+      { key: "simulator.edit", label: "What-ifs — save and delete scenarios", desc: "Through the assistant, save what-if scenarios under a name for everyone, overwrite them and delete them. Applying a scenario as the run order stays the admin's" },
       { key: "tasks.assign", label: "Tasks — give tasks", desc: "Give colleagues tasks — on the inbox's Tasks tab or through the assistant — follow their updates and photos, approve what they mark done or return it for rework. Everyone can receive tasks and report on them" },
     ],
   },

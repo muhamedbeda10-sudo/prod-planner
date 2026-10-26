@@ -395,7 +395,7 @@ export async function restoreMachineTimes(rows: readonly MachineTimeSnapshot[]):
   } catch (e) {
     return { ok: false, error: userMessage(e, "put the times back") };
   }
-  for (const p of ["/admin/machine-times", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/simulate"]) revalidatePath(p);
+  for (const p of ["/admin/machine-times", "/worklist/cut", "/worklist/welding", "/worklist/painting"]) revalidatePath(p);
   return { ok: true };
 }
 
@@ -542,7 +542,7 @@ export async function restoreManualJob(s: ManualJobSnapshot, opts: { cutLogId?: 
   } catch (e) {
     return { ok: false, error: userMessage(e, "put the job back") };
   }
-  for (const path of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines", "/simulate", "/shifts"]) revalidatePath(path);
+  for (const path of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines", "/shifts"]) revalidatePath(path);
   return { ok: true };
 }
 

@@ -76,13 +76,13 @@ describe("the proxy hands the address's line to the page", () => {
   });
 
   it("hands a screen pinned to one line its own line, whatever the address names", () => {
-    expect(forwarded(proxy(req("/simulate")))).toBe("TR");
+    expect(forwarded(proxy(req("/import")))).toBe("TR");
     expect(forwarded(proxy(req("/worklist/punching")))).toBe("LV");
   });
 
   it("sends an address naming the other line to the pinned screen's own, the rest kept", () => {
-    const res = proxy(req("/simulate?plan=12&line=LV"));
-    expect(res.headers.get("location")).toBe("http://plant.test/simulate?plan=12&line=TR");
+    const res = proxy(req("/import?plan=12&line=LV"));
+    expect(res.headers.get("location")).toBe("http://plant.test/import?plan=12&line=TR");
   });
 
   it("clears the cookie the old top-bar switch left behind", () => {

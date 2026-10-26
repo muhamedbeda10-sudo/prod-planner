@@ -11,7 +11,7 @@ export interface SimActionResult {
 }
 
 const revalidate = () => {
-  for (const p of ["/simulate", "/worklist/cut", "/worklist/welding", "/worklist/painting"]) revalidatePath(p);
+  for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting"]) revalidatePath(p);
 };
 
 /** Save (or overwrite) a named scenario — the knobs, queue and splits as one
@@ -36,7 +36,6 @@ export async function saveScenario(fd: FormData): Promise<SimActionResult> {
     create: { name, data, savedBy: guard.user!.name },
     update: { data, savedBy: guard.user!.name },
   });
-  revalidatePath("/simulate");
   return { ok: true };
 }
 
@@ -46,7 +45,6 @@ export async function deleteScenario(fd: FormData): Promise<SimActionResult> {
   const name = scenarioName(fd.get("name"));
   const r = await prisma.simScenario.deleteMany({ where: { name } });
   if (r.count === 0) return { ok: false, error: `No saved scenario is called "${name}".` };
-  revalidatePath("/simulate");
   return { ok: true };
 }
 

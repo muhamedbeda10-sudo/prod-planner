@@ -43,7 +43,7 @@ the other screens' line switch writes, plus `all`); opened with none named, a da
 screens open on, and All is the dashboards' alone: the recording screens still work one line at a time. Links
 between the two dashboards, and the assistant's, always name the scope and carry the period. **Material** holds the nesting sheets, Physical Material
 and Consumables; **Plan Tracker** carries the tracker, the **Daily log** it
-adds up, the **What-if Simulator** the plan is tried out on (`/simulate`, transformers only) and the
+adds up and the
 **ODOO log** (`/odoo`, whose alerts' badge rides on the Plan Tracker tab). The rule: the tab's panel moves
 between its PLACES; the switch in a page's bar moves between VIEWS of one place's rows (`components/ViewTabs.tsx`). Two things are not tabs at all: **chat** is the icon in the nav's
 right cluster, opening a panel over whatever page you are on (a glance, not a destination — its
@@ -58,7 +58,7 @@ Registry, the welding and painting worklists) carries a **Transformers | LV Pane
 request header that `getActiveLine` (`lib/server/line.ts`) reads, so the page's loaders and every server
 action posted from the page agree on it. With no line in the address a screen opens on the person's own line
 (`defaultLineOf`, `lib/domain/permissions.ts`): LV Panels for someone who records only on the panels, Transformers for
-everyone else. A screen that belongs to one line always shows it (`PINNED_LINE`, which the proxy applies): the Simulator, the weekly import,
+everyone else. A screen that belongs to one line always shows it (`PINNED_LINE`, which the proxy applies): the weekly import
 and Fabrication are the transformers', Punching and Bending the panels'. The Floor tab
 lists both lines' departments; the ODOO log shows both lines at once; a trace opens on its order's own line.
 
@@ -227,7 +227,7 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    **Save [department]** (pinned to the bottom of the screen) writes every worker in that department,
    including those hidden by search, section or attendance filters, and re-sums its
    man-hours into the figure the calibration and the plan's capacity check read (Admin → Standard Times
-   shows it read-only). The capacity check (Plan Tracker) and the What-if Simulator price the plan's promises the
+   shows it read-only). The capacity check (Plan Tracker) and the assistant's what-ifs price the plan's promises the
    same way (`owedPlanQtys`): one order's pieces once however often a line is repeated, the in-house share only
    (outsourced and N/A components owe no hours), the pace over the full days elapsed, and a stage set to 0 h/day
    as over capacity rather than unset. Undo and Clear also affect only the chosen department. The **Day / Night board**
@@ -361,14 +361,18 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    done early, so it names the day everything promised so far passes everything workable so far, and by how
    many hours. Work with no date, work owed past the picture and lines with no standard time are named under
    it rather than folded in.
-10. **What-if Simulator** (`/simulate`, a view of the Plan Tracker tab; the transformers only) — the planner's
-   sandbox: move the delivery dates, the capacity and the crew, reorder and split the queue, and see what lands
-   on time and what slips, in standard hours. A scenario can be saved by name for everyone (`simulator.edit`),
-   and an admin can apply one as the plant's run order. **Meet the deadlines** (`lib/domain/deadlinePlan.ts`)
-   searches the same model for the cheapest way to bring the late orders back on time — the order of the jobs first,
-   then one step at a time the addition that rescues the most per man-hour (workers at a department, Fridays — overtime
-   for today's crew is not in the model) — puts the result on the knobs with each step's effect, and Undo puts the scenario before back. The AI
-   assistant reads and puts scenarios on it (feature 12), and runs the same search (`plan_for_deadlines`). Viewing is free.
+10. **What-ifs — through the assistant only** (the transformers only; there is no Simulator screen, and `/simulate`
+   lands on `/ai`) — the model (`lib/domain/whatif.ts`, `lib/domain/whatifScenario.ts`) moves the capacity and the crew,
+   Fridays, stoppages and material holds, reorders and splits the queue, and says what lands on time and what slips, in
+   standard hours. The assistant runs it (`simulate_scenario`, `compare_scenarios`, `stress_test_plan`) and keeps the
+   what-if a chat is working on on the chat (`keep_scenario`, `AiConversation.scenario`), so "and Fridays too" builds
+   on the last one. **Meet the deadlines** (`plan_for_deadlines`, `lib/domain/deadlinePlan.ts`) searches the same model
+   for the cheapest way to bring the late orders back on time — the order of the jobs first, then one step at a time
+   the addition that rescues the most per man-hour (workers at a department, Fridays — overtime for today's crew is not
+   in the model). A scenario can be saved by name for everyone (`simulator.edit`), and an admin can apply one as the
+   plant's run order — each a change with a card. The right stays on Users & Permissions ("What-ifs (through the
+   assistant)", tab id `simulate`, no screen): ticked off, the assistant runs no what-if for that person. The cockpit's
+   capacity decisions open the assistant with the question ready (`CockpitAction.ask`, `lib/aiAsk.ts`).
 11. **Consumables** (`/consumables`, a place of the **Material** tab beside the nesting sheets and Physical Material —
    the Material tab's panel moves between the three, each keeping its own views; each is still switched on or
    off per account) — the store's log of what it hands out to the floor. A hand-out is recorded
@@ -438,7 +442,7 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
      on a machine too), the jobs — the fabrication board's sheet jobs (sheets carrying several projects' parts, spread
      over the machines and closed in sheets) and the other boards' jobs in pieces — the worklists' notes (with photos from the chat),
      returns upstream, an admin's dates and hidden lines, tanks piece by piece (welder, leak test, repair, painting,
-     quality), the Simulator and the run order, the ODOO log (FG codes and merged lines
+     quality), the what-ifs (saved scenarios) and the run order, the ODOO log (FG codes and merged lines
      too), Material (new lines, an LV order's sheets, SOI groups), physical stock, consumables with their catalogue,
      limits and powder scrap, the shift roster, the calendar, workers and machines, the standard times, capacity,
      calibration, times per machine and settings (key "AI — standard times and settings"), automations (a test run too)
@@ -457,15 +461,12 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
      reachable only from an undo). Deletions need their own key and always wait; "small changes without asking" is a
      per-person opt-in — and a change that carries a quantity (pieces pushed, sheets cut, counts, closings) or
      touches more than a few rows waits for the click whatever the opt-in. The owner can pause every change, or every automation, at once (AI assistant settings).
-   - **The Simulator on the person's screen** (`show_on_simulator`, `lib/simulatorBridge.ts`): with the What-if Simulator
-     open beside the chat, a question carries the scenario on it (at most 800 k characters, read against today's jobs only
-     where a tool starts from it), and the assistant turns the knobs on that screen at once — workers, hours, Fridays,
-     stoppages, holds, splits, jobs rushed to the front, the optimised queue, or a saved scenario opened. No card: it is the
-     person's own sandbox and nothing in the plant changes, so it works with the changes paused too, and never in an
-     automation. Each scenario it replaces is kept in the browser (the last five) and the Simulator's banner puts it back
-     in one click; with the Simulator closed, the answer carries a button that opens it with the scenario.
-     `simulate_scenario` starts from the screen as well; saving a scenario for everyone and the run order stay changes
-     with a card.
+   - **A chat's working what-if** (`keep_scenario`, `AiConversation.scenario`): each chat keeps the scenario it is
+     working on — workers, hours, Fridays, stoppages, holds, splits, jobs rushed to the front, the optimised queue, or a
+     saved scenario opened — read against today's jobs where a tool starts from it, so the next what-if, comparison or
+     deadline search builds on it ("from: plant" starts afresh). No card: it is the person's own chat and nothing in the
+     plant changes, so it works with the changes paused too, and never in an automation; the system message says when a
+     chat keeps one. Saving a scenario for everyone and the run order stay changes with a card.
    - **Charts and printouts** (`lib/domain/aiChart.ts`, `components/AiChart*.tsx`, `components/AiPrint.tsx`): an answer or a
      report draws its figures from a ```chart block — bar, line, area and combo (stacked or as shares of 100%, target
      lines, one thing picked out with the rest in gray), pie, KPI cards (with a trend and progress), Pareto (the causes

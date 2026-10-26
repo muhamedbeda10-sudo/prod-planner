@@ -7,6 +7,7 @@ import { Bot } from "lucide-react";
 import type { AiLayout, AiTab, AiView } from "@/components/AiWorkspace";
 import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens, usePhone, useWindowChrome } from "@/components/floatWindow";
 import { useInboxPanel } from "@/components/InboxPanel";
+import { handToAssistant } from "@/lib/aiAsk";
 
 // The workspace (the chat, its Markdown and its charts) is the heaviest thing
 // this layout could ship, and every page carries the button. So it is split
@@ -54,6 +55,9 @@ interface PanelApi {
   openTab: (view: AiView) => void;
   /** Open where it was left. */
   open: () => void;
+  /** Open a new chat with this question in its box, for the person to send —
+   *  nothing for someone without the chat. */
+  ask: (question: string) => void;
   close: () => void;
   setLarge: (v: boolean) => void;
   setView: (view: AiView) => void;
@@ -142,6 +146,11 @@ export function AiPanelProvider({ config, children }: { config: AiPanelConfig; c
       },
       openTab: (view) => put({ open: true, view: fix(view, state.view) }),
       open: () => put({ open: true, view: fix(undefined, state.view) }),
+      ask: (question) => {
+        if (!tabs.includes("chat")) return;
+        put({ open: true, view: "chat" });
+        handToAssistant(question);
+      },
       close,
       setLarge: (v) => put({ large: v }),
       setView: (view) => put({ view: fix(view, state.view) }),

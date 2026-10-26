@@ -6,19 +6,19 @@ import { compareSimulations, simulationReadiness, stressSimulations, type NamedS
 import { optimizeQueueWithin, type WhatIfInputs } from "@/lib/domain/whatif";
 import { describeScenario, knobsOfScenario, withKnobs, type ScenarioKnobs } from "@/lib/domain/whatifScenario";
 import type { ObjectSchema } from "@/lib/domain/aiInput";
-import { buildScenario, FROM, KNOB_PROPS, parseScreenInput, screenStart, type ScreenInput } from "./simulator";
+import { buildScenario, FROM, KNOB_PROPS, parseStartInput, workingStart, type StartInput } from "./simulator";
 import type { ReadTool, ToolCtx } from "./types";
 
 interface Variant extends ScenarioKnobs { label: string; optimize?: boolean }
-interface Start { from?: ScreenInput["from"]; saved?: string; line?: "TR" }
+interface Start { from?: StartInput["from"]; saved?: string; line?: "TR" }
 interface CompareInput extends Start { variants: Variant[]; detailLimit?: number }
 interface StressInput extends Start { variants?: Variant[]; stresses: StressCase[] }
 const { saved: savedSchema, ...knobs } = KNOB_PROPS;
 const label = { type: "string", minLength: 1, maxLength: 80 } as const;
 const VARIANT: ObjectSchema = { type: "object", properties: { label, ...knobs, optimize: { type: "boolean", description: "Optimise this alternative's queue within a bounded search; not with first." } }, required: ["label"], additionalProperties: false };
-const START = { from: FROM, saved: savedSchema, line: { type: "string", enum: ["TR"], description: "This simulator models transformers only. Specify TR explicitly when intentionally reviewing transformers from an LV screen." } } satisfies ObjectSchema["properties"];
+const START = { from: FROM, saved: savedSchema, line: { type: "string", enum: ["TR"], description: "The what-if model covers transformers only. Specify TR explicitly when intentionally reviewing transformers from an LV screen." } } satisfies ObjectSchema["properties"];
 function validate(raw: Record<string, unknown>) {
-  const start = parseScreenInput(raw);
+  const start = parseStartInput(raw);
   if (typeof start === "string") return start;
   const variants = (raw.variants ?? []) as Variant[];
   const stresses = (raw.stresses ?? []) as StressCase[];
@@ -33,13 +33,13 @@ function validate(raw: Record<string, unknown>) {
   return raw;
 }
 function denied(i: Start, ctx: ToolCtx) {
-  if (ctx.hidden.has("simulate")) return "The Simulator is not opened for this person.";
+  if (ctx.hidden.has("simulate")) return "The what-ifs are not opened for this person.";
   if (ctx.line === "LV" && i.line !== "TR") return "The current simulation model is for TR transformers, not LV panels. Specify line TR only if that is the intended scope; do not apply these dates to LV.";
   return null;
 }
 async function prepare(i: Start, ctx: ToolCtx) {
   const inputs = await withLine("TR", () => getWhatIfInputs());
-  const built = await buildScenario(i, screenStart(i, ctx), inputs);
+  const built = await buildScenario(i, workingStart(i, ctx), inputs);
   return { inputs, built };
 }
 function alternatives(inputs: WhatIfInputs, base: NamedSimulation["scenario"], variants: Variant[]): { error: string } | { result: NamedSimulation[]; optimization: { label: string; complete: boolean }[] } {
@@ -58,11 +58,10 @@ function alternatives(inputs: WhatIfInputs, base: NamedSimulation["scenario"], v
   return { result, optimization };
 }
 const scope = (inputs: WhatIfInputs, start: string) => ({ line: "TR", snapshotAt: new Date().toISOString(), todayISO: inputs.todayISO, startedFrom: start, weeklyPlan: inputs.plan ? { planNo: inputs.plan.planNo, fromISO: inputs.plan.minISO, toISO: inputs.plan.maxISO } : null });
-const links = [{ label: "What-if Simulator", href: "/simulate" }];
-const recordLinks = (mos: string[]) => [...links, ...[...new Set(mos)].slice(0, 20).map((mo) => ({ label: mo, href: traceHref({ mo, line: "TR" }) }))];
+const recordLinks = (mos: string[]) => [...new Set(mos)].slice(0, 20).map((mo) => ({ label: mo, href: traceHref({ mo, line: "TR" }) }));
 export const compareScenariosTool: ReadTool<CompareInput> = {
   kind: "read", name: "compare_scenarios", title: "Comparing planning alternatives on one snapshot", tabs: ["simulate"],
-  description: "Compare up to four TR planning alternatives side by side on ONE captured set of live inputs, against a freshly recomputed plant baseline. Defaults to the person's current Simulator scenario as the common starting point. Variants change workers, hours per added worker, Fridays, station stoppages, material holds, splits or job order. Reports MO-level late/on-time/blocked/undated counts, calendar-day delay, extra man-hours/day, department loads, changed records and readiness warnings. No write, no screen change, no monetary cost or delivery guarantee. Use instead of separate simulate_scenario calls when weighing alternatives. A shiftHours change alone does NOT add overtime for existing workers.",
+  description: "Compare up to four TR planning alternatives side by side on ONE captured set of live inputs, against a freshly recomputed plant baseline. Defaults to this chat's working scenario as the common starting point. Variants change workers, hours per added worker, Fridays, station stoppages, material holds, splits or job order. Reports MO-level late/on-time/blocked/undated counts, calendar-day delay, extra man-hours/day, department loads, changed records and readiness warnings. No write, no change to the working scenario, no monetary cost or delivery guarantee. Use instead of separate simulate_scenario calls when weighing alternatives. A shiftHours change alone does NOT add overtime for existing workers.",
   schema: { type: "object", properties: { ...START, variants: { type: "array", minItems: 1, maxItems: 4, items: VARIANT }, detailLimit: { type: "integer", minimum: 1, maximum: 30 } }, required: ["variants"], additionalProperties: false },
   parse: (r) => validate(r) as CompareInput | string,
   async run(i, ctx) {
@@ -77,7 +76,7 @@ export const compareScenariosTool: ReadTool<CompareInput> = {
 };
 export const stressTestPlanTool: ReadTool<StressInput> = {
   kind: "read", name: "stress_test_plan", title: "Testing the plan against disruptions", tabs: ["simulate"],
-  description: "Stress-test the TR plant baseline plus up to four alternatives against up to three EXPLICIT independent disruptions on ONE live snapshot. A stress subtracts workers for the full simulated horizon relative to each candidate, adds entire-station downtime (not one machine), or delays named jobs' material. Existing constraints remain in force; a new material hold never advances an existing hold. Returns MO-level effects, affected orders, worst-case metrics and a transparent provisional resilience ranking. Cases run independently, not all at once; there are no probabilities. Missing due dates or blocking readiness/invalid cases suppress ranking. Read-only: never changes schedules, screen or messages. Establish disruption dates, stations, worker reductions and exact jobs with the person; do not invent machine-level capacity effects.",
+  description: "Stress-test the TR plant baseline plus up to four alternatives against up to three EXPLICIT independent disruptions on ONE live snapshot. A stress subtracts workers for the full simulated horizon relative to each candidate, adds entire-station downtime (not one machine), or delays named jobs' material. Existing constraints remain in force; a new material hold never advances an existing hold. Returns MO-level effects, affected orders, worst-case metrics and a transparent provisional resilience ranking. Cases run independently, not all at once; there are no probabilities. Missing due dates or blocking readiness/invalid cases suppress ranking. Read-only: never changes schedules, the working scenario or messages. Establish disruption dates, stations, worker reductions and exact jobs with the person; do not invent machine-level capacity effects.",
   schema: { type: "object", properties: { ...START, variants: { type: "array", maxItems: 4, items: VARIANT }, stresses: { type: "array", minItems: 1, maxItems: 3, items: { type: "object", properties: { label, workersDelta: { type: "object", properties: Object.fromEntries(["Cut", "Welding", "ShotBlast", "Painting"].map((s) => [s, { type: "integer" as const, minimum: -500, maximum: 0 }])), additionalProperties: false }, downtimes: knobs.downtimes, holds: knobs.holds }, required: ["label"], additionalProperties: false } } }, required: ["stresses"], additionalProperties: false },
   parse: (r) => validate(r) as StressInput | string,
   async run(i, ctx) {

@@ -813,8 +813,9 @@ model FloorLayout {
   updatedAt DateTime @default(now()) @updatedAt
 }
 
-// A named what-if scenario, saved from the Simulator ("the emergency plan for
-// order X") — the knobs, the queue and the splits, as one JSON blob.
+// A named what-if scenario, saved through the assistant for everyone ("the
+// emergency plan for order X") — the knobs, the queue and the splits, as one
+// JSON blob.
 model SimScenario {
   id        Int      @id @default(autoincrement())
   name      String   @unique
@@ -1556,6 +1557,9 @@ model AiConversation {
   model     String
   // kept at the top of the person's list
   pinned    Boolean     @default(false)
+  // the what-if this chat is working on (keep_scenario) — what the next
+  // what-if starts from; null for none (the plant as it stands)
+  scenario  Json?
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   messages  AiMessage[]

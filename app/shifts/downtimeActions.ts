@@ -12,7 +12,7 @@ import { downtimeHoursInRange, stopPeriodBounds, type StopPeriod } from "@/lib/d
 import { emitEvent } from "@/lib/server/events";
 
 export interface DowntimeActionResult { ok: boolean; error?: string; id?: number; hours?: number; isOpen?: boolean }
-const PATHS = ["/shifts", "/", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines", "/simulate"];
+const PATHS = ["/shifts", "/", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines"];
 const revalidate = () => { for (const p of PATHS) revalidatePath(p); };
 
 type Target = { fields: { machineId: number } | { machineId: null; customName: string; customDept: string; customCentre: string | null }; label: string; dept: string; by: string | null; active: boolean };

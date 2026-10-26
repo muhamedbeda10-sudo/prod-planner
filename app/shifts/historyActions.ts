@@ -35,7 +35,7 @@ async function removeDays(fd: FormData, values: unknown, single: boolean): Promi
       const totals = await tx.deptDayHours.deleteMany({ where: { date, dept: { in: depts } } });
       return { attendance: attendance.count, stops: stops.count, totals: totals.count };
     }, { isolationLevel: "Serializable" });
-    for (const path of ["/shifts", "/", "/admin/standard-times", "/admin/machine-times", "/report", "/tracker", "/simulate", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/punching", "/worklist/bending", "/worklist/machines"]) revalidatePath(path);
+    for (const path of ["/shifts", "/", "/admin/standard-times", "/admin/machine-times", "/report", "/tracker", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/punching", "/worklist/bending", "/worklist/machines"]) revalidatePath(path);
     return { ok: true, ...removed };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return { ok: false, error: "The selected records changed at the same time. Reload and try again." };
