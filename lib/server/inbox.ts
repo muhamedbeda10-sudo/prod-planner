@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { pushTo } from "@/lib/server/push";
-import { inboxPreview, type InboxKind } from "@/lib/domain/inbox";
+import { INBOX_BODY_MAX, INBOX_TITLE_MAX, inboxPreview, type InboxKind } from "@/lib/domain/inbox";
 
 // Putting something in a person's inbox — a report, a message, a suggestion,
 // a task's news — and pushing it to their devices. The inbox row is the delivery; the push is
@@ -23,8 +23,6 @@ export interface InboxDelivery {
   taskId?: number | null;
 }
 
-const TITLE_MAX = 200;
-const BODY_MAX = 60_000;
 
 /** People pushed to at once — a slow push service holds up only its own. */
 const PUSH_AT_ONCE = 5;
@@ -39,7 +37,7 @@ export async function deliverToInbox(items: readonly InboxDelivery[]): Promise<n
     if (!active.has(i.userId)) continue;
     const row = await prisma.aiInboxItem.create({
       data: {
-        userId: i.userId, kind: i.kind, title: i.title.slice(0, TITLE_MAX), body: i.body.slice(0, BODY_MAX), fromName: i.fromName ?? null, fromUserId: i.fromUserId ?? null,
+        userId: i.userId, kind: i.kind, title: i.title.slice(0, INBOX_TITLE_MAX), body: i.body.slice(0, INBOX_BODY_MAX), fromName: i.fromName ?? null, fromUserId: i.fromUserId ?? null,
         automationId: i.automationId ?? null, runId: i.runId ?? null, actionIds: i.actionIds ?? [], taskId: i.taskId ?? null,
       },
       select: { id: true },

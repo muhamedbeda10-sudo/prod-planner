@@ -155,7 +155,7 @@ describe("failures", () => {
 });
 
 describe("the assistant's runs", () => {
-  const answer = (o: Record<string, unknown> = {}) => ({ added: [], tokens: { inputTokens: 1000, outputTokens: 200, cacheReadTokens: 0, cacheWriteTokens: 0 }, calls: 2, queries: 1, changes: 0, stop: "end_turn", text: "## Welding\nAll on time.", ...o });
+  const answer = (o: Record<string, unknown> = {}) => ({ added: [], tokens: { inputTokens: 1000, outputTokens: 200, cacheReadTokens: 0, cacheWriteTokens: 0 }, calls: 2, queries: 1, changes: 0, stop: "end_turn", text: "## Welding\nAll on time.\n\n```followups\n[\"Why?\"]\n```", ...o });
 
   it("a report reads only, runs as the owner, is sent as written, and is paid for like a question", async () => {
     h.ask.mockResolvedValue(answer());

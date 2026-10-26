@@ -450,6 +450,29 @@ mobile drawer still lists every view flat, since it has the vertical room.
      what is new today is kept (`WatchFinding`) and sent once to the people listed (else the owner) as one inbox report
      with a chart, an optional few lines by Haiku, and a task to themselves ready to approve for each of the first six
      findings. `get_watch_findings` lets the assistant read them.
+   - **How it answers** (`lib/domain/aiAnswer.ts`, `lib/domain/aiHistory.ts`, `components/AiChat.tsx`, `components/AiMarkdown.tsx`):
+     the system prompt asks for the answer first, then the detail (a table, a chart), the cause and up to three actions when
+     asked why or what to do, a self-check before writing (every figure from a tool result, totals that add up, the scope
+     said, estimates called estimates), one closing `Scope: <line> · <period> · read <HH:MM>` line — drawn as a strip, not
+     prose — and up to three follow-up questions in a ```followups block, drawn as chips (stripped from a report, a printout
+     and the copied text). A blockquote opening with ⚠️ / ✅ / ❌ is a coloured callout; a Markdown table groups its figures'
+     thousands, folds past 15 rows and exports to Excel. The chat shows each look-up as a step (its purpose, its time, its
+     rows: `step` events from the agent, which runs the reads of one turn concurrently and a change alone after them), a
+     seconds counter while it thinks, Stop (the server finishes and keeps the answer; the client's stream is cut), Try again
+     after a failure, ↑ for the last question, and under the answer the model, the time, the owner's cost, Copy, Print,
+     Share (`shareAiAnswer`: to colleagues' inboxes as a message from the person — the automations key, the recipients'
+     and the hour's caps of the inbox's own message action, through `lib/server/inboxMessage.ts` — and/or kept as their own
+     report; `shareAiAnswerToChat` as plain text through the team chat's own action; the chat's source links and
+     follow-ups are left out) and 👍 / 👎. The depth beside the box — Quick / Standard / Deep — picks the effort and the
+     calls for one question inside the owner's settings (`depthPlan`: Quick thinks a step less, Deep two steps harder
+     with half again the calls; the model is the owner's, or on Auto the cheapest / the strongest, and a chat never
+     steps down). An empty chat suggests questions for the screen it is opened on
+     (`AI_PAGE_SUGGESTIONS`). Chats can be pinned and renamed. Before a long chat is sent back to the model, the big
+     results of every question but the last two are folded to a note that keeps their source (`compactHistory`), so the
+     chat goes on to 200 messages and the prompt cache keeps hitting on the folded prefix. Stop closes the connection, which
+     stops the model too: what was written is kept in the chat with a note, and the question's turn is freed. `AiUsage`
+     keeps how long each question (a chat's, an automation's, a check's) took and when its first word came (shown on AI
+     settings → Latest questions).
    - **It learns and is measured** (`lib/domain/aiLearn.ts`, `lib/server/ai/memory.ts`, `lib/server/ai/checks.ts`,
      `components/AiFeedback.tsx`, `components/AiQuality.tsx`): it keeps a few lines about each person between chats
      (`AiMemory` — what they told it about their work and how they like answers; the brain button lists them to correct

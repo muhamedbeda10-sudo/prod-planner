@@ -17,16 +17,22 @@ import { simulatorOnScreen } from "@/lib/domain/simulatorScreen";
 import { factoryDayISO } from "@/lib/domain/dates";
 import type { ScreenState } from "@/lib/server/ai/tools/types";
 import { AI_AUTO_MODEL, memoryNote, routeModel } from "@/lib/domain/aiLearn";
+import { DEFAULT_AI_DEPTH, depthPlan, isAiDepth } from "@/lib/domain/aiAnswer";
+import { compactHistory } from "@/lib/domain/aiHistory";
 import { memoriesOf } from "@/lib/server/ai/memory";
 
 // One question to the AI assistant, answered as a stream of JSON lines:
-//   {type:"start", conversationId, title}
+//   {type:"start", conversationId, title, model}
 //   {type:"status", text}   — what it is looking up or preparing now
+//   {type:"step", id, kind, text, state, ms?, rows?}
+//                           — a look-up or a change starting, done or failed
 //   {type:"text", delta}    — a piece of the answer
 //   {type:"action", action} — a change it prepared (or made), as its card
 //   {type:"simulator", show} — a scenario for the person's Simulator: put on
 //                              it at once when it is open, else a button
-//   {type:"done", costUsd, error?}
+//   {type:"done", costUsd, totalMs?, error?}
+// The question may say how deep to go (depth: quick | standard | deep —
+// lib/domain/aiAnswer depthPlan), inside the owner's settings.
 // The question may carry what the person has open beside the chat (the
 // Simulator's scenario). The access and the month's caps are checked before
 // anything is spent; the question, the answer and what it cost are kept when
@@ -47,7 +53,7 @@ export async function POST(request: Request) {
   if (!user) return fail(401, "You are not logged in — refresh the page.");
 
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY) return fail(413, "The request is too large.");
-  let body: { conversationId?: unknown; question?: unknown; fileIds?: unknown; screen?: unknown; page?: unknown };
+  let body: { conversationId?: unknown; question?: unknown; fileIds?: unknown; screen?: unknown; page?: unknown; depth?: unknown };
   try {
     const raw = await request.text();
     if (raw.length > MAX_BODY) return fail(413, "The request is too large.");
@@ -85,14 +91,19 @@ export async function POST(request: Request) {
   const files = await questionFiles(user.id, fileIds, existing?.id ?? null);
   if (!files.ok) return fail(400, files.error);
 
-  // "Auto": the model this question needs — never weaker than the chat's own
-  const model = settings.model === AI_AUTO_MODEL ? routeModel(question, { files: files.files.length, current: existing?.model }) : settings.model;
+  // "Auto": the model this question needs — never weaker than the chat's own;
+  // then the depth the person asked for (Quick / Standard / Deep) on top
+  const auto = settings.model === AI_AUTO_MODEL;
+  const routed = auto ? routeModel(question, { files: files.files.length, current: existing?.model }) : settings.model;
+  const depth = isAiDepth(body.depth) ? body.depth : DEFAULT_AI_DEPTH;
+  const plan = depthPlan(depth, { model: settings.model, effort: settings.effort, maxCalls: settings.maxCalls, auto, routed, current: existing?.model ?? null });
+  const model = plan.model;
   const reservation = await reserveChatTurn({ userId: user.id, question, model, existing, now: new Date(), runningWindowMs: (maxDuration + 30) * 1000 });
   if (!reservation) return fail(429, "One question at a time — wait for the answer, then ask again.");
   const { usage } = reservation;
   let { conversation } = reservation;
-  if (settings.model === AI_AUTO_MODEL && conversation.model !== model) {
-    // stepped up to a stronger model: the chat goes on with it
+  if (conversation.model !== model) {
+    // stepped up to a stronger model (Auto, or a Deep question): the chat goes on with it
     conversation = await prisma.aiConversation.update({ where: { id: conversation.id }, data: { model } });
     await prisma.aiUsage.update({ where: { id: usage.id }, data: { model } });
   }
@@ -100,7 +111,9 @@ export async function POST(request: Request) {
     await linkFiles(user.id, fileIds, conversation.id);
     // logged before the first call, finished after the last — what the caps
     // and the one-at-a-time rule read
-    const history: AiMessageParam[] = (existing?.messages ?? []).map((m) => ({ role: m.role as AiMessageParam["role"], content: m.content as unknown as AiMessageParam["content"] }));
+    // the old look-ups' big results folded (lib/domain/aiHistory) — the
+    // chat as kept is not touched
+    const history: AiMessageParam[] = compactHistory((existing?.messages ?? []).map((m) => ({ role: m.role as AiMessageParam["role"], content: m.content as unknown as AiMessageParam["content"] })));
 
     // what this person's assistant may do, and what became of what it prepared
     const now = new Date();
@@ -139,13 +152,17 @@ export async function POST(request: Request) {
             open = false; // the page went away — the answer is still kept
           }
         };
-        send({ type: "start", conversationId: conversation.id, title: conversation.title });
+        send({ type: "start", conversationId: conversation.id, title: conversation.title, model: conversation.model });
 
+        const startedAt = Date.now();
         const result = await ask({
           apiKey,
           model: conversation.model,
-          effort: settings.effort,
-          maxCalls: settings.maxCalls,
+          // the person's Stop (the connection closed) stops the model too;
+          // what was written is kept, and the question's turn is freed
+          signal: request.signal,
+          effort: plan.effort,
+          maxCalls: plan.maxCalls,
           history,
           question: questionMessages(
             question,
@@ -163,6 +180,7 @@ export async function POST(request: Request) {
           events: {
             source: (source) => send({ type: "source", source }),
             status: (text) => send({ type: "status", text }),
+            step: (step) => send({ type: "step", ...step }),
             text: (delta) => send({ type: "text", delta }),
             action: (action) => send({ type: "action", action }),
             simulator: (show) => send({ type: "simulator", show }),
@@ -171,7 +189,7 @@ export async function POST(request: Request) {
         }).catch(async () => {
           const error = "The answer could not finish. Reopen the chat and check any change cards before trying again.";
           await prisma.aiUsage.update({ where: { id: usage.id }, data: { error, finishedAt: new Date() } }).catch(() => {});
-          send({ type: "done", costUsd: 0, error });
+          send({ type: "done", costUsd: 0, totalMs: Date.now() - startedAt, error });
           if (open) controller.close();
           return null;
         });
@@ -191,7 +209,7 @@ export async function POST(request: Request) {
             prisma.aiConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }),
             prisma.aiUsage.update({
               where: { id: usage.id },
-              data: { calls: result.calls, queries: result.queries, ...result.tokens, costUsd: cost, error: result.error?.slice(0, 1000) ?? null, finishedAt: new Date() },
+              data: { calls: result.calls, queries: result.queries, ...result.tokens, costUsd: cost, error: result.error?.slice(0, 1000) ?? null, firstTokenMs: result.firstTokenMs, totalMs: result.totalMs, finishedAt: new Date() },
             }),
           ]);
         } catch (e) {
@@ -203,7 +221,7 @@ export async function POST(request: Request) {
         // A bookkeeping failure must not label an already saved answer unsaved.
         if (!finalError) await markOutcomesTold(outcomes.ids).catch((e) => console.error("AI: could not mark outcomes read", e));
 
-        send({ type: "done", costUsd: cost, ...(finalError ? { error: finalError } : {}) });
+        send({ type: "done", costUsd: cost, totalMs: result.totalMs, ...(finalError ? { error: finalError } : {}) });
         if (open) controller.close();
       },
     });

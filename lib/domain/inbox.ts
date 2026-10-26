@@ -1,5 +1,10 @@
 // The inbox's words — pure, for the page and the server alike.
 
+/** An inbox item's title and body, at most (characters) — what the server
+ *  cuts to, and what a sender is told before it tries. */
+export const INBOX_TITLE_MAX = 200;
+export const INBOX_BODY_MAX = 60_000;
+
 export const INBOX_KINDS = ["report", "message", "suggestion", "task"] as const;
 export type InboxKind = (typeof INBOX_KINDS)[number];
 

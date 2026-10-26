@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { effectiveUser, hasPerm, hiddenTabsOf } from "@/lib/server/auth";
 import { aiStatusFor, apiKeyOf, getAiSettings } from "@/lib/server/ai/access";
 import { ask, questionMessages } from "@/lib/server/ai/agent";
+import { withoutFollowups } from "@/lib/domain/aiAnswer";
 import { toolsFor } from "@/lib/server/ai/tools";
 import { getPlaybookText } from "@/lib/server/ai/playbook";
 import { deliverToInbox } from "@/lib/server/inbox";
@@ -101,14 +102,14 @@ export async function reviewFor(user: User, now: Date): Promise<void> {
   });
   await prisma.aiUsage.update({
     where: { id: usage.id },
-    data: { calls: answer.calls, queries: answer.queries, ...answer.tokens, costUsd: costUsd(settings.autoModel, answer.tokens), error: answer.error?.slice(0, 1000) ?? null, finishedAt: new Date() },
+    data: { calls: answer.calls, queries: answer.queries, ...answer.tokens, costUsd: costUsd(settings.autoModel, answer.tokens), error: answer.error?.slice(0, 1000) ?? null, firstTokenMs: answer.firstTokenMs, totalMs: answer.totalMs, finishedAt: new Date() },
   });
   if (answer.error) return;
   await deliverToInbox([{
     userId: user.id,
     kind: "suggestion",
     title: `Today's review — ${factoryDayISO(now)}`,
-    body: answer.text.trim() || "Nothing needs your attention this morning.",
+    body: withoutFollowups(answer.text).trim() || "Nothing needs your attention this morning.",
     fromName: "The assistant's morning review",
     actionIds,
   }]);

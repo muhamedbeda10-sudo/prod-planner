@@ -11,6 +11,12 @@ import { AI_DENY_TEXT, displayTurns, type AiChatTurn } from "@/lib/domain/ai";
 import type { AiActionView } from "@/lib/domain/aiActions";
 import { answerOf, checkFeedback, type AiFeedbackRating } from "@/lib/domain/aiLearn";
 import { forgetFor, memoriesOf, rememberFor, type AiMemoryView } from "@/lib/server/ai/memory";
+import { hasPerm, hiddenTabsOf } from "@/lib/server/auth";
+import { deliverToInbox } from "@/lib/server/inbox";
+import { MESSAGE_LIMITS, sendMessageFromPerson } from "@/lib/server/inboxMessage";
+import { sendChatMessage } from "@/app/chat/actions";
+import { AI_CONVERSATION_TITLE_MAX, AI_SHARE_BODY_MAX, AI_SHARE_CHAT_MAX, chatTextOf, withoutFollowups, withoutSourceLinks } from "@/lib/domain/aiAnswer";
+import { AUTOMATIONS_KEY } from "@/lib/server/automations/store";
 
 // A person's own AI conversations — read and deleted by them alone — and
 // their answers to what the assistant prepared for them. Asking goes through
@@ -44,7 +50,7 @@ export async function rateAiAnswer(conversationId: number, turn: number, rating:
   if (!qa) return { ok: false, error: "That answer is not in this chat." };
   // the model that wrote it: the usage of its question (on Auto a chat moves up later)
   const asked = await prisma.aiUsage.findFirst({ where: { conversationId: c.id, question: qa.question.slice(0, 500) }, orderBy: { id: "desc" }, select: { model: true } });
-  const data = { rating: checked.rating, note: checked.note, question: qa.question, answer: qa.answer, model: asked?.model ?? c.model, status: "new" };
+  const data = { rating: checked.rating, note: checked.note, question: qa.question, answer: withoutFollowups(qa.answer), model: asked?.model ?? c.model, status: "new" };
   await prisma.aiFeedback.upsert({
     where: { conversationId_turn: { conversationId: c.id, turn: qa.turn } },
     create: { ...data, userId: user.id, conversationId: c.id, turn: qa.turn },
@@ -74,6 +80,98 @@ export async function forgetAiMemory(id: number): Promise<{ ok: boolean; error?:
   if (!user) return { ok: false, error: NOT_LOGGED_IN };
   if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "Which memory?" };
   return (await forgetFor(user.id, id)) ? { ok: true } : { ok: false, error: "That memory is not there any more." };
+}
+
+/** A chat's name, as the person wants it in the list. */
+export async function renameAiConversation(id: number, title: string): Promise<{ ok: boolean; error?: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: NOT_LOGGED_IN };
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "Which chat?" };
+  const clean = typeof title === "string" ? title.replace(/\s+/g, " ").trim() : "";
+  if (!clean) return { ok: false, error: "Give the chat a name." };
+  if (clean.length > AI_CONVERSATION_TITLE_MAX) return { ok: false, error: `Keep the name under ${AI_CONVERSATION_TITLE_MAX} characters.` };
+  const r = await prisma.aiConversation.updateMany({ where: { id, userId: user.id }, data: { title: clean } });
+  return r.count > 0 ? { ok: true } : { ok: false, error: "That conversation is not there any more." };
+}
+
+/** Keep a chat at the top of the list — or let it go back in order. */
+export async function pinAiConversation(id: number, pinned: boolean): Promise<{ ok: boolean; error?: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: NOT_LOGGED_IN };
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "Which chat?" };
+  const r = await prisma.aiConversation.updateMany({ where: { id, userId: user.id }, data: { pinned: !!pinned } });
+  return r.count > 0 ? { ok: true } : { ok: false, error: "That conversation is not there any more." };
+}
+
+/** Who an answer can be sent to: colleagues' inboxes — for someone who may
+ *  send messages (the automations key, as the inbox's own message action
+ *  and the assistant's send_message) — and, where the team chat is open to
+ *  the person, colleagues and their groups there. Keeping an answer in
+ *  one's own inbox needs no key. */
+export async function loadAiShareTargets(): Promise<{ ok: boolean; people?: { id: number; name: string }[]; groups?: { id: number; name: string }[]; inbox?: boolean; chat?: boolean; error?: string }> {
+  const a = await asker();
+  if (!a.user) return { ok: false, error: a.error };
+  const me = a.user;
+  const inbox = hasPerm(me, AUTOMATIONS_KEY);
+  const chat = !hiddenTabsOf(me).has("chat");
+  const [people, groups] = await Promise.all([
+    inbox || chat ? prisma.user.findMany({ where: { active: true, id: { not: me.id } }, orderBy: { name: "asc" }, select: { id: true, name: true } }) : [],
+    chat ? prisma.chatGroup.findMany({ where: { members: { some: { userId: me.id } } }, orderBy: { name: "asc" }, select: { id: true, name: true } }) : [],
+  ]);
+  return { ok: true, people, groups, inbox, chat };
+}
+
+/** The answer as it is sent on: without the chat's follow-up chips and
+ *  its source links (they open cards only the chat has), the question it
+ *  answered quoted first. */
+function sharedBody(question: unknown, body: string): string {
+  const q = typeof question === "string" && question.trim() ? `> ${question.replace(/\s+/g, " ").trim().slice(0, 300)}\n\n` : "";
+  return `${q}${withoutSourceLinks(withoutFollowups(body)).trim()}`;
+}
+
+/** An answer sent on — to colleagues' inboxes as a message from the person
+ *  (Markdown and charts as they are; needs the automations key, like any
+ *  message to an inbox, under the same hour's cap), and/or kept in the
+ *  person's own inbox as a report of theirs. The words are the answer as the
+ *  person reads it. */
+export async function shareAiAnswer(o: { title: string; body: string; userIds: number[]; question?: string; keep?: boolean }): Promise<{ ok: boolean; sent?: number; error?: string }> {
+  const a = await asker();
+  if (!a.user) return { ok: false, error: a.error };
+  const me = a.user;
+  const title = (typeof o.title === "string" ? o.title.replace(/\s+/g, " ").trim().slice(0, 200) : "") || "From the AI assistant";
+  const body = sharedBody(o.question, typeof o.body === "string" ? o.body : "");
+  if (!body) return { ok: false, error: "There is nothing to send." };
+  if (body.length > AI_SHARE_BODY_MAX) return { ok: false, error: "The answer is too long to send — print it instead." };
+  const to = [...new Set(Array.isArray(o.userIds) ? o.userIds.filter((x): x is number => Number.isInteger(x) && x > 0 && x !== me.id) : [])];
+  if (to.length === 0 && !o.keep) return { ok: false, error: "Pick who gets it." };
+  if (to.length > MESSAGE_LIMITS.to) return { ok: false, error: `Send it to at most ${MESSAGE_LIMITS.to} people at once.` };
+  let sent = 0;
+  if (to.length > 0) {
+    if (!hasPerm(me, AUTOMATIONS_KEY)) return { ok: false, error: "Sending to colleagues' inboxes is not opened for your account — ask the owner for the automations key, or keep it in your own inbox." };
+    const r = await sendMessageFromPerson(me, { to, title, body, fromName: `${me.name} — from their AI chat` });
+    if (!r.ok) return r;
+    sent += r.ids.length;
+  }
+  if (o.keep) sent += (await deliverToInbox([{ userId: me.id, kind: "report", title, body, fromName: "Kept from your AI chat", fromUserId: me.id }])).length;
+  return sent > 0 ? { ok: true, sent } : { ok: false, error: "Nobody could receive it — are they still active?" };
+}
+
+/** An answer posted in the team chat as the person — to a colleague or one
+ *  of their groups, through the chat's own action and rules. The chat takes
+ *  plain text, so the charts are left out and a long answer is cut. */
+export async function shareAiAnswerToChat(o: { kind: "user" | "group"; to: number; body: string }): Promise<{ ok: boolean; cut?: boolean; error?: string }> {
+  const a = await asker();
+  if (!a.user) return { ok: false, error: a.error };
+  if (hiddenTabsOf(a.user).has("chat")) return { ok: false, error: "The team chat is not opened for your account." };
+  const text = typeof o.body === "string" ? chatTextOf(o.body) : "";
+  if (!text) return { ok: false, error: "There is nothing to send." };
+  const cut = text.length > AI_SHARE_CHAT_MAX;
+  const fd = new FormData();
+  fd.set("kind", o.kind === "group" ? "group" : "user");
+  fd.set("to", String(o.to));
+  fd.set("body", cut ? `${text.slice(0, AI_SHARE_CHAT_MAX - 2).trimEnd()}…` : text);
+  const r = await sendChatMessage(fd);
+  return r.ok ? { ok: true, ...(cut ? { cut } : {}) } : { ok: false, error: r.error ?? "Could not send it." };
 }
 
 export async function deleteAiConversation(id: number): Promise<{ ok: boolean; error?: string }> {
