@@ -43,7 +43,7 @@ export const TABS: TabDef[] = [
   // the id stays "simulate": an account the Floor / Simulator tab was switched off for keeps the simulator off
   { id: "simulate", label: "What-if Simulator", group: "Plan Tracker", paths: ["/simulate"] },
 
-  { id: "orders", label: "Orders & plan imports", group: "Admin tools", paths: ["/orders", "/import"] },
+  { id: "orders", label: "Orders Registry", group: "Admin tools", paths: ["/orders", "/import"] },
   { id: "calendar", label: "Factory calendar", group: "Admin tools", paths: ["/calendar"] },
   { id: "settings", label: "Settings", group: "Admin tools", paths: ["/admin/settings"] },
   { id: "workers", label: "Production workers", group: "Admin tools", paths: ["/admin/workers"] },

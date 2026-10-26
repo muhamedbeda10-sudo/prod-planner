@@ -108,7 +108,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
       {/* 1 — the week's plan, and the lines behind */}
       {data.week.planNo === null ? (
         <ChartCard title="Are we on this week's plan?" sub="No weekly plan imported yet">
-          <EmptyState compact icon={Info} title="No weekly plan yet" hint="Import the weekly delivery schedule under Orders & plan imports." />
+          <EmptyState compact icon={Info} title="No weekly plan yet" hint="Import the weekly delivery schedule on the Orders Registry." />
         </ChartCard>
       ) : (
         <div className="grid gap-3 xl:grid-cols-12">
@@ -206,7 +206,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           table={{ filename: `month-pace-${data.todayISO}.xlsx`, rows: pace.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Done %": r.doneShare === null ? "" : Math.round(r.doneShare * 100), "Even pace %": Math.round(r.expectedShare * 100), "Ahead (+) / behind (−) h": r.aheadH })) }}
         >
           {mp.pieces === 0 ? (
-            <EmptyState compact icon={Info} title={`No orders on ${mp.monthLabel}'s plan`} hint="Import the monthly plan under Orders & plan imports — the month's pace is read from it." />
+            <EmptyState compact icon={Info} title={`No orders on ${mp.monthLabel}'s plan`} hint="Import the monthly plan on the Orders Registry — the month's pace is read from it." />
           ) : (
             <div className="space-y-3">
               {pace.map((r) => (
@@ -223,7 +223,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           table={{ filename: `people-${data.todayISO}.xlsx`, rows: mp.rows.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Left h": r.leftH, "Needed (month)": r.needed ?? "", "Needed from today": r.neededNow ?? "", ...(floor ? { Present: r.present ?? "", Gap: r.gap ?? "" } : {}) })) }}
         >
           {mp.pieces === 0 ? (
-            <EmptyState compact icon={Info} title={`No orders on ${mp.monthLabel}'s plan`} hint="Import the monthly plan under Orders & plan imports — the people it needs are read from it." />
+            <EmptyState compact icon={Info} title={`No orders on ${mp.monthLabel}'s plan`} hint="Import the monthly plan on the Orders Registry — the people it needs are read from it." />
           ) : (
             <div className="space-y-3">
               {mp.rows.map((r) => (

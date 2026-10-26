@@ -110,7 +110,7 @@ const DRAWER_VIEWS: Item[] = [
 const ADMIN: (Item & { desc: string; perm?: string })[] = [
   // both plan imports live here now, behind the page's own switcher — they
   // were two Admin entries doing the same job a month apart
-  { href: "/orders", label: "Orders & plan imports", desc: "Master MO list, the monthly plan, and the weekly delivery schedule", icon: ClipboardList, also: ["/import"] },
+  { href: "/orders", label: "Orders Registry", desc: "Master MO list, with the monthly plan and weekly delivery schedule imports", icon: ClipboardList, also: ["/import"] },
   { href: "/calendar", label: "Factory Calendar", desc: "Holidays & shutdown days off", icon: CalendarDays },
   { href: "/admin/settings", label: "Settings", desc: "Plant-wide switches, including per-piece tank tracking", icon: SlidersHorizontal },
   { href: "/admin/workers", label: "Production Workers", desc: "The shop-floor people of every department — the shift log and the tank dropdowns", icon: HardHat, perm: "workers.manage" },
