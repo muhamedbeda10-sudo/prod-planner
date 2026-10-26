@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { settleOrdersAfterOdoo } from "@/lib/server/odooAutoClose";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, hasPerm, userPerms } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
@@ -52,6 +53,8 @@ export async function closeOdooReady(formData: FormData): Promise<{ ok: boolean;
   await prisma.odooEntry.updateMany({ where: { id: { in: allowed.map((r) => r.id) } }, data: { status: "Done", doneAt: now, recordedBy: me.name } });
   revalidatePath("/odoo");
   revalidatePath("/tracker");
+  // the orders these rows finish close by themselves
+  await settleOrdersAfterOdoo();
   return { ok: true, closed: allowed.length };
 }
 

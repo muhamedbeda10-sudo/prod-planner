@@ -181,6 +181,12 @@ model MasterOrder {
   holdNote         String?
   holdBy           String?
   closedAt         DateTime?
+  // reopened by hand after it closed by itself: it no longer closes by itself
+  // — until someone closes it again
+  autoCloseOff     Boolean   @default(false)
+  // when it closed by itself (finished and all closed in Odoo); null when a
+  // person or an import closed it
+  autoClosedAt     DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

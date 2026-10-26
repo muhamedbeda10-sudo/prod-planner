@@ -645,7 +645,7 @@ export function MasterTrackerTable({
         const closed = t.members.filter((m) => m.status === "closed");
         e.push(
           { key: "close", icon: "✓", label: `Close ${done.length} finished MO${done.length === 1 ? "" : "s"}`, disabled: done.length === 0, hint: "Only a finished order — every component through its last stage — can close; the toolbar's Close N delivered closes the ones the customer received", onSelect: () => void changeGroupStatus(t.bom, done, "closed") },
-          { key: "reopen", icon: "↩", label: `Reopen ${closed.length} closed MO${closed.length === 1 ? "" : "s"}`, disabled: closed.length === 0, onSelect: () => void changeGroupStatus(t.bom, closed, "open") },
+          { key: "reopen", icon: "↩", label: `Reopen ${closed.length} closed MO${closed.length === 1 ? "" : "s"}`, disabled: closed.length === 0, hint: "The ones that closed by themselves stay open until you close them again", onSelect: () => void changeGroupStatus(t.bom, closed, "open") },
           { sep: true }
         );
       }
@@ -665,7 +665,7 @@ export function MasterTrackerTable({
     if (can("tracker.components")) e.push({ key: "comp", icon: "⚙", label: "Required components", hint: "Which components this project actually needs", onSelect: () => setOpenConfig(openConfig === r.mo ? null : r.mo) });
     if (can("tracker.status")) {
       e.push({ sep: true });
-      if (closed) e.push({ key: "reopen", icon: "↩", label: "Reopen order", onSelect: () => changeStatus(r.mo, "open") });
+      if (closed) e.push({ key: "reopen", icon: "↩", label: "Reopen order", hint: "If it closed by itself, it stays open until you close it again", onSelect: () => changeStatus(r.mo, "open") });
       else e.push({ key: "close", icon: "✓", label: "Close order", disabled: !done, hint: done ? "It leaves the daily screens; reopen any time" : "Only a finished order — every component through its last stage — can close", onSelect: () => changeStatus(r.mo, "closed") });
     }
     e.push({ sep: true }, { key: "trace", icon: "🔍", label: "Open trace", href: `/trace?mo=${encodeURIComponent(r.mo)}` });
