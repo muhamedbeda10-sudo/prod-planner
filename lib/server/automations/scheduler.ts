@@ -33,7 +33,7 @@ const CLEANUP_COMMAND = "DELETE FROM cron.job_run_details WHERE end_time < now()
 const TICK_JOBS = [JOB, NIGHT_JOB] as const;
 const ALL_JOBS = [JOB, NIGHT_JOB, CLEANUP_JOB] as const;
 /** `jobname = $1 OR jobname = $2 …` for a list of names bound in that order. */
-const namesAre = (names: readonly string[]) => names.map((_, i) => `jobname = $${i + 1}`).join(" OR ");
+const namesAre = (names: readonly string[], column = "jobname") => names.map((_, i) => `${column} = $${i + 1}`).join(" OR ");
 const SECRET_NAME = "atc_automations_tick_secret";
 const URL_NAME = "atc_automations_tick_url";
 
@@ -144,7 +144,7 @@ export async function schedulerStatus(): Promise<SchedulerStatus> {
     out.outdated = out.scheduled && (has(JOB)?.schedule !== DAY_SCHEDULE || !has(NIGHT_JOB) || !has(CLEANUP_JOB));
     if (jobs.some((j) => (TICK_JOBS as readonly string[]).includes(j.jobname))) {
       const runs = await prisma.$queryRawUnsafe<{ at: Date; status: string; message: string | null }[]>(
-        `SELECT d.start_time AS at, d.status, d.return_message AS message FROM cron.job_run_details d JOIN cron.job j ON j.jobid = d.jobid WHERE ${namesAre(TICK_JOBS).replaceAll("jobname", "j.jobname")} ORDER BY d.start_time DESC LIMIT 3`,
+        `SELECT d.start_time AS at, d.status, d.return_message AS message FROM cron.job_run_details d JOIN cron.job j ON j.jobid = d.jobid WHERE ${namesAre(TICK_JOBS, "j.jobname")} ORDER BY d.start_time DESC LIMIT 3`,
         ...TICK_JOBS,
       );
       out.lastJobRuns = runs.map((r) => ({ at: new Date(r.at).toISOString(), status: r.status, message: r.message }));

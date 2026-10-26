@@ -107,7 +107,7 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
   useEffect(() => {
     if (!enabled) return;
     armChime();
-    const stop = startPoll(() => tick(), PACE, 1500); // the first after the page has painted
+    const stop = startPoll(tick, PACE, 1500); // the first after the page has painted
     const onChanged = () => void tick(true);
     window.addEventListener(ODOO_CHANGED_EVENT, onChanged);
     return () => {

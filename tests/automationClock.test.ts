@@ -30,6 +30,8 @@ import { removeScheduler, schedulerStatus, setupScheduler, sha256, tickSecretOk,
 import { POST } from "@/app/api/automations/tick/route";
 
 const SECRET = "A".repeat(43);
+/** The job names taken away, in order. */
+const unscheduledNames = () => h.prisma.$executeRawUnsafe.mock.calls.filter((c) => String(c[0]).includes("cron.unschedule")).map((c) => c[1]);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -89,7 +91,7 @@ describe("setting the scheduler up", () => {
       expect(tick[2]).not.toContain(secret);
     }
     // stale jobs of every name go first, so a second set-up never doubles the clock
-    const unscheduled = h.prisma.$executeRawUnsafe.mock.calls.filter((c) => String(c[0]).includes("cron.unschedule")).map((c) => c[1]);
+    const unscheduled = unscheduledNames();
     expect(unscheduled).toEqual(["atc-automations-tick", "atc-automations-tick-night", "atc-cron-cleanup"]);
     expect(statements.findLastIndex((s) => s.includes("cron.unschedule"))).toBeLessThan(statements.findIndex((s) => s.includes("cron.schedule")));
     expect(h.prisma.aiSettings.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { tickSecretHash: sha256(secret) } });
@@ -109,7 +111,7 @@ describe("setting the scheduler up", () => {
 
   it("removing it takes every job away and stops the secret at once", async () => {
     expect(await removeScheduler()).toEqual({ ok: true });
-    const unscheduled = h.prisma.$executeRawUnsafe.mock.calls.filter((c) => String(c[0]).includes("cron.unschedule")).map((c) => c[1]);
+    const unscheduled = unscheduledNames();
     expect(unscheduled).toEqual(["atc-automations-tick", "atc-automations-tick-night", "atc-cron-cleanup"]);
     expect(h.prisma.aiSettings.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { tickSecretHash: "" } });
   });
