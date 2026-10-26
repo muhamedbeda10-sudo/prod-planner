@@ -2,7 +2,7 @@
 
 import { formatDate, formatDayShort } from "@/lib/domain/format";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, LabelList } from "recharts";
-import { kgToT, type Breakdown, type DayPoint, type Overrun, type PartCompare } from "@/lib/domain/materialDashboard";
+import { signedTonnes, tonnes, type Breakdown, type DayPoint, type Overrun, type PartCompare } from "@/lib/domain/materialDashboard";
 import { CAT, Legend, OTHER, TipBox, fmt } from "@/components/charts/kit";
 
 // The Material dashboard's charts. Each one is clickable — a bar narrows the
@@ -17,8 +17,7 @@ const ESTIMATE = CAT[1];
 const BOM = OTHER;
 const OVER = "var(--bad-fg)";
 
-const t2 = (kg: number) => fmt(kgToT(kg), 2);
-const signedT = (kg: number) => `${kg > 0 ? "+" : ""}${t2(kg)}`;
+const t2 = tonnes;
 const AXIS = { fontSize: 11 } as const;
 
 // ---- calculated consumption per closing day ----
@@ -160,7 +159,7 @@ export function OverrunChart({ rows, onPick }: { rows: Overrun[]; onPick?: (mo: 
               if (!p) return null;
               return <TipBox title={`${p.mo}${p.part ? ` · ${p.part}` : ""}`} rows={[
                 { label: "Over the BOM, sheets", value: `+${fmt(p.deltaSheets, 1)}`, color: OVER },
-                { label: "Over the BOM, tonnes", value: p.deltaKg === null ? "unknown weight" : signedT(p.deltaKg) },
+                { label: "Over the BOM, tonnes", value: p.deltaKg === null ? "unknown weight" : signedTonnes(p.deltaKg) },
                 { label: "BOM / actual sheets", value: `${fmt(p.bomSheets, 1)} / ${fmt(p.actualSheets, 1)}` },
                 { label: "Units", value: fmt(p.units, 1) },
               ]} />;

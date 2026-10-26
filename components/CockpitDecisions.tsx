@@ -52,11 +52,10 @@ export function DecisionList({ actions, onOpen, nothing = NOTHING }: { actions: 
 
 /** What a list is: a decision (the Planning dashboard) or an intervention
  *  (the Production dashboard) — the button, the popup and the paper name it. */
-export type DecisionKind = "decision" | "intervention" | "attention";
+export type DecisionKind = "decision" | "intervention";
 const KIND = {
   decision: { noun: "a decision", title: "Needs a decision today", button: "Decisions", nothing: NOTHING },
   intervention: { noun: "an intervention", title: "Needs intervention in production", button: "Interventions", nothing: "Nothing pressing on the floor." },
-  attention: { noun: "a look", title: "Needs a look in the data", button: "Needs a look", nothing: "Nothing — every closing linked, every line weighed, rated and nested." },
 } as const;
 
 /** The list as the paper carries it — the popup's content, printed. */
@@ -69,13 +68,17 @@ export function PrintDecisions({ actions, kind = "decision", nothing }: { action
   );
 }
 
-export function CockpitDecisions({ actions, kind = "decision" }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind }) {
+/** A list's own wording, where neither preset fits (a dashboard's data checks). */
+export interface DecisionCopy { noun: string; title: string; button: string; nothing: string; when?: string }
+
+export function CockpitDecisions({ actions, kind = "decision", copy }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind; copy?: DecisionCopy }) {
   const [open, setOpen] = useState(false);
   const ai = useAiPanel();
-  const k = KIND[kind];
+  const k = copy ?? KIND[kind];
+  const when = copy ? (copy.when ? ` ${copy.when}` : "") : " today";
   const worst = actions.some((a) => a.tone === "bad") ? "bad" : actions.some((a) => a.tone === "warn") ? "warn" : actions.length > 0 ? "info" : null;
   const Icon = worst ? ACTION_ICON[worst] : CheckCircle2;
-  const label = actions.length === 0 ? `Nothing needs ${k.noun} today` : `${actions.length} ${actions.length === 1 ? "thing needs" : "things need"} ${k.noun} today`;
+  const label = actions.length === 0 ? `Nothing needs ${k.noun}${when}` : `${actions.length} ${actions.length === 1 ? "thing needs" : "things need"} ${k.noun}${when}`;
 
   return (
     <>

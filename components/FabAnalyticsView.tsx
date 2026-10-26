@@ -2,29 +2,29 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { AlertTriangle, Bot, CircleAlert, Info, Layers } from "lucide-react";
 import type { CockpitAction } from "@/lib/domain/kpis";
 import { hrefWithLine, LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
-import { traceHref } from "@/lib/domain/links";
+import { odooLogHref, traceHref } from "@/lib/domain/links";
 import { formatDate, formatDayShort } from "@/lib/domain/format";
 import { slicerRangeLabel } from "@/lib/domain/dateSlicer";
 import {
   MATERIAL_BREAKDOWNS, MATERIAL_BREAKDOWN_LABEL, MATERIAL_HISTORY_DAYS, MATERIAL_VIEWS, MATERIAL_VIEW_LABEL, MATERIAL_VIEW_SHORT, MAX_DETAIL_ROWS, RATE_SOURCE_LABEL, WEIGHT_SOURCE_LABEL,
-  changePct, hasMaterialFilters, kgToT, materialDefaultRange, materialQuery, share,
-  type MaterialAction, type MaterialFilters, type MaterialRequest,
+  EMPTY_MATERIAL_DASH_FILTERS, coverageTone, hasMaterialFilters, materialDefaultRange, materialQuery, share, signedTonnes, tonnes,
+  kgToT, type CoverageTone, type MaterialAction, type MaterialFilters, type MaterialRequest,
 } from "@/lib/domain/materialDashboard";
 import type { MaterialDashboardData } from "@/lib/server/fabAnalytics";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { EmptyState } from "@/components/primitives";
 import { Badge } from "@/components/Badge";
-import { ChartCard, DeltaChip, StatTile, fmt, type TableRow } from "@/components/charts/kit";
+import { ChartCard, Delta, StatTile, fmt, type TableRow } from "@/components/charts/kit";
 import { TableEmpty, TableFrame, Th } from "@/components/DataTable";
-import { FilterSelect } from "@/components/FilterControls";
+import { FilterSelect, SearchBox } from "@/components/FilterControls";
 import { LineSwitch } from "@/components/LineSwitch";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { useAiPanel } from "@/components/AiPanel";
-import { CockpitDecisions } from "@/components/CockpitDecisions";
+import { CockpitDecisions, type DecisionCopy } from "@/components/CockpitDecisions";
 import { BreakdownChart, ConsumedPerDayChart, OverrunChart, PartCompareChart } from "@/components/LazyCharts";
 import { aiTargetRef } from "@/lib/aiTarget";
 
@@ -35,10 +35,9 @@ import { aiTargetRef } from "@/lib/aiTarget";
 // view, the period and the group filters; a click on a tile or a bar keeps
 // them and narrows to what was clicked, and Back undoes it.
 
-const t2 = (kg: number) => fmt(kgToT(kg), 2);
+const t2 = tonnes;
 const n1 = (v: number) => fmt(v, 1);
 const pctOf = (f: number | null, digits = 0) => (f === null ? "N/A" : `${(f * 100).toFixed(digits)}%`);
-const signedT = (kg: number) => `${kg > 0 ? "+" : ""}${t2(kg)}`;
 
 const SOURCES = "Material sheet (MaterialUsage) and the ODOO log (OdooEntry)";
 
@@ -74,7 +73,7 @@ export function MaterialDashboardBar({ req, line, todayISO, marks, a }: { req: M
   return (
     <div className="space-y-0">
       <UrlDateSlicer
-        encoding="fromToAll" from={req.fromISO} to={req.fromISO ? req.toISO : null} min={addDaysISO(todayISO, -MATERIAL_HISTORY_DAYS)} max={todayISO} today={todayISO}
+        encoding="fromTo" hrefFor={(f, t) => href({ fromISO: f, toISO: t ?? todayISO })} from={req.fromISO} to={req.fromISO ? req.toISO : null} min={addDaysISO(todayISO, -MATERIAL_HISTORY_DAYS)} max={todayISO} today={todayISO}
         marks={marks} label="Consumption period" allLabel="All time"
         presets={["thisMonth", "lastMonth", "last30", "last90"]} defaultRange={{ label: "Last 90 days", ...def }}
         start={<LineSwitch />}
@@ -87,7 +86,7 @@ export function MaterialDashboardBar({ req, line, todayISO, marks, a }: { req: M
                 </Link>
               ))}
             </nav>
-            {a && <CockpitDecisions kind="attention" actions={attention(a.actions, req, line, href)} />}
+            {a && <CockpitDecisions copy={ATTENTION} actions={attention(a.actions, req, line, href)} />}
             {ai && (
               <button type="button" className="btn btn-secondary btn-sm" onClick={excel} title={`Ask the assistant for this view as an Excel file · ${period}`}>
                 <Bot size={14} aria-hidden /> Excel
@@ -105,7 +104,7 @@ export function MaterialDashboardBar({ req, line, todayISO, marks, a }: { req: M
         <FilterSelect label="SOI" value={f.soi} onChange={(v) => setFilter("soi", v)} options={(o?.sois ?? []).map((s) => ({ value: s, label: s }))} />
         <MoBox key={f.mo} value={f.mo} onChange={(v) => setFilter("mo", v)} />
         {hasMaterialFilters(f) && (
-          <Link href={href({ filters: { material: "", thicknessMm: null, sheetSize: "", part: "", mo: "", soi: "" } })} className="btn btn-ghost btn-sm text-bad-fg" scroll={false}>
+          <Link href={href({ filters: EMPTY_MATERIAL_DASH_FILTERS })} className="btn btn-ghost btn-sm text-bad-fg" scroll={false}>
             Reset filters
           </Link>
         )}
@@ -114,10 +113,15 @@ export function MaterialDashboardBar({ req, line, todayISO, marks, a }: { req: M
   );
 }
 
+const ATTENTION: DecisionCopy = {
+  noun: "a look", title: "Needs a look in the data", button: "Needs a look",
+  nothing: "Nothing — every closing linked, every line weighed, rated and nested.",
+};
+
 /** The dashboard's items for the bar's "Needs a look" popup: each opens where
  *  it is fixed — the period's ODOO log, the material sheet — or narrows this page. */
 function attention(actions: readonly MaterialAction[], req: MaterialRequest, line: ProductLine, href: ReturnType<typeof useHref>): CockpitAction[] {
-  const odoo = hrefWithLine(`/odoo?day=${req.fromISO ? `${req.fromISO}..${req.toISO}` : "all"}`, line);
+  const odoo = odooLogHref(req.fromISO, req.toISO, line);
   const material = hrefWithLine("/material", line);
   return actions.map((x) => ({
     tone: x.tone,
@@ -126,27 +130,25 @@ function attention(actions: readonly MaterialAction[], req: MaterialRequest, lin
   }));
 }
 
-/** The MO filter: typed, applied on Enter or when the box is left. Keyed on
- *  the filter, so a pick made elsewhere (a bar, a reset) shows here. */
+/** The MO filter, in the shared search box: applied on Enter, when the box is
+ *  left, or at once when cleared. Keyed on the filter, so a pick made
+ *  elsewhere (a bar, a reset) shows here. */
 function MoBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [text, setText] = useState(value);
-  const apply = () => { if (text.trim() !== value) onChange(text.trim()); };
+  const apply = (v = text) => { if (v.trim() !== value) onChange(v.trim()); };
+  const submit = (e: FormEvent) => { e.preventDefault(); apply(); };
   return (
-    <span className={`filter-chip ${value ? "filter-chip-on" : ""}`}>
-      <input
-        type="search" value={text} onChange={(e) => setText(e.target.value)} onBlur={apply} onKeyDown={(e) => { if (e.key === "Enter") apply(); }}
-        placeholder="MO: any" aria-label="MO" className="ctl w-40 ltr"
-      />
-    </span>
+    <form role="search" onSubmit={submit} onBlur={() => apply()} className="contents">
+      <SearchBox value={text} onChange={(v) => { setText(v); if (!v) apply(""); }} placeholder="MO" />
+    </form>
   );
 }
 
 // ---------------------------------------------------------------- the page body
 
-export function FabAnalyticsView({ a, todayISO }: { a: MaterialDashboardData; todayISO: string }) {
-  const req = a.request;
+export function FabAnalyticsView({ a, req, line, todayISO }: { a: MaterialDashboardData; req: MaterialRequest; line: ProductLine; todayISO: string }) {
   const router = useRouter();
-  const href = useHref(req, a.line, todayISO);
+  const href = useHref(req, line, todayISO);
   const go = (over: Parameters<typeof materialQuery>[1]) => router.push(href(over), { scroll: false });
 
   if (a.sheetLines === 0) {
@@ -154,9 +156,9 @@ export function FabAnalyticsView({ a, todayISO }: { a: MaterialDashboardData; to
       <div className="bg-surface border rounded-xl">
         <EmptyState
           icon={Layers}
-          title={`The ${LINE_LABEL[a.line]} material sheet is empty`}
+          title={`The ${LINE_LABEL[line]} material sheet is empty`}
           hint="Upload it on the Material tab and the dashboard fills in. The ODOO closings alone carry no rates, so nothing can be calculated from them."
-          action={<Link href={hrefWithLine("/material", a.line)} className="btn btn-secondary btn-sm">Open Material</Link>}
+          action={<Link href={hrefWithLine("/material", line)} className="btn btn-secondary btn-sm">Open Material</Link>}
         />
       </div>
     );
@@ -168,15 +170,15 @@ export function FabAnalyticsView({ a, todayISO }: { a: MaterialDashboardData; to
 
   return (
     <div className="space-y-4">
-      <QualityStrip a={a} />
+      <QualityStrip a={a} line={line} />
 
       {noRows ? (
         <div className="bg-surface border rounded-xl">
-          <TableEmpty filtered title="No sheet line matches the filters" hint="Clear a filter to see the lines again." action={<Link href={href({ filters: { material: "", thicknessMm: null, sheetSize: "", part: "", mo: "", soi: "" } })} className="btn btn-secondary btn-sm">Reset filters</Link>} />
+          <TableEmpty filtered title="No sheet line matches the filters" hint="Clear a filter to see the lines again." action={<Link href={href({ filters: EMPTY_MATERIAL_DASH_FILTERS })} className="btn btn-secondary btn-sm">Reset filters</Link>} />
         </div>
       ) : (
         <>
-          <Kpis a={a} period={period} href={href} />
+          <Kpis a={a} req={req} period={period} href={href} />
 
           {req.view === "consumption" ? (
               <ChartCard
@@ -195,7 +197,7 @@ export function FabAnalyticsView({ a, todayISO }: { a: MaterialDashboardData; to
                 about="Sheets the nesting took against the sheets the BOM calls for, on the SAME lines — the nested ones — so a part is never compared on all it needs against a part of its nesting. Now: the current sheet, whatever the period. Click a part to narrow the page to it."
                 data={a.parts.map((p): TableRow => ({ Part: p.part, "Part code": p.partCode, "Lines compared": p.lines, "BOM sheets": p.bomSheets, "Actual sheets": p.actualSheets, "Difference": Math.round((p.actualSheets - p.bomSheets) * 10) / 10, "BOM t": kgToT(p.bomKg), "Actual t": kgToT(p.actualKg) }))}
                 table
-                right={<Badge tone="info">Now</Badge>}
+                right={<NowBadge />}
               >
                 {a.parts.length
                   ? <PartCompareChart parts={a.parts} onPick={(p) => go({ filters: { part: p } })} />
@@ -228,19 +230,16 @@ export function FabAnalyticsView({ a, todayISO }: { a: MaterialDashboardData; to
               }
             >
               {a.breakdown.some((b) => (req.view === "consumption" ? b.consumed.sheets : b.bom.sheets) > 0)
-                ? <BreakdownChart rows={a.breakdown} measure={req.view === "consumption" ? "consumed" : "bom"} onPick={(_, row) => {
-                    if (req.by === "thickness" ? !(row.thicknessMm && row.thicknessMm > 0) : row.key === "—") return; // a blank group is no filter
-                    go({ filters: req.by === "thickness" ? { thicknessMm: row.thicknessMm } : req.by === "material" ? { material: row.key } : { sheetSize: row.key } });
-                  }} />
+                ? <BreakdownChart rows={a.breakdown} measure={req.view === "consumption" ? "consumed" : "bom"} onPick={(_, row) => row.filter && go({ filters: row.filter })} />
                 : <EmptyState compact icon={Layers} title={req.view === "consumption" ? "Nothing consumed in the period" : "Nothing planned"} />}
             </ChartCard>
             <ChartCard
               className="lg:col-span-6"
               title="Most over the BOM"
               about="The MOs whose nesting took the most sheets over their BOM, on their nested lines (Now — the current sheet, whatever the period). Tonnes only where every line of the MO has a known weight. Click an MO to narrow the page to it."
-              data={a.overruns.map((o): TableRow => ({ MO: o.mo, SOI: o.soi, Part: o.part, Units: o.units, "BOM sheets": o.bomSheets, "Actual sheets": o.actualSheets, "Over, sheets": o.deltaSheets, "Over, t": o.deltaKg === null ? "unknown" : kgToT(o.deltaKg) }))}
+              data={a.overruns.map((o): TableRow => ({ MO: o.mo, SOI: o.soi, Part: o.part, Units: o.units, "BOM sheets": o.bomSheets, "Actual sheets": o.actualSheets, "Over, sheets": o.deltaSheets, "Over, t": o.deltaKg === null ? "unknown" : Number(tonnes(o.deltaKg)) }))}
               table
-              right={<Badge tone="info">Now</Badge>}
+              right={<NowBadge />}
             >
               {a.overruns.length
                 ? <OverrunChart rows={a.overruns} onPick={(mo) => go({ filters: { mo } })} />
@@ -248,7 +247,7 @@ export function FabAnalyticsView({ a, todayISO }: { a: MaterialDashboardData; to
             </ChartCard>
           </div>
 
-          <DetailTable a={a} period={period} filtered={filtered} />
+          <DetailTable a={a} req={req} line={line} period={period} filtered={filtered} />
         </>
       )}
     </div>
@@ -257,7 +256,7 @@ export function FabAnalyticsView({ a, todayISO }: { a: MaterialDashboardData; to
 
 // ---------------------------------------------------------------- data coverage
 
-function Cover({ label, value, detail, tone }: { label: string; value: string; detail: React.ReactNode; tone: "ok" | "warn" | "bad" | "muted" }) {
+function Cover({ label, value, detail, tone }: { label: string; value: string; detail: React.ReactNode; tone: CoverageTone }) {
   const Icon = tone === "bad" ? CircleAlert : tone === "warn" ? AlertTriangle : Info;
   return (
     <div className="min-w-0 px-3 py-2 border-s first:border-s-0 max-sm:border-s-0 max-sm:border-t max-sm:first:border-t-0">
@@ -271,26 +270,20 @@ function Cover({ label, value, detail, tone }: { label: string; value: string; d
   );
 }
 
-const toneOf = (f: number | null): "ok" | "warn" | "bad" | "muted" => (f === null ? "muted" : f >= 0.95 ? "ok" : f >= 0.6 ? "warn" : "bad");
-
-function QualityStrip({ a }: { a: MaterialDashboardData }) {
+function QualityStrip({ a, line }: { a: MaterialDashboardData; line: ProductLine }) {
   const l = a.link, c = a.consumption, cov = a.coverage, v = a.versions;
-  const linkRows = share(l.linkedRows, l.rows);
-  const linkQty = share(l.linkedQty, l.qty);
-  const actualShare = c.sheets > 0 ? 1 - c.bomRateSheets / c.sheets : null;
-  const weightKnown = share(cov.weight.sheet + cov.weight.computed, cov.lines);
-  const utilKnown = share(a.nesting.utilizationKg, a.nesting.nested.kg);
-  const partial = [linkRows, actualShare, weightKnown, utilKnown].some((f) => f !== null && f < 0.999) || a.line === "LV";
+  const { linkRows, linkQty, actualRate: actualShare, weightKnown, utilKnown, partial } = a.summary;
+  const toneOf = coverageTone;
   const ref = aiTargetRef({
     kind: "figure", title: "Material data coverage",
-    about: `How much of the dashboard the data covers, for the ${LINE_LABEL[a.line]}. Linking is by MO only (a blank MO never links); the row share is not a weight or unit share — the weight of an unlinked closing is unknown because it has no rate. Rates: actual nesting rate vs estimated from BOM. Weight: the sheet's own, else size × thickness × density, else unknown. Utilization: share of nested weight with a known utilization. One copy of each MO is read: the living sheet, else the newest month that carries it.`,
+    about: `How much of the dashboard the data covers, for the ${LINE_LABEL[line]}. Linking is by MO only (a blank MO never links); the row share is not a weight or unit share — the weight of an unlinked closing is unknown because it has no rate. Rates: actual nesting rate vs estimated from BOM. Weight: the sheet's own, else size × thickness × density, else unknown. Utilization: share of nested weight with a known utilization. One copy of each MO is read: the living sheet, else the newest month that carries it.`,
   });
   return (
     <section ref={ref} className="bg-surface border rounded-xl" aria-label="Data coverage">
       <div className="flex flex-wrap items-center gap-2 px-3 pt-2">
         <h2 className="text-sm font-bold">Data coverage</h2>
         {partial ? <Badge tone="warning" icon={<AlertTriangle size={12} />}>Partial data</Badge> : <Badge tone="success">Complete</Badge>}
-        {a.line === "LV" && <span className="text-xs text-muted">The panels&apos; sheet carries no part codes, sheet weights or utilization: tonnes come from size × thickness × density, and scrap is unknown.</span>}
+        {line === "LV" && <span className="text-xs text-muted">The panels&apos; sheet carries no part codes, sheet weights or utilization: tonnes come from size × thickness × density, and scrap is unknown.</span>}
         <span className="ms-auto text-xs text-muted">
           Sheet updated {a.sheetUpdatedISO ? formatDate(a.sheetUpdatedISO.slice(0, 10)) : "—"} · ODOO log updated {a.odooUpdatedISO ? formatDate(a.odooUpdatedISO.slice(0, 10)) : "—"}
         </span>
@@ -317,10 +310,10 @@ function NowBadge() {
   return <Badge tone="info" title="The current sheet — not tied to the period">Now</Badge>;
 }
 
-function Change({ now, before, upBad }: { now: number; before: number | null | undefined; upBad?: boolean }) {
-  const p = changePct(now, before);
-  if (p === null) return <Badge tone="neutral" title="No period before, or nothing in it to compare with">N/A</Badge>;
-  return <DeltaChip value={p} unit="%" up={upBad ? "bad" : undefined} title={`Against the period before: ${t2(before ?? 0)} t`} />;
+/** The change against the period before (the domain's), or N/A where there is no base. */
+function Change({ pct, beforeKg, upBad }: { pct: number | null; beforeKg: number; upBad?: boolean }) {
+  if (pct === null) return <Badge tone="neutral" title="No period before, or nothing in it to compare with">N/A</Badge>;
+  return <Delta pct={pct} before={kgToT(beforeKg)} tone={upBad ? "upBad" : "neutral"} />;
 }
 
 function Tile({ href, title, children }: { href: string; title: string; children: React.ReactNode }) {
@@ -331,14 +324,13 @@ function Tile({ href, title, children }: { href: string; title: string; children
   );
 }
 
-function Kpis({ a, period, href }: { a: MaterialDashboardData; period: string; href: ReturnType<typeof useHref> }) {
-  const n = a.nesting, c = a.consumption, p = a.prevConsumption;
+function Kpis({ a, req, period, href }: { a: MaterialDashboardData; req: MaterialRequest; period: string; href: ReturnType<typeof useHref> }) {
+  const n = a.nesting, c = a.consumption, p = a.prevConsumption, sm = a.summary;
   const known = (w: { sheets: number; unknownWeightSheets: number }) => pctOf(share(w.sheets - w.unknownWeightSheets, w.sheets));
   const nestingHref = href({ view: "nesting" }, "#detail");
   const consHref = href({ view: "consumption" }, "#detail");
   const varShare = share(n.variance.kg, n.variance.bomKg);
-  const scrapKnown = share(c.utilizationKg, c.kg);
-  const req = a.request;
+  const scrapKnown = sm.scrapKnown;
   const when = req.fromISO ? (req.fromISO === req.toISO ? formatDayShort(req.fromISO) : `${formatDayShort(req.fromISO)} → ${formatDayShort(req.toISO)}`) : period;
   const tiles: { href: string; label: string; value: string; delta: React.ReactNode; lines: string[]; about: string }[] = [
     {
@@ -348,26 +340,26 @@ function Kpis({ a, period, href }: { a: MaterialDashboardData; period: string; h
     },
     {
       href: nestingHref, label: "Nested", value: `${t2(n.nested.kg)} t`, delta: <NowBadge />,
-      lines: [`${n1(n.nested.sheets)} sheets · ${fmt(n.nested.lines)} of ${fmt(n.nested.linesTotal)} lines · ${fmt(n.nested.mos)} MOs`, `Nested on ${pctOf(share(n.nested.lines, n.nested.linesTotal))} of lines`],
+      lines: [`${n1(n.nested.sheets)} sheets · ${fmt(n.nested.lines)} of ${fmt(n.planned.lines)} lines · ${fmt(n.nested.mos)} MOs`, `Nested on ${pctOf(share(n.nested.lines, n.planned.lines))} of lines`],
       about: `The actual nesting: the job's nested sheets (or actual per unit × units) × one sheet's weight, on the lines nested so far (Now). Source: ${SOURCES}.`,
     },
     {
-      href: nestingHref, label: "Nesting variance", value: `${signedT(n.variance.kg)} t`, delta: <NowBadge />,
+      href: nestingHref, label: "Nesting variance", value: `${signedTonnes(n.variance.kg)} t`, delta: <NowBadge />,
       lines: [`${n.variance.sheets > 0 ? "+" : ""}${n1(n.variance.sheets)} sheets on ${fmt(n.variance.lines)} nested lines`, `${pctOf(varShare, 1)} of their BOM ${t2(n.variance.bomKg)} t`],
       about: "Nested − BOM on the SAME lines: only lines that have both an actual nesting and a BOM figure. Positive: the nesting took more steel than the BOM. Now — the current sheet.",
     },
     {
       href: nestingHref, label: "Weighted utilization", value: pctOf(n.utilization, 1), delta: <NowBadge />,
-      lines: [n.utilization === null ? "No nested line has a utilization" : `On ${t2(n.utilizationKg)} of ${t2(n.nested.kg)} t nested`, `Known on ${pctOf(share(n.utilizationKg, n.nested.kg))} of nested weight`],
+      lines: [n.utilization === null ? "No nested line has a utilization" : `On ${t2(n.utilizationKg)} of ${t2(n.nested.kg)} t nested`, `Known on ${pctOf(sm.utilKnown)} of nested weight`],
       about: "The nesting's average utilization weighted by each nested line's tonnes, over the lines whose utilization AND weight are known only. Lines without one are left out — never read as 100%.",
     },
     {
-      href: consHref, label: "Calculated consumption", value: `${t2(c.kg)} t`, delta: <Change now={c.kg} before={p?.kg} />,
-      lines: [when, `${n1(c.sheets)} sheets · ${fmt(c.closings)} closings · ${fmt(c.mos)} MOs · ${n1(c.units)} units`, `Linked ${pctOf(share(a.link.linkedRows, a.link.rows))} of closing rows · ${pctOf(share(c.bomRateSheets, c.sheets))} est. from BOM`],
+      href: consHref, label: "Calculated consumption", value: `${t2(c.kg)} t`, delta: <Change pct={sm.consumptionChangePct} beforeKg={p?.kg ?? 0} />,
+      lines: [when, `${n1(c.sheets)} sheets · ${fmt(c.closings)} closings · ${fmt(c.mos)} MOs · ${n1(c.units)} units`, `Linked ${pctOf(sm.linkRows)} of closing rows · ${pctOf(share(c.bomRateSheets, c.sheets))} est. from BOM`],
       about: `ODOO rows moved to Done in the period (Cairo day of Done), MO matched to the sheet: closed qty × sheets per unit (actual nesting, else BOM — an estimate) × one sheet's weight. Calculated, not a measured store issue nor the sheets actually cut. Each closing's units count once, whatever its MO's number of material lines. Source: ${SOURCES}.`,
     },
     {
-      href: consHref, label: "Estimated scrap", value: c.utilizationKg > 0 ? `${t2(c.scrapKg)} t` : "N/A", delta: c.utilizationKg > 0 ? <Change now={c.scrapKg} before={p && p.utilizationKg > 0 ? p.scrapKg : null} upBad /> : <Badge tone="neutral">N/A</Badge>,
+      href: consHref, label: "Estimated scrap", value: c.utilizationKg > 0 ? `${t2(c.scrapKg)} t` : "N/A", delta: <Change pct={sm.scrapChangePct} beforeKg={p?.scrapKg ?? 0} upBad />,
       lines: [when, `On known coverage: ${t2(c.utilizationKg)} of ${t2(c.kg)} t consumed (${pctOf(scrapKnown)})`, `Net est. ${t2(c.netKg)} t · ${t2(c.kg - c.utilizationKg)} t with unknown utilization`],
       about: "Consumed tonnes × (1 − utilization), on the consumed tonnes whose line has a known utilization only. The rest is not scrap-free: its scrap is unknown. Net product is estimated on that same known coverage only.",
     },
@@ -386,8 +378,7 @@ function Kpis({ a, period, href }: { a: MaterialDashboardData; period: string; h
 
 // ---------------------------------------------------------------- the detail table
 
-function DetailTable({ a, period, filtered }: { a: MaterialDashboardData; period: string; filtered: boolean }) {
-  const req = a.request;
+function DetailTable({ a, req, line, period, filtered }: { a: MaterialDashboardData; req: MaterialRequest; line: ProductLine; period: string; filtered: boolean }) {
   const T = a.totals;
   return (
     <section id="detail" className="bg-surface border rounded-xl min-w-0 scroll-mt-24" data-ai-title="Material — detail by MO and part" data-ai-about={`One row per MO × part × sheet spec. ${req.view === "consumption" ? `The lines whose MO was closed on Odoo ${period}.` : "Every line of the current sheet."} Closed qty is the MO's, on each of its lines; the totals count each MO once.`}>
@@ -397,7 +388,7 @@ function DetailTable({ a, period, filtered }: { a: MaterialDashboardData; period
         <span className="text-xs text-muted">
           {fmt(T.lines)} lines · {fmt(T.mos)} MOs{a.rowsTotal > a.rows.length ? ` · showing the first ${fmt(MAX_DETAIL_ROWS)} — narrow the filters, or ask the assistant for the Excel` : ""}
         </span>
-        <Link href={hrefWithLine("/material", a.line)} className="ms-auto text-sm text-brand-ink font-semibold hover:underline no-print">Open the material sheet</Link>
+        <Link href={hrefWithLine("/material", line)} className="ms-auto text-sm text-brand-ink font-semibold hover:underline no-print">Open the material sheet</Link>
       </div>
       {a.rows.length === 0 ? (
         <TableEmpty filtered={filtered} title={req.view === "consumption" ? "No sheet line was consumed in the period" : "No sheet line"} hint={req.view === "consumption" ? "Switch to Nesting plan · Now to see the whole sheet, or widen the period." : undefined} />
@@ -429,7 +420,7 @@ function DetailTable({ a, period, filtered }: { a: MaterialDashboardData; period
               {a.rows.map((r) => (
                 <tr key={r.key}>
                   <td className="px-2 whitespace-nowrap ltr font-semibold">
-                    {r.mo ? <Link href={traceHref({ mo: r.mo, line: a.line })} className="hover:underline text-brand-ink" title="Open the order's trace">{r.mo}</Link> : <span className="text-muted" title={`Blank MO — covers BOM ${r.bom}; never matched to a closing`}>— · {r.bom}</span>}
+                    {r.mo ? <Link href={traceHref({ mo: r.mo, line: line })} className="hover:underline text-brand-ink" title="Open the order's trace">{r.mo}</Link> : <span className="text-muted" title={`Blank MO — covers BOM ${r.bom}; never matched to a closing`}>— · {r.bom}</span>}
                   </td>
                   <td className="px-2 whitespace-nowrap ltr text-muted">{r.soi || "—"}</td>
                   <td className="px-2 whitespace-nowrap" dir="auto">{r.partName || r.partCode || "—"}{r.partCode && r.partName ? <span className="text-muted ltr"> · {r.partCode}</span> : null}</td>

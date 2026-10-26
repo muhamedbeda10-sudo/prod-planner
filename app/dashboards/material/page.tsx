@@ -40,7 +40,7 @@ export default async function MaterialDashboardPage({ searchParams }: { searchPa
       <RememberLastVisit storageKey="dashboards:material" />
       <PageHead title="Material" sub={`Dashboard · ${LINE_LABEL[line]}: BOM need, nesting, calculated consumption of ODOO closings, and data coverage`} />
       <MaterialDashboardBar req={req} line={line} todayISO={todayISO} marks={a?.days.map((d) => d.dateISO) ?? []} a={a} />
-      {a ? <FabAnalyticsView a={a} todayISO={todayISO} /> : <LoadFailed what="The material dashboard" />}
+      {a ? <FabAnalyticsView a={a} req={req} line={line} todayISO={todayISO} /> : <LoadFailed what="The material dashboard" />}
     </div>
   );
 }

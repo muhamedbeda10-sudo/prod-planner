@@ -149,7 +149,7 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    SOI. Six tiles: BOM planned t (units × BOM sheets per unit × one sheet's weight), nested t, nesting variance t
    (nested − BOM on the SAME nested lines only), weighted utilization (by nested tonnes of the lines whose
    utilization is known), calculated consumption t (each ODOO row moved to Done in the period, on its Cairo day,
-   whose MO is on the sheet: closed qty × the actual nesting rate — else the BOM's, shown as *Estimated from BOM* —
+   whose MO is on the sheet — a backorder (`…-002`) by the MO it came from, as the ODOO tab finds it: closed qty × the actual nesting rate — else the BOM's, shown as *Estimated from BOM* —
    × one sheet's weight; each closing's units once, whatever its MO's number of material lines) and estimated
    scrap t on known coverage (consumed t × (1 − utilization) where utilization is known — the rest is unknown, not
    scrap-free). A sheet's weight is the sheet's own, else size × thickness × density, else unknown — counted in

@@ -3,7 +3,10 @@ import { ITEM_PRODUCT } from "@/lib/domain/odooMirror";
 import { sheetKg } from "@/lib/domain/fabAnalytics";
 import { actualPerUnit, sheetsForJob } from "@/lib/domain/material";
 import { monthLabelSortKey, parseISODate } from "@/lib/domain/dates";
-import { addDaysISO, clampISO, daysBetweenISO } from "@/lib/domain/dateSlicer";
+import { formatNumber } from "@/lib/domain/format";
+import { addDaysISO, clampISO } from "@/lib/domain/dateSlicer";
+import { pctChange, previousPeriod } from "@/lib/domain/consumablesStats";
+import { moParent } from "@/lib/domain/odooMaterial";
 
 // 📊 The MATERIAL dashboard — what the material sheet and the ODOO log say
 // about steel, in sheets and tonnes, and how much of it the data covers.
@@ -85,7 +88,7 @@ export interface MaterialFilters {
 }
 export const EMPTY_MATERIAL_DASH_FILTERS: MaterialFilters = { material: "", thicknessMm: null, sheetSize: "", part: "", mo: "", soi: "" };
 
-/** The URL keys of the filters — the page, the links and the assistant's sheet use the same. */
+/** The URL keys of the filters — read and written through this one map. */
 export const MATERIAL_FILTER_PARAM = { material: "material", thicknessMm: "thickness", sheetSize: "size", part: "part", mo: "mo", soi: "soi" } as const satisfies Record<keyof MaterialFilters, string>;
 
 /** How far back the consumption period may reach. */
@@ -110,52 +113,71 @@ export function materialDefaultRange(todayISO: string): { from: string; to: stri
   return { from: addDaysISO(todayISO, -(MATERIAL_DEFAULT_DAYS - 1)), to: todayISO };
 }
 
-/**
- * The page's state off its address: ?view= ?by= ?from=&to= (or all=1 for
- * everything) and the group filters. An older link's ?days=30|60|90|0 keeps
- * its window. Anything unreadable falls back to the default, never an error.
- */
-export function materialRequest(sp: Record<string, unknown>, todayISO: string): MaterialRequest {
-  const view = (MATERIAL_VIEWS as readonly string[]).includes(one(sp.view)) ? (one(sp.view) as MaterialView) : "consumption";
-  const by = (MATERIAL_BREAKDOWNS as readonly string[]).includes(one(sp.by)) ? (one(sp.by) as MaterialBreakdownBy) : "thickness";
-  const min = addDaysISO(todayISO, -MATERIAL_HISTORY_DAYS);
-  const valid = (s: string) => (parseISODate(s) ? clampISO(s, min, todayISO) : null);
+/** What a request is made of, typed — the page's address and the
+ *  assistant's tools both come down to this. */
+export interface MaterialScope {
+  view?: string;
+  by?: string;
+  from?: string;
+  to?: string;
+  /** Every closing on record. */
+  all?: boolean;
+  /** An older link's window in days back from today (0 = everything). */
+  days?: number;
+  filters?: Partial<Record<keyof MaterialFilters, string | number | null | undefined>>;
+}
 
-  let fromISO: string | null;
-  let toISO: string;
-  const days = one(sp.days);
-  if (one(sp.all) === "1" || days === "0") {
-    fromISO = null;
-    toISO = todayISO;
-  } else {
-    const legacy = /^\d{1,3}$/.test(days) ? Number(days) : null;
-    toISO = valid(one(sp.to)) ?? todayISO;
-    // a period given by its end alone runs back the default length from it
-    fromISO = valid(one(sp.from)) ?? addDaysISO(toISO, -((legacy ?? MATERIAL_DEFAULT_DAYS) - 1));
+/**
+ * The request a scope asks for. Anything unreadable falls back to the
+ * default, never an error: the last 90 days, consumption, by thickness; a
+ * period given by its end alone runs back the default length from it.
+ */
+export function materialRequestOf(s: MaterialScope, todayISO: string): MaterialRequest {
+  const view = (MATERIAL_VIEWS as readonly string[]).includes(s.view ?? "") ? (s.view as MaterialView) : "consumption";
+  const by = (MATERIAL_BREAKDOWNS as readonly string[]).includes(s.by ?? "") ? (s.by as MaterialBreakdownBy) : "thickness";
+  const min = addDaysISO(todayISO, -MATERIAL_HISTORY_DAYS);
+  const valid = (d: string | undefined) => (d && parseISODate(d) ? clampISO(d, min, todayISO) : null);
+
+  let fromISO: string | null = null;
+  let toISO = todayISO;
+  if (!s.all && s.days !== 0) {
+    toISO = valid(s.to) ?? todayISO;
+    fromISO = valid(s.from) ?? addDaysISO(toISO, -((s.days && s.days > 0 ? s.days : MATERIAL_DEFAULT_DAYS) - 1));
     if (fromISO > toISO) [fromISO, toISO] = [toISO, fromISO];
   }
-  const prev = fromISO === null ? null : (() => {
-    const n = daysBetweenISO(fromISO, toISO) + 1;
-    return { fromISO: addDaysISO(fromISO, -n), toISO: addDaysISO(fromISO, -1) };
-  })();
 
-  const thick = Number(one(sp.thickness));
+  const text = (v: unknown) => one(v === null || v === undefined ? "" : String(v));
+  const f = s.filters ?? {};
+  const thick = Number(f.thicknessMm);
   return {
-    view, by, fromISO, toISO, prev,
+    view, by, fromISO, toISO,
+    prev: fromISO === null ? null : previousPeriod(fromISO, toISO),
     filters: {
-      material: one(sp.material),
-      thicknessMm: one(sp.thickness) && Number.isFinite(thick) && thick > 0 ? thick : null,
-      sheetSize: one(sp.size),
-      part: one(sp.part),
-      mo: one(sp.mo),
-      soi: one(sp.soi),
+      material: text(f.material),
+      thicknessMm: text(f.thicknessMm) && Number.isFinite(thick) && thick > 0 ? thick : null,
+      sheetSize: text(f.sheetSize),
+      part: text(f.part),
+      mo: text(f.mo),
+      soi: text(f.soi),
     },
   };
 }
 
+/** The page's request off its address: ?view= ?by= ?from=&to= (or all=1)
+ *  and the group filters under MATERIAL_FILTER_PARAM; an older link's
+ *  ?days=30|60|90|0 keeps its window. */
+export function materialRequest(sp: Record<string, unknown>, todayISO: string): MaterialRequest {
+  const days = one(sp.days);
+  return materialRequestOf({
+    view: one(sp.view), by: one(sp.by), from: one(sp.from), to: one(sp.to), all: one(sp.all) === "1",
+    days: /^\d{1,3}$/.test(days) ? Number(days) : undefined,
+    filters: Object.fromEntries((Object.keys(MATERIAL_FILTER_PARAM) as (keyof MaterialFilters)[]).map((k) => [k, one(sp[MATERIAL_FILTER_PARAM[k]])])),
+  }, todayISO);
+}
+
 /** The request's own query string (no line): what a link that keeps the
  *  page's choices carries. */
-export function materialQuery(r: MaterialRequest, over: Partial<{ view: MaterialView; by: MaterialBreakdownBy; fromISO: string | null; toISO: string; filters: Partial<MaterialFilters> }> = {}, todayISO?: string): string {
+export function materialQuery(r: MaterialRequest, over: Partial<{ view: MaterialView; by: MaterialBreakdownBy; fromISO: string | null; toISO: string; filters: Partial<MaterialFilters> }>, todayISO: string): string {
   const q = new URLSearchParams();
   const view = over.view ?? r.view;
   const by = over.by ?? r.by;
@@ -166,15 +188,13 @@ export function materialQuery(r: MaterialRequest, over: Partial<{ view: Material
   if (by !== "thickness") q.set("by", by);
   if (from === null) q.set("all", "1");
   else {
-    const def = todayISO ? materialDefaultRange(todayISO) : null;
-    if (!def || from !== def.from || to !== def.to) { q.set("from", from); q.set("to", to); }
+    const def = materialDefaultRange(todayISO);
+    if (from !== def.from || to !== def.to) { q.set("from", from); q.set("to", to); }
   }
-  if (f.material) q.set(MATERIAL_FILTER_PARAM.material, f.material);
-  if (f.thicknessMm !== null) q.set(MATERIAL_FILTER_PARAM.thicknessMm, String(f.thicknessMm));
-  if (f.sheetSize) q.set(MATERIAL_FILTER_PARAM.sheetSize, f.sheetSize);
-  if (f.part) q.set(MATERIAL_FILTER_PARAM.part, f.part);
-  if (f.mo) q.set(MATERIAL_FILTER_PARAM.mo, f.mo);
-  if (f.soi) q.set(MATERIAL_FILTER_PARAM.soi, f.soi);
+  for (const k of Object.keys(MATERIAL_FILTER_PARAM) as (keyof MaterialFilters)[]) {
+    const v = f[k];
+    if (v !== null && v !== "") q.set(MATERIAL_FILTER_PARAM[k], String(v));
+  }
   return q.toString();
 }
 
@@ -188,7 +208,7 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const up = (s: string) => s.trim().toUpperCase();
 /** An MO as the two sources are matched on it; "" never matches anything. */
-export const moKey = (mo: string) => up(mo);
+const moKey = (mo: string) => up(mo);
 
 /** Utilization as a fraction, 0–1; the sheet may write 0.86 or 86. */
 export function utilizationFraction(u: number | null): number | null {
@@ -220,7 +240,7 @@ export function unitRate(l: Pick<SheetLine, "actualPerUnit" | "sheetsUsed" | "un
 
 /** Sheets the nesting took for the job — the sheet's job figure, else its
  *  per-unit figure × the units; null until nested. */
-export function nestedSheets(l: Pick<SheetLine, "sheetsUsed" | "actualPerUnit" | "units">): number | null {
+function nestedSheets(l: Pick<SheetLine, "sheetsUsed" | "actualPerUnit" | "units">): number | null {
   if (l.sheetsUsed !== null) return l.sheetsUsed;
   if (l.actualPerUnit !== null) return l.actualPerUnit * l.units;
   return null;
@@ -280,7 +300,7 @@ export function pickSheetVersions(lines: readonly SheetLine[]): { lines: SheetLi
 
 const sameText = (a: string, b: string) => up(a) === up(b);
 
-export function lineMatches(l: SheetLine, f: MaterialFilters): boolean {
+function lineMatches(l: SheetLine, f: MaterialFilters): boolean {
   if (f.material && !sameText(l.material, f.material)) return false;
   if (f.thicknessMm !== null && Math.abs(l.thicknessMm - f.thicknessMm) > 1e-6) return false;
   if (f.sheetSize && !sameText(l.sheetSize, f.sheetSize)) return false;
@@ -328,9 +348,9 @@ export interface Weighed {
 
 export interface NestingFigures {
   planned: Weighed & { lines: number; mos: number };
-  nested: Weighed & { lines: number; mos: number; linesTotal: number };
+  nested: Weighed & { lines: number; mos: number };
   /** Nested − BOM on the SAME lines (those nested): >0 the nesting took more. */
-  variance: Weighed & { bomSheets: number; bomKg: number; lines: number; mos: number };
+  variance: { sheets: number; kg: number; bomSheets: number; bomKg: number; lines: number };
   /** Weighted by the nested kilograms of the lines whose utilization is known. */
   utilization: number | null;
   /** Nested kg with a known utilization / nested kg with a known weight. */
@@ -401,8 +421,10 @@ export interface DayPoint {
 
 export interface Breakdown {
   key: string;
-  /** The thickness, for sorting and filtering; null for the other dimensions. */
+  /** The thickness, for sorting; null for the other dimensions. */
   thicknessMm: number | null;
+  /** What a click on the group narrows the page to; null for a blank group. */
+  filter: Partial<MaterialFilters> | null;
   bom: Weighed;
   nested: Weighed;
   consumed: Weighed;
@@ -488,6 +510,25 @@ export interface MaterialAction {
   target: { kind: "odoo" } | { kind: "material" } | { kind: "filter"; key: keyof MaterialFilters; value: string };
 }
 
+/** The coverage shares and the period changes — read once here, by the page and the assistant alike. */
+export interface CoverageSummary {
+  /** Closings linked to the sheet, by rows and by units. */
+  linkRows: number | null;
+  linkQty: number | null;
+  /** Consumed sheets at an actual nesting rate. */
+  actualRate: number | null;
+  /** Lines with a known sheet weight. */
+  weightKnown: number | null;
+  /** Nested tonnes with a known utilization. */
+  utilKnown: number | null;
+  /** Consumed tonnes with a known utilization — what the scrap estimate covers. */
+  scrapKnown: number | null;
+  /** Any share short of whole: the figures are partial. */
+  partial: boolean;
+  consumptionChangePct: number | null;
+  scrapChangePct: number | null;
+}
+
 export interface MaterialDashboard {
   nesting: NestingFigures;
   consumption: ConsumptionFigures;
@@ -506,6 +547,7 @@ export interface MaterialDashboard {
   totals: DetailTotals;
   options: FilterOptions;
   actions: MaterialAction[];
+  summary: CoverageSummary;
   /** Lines on the sheet (after picking one copy per MO) before the filters. */
   sheetLines: number;
 }
@@ -549,178 +591,213 @@ function calcLine(l: SheetLine, i: number): LineCalc {
   };
 }
 
+type PerLine = { sheets: number; kg: number | null; scrap: number | null };
+
+/** The value under `k`, made and stored by `init` the first time. */
+function getOr<K, V>(m: Map<K, V>, k: K, init: () => V): V {
+  let v = m.get(k);
+  if (v === undefined) { v = init(); m.set(k, v); }
+  return v;
+}
+
+/**
+ * How a closing's MO finds the sheet — the ODOO tab's own rule (linesOfMo in
+ * lib/domain/odooMaterial.ts): the MO itself, else the MO it is a backorder
+ * of ("SF01/MO/15337-002" → "SF01/MO/15337"), else a sibling backorder of the
+ * same job. A blank MO finds nothing.
+ */
+function moResolver(sheetMos: Iterable<string>): (mo: string) => string | null {
+  const keys = new Set(sheetMos);
+  const children = new Map<string, string[]>();
+  for (const k of keys) {
+    const parent = moParent(k);
+    if (parent !== k) getOr(children, parent, () => []).push(k);
+  }
+  for (const list of children.values()) list.sort();
+  return (mo) => {
+    const k = moKey(mo);
+    if (!k) return null;
+    if (keys.has(k)) return k;
+    const parent = moParent(k);
+    if (keys.has(parent)) return parent;
+    return children.get(parent)?.[0] ?? null;
+  };
+}
+
+/** A closing with the sheet MO it books against — "" for a blank MO, null for one the sheet does not carry. */
+type Linked = DoneRow & { key: string | null };
+
 /** The closings of a period booked against the (filtered) lines of their MOs. */
-function consume(closings: readonly DoneRow[], byMo: Map<string, LineCalc[]>, perLine?: Map<LineCalc, { sheets: number; kg: number | null; scrap: number | null }>, perDay?: Map<string, DayPoint>, perMoQty?: Map<string, number>): ConsumptionFigures {
+function consume(closings: readonly Linked[], byMo: Map<string, LineCalc[]>) {
   const a = acc(), bomRate = acc();
   let closingsN = 0, units = 0, scrap = 0, utilKg = 0;
-  const mos = new Set<string>();
+  const perLine = new Map<LineCalc, PerLine>();
+  const perDay = new Map<string, DayPoint>();
+  const closedQty = new Map<string, number>();
   for (const d of closings) {
-    const k = moKey(d.mo);
-    const list = k ? byMo.get(k) : undefined;
+    const list = d.key ? byMo.get(d.key) : undefined;
     if (!list || !(d.qty > 0)) continue;
     // the closing's units once, whatever the number of its MO's lines
-    closingsN += 1; units += d.qty; mos.add(k);
-    perMoQty?.set(k, (perMoQty.get(k) ?? 0) + d.qty);
-    const day = perDay ? perDay.get(d.dateISO) ?? { dateISO: d.dateISO, closings: 0, units: 0, sheets: 0, kg: 0, bomRateKg: 0, unknownWeightSheets: 0 } : null;
-    if (day && perDay && !perDay.has(d.dateISO)) perDay.set(d.dateISO, day);
-    if (day) { day.closings += 1; day.units += d.qty; }
+    closingsN += 1; units += d.qty;
+    closedQty.set(d.key!, (closedQty.get(d.key!) ?? 0) + d.qty);
+    const day = getOr(perDay, d.dateISO, () => ({ dateISO: d.dateISO, closings: 0, units: 0, sheets: 0, kg: 0, bomRateKg: 0, unknownWeightSheets: 0 }));
+    day.closings += 1; day.units += d.qty;
     for (const c of list) {
       const s = c.rate.perUnit * d.qty;
       addTo(a, s, c.w.kg);
       if (c.rate.source === "bom") addTo(bomRate, s, c.w.kg);
       const kg = c.w.kg === null ? null : s * c.w.kg;
-      let lineScrap: number | null = null;
-      if (kg !== null && c.u !== null) { lineScrap = kg * (1 - c.u); scrap += lineScrap; utilKg += kg; }
-      if (perLine) {
-        const p = perLine.get(c) ?? { sheets: 0, kg: c.w.kg === null ? null : 0, scrap: null };
-        if (!perLine.has(c)) perLine.set(c, p);
-        p.sheets += s;
-        if (p.kg !== null && kg !== null) p.kg += kg;
-        if (lineScrap !== null) p.scrap = (p.scrap ?? 0) + lineScrap;
-      }
-      if (day) {
-        day.sheets += s;
-        if (kg === null) day.unknownWeightSheets += s; else { day.kg += kg; if (c.rate.source === "bom") day.bomRateKg += kg; }
-      }
+      const p = getOr(perLine, c, () => ({ sheets: 0, kg: c.w.kg === null ? null : 0, scrap: null }));
+      p.sheets += s;
+      day.sheets += s;
+      if (kg === null) { day.unknownWeightSheets += s; continue; }
+      p.kg! += kg;
+      day.kg += kg;
+      if (c.rate.source === "bom") day.bomRateKg += kg;
+      if (c.u !== null) { const sc = kg * (1 - c.u); scrap += sc; utilKg += kg; p.scrap = (p.scrap ?? 0) + sc; }
     }
   }
-  return {
+  const figures: ConsumptionFigures = {
     ...weighed(a),
-    closings: closingsN, units: r1(units), mos: mos.size,
+    closings: closingsN, units: r1(units), mos: closedQty.size,
     bomRateSheets: r1(bomRate.sheets), bomRateKg: Math.round(bomRate.kg),
     scrapKg: Math.round(scrap), netKg: Math.round(utilKg - scrap), utilizationKg: Math.round(utilKg),
-    days: perDay ? perDay.size : new Set(closings.filter((d) => byMo.has(moKey(d.mo)) && d.qty > 0).map((d) => d.dateISO)).size,
+    days: perDay.size,
   };
+  return { figures, perLine, perDay, closedQty };
 }
 
 const inRange = (iso: string, from: string | null, to: string) => (from === null || iso >= from) && iso <= to;
+
+/** A share's reading: complete (≥95 %), partial (≥60 %), poor, or nothing to cover. */
+export type CoverageTone = "ok" | "warn" | "bad" | "muted";
+export const coverageTone = (f: number | null): CoverageTone => (f === null ? "muted" : f >= 0.95 ? "ok" : f >= 0.6 ? "warn" : "bad");
+
+function summarize(link: LinkCoverage, cov: DataCoverage, n: NestingFigures, c: ConsumptionFigures, p: ConsumptionFigures | null): CoverageSummary {
+  const linkRows = share(link.linkedRows, link.rows);
+  const actualRate = c.sheets > 0 ? 1 - c.bomRateSheets / c.sheets : null;
+  const weightKnown = share(cov.weight.sheet + cov.weight.computed, cov.lines);
+  const utilKnown = share(n.utilizationKg, n.nested.kg);
+  return {
+    linkRows, linkQty: share(link.linkedQty, link.qty), actualRate, weightKnown, utilKnown,
+    scrapKnown: share(c.utilizationKg, c.kg),
+    partial: [linkRows, actualRate, weightKnown, utilKnown].some((f) => f !== null && f < 0.999) || (n.nested.lines > 0 && utilKnown === null),
+    consumptionChangePct: changePct(c.kg, p?.kg),
+    // a scrap figure needs a known utilization on both sides to be compared
+    scrapChangePct: c.utilizationKg > 0 && p && p.utilizationKg > 0 ? changePct(c.scrapKg, p.scrapKg) : null,
+  };
+}
 
 /**
  * Build the dashboard from the line's material sheet (every month — one copy
  * of each MO is picked here) and its ODOO closings (any MO, blank included,
  * from the previous period's start to the period's end).
  */
-export function buildMaterialDashboard(
-  sheet: readonly SheetLine[], done: readonly DoneRow[], req: Pick<MaterialRequest, "view" | "by" | "fromISO" | "toISO" | "prev" | "filters">,
-  { maxRows = MAX_DETAIL_ROWS }: { maxRows?: number } = {},
-): MaterialDashboard {
+export function buildMaterialDashboard(sheet: readonly SheetLine[], done: readonly DoneRow[], req: MaterialRequest, { maxRows = MAX_DETAIL_ROWS }: { maxRows?: number } = {}): MaterialDashboard {
   const { lines: picked, versions } = pickSheetVersions(sheet);
   const options = filterOptions(picked);
   const calcs = picked.map(calcLine);
-  const onSheet = new Set(calcs.filter((c) => c.mo).map((c) => c.mo));
   const fc = calcs.filter((c) => lineMatches(c.l, req.filters));
+  const resolve = moResolver(calcs.filter((c) => c.mo).map((c) => c.mo));
 
   const byMo = new Map<string, LineCalc[]>();
-  for (const c of fc) {
-    if (!c.mo) continue; // a blank MO on the sheet matches no closing
-    const list = byMo.get(c.mo) ?? [];
-    if (!byMo.has(c.mo)) byMo.set(c.mo, list);
-    list.push(c);
-  }
+  for (const c of fc) if (c.mo) getOr(byMo, c.mo, () => []).push(c); // a blank MO on the sheet matches no closing
   const unitsOfMo = new Map<string, number>();
   for (const c of calcs) if (c.mo) unitsOfMo.set(c.mo, Math.max(unitsOfMo.get(c.mo) ?? 0, c.l.units));
 
   // ---- the period's closings: how they link to the sheet (the line's, before filters) ----
-  const period = done.filter((d) => inRange(d.dateISO, req.fromISO, req.toISO));
-  const prevRows = req.prev ? done.filter((d) => inRange(d.dateISO, req.prev!.fromISO, req.prev!.toISO)) : null;
+  const linked = (rows: readonly DoneRow[]): Linked[] => rows.map((d) => ({ ...d, key: d.mo.trim() ? resolve(d.mo) : "" }));
+  const period = linked(done.filter((d) => inRange(d.dateISO, req.fromISO, req.toISO)));
   const link: LinkCoverage = { rows: 0, qty: 0, blankRows: 0, blankQty: 0, offSheetRows: 0, offSheetQty: 0, linkedRows: 0, linkedQty: 0, overClosedMos: 0, offSheetMos: [] };
   const offSheet = new Map<string, { mo: string; qty: number }>();
-  const closedAllInPeriod = new Map<string, number>();
+  const closedAll = new Map<string, number>();
   for (const d of period) {
     link.rows += 1; link.qty += d.qty;
-    const k = moKey(d.mo);
-    if (!k) { link.blankRows += 1; link.blankQty += d.qty; continue; }
-    if (!onSheet.has(k)) {
+    if (d.key === "") { link.blankRows += 1; link.blankQty += d.qty; continue; }
+    if (d.key === null) {
       link.offSheetRows += 1; link.offSheetQty += d.qty;
-      const o = offSheet.get(k) ?? { mo: d.mo.trim(), qty: 0 };
-      if (!offSheet.has(k)) offSheet.set(k, o);
-      o.qty += d.qty;
+      getOr(offSheet, moKey(d.mo), () => ({ mo: d.mo.trim(), qty: 0 })).qty += d.qty;
       continue;
     }
     link.linkedRows += 1; link.linkedQty += d.qty;
-    closedAllInPeriod.set(k, (closedAllInPeriod.get(k) ?? 0) + d.qty);
+    closedAll.set(d.key, (closedAll.get(d.key) ?? 0) + d.qty);
   }
   link.qty = r1(link.qty); link.blankQty = r1(link.blankQty); link.offSheetQty = r1(link.offSheetQty); link.linkedQty = r1(link.linkedQty);
-  link.overClosedMos = [...closedAllInPeriod.entries()].filter(([k, q]) => q > (unitsOfMo.get(k) ?? 0) + 1e-9).length;
+  link.overClosedMos = [...closedAll.entries()].filter(([k, q]) => q > (unitsOfMo.get(k) ?? 0) + 1e-9).length;
   link.offSheetMos = [...offSheet.values()].sort((a, b) => b.qty - a.qty).slice(0, 10).map((o) => ({ mo: o.mo, qty: r1(o.qty) }));
 
   // ---- consumption in the period, and the period before ----
-  const perLine = new Map<LineCalc, { sheets: number; kg: number | null; scrap: number | null }>();
-  const perDay = new Map<string, DayPoint>();
-  const closedQty = new Map<string, number>();
-  const consumption = consume(period, byMo, perLine, perDay, closedQty);
-  const prevConsumption = prevRows ? consume(prevRows, byMo) : null;
+  const { figures: consumption, perLine, perDay, closedQty } = consume(period, byMo);
+  const prevConsumption = req.prev ? consume(linked(done.filter((d) => inRange(d.dateISO, req.prev!.fromISO, req.prev!.toISO))), byMo).figures : null;
   const days = [...perDay.values()].sort((a, b) => a.dateISO.localeCompare(b.dateISO))
     .map((d) => ({ ...d, units: r1(d.units), sheets: r1(d.sheets), kg: Math.round(d.kg), bomRateKg: Math.round(d.bomRateKg), unknownWeightSheets: r1(d.unknownWeightSheets) }));
 
   // ---- the nesting, Now ----
-  const planned = acc(), nested = acc(), vNest = acc(), vBom = acc();
-  let nestedLines = 0, varianceLines = 0, uNum = 0, uDen = 0, nestedKnownKg = 0;
-  const plannedMos = new Set<string>(), nestedMos = new Set<string>(), varianceMos = new Set<string>();
+  const planned = acc(), nested = acc(), vBom = acc();
+  let nestedLines = 0, uNum = 0, uDen = 0, nestedKnownKg = 0;
+  const plannedMos = new Set<string>(), nestedMos = new Set<string>();
   for (const c of fc) {
     addTo(planned, c.bomS, c.w.kg);
     if (c.mo) plannedMos.add(c.mo);
     if (c.nest === null) continue;
-    nestedLines += 1; varianceLines += 1;
-    if (c.mo) { nestedMos.add(c.mo); varianceMos.add(c.mo); }
+    nestedLines += 1;
+    if (c.mo) nestedMos.add(c.mo);
     addTo(nested, c.nest, c.w.kg);
-    addTo(vNest, c.nest, c.w.kg);
-    addTo(vBom, c.bomS, c.w.kg);
+    addTo(vBom, c.bomS, c.w.kg); // the same lines' BOM — the variance compares like with like
     if (c.w.kg !== null) {
       const kg = c.nest * c.w.kg;
       nestedKnownKg += kg;
       if (c.u !== null) { uNum += c.u * kg; uDen += kg; }
     }
   }
-  const utilization = uDen > 0 ? uNum / uDen : null;
   const nScrap = uDen - uNum; // Σ kg × (1 − u)
   const nesting: NestingFigures = {
     planned: { ...weighed(planned), lines: fc.length, mos: plannedMos.size },
-    nested: { ...weighed(nested), lines: nestedLines, mos: nestedMos.size, linesTotal: fc.length },
-    variance: {
-      sheets: r1(vNest.sheets - vBom.sheets), kg: Math.round(vNest.kg - vBom.kg),
-      // a line of unknown weight leaves both sides' kg — counted once
-      unknownWeightSheets: r1(vBom.unk),
-      bomSheets: r1(vBom.sheets), bomKg: Math.round(vBom.kg), lines: varianceLines, mos: varianceMos.size,
-    },
-    utilization,
+    nested: { ...weighed(nested), lines: nestedLines, mos: nestedMos.size },
+    variance: { sheets: r1(nested.sheets - vBom.sheets), kg: Math.round(nested.kg - vBom.kg), bomSheets: r1(vBom.sheets), bomKg: Math.round(vBom.kg), lines: nestedLines },
+    utilization: uDen > 0 ? uNum / uDen : null,
     utilizationKg: Math.round(uDen),
     scrapKg: Math.round(nScrap),
     netKg: Math.round(uDen - nScrap),
     unknownUtilKg: Math.round(nestedKnownKg - uDen),
   };
 
+  const weight: Record<WeightSource, number> = { sheet: 0, computed: 0, unknown: 0 };
+  for (const c of fc) weight[c.w.source] += 1;
   const coverage: DataCoverage = {
     lines: fc.length,
-    weight: { sheet: fc.filter((c) => c.w.source === "sheet").length, computed: fc.filter((c) => c.w.source === "computed").length, unknown: fc.filter((c) => c.w.source === "unknown").length },
+    weight,
     nestedLines,
     utilizationLines: fc.filter((c) => c.nest !== null && c.u !== null).length,
     actualRateLines: fc.filter((c) => c.rate.source === "actual").length,
   };
 
   // ---- the breakdown by thickness, material or sheet size ----
-  const bk = new Map<string, { thicknessMm: number | null; bom: Acc; nested: Acc; consumed: Acc; scrap: number }>();
+  const bk = new Map<string, { thicknessMm: number | null; filter: Partial<MaterialFilters> | null; bom: Acc; nested: Acc; consumed: Acc; scrap: number }>();
   for (const c of fc) {
-    const key = req.by === "thickness" ? `${c.l.thicknessMm} mm` : req.by === "material" ? c.l.material.trim() || "—" : c.l.sheetSize.trim() || "—";
-    const b = bk.get(key) ?? { thicknessMm: req.by === "thickness" ? c.l.thicknessMm : null, bom: acc(), nested: acc(), consumed: acc(), scrap: 0 };
-    if (!bk.has(key)) bk.set(key, b);
+    const t = c.l.thicknessMm, m = c.l.material.trim(), z = c.l.sheetSize.trim();
+    const key = req.by === "thickness" ? `${t} mm` : (req.by === "material" ? m : z) || "—";
+    const b = getOr(bk, key, () => ({
+      thicknessMm: req.by === "thickness" ? t : null,
+      // what a click on the group filters to — a blank group is no filter
+      filter: req.by === "thickness" ? (t > 0 ? { thicknessMm: t } : null) : req.by === "material" ? (m ? { material: m } : null) : z ? { sheetSize: z } : null,
+      bom: acc(), nested: acc(), consumed: acc(), scrap: 0,
+    }));
     addTo(b.bom, c.bomS, c.w.kg);
     if (c.nest !== null) addTo(b.nested, c.nest, c.w.kg);
     const p = perLine.get(c);
     if (p) { addTo(b.consumed, p.sheets, c.w.kg); b.scrap += p.scrap ?? 0; }
   }
   const breakdown: Breakdown[] = [...bk.entries()]
-    .map(([key, b]) => ({ key, thicknessMm: b.thicknessMm, bom: weighed(b.bom), nested: weighed(b.nested), consumed: weighed(b.consumed), scrapKg: Math.round(b.scrap) }))
+    .map(([key, b]) => ({ key, thicknessMm: b.thicknessMm, filter: b.filter, bom: weighed(b.bom), nested: weighed(b.nested), consumed: weighed(b.consumed), scrapKg: Math.round(b.scrap) }))
     .sort((a, b) => (a.thicknessMm !== null && b.thicknessMm !== null ? a.thicknessMm - b.thicknessMm : (req.view === "consumption" ? b.consumed.kg - a.consumed.kg : b.bom.kg - a.bom.kg) || a.key.localeCompare(b.key)));
 
   // ---- actual vs BOM per part, on the nested lines ----
-  const pc = new Map<string, PartCompare & { bomAcc: Acc; actAcc: Acc }>();
+  const pc = new Map<string, Omit<PartCompare, "bomSheets" | "actualSheets" | "bomKg" | "actualKg"> & { bomAcc: Acc; actAcc: Acc }>();
   for (const c of fc) {
     if (c.nest === null) continue;
     const code = c.l.partCode.trim();
-    const pk = up(code) || up(c.l.partName) || "—";
-    const p = pc.get(pk) ?? { part: c.l.partName.trim() || code || "—", partCode: code, item: ITEM_BY_PART.get(up(code)) ?? null, lines: 0, bomSheets: 0, actualSheets: 0, bomKg: 0, actualKg: 0, bomAcc: acc(), actAcc: acc() };
-    if (!pc.has(pk)) pc.set(pk, p);
+    const p = getOr(pc, up(code) || up(c.l.partName) || "—", () => ({ part: c.l.partName.trim() || code || "—", partCode: code, item: ITEM_BY_PART.get(up(code)) ?? null, lines: 0, bomAcc: acc(), actAcc: acc() }));
     p.lines += 1;
     addTo(p.bomAcc, c.bomS, c.w.kg);
     addTo(p.actAcc, c.nest, c.w.kg);
@@ -733,8 +810,7 @@ export function buildMaterialDashboard(
   const ov = new Map<string, Overrun & { kgKnown: boolean }>();
   for (const c of fc) {
     if (c.nest === null || !c.mo) continue;
-    const o = ov.get(c.mo) ?? { mo: c.l.mo.trim(), soi: c.l.soi, part: c.l.partName || c.l.partCode, units: c.l.units, bomSheets: 0, actualSheets: 0, deltaSheets: 0, deltaKg: 0, kgKnown: true };
-    if (!ov.has(c.mo)) ov.set(c.mo, o);
+    const o = getOr(ov, c.mo, () => ({ mo: c.l.mo.trim(), soi: c.l.soi, part: c.l.partName || c.l.partCode, units: c.l.units, bomSheets: 0, actualSheets: 0, deltaSheets: 0, deltaKg: 0, kgKnown: true }));
     o.bomSheets += c.bomS; o.actualSheets += c.nest;
     if (c.w.kg === null) o.kgKnown = false; else o.deltaKg = (o.deltaKg ?? 0) + (c.nest - c.bomS) * c.w.kg;
   }
@@ -764,7 +840,7 @@ export function buildMaterialDashboard(
       closedQty: c.mo ? r1(closedQty.get(c.mo) ?? 0) : 0,
       consumedSheets: r2(p?.sheets ?? 0),
       consumedKg: p ? (p.kg === null ? null : Math.round(p.kg)) : (c.w.kg === null ? null : 0),
-      scrapKg: p?.scrap === null || p?.scrap === undefined ? null : Math.round(p.scrap),
+      scrapKg: p?.scrap == null ? null : Math.round(p.scrap),
     };
   });
   allRows.sort(req.view === "consumption"
@@ -772,32 +848,33 @@ export function buildMaterialDashboard(
     : (a, b) => b.bomSheets * (b.sheetKg ?? 0) - a.bomSheets * (a.sheetKg ?? 0) || b.bomSheets - a.bomSheets);
 
   const rowMos = new Set(viewCalcs.filter((c) => c.mo).map((c) => c.mo));
+  const sum = (f: (c: LineCalc) => number) => viewCalcs.reduce((n, c) => n + f(c), 0);
   const totals: DetailTotals = {
     lines: viewCalcs.length,
     mos: rowMos.size,
-    units: r1([...rowMos].reduce((n, k) => n + Math.max(...(byMo.get(k) ?? []).map((c) => c.l.units), 0), 0)
-      + viewCalcs.filter((c) => !c.mo).reduce((n, c) => n + c.l.units, 0)),
-    bomSheets: r1(viewCalcs.reduce((n, c) => n + c.bomS, 0)),
-    actualSheets: r1(viewCalcs.reduce((n, c) => n + (c.nest ?? 0), 0)),
-    deltaSheets: r1(viewCalcs.reduce((n, c) => n + (c.nest === null ? 0 : c.nest - c.bomS), 0)),
+    units: r1([...rowMos].reduce((n, k) => n + Math.max(...(byMo.get(k) ?? []).map((c) => c.l.units), 0), 0) + sum((c) => (c.mo ? 0 : c.l.units))),
+    bomSheets: r1(sum((c) => c.bomS)),
+    actualSheets: r1(sum((c) => c.nest ?? 0)),
+    deltaSheets: r1(sum((c) => (c.nest === null ? 0 : c.nest - c.bomS))),
     closedQty: r1([...rowMos].reduce((n, k) => n + (closedQty.get(k) ?? 0), 0)),
-    consumedSheets: r1(viewCalcs.reduce((n, c) => n + (perLine.get(c)?.sheets ?? 0), 0)),
-    consumedKg: Math.round(viewCalcs.reduce((n, c) => n + (perLine.get(c)?.kg ?? 0), 0)),
-    scrapKg: viewCalcs.some((c) => (perLine.get(c)?.scrap ?? null) !== null) ? Math.round(viewCalcs.reduce((n, c) => n + (perLine.get(c)?.scrap ?? 0), 0)) : null,
+    consumedSheets: r1(sum((c) => perLine.get(c)?.sheets ?? 0)),
+    consumedKg: Math.round(sum((c) => perLine.get(c)?.kg ?? 0)),
+    scrapKg: viewCalcs.some((c) => perLine.get(c)?.scrap != null) ? Math.round(sum((c) => perLine.get(c)?.scrap ?? 0)) : null,
   };
 
   return {
     nesting, consumption, prevConsumption, link, coverage, versions, days, breakdown, parts, overruns,
     rows: allRows.slice(0, maxRows), rowsTotal: allRows.length, totals, options,
     actions: materialActions(link, coverage, consumption, overruns),
+    summary: summarize(link, coverage, nesting, consumption, prevConsumption),
     sheetLines: picked.length,
   };
 }
 
 /** What the data asks someone to do, worst first. */
-export function materialActions(link: LinkCoverage, cov: DataCoverage, c: ConsumptionFigures, overruns: readonly Overrun[]): MaterialAction[] {
+function materialActions(link: LinkCoverage, cov: DataCoverage, c: ConsumptionFigures, overruns: readonly Overrun[]): MaterialAction[] {
   const out: MaterialAction[] = [];
-  const n = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 1 });
+  const n = (v: number) => formatNumber(v, Number.isInteger(v) ? 0 : 1);
   if (link.blankRows > 0) out.push({ tone: "bad", text: `${n(link.blankRows)} closing(s) in the period have no MO (${n(link.blankQty)} units) — type the MO on the ODOO log so their steel can be booked.`, target: { kind: "odoo" } });
   if (link.offSheetRows > 0) out.push({ tone: "warn", text: `${n(link.offSheetRows)} closing(s) name an MO the material sheet does not carry (${n(link.offSheetQty)} units${link.offSheetMos[0] ? `, e.g. ${link.offSheetMos[0].mo}` : ""}) — add its nesting to the sheet.`, target: { kind: "material" } });
   if (cov.weight.unknown > 0) out.push({ tone: "warn", text: `${n(cov.weight.unknown)} sheet line(s) have no weight and no readable size — their tonnes are unknown.`, target: { kind: "material" } });
@@ -805,20 +882,24 @@ export function materialActions(link: LinkCoverage, cov: DataCoverage, c: Consum
   if (cov.nestedLines > cov.utilizationLines) out.push({ tone: "info", text: `${n(cov.nestedLines - cov.utilizationLines)} nested line(s) have no utilization — their scrap is unknown, not zero.`, target: { kind: "material" } });
   if (link.overClosedMos > 0) out.push({ tone: "warn", text: `${n(link.overClosedMos)} MO(s) closed more units in the period than the sheet plans — check the closings or the sheet's units.`, target: { kind: "odoo" } });
   const top = overruns[0];
-  if (top) out.push({ tone: "warn", text: `${top.mo} nested ${n(top.deltaSheets)} sheet(s) over its BOM${top.deltaKg !== null ? ` (${top.deltaKg > 0 ? "+" : ""}${n(kgToT(top.deltaKg))} t)` : ""}.`, target: { kind: "filter", key: "mo", value: top.mo } });
+  if (top) out.push({ tone: "warn", text: `${top.mo} nested ${n(top.deltaSheets)} sheet(s) over its BOM${top.deltaKg !== null ? ` (${signedTonnes(top.deltaKg)} t)` : ""}.`, target: { kind: "filter", key: "mo", value: top.mo } });
   return out;
 }
 
-/** The change of a figure against the period before, in percent — null (N/A)
- *  where there is no period before or it was zero: no base, no change. */
+/** The change of a figure against the period before, in whole percent, as
+ *  the other dashboards count it — null (N/A) where there is no period
+ *  before or it was zero: no base, no change. */
 export function changePct(now: number, before: number | null | undefined): number | null {
-  if (before === null || before === undefined || !(before > 0)) return null;
-  return Math.round(((now - before) / before) * 1000) / 10;
+  return before === null || before === undefined ? null : pctChange(now, before);
 }
 
 /** Kilograms as tonnes to two decimals — the one rounding the page, its
  *  tables and the assistant all show. */
 export const kgToT = (kg: number) => Math.round(kg / 10) / 100;
+/** "12.34" — kilograms written as tonnes. */
+export const tonnes = (kg: number) => formatNumber(kgToT(kg), 2);
+/** "+0.42" / "-0.18" — a difference in tonnes with its sign. */
+export const signedTonnes = (kg: number) => `${kg > 0 ? "+" : ""}${tonnes(kg)}`;
 
 /** A share 0–1, or null where the whole is zero (nothing to cover). */
 export const share = (part: number, whole: number): number | null => (whole > 0 ? part / whole : null);

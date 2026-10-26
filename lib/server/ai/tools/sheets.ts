@@ -45,7 +45,7 @@ import { WEEKLY_STAGES, filterWeeklyDays, weeklyMetricOf, weeklyPlanRows, weekly
 import { runAiRows } from "../reader";
 import { roomProblem, storeMadeWorkbook } from "../files";
 import { TRACKER_FILTER_SCHEMA, trackerFiltersFor } from "./planning";
-import { materialDashboardScope } from "./materialDashboard";
+import { MATERIAL_SCOPE_PROPERTIES, materialScopeProblem, materialScopeRequest, type MaterialScopeInput } from "./materialDashboard";
 import type { ReadResult, ReadTool, ToolCtx } from "./types";
 
 // The assistant's spreadsheets. The screens no longer carry an Export button
@@ -93,7 +93,7 @@ const SHEETS = {
 } as const satisfies Record<string, { tab: string | null; admin?: true; params: readonly Param[]; about: string }>;
 type SheetKind = keyof typeof SHEETS;
 
-interface Input {
+interface Input extends MaterialScopeInput {
   sheet: SheetKind;
   name?: string;
   line?: ProductLine;
@@ -111,13 +111,7 @@ interface Input {
   source?: string;
   mo?: string;
   bom?: string;
-  allTime?: boolean;
-  view?: "consumption" | "nesting";
-  materialName?: string;
-  thicknessMm?: number;
-  sheetSize?: string;
-  part?: string;
-  soi?: string;
+
   month?: string;
   day?: string;
   section?: string;
@@ -153,21 +147,16 @@ export const makeSheetTool: ReadTool<Input> = {
       q: str(160, "A search: weekly_plan (project, SOI, description), daily_log (BOM), orders_registry (MO, BOM, SOI, FG code, KVA, product). The plan tracker's search is filters.q."),
       hideDone: { type: "boolean", description: "weekly_plan: leave out the rows the measured stage has finished." },
       stages: str(60, `weekly_plan: the stage columns, comma-separated from ${STAGE_VALUES.join(",")}; all of them by default.`),
-      from: { ...DAY, description: "The first day (YYYY-MM-DD) of daily_log, odoo_log, odoo_daily, consumables_log, consumables_edits, consumables_summary, material_dashboard; a period given by its first day alone runs to today." },
-      to: { ...DAY, description: "The last day (YYYY-MM-DD), the same sheets." },
       dept: str(40, "daily_log: one department, as the ledger names it (Cut, Welding, Painting, ShotBlast, Delivered, or an LV stage)."),
       item: str(40, "daily_log: one component (TN, TC, CF, CB, …)."),
       flaggedOnly: { type: "boolean", description: "daily_log: only the entries the data guard flagged." },
       urgent: { type: "string", enum: ["yes", "no"], description: "orders_registry: urgent orders only, or none of them." },
       source: str(80, "orders_registry: the import the order came from, exactly as listed."),
+      // material_dashboard's own scope, as get_material_dashboard takes it
+      ...MATERIAL_SCOPE_PROPERTIES,
       mo: str(80, "trace: the order's MO; material_dashboard: one MO."),
-      allTime: { type: "boolean", description: "material_dashboard: every closing on record instead of a period." },
-      view: { type: "string", enum: ["consumption", "nesting"], description: "material_dashboard: the lines consumed in the period (default) or the whole current sheet." },
-      materialName: str(80, "material_dashboard: one material, as the sheet writes it."),
-      thicknessMm: { type: "number", minimum: 0.1, maximum: 200, description: "material_dashboard: one thickness, in mm." },
-      sheetSize: str(40, "material_dashboard: one sheet size, as the sheet writes it."),
-      part: str(80, "material_dashboard: one part, its code or name."),
-      soi: str(80, "material_dashboard: one SOI."),
+      from: { ...DAY, description: "The first day (YYYY-MM-DD) of daily_log, odoo_log, odoo_daily, consumables_log, consumables_edits, consumables_summary, material_dashboard; a period given by its first day alone runs to today." },
+      to: { ...DAY, description: "The last day (YYYY-MM-DD), the same sheets." },
       bom: str(80, "trace: the code (BOM), when no MO is given."),
       month: { type: "string", pattern: "^\\d{4}-\\d{2}$", description: "powder_scrap, consumables_monthly: the month (YYYY-MM); defaults to this one." },
       day: { ...DAY, description: "shift_attendance, machine_stops: the day; defaults to today." },
@@ -184,7 +173,7 @@ export const makeSheetTool: ReadTool<Input> = {
     if (i.sheet === "query" && !i.sql) return "A query sheet needs its SELECT (sql).";
     if (i.sheet === "trace" && !i.mo && !i.bom) return "A trace needs the order's MO or the code (bom).";
     if (i.from && i.to && i.from > i.to) return "from must not be after to.";
-    if (i.allTime && (i.from || i.to)) return "Give a period (from/to) or allTime, not both.";
+    if (i.sheet === "material_dashboard") { const problem = materialScopeProblem(i); if (problem) return problem; }
     if (i.to && !i.from && (i.sheet === "odoo_log" || i.sheet === "odoo_daily")) return "Give the first day (from) too — a period with no start is every day.";
     if (i.stages?.split(",").some((s) => !(STAGE_VALUES as readonly string[]).includes(s.trim()))) return `Stages are ${STAGE_VALUES.join(", ")}.`;
     return i;
@@ -324,8 +313,9 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       return { rows: materialRows(lines, line), name: `material-sheet${line === "LV" ? "-lv" : ""}`, sheet: "Material", scope: `${line} Material sheet` };
     }
     case "material_dashboard": {
-      const req = materialDashboardScope(i, today);
-      const d = await getMaterialDashboard(req, line, { maxRows: MAX_SHEET_ROWS + 1 });
+      const req = materialScopeRequest(i, today);
+      // the rows alone: no period before to compare with
+      const d = await getMaterialDashboard({ ...req, prev: null }, line, { maxRows: MAX_SHEET_ROWS + 1 });
       const when = req.fromISO ? stamp(req.fromISO, req.toISO) : "all";
       return {
         rows: materialDashboardRows(d.rows),

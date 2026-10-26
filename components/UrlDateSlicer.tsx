@@ -8,19 +8,21 @@ import { slicerPresets, type PresetKey, type SlicerPreset } from "@/lib/domain/d
 // The date slicer for a page that keeps its period in the URL. Each page has
 // always written its dates its own way; `encoding` says which:
 //   fromTo   ?from=&to=            (the dashboards; `defaultRange` clears them)
-//   fromToAll  the same, and "All" writes ?all=1 (the Material dashboard)
 //   odooDay  ?day=D | A..B | all   (the ODOO log)
 //   odooDash ?range=preset | custom&from=&to=   (the ODOO dashboard)
 //   day      ?day=D                (one day: the shift log)
 
-type Encoding = "fromTo" | "fromToAll" | "odooDay" | "odooDash" | "day";
+type Encoding = "fromTo" | "odooDay" | "odooDash" | "day";
 
 const ODOO_DASH_CODE: Partial<Record<string, string>> = { today: "today", yesterday: "yesterday", last7: "7d", last30: "30d", last90: "90d", thisMonth: "month" };
 
 export function UrlDateSlicer({
-  encoding, mode = "range", from, to, min, max, today, presets, allLabel, marks, label, defaultRange, start, end,
+  encoding, hrefFor, mode = "range", from, to, min, max, today, presets, allLabel, marks, label, defaultRange, start, end,
 }: {
   encoding: Encoding;
+  /** A page that writes its own address (its period among other choices it
+   *  keeps): the link for a pick — null, null is "All". Overrides `encoding`. */
+  hrefFor?: (from: string | null, to: string | null) => string;
   mode?: "range" | "day";
   from: string | null;
   to: string | null;
@@ -50,18 +52,13 @@ export function UrlDateSlicer({
   }, [presets, today, min, defaultRange]);
 
   const go = (f: string | null, t: string | null) => {
+    if (hrefFor) { router.push(hrefFor(f, t)); return; }
     const p = new URLSearchParams(params.toString());
     const isDefault = !!defaultRange && f === defaultRange.from && t === defaultRange.to;
     switch (encoding) {
       case "fromTo":
         p.delete("w");
         if (f && t && !isDefault) { p.set("from", f); p.set("to", t); } else { p.delete("from"); p.delete("to"); }
-        break;
-      case "fromToAll":
-        p.delete("all");
-        p.delete("days"); // an older link's window, superseded by the pick
-        if (f && t && !isDefault) { p.set("from", f); p.set("to", t); } else { p.delete("from"); p.delete("to"); }
-        if (!f || !t) p.set("all", "1");
         break;
       case "odooDay":
         p.set("day", !f || !t ? "all" : f === t ? f : `${f}..${t}`);

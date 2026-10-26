@@ -36,6 +36,13 @@ export function traceHref(target: { mo?: string | null; bom?: string | null; lin
   return `/trace?${qs.toString()}`;
 }
 
+/** The ODOO log over a period (every day when `fromISO` is null), on a line. */
+export function odooLogHref(fromISO: string | null, toISO: string, line?: ProductLine): string {
+  const qs = new URLSearchParams({ day: fromISO ? (fromISO === toISO ? fromISO : `${fromISO}..${toISO}`) : "all" });
+  if (line) qs.set(LINE_PARAM, line);
+  return `/odoo?${qs.toString()}`;
+}
+
 /** A file of the person's own in the assistant's chat: its download, and the
  *  page that lays a sheet out to print (lib/domain/aiFiles.ts reads them back). */
 export const aiFileHref = (id: number) => `/api/ai/files/${id}`;

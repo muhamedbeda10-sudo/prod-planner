@@ -103,9 +103,9 @@ describe("buildMaterialDashboard", () => {
   it("reads the nesting whole: plan, nested, variance on the same lines, weighted utilization", () => {
     // BOM: 10 + 5 + 4 sheets of known weight (1000 + 1000 + 400 kg), MO 3's 2 and the blank line's 1 sheet
     expect(d.nesting.planned).toMatchObject({ sheets: 22, kg: 2500, unknownWeightSheets: 2, lines: 5, mos: 3 });
-    expect(d.nesting.nested).toMatchObject({ sheets: 16, kg: 1400, unknownWeightSheets: 2, lines: 3, mos: 3, linesTotal: 5 });
+    expect(d.nesting.nested).toMatchObject({ sheets: 16, kg: 1400, unknownWeightSheets: 2, lines: 3, mos: 3 });
     // nested lines only: (8 − 10) + (6 − 4) + (2 − 2) sheets; kg on the weighed ones
-    expect(d.nesting.variance).toMatchObject({ sheets: 0, kg: 0, bomSheets: 16, lines: 3, mos: 3 });
+    expect(d.nesting.variance).toMatchObject({ sheets: 0, kg: 0, bomSheets: 16, lines: 3 });
     expect(d.nesting.utilization).toBeCloseTo((0.75 * 800 + 0.9 * 600) / 1400);
     expect(d.nesting).toMatchObject({ utilizationKg: 1400, scrapKg: 260, netKg: 1140, unknownUtilKg: 0 });
   });
@@ -150,6 +150,31 @@ describe("buildMaterialDashboard", () => {
     expect(d.overruns.map((o) => [o.mo, o.deltaSheets, o.deltaKg])).toEqual([["SF01/MO/2", 2, 200]]);
     expect(d.parts.find((p) => p.partCode === "FB-022")).toMatchObject({ item: "TN", bomSheets: 10, actualSheets: 8, lines: 1 });
     expect(d.actions.map((a) => a.target.kind)).toEqual(["odoo", "material", "material", "material", "material", "filter"]);
+  });
+
+  it("links a backorder to the MO it came from, as the ODOO tab does", () => {
+    const x = buildMaterialDashboard([L({})], [
+      { dateISO: "2026-09-29", mo: "SF01/MO/1-002", qty: 2 }, // a backorder of MO 1
+      { dateISO: "2026-09-29", mo: "SF01/MO/12", qty: 1 }, // another MO, not a backorder
+    ], REQ);
+    expect(x.link).toMatchObject({ linkedRows: 1, offSheetRows: 1 });
+    expect(x.consumption).toMatchObject({ units: 2, kg: 200 });
+    // and a closing of the parent finds the sheet's backorder line
+    const y = buildMaterialDashboard([L({ mo: "SF01/MO/7-001" })], [{ dateISO: "2026-09-29", mo: "SF01/MO/7", qty: 1 }], REQ);
+    expect(y.link.linkedRows).toBe(1);
+  });
+
+  it("each group of the breakdown carries its own filter — a blank one none", () => {
+    const x = buildMaterialDashboard([L({}), L({ mo: "SF01/MO/2", material: "" })], [], { ...REQ, by: "material" });
+    expect(x.breakdown.map((b) => [b.key, b.filter])).toEqual(expect.arrayContaining([["HR Sheet", { material: "HR Sheet" }], ["—", null]]));
+  });
+
+  it("sums up the coverage once: shares, the partial verdict and the period changes", () => {
+    expect(d.summary).toMatchObject({ linkRows: 2 / 5, actualRate: 1 - 1 / 3.6, partial: true, consumptionChangePct: -50 });
+    // the period before had a known utilization (MO 1's 0.75 line), so its scrap compares
+    expect(d.summary.scrapChangePct).toBe(-50);
+    const none = buildMaterialDashboard([L({ sheetsUsed: 10 })], [{ dateISO: "2026-09-29", mo: "SF01/MO/1", qty: 5 }], REQ);
+    expect(none.summary.scrapChangePct).toBeNull();
   });
 
   it("an MO closed past its units is flagged", () => {
