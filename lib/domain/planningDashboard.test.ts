@@ -73,7 +73,8 @@ describe("the line a page shows", () => {
   it("is Planning's own scope, both on a plant dashboard, and none elsewhere", () => {
     expect(pageLineOf({ path: "/", filters: { scope: "lv" } })).toBe("LV");
     expect(pageLineOf({ path: "/", filters: {} })).toBe("both");
-    expect(pageLineOf({ path: "/dashboards/production", filters: { scope: "tr" } })).toBe("both");
+    expect(pageLineOf({ path: "/dashboards/production", filters: { scope: "TR" } })).toBe("TR");
+    expect(pageLineOf({ path: "/dashboards/production", filters: {} })).toBe("both");
     expect(pageLineOf({ path: "/tracker", filters: {} })).toBeNull();
     expect(pageLineOf(null)).toBeNull();
   });

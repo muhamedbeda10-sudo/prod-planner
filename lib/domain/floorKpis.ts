@@ -31,7 +31,7 @@ export function isFloorDept(x: string | null | undefined): x is FloorDept {
 
 /** The roster's department each of the floor's departments is — the Shifts
  *  page and the other screens' ?dept= call Fabrication "Cut". */
-const ROSTER_OF: Record<OutputGroup, ShiftDept> = { Fabrication: "Cut", Welding: "Welding", ShotBlast: "ShotBlast", Painting: "Painting" };
+export const ROSTER_OF: Record<OutputGroup, ShiftDept> = { Fabrication: "Cut", Welding: "Welding", ShotBlast: "ShotBlast", Painting: "Painting" };
 
 /** A department filter as a link or the assistant may write it: the floor's
  *  own names, or the roster's ("Cut" for Fabrication); anything else is all. */

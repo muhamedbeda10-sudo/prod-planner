@@ -91,9 +91,10 @@ function LineTable<S extends string>({ line, data, stages, stageLabel, typeWord,
   );
 }
 
-export function OutputByType({ tr, lv, range }: { tr: OutputByTypeData<Stage>; lv: OutputByTypeData<LvStage>; range: string }) {
+/** One line's card, or both side by side — `null` leaves a line out (the page's line switch). */
+export function OutputByType({ tr, lv, range }: { tr: OutputByTypeData<Stage> | null; lv: OutputByTypeData<LvStage> | null; range: string }) {
   const [detail, setDetail] = useState(true);
-  const months = tr.monthLabel === lv.monthLabel ? tr.monthLabel : `${tr.monthLabel} / ${lv.monthLabel}`;
+  const months = [...new Set([tr?.monthLabel, lv?.monthLabel].filter(Boolean))].join(" / ");
   return (
     <ChartCard
       title="What did we make, item by item?"
@@ -106,9 +107,9 @@ export function OutputByType({ tr, lv, range }: { tr: OutputByTypeData<Stage>; l
         </nav>
       }
     >
-      <div className="grid gap-4 2xl:grid-cols-2">
-        <LineTable line="TR" data={tr} stages={STAGES} stageLabel={TR_TYPE_STAGE_LABEL} typeWord="KVA class" finishWord="Finished" range={range} detail={detail} />
-        <LineTable line="LV" data={lv} stages={LV_STAGES} stageLabel={LV_TYPE_STAGE_LABEL} typeWord="panel type" finishWord="Painted" range={range} detail={detail} />
+      <div className={`grid gap-4 ${tr && lv ? "2xl:grid-cols-2" : ""}`}>
+        {tr && <LineTable line="TR" data={tr} stages={STAGES} stageLabel={TR_TYPE_STAGE_LABEL} typeWord="KVA class" finishWord="Finished" range={range} detail={detail} />}
+        {lv && <LineTable line="LV" data={lv} stages={LV_STAGES} stageLabel={LV_TYPE_STAGE_LABEL} typeWord="panel type" finishWord="Painted" range={range} detail={detail} />}
       </div>
     </ChartCard>
   );

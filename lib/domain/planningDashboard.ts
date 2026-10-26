@@ -22,7 +22,7 @@ import { isItem, isPaintExempt } from "./constants";
 import { trItemName } from "./outputByType";
 import { formatDate } from "./format";
 import { traceHref } from "./links";
-import { hrefWithLine, showsBothLines, type ProductLine } from "./lines";
+import { hrefWithLine, lineParam, showsBothLines, type ProductLine } from "./lines";
 import { href, one, type Search } from "./dashboardLinks";
 import { parseISODate } from "./dates";
 
@@ -101,12 +101,13 @@ export function planningUrl(f: PlanningFilters, patch: Partial<PlanningFilters> 
   });
 }
 
-/** The line a page shows from its address: a line's own scope on Planning, both
- *  on a plant dashboard (Planning under All, Production), null elsewhere (the
- *  app's line). One answer for the chat's context and the assistant's tools. */
+/** The line a plant dashboard shows from its address — its own line switch
+ *  (?scope=, Planning's and Production's alike), both under All — and null on
+ *  any other page (the app's line). One answer for the chat's context and the
+ *  assistant's tools. */
 export function pageLineOf(page: { path: string; filters: Search } | null | undefined): ProductLine | "both" | null {
   if (!page || !showsBothLines(page.path)) return null;
-  return (page.path === "/" ? SCOPE_LINE[planningFiltersOf(page.filters).scope] : null) ?? "both";
+  return lineParam(arg(page.filters, "scope")) ?? "both";
 }
 
 /** Whether the line is on screen under the scope. */

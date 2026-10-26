@@ -245,7 +245,7 @@ export function trPlanLines(
 
 /** Both lines' cards as one sheet — a row per item type, the line and the
  *  plan's month on each: what the card shows, for make_excel. */
-export function outputByTypeRows(tr: OutputByTypeData<Stage>, lv: OutputByTypeData<LvStage>): Record<string, string | number>[] {
+export function outputByTypeRows(tr: OutputByTypeData<Stage> | null, lv: OutputByTypeData<LvStage> | null): Record<string, string | number>[] {
   const rows = <S extends string>(line: string, d: OutputByTypeData<S>, stages: readonly S[], label: Record<S, string>) =>
     d.groups.flatMap((g) => g.types.map((t) => ({
       Line: line,
@@ -258,5 +258,5 @@ export function outputByTypeRows(tr: OutputByTypeData<Stage>, lv: OutputByTypeDa
       Left: t.plan?.left ?? "",
       "Done %": t.plan?.share == null ? "" : Math.round(t.plan.share * 100),
     })));
-  return [...rows("Transformers", tr, STAGES, TR_TYPE_STAGE_LABEL), ...rows("LV Panels", lv, LV_STAGES, LV_TYPE_STAGE_LABEL)];
+  return [...(tr ? rows("Transformers", tr, STAGES, TR_TYPE_STAGE_LABEL) : []), ...(lv ? rows("LV Panels", lv, LV_STAGES, LV_TYPE_STAGE_LABEL) : [])];
 }

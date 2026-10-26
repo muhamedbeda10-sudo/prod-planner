@@ -12,9 +12,9 @@ import { WORK_CENTRE_LABEL, round1, type WorkCentre } from "./shifts";
 export const LOSS_DAYS = [7, 14, 30] as const;
 
 /** One recorded day at one centre, as the waterfall needs it. */
-export interface LossDay {
+export interface LossDay<C extends string = WorkCentre> {
   dateISO: string;
-  centre: WorkCentre;
+  centre: C;
   /** Hours worked by those present, overtime included. */
   workedH: number;
   /** The shift hours of those set absent. */
@@ -46,8 +46,8 @@ export interface LossStep {
   hours: number;
 }
 
-export interface LossWaterfall {
-  centre: WorkCentre | null;
+export interface LossWaterfall<C extends string = WorkCentre> {
+  centre: C | null;
   /** Recorded days in it (with hours worked). */
   days: number;
   rosteredH: number;
@@ -69,12 +69,12 @@ const LABEL_OF = new Map<string, { label: string; planned: boolean }>(DOWNTIME_R
 /** The man-hours a machine-hour stopped idles at a centre on a day: its
  *  people's hours against its machines' — one for one where it keeps no
  *  machine hours. */
-function crewRatio(d: LossDay): number {
+function crewRatio(d: LossDay<string>): number {
   return d.machineH > 0 ? d.workedH / d.machineH : 1;
 }
 
 /** The waterfall over these days — one centre's, or every centre's (null). */
-export function lossWaterfall(all: readonly LossDay[], centre: WorkCentre | null): LossWaterfall {
+export function lossWaterfall<C extends string = WorkCentre>(all: readonly LossDay<C>[], centre: C | null): LossWaterfall<C> {
   const days = all.filter((d) => (centre === null || d.centre === centre) && (d.workedH > 0 || d.absentH > 0));
   let workedH = 0, absentH = 0, overtimeH = 0, earnedH = 0, stopsH = 0;
   const byCode = new Map<DowntimeCode, { machineH: number; manH: number }>();
@@ -148,13 +148,12 @@ const pts = (x: number) => Math.round(x * 1000) / 10;
  *  performance gap are shares of the hours worked (they decide the
  *  efficiency); absence, a share of the rostered hours, is shown beside them —
  *  it costs hours, not efficiency. */
-export function explainChange(before: LossWaterfall, now: LossWaterfall): LossChange {
-  const name = now.centre ? WORK_CENTRE_LABEL[now.centre] : "The floor";
+export function explainChange(before: LossWaterfall<string>, now: LossWaterfall<string>, name: string = nameOf(now.centre)): LossChange {
   if (now.efficiency === null || before.efficiency === null || before.workedH <= 0 || now.workedH <= 0) {
     return { before: before.efficiency, now: now.efficiency, change: null, drivers: [], text: `${name} has too few recorded days to compare with the stretch before.` };
   }
-  const share = (w: LossWaterfall, h: number) => h / w.workedH;
-  const absShare = (w: LossWaterfall) => (w.rosteredH > 0 ? w.absentH / w.rosteredH : 0);
+  const share = (w: LossWaterfall<string>, h: number) => h / w.workedH;
+  const absShare = (w: LossWaterfall<string>) => (w.rosteredH > 0 ? w.absentH / w.rosteredH : 0);
   const drivers: LossDriver[] = [
     { key: "stops", label: "Machine stops", points: pts(share(now, now.stopsH) - share(before, before.stopsH)) },
     { key: "performance", label: "Slower than standard / not logged", points: pts(share(now, now.performanceH) - share(before, before.performanceH)) },
@@ -178,13 +177,15 @@ export function explainChange(before: LossWaterfall, now: LossWaterfall): LossCh
   return { before: before.efficiency, now: now.efficiency, change, drivers, text };
 }
 
+/** A transformers' centre by its label; anything else as the floor. */
+const nameOf = (c: string | null) => (c && c in WORK_CENTRE_LABEL ? WORK_CENTRE_LABEL[c as WorkCentre] : "The floor");
+
 const pct = (e: number) => `${Math.round(e * 100)}%`;
 const signed = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : "±"}${Math.abs(n)}`;
 
 /** The biggest loss in a waterfall, said plainly — where to look first. */
-export function biggestLoss(w: LossWaterfall): string | null {
+export function biggestLoss(w: LossWaterfall<string>, name: string = nameOf(w.centre)): string | null {
   if (w.workedH <= 0) return null;
-  const name = w.centre ? WORK_CENTRE_LABEL[w.centre] : "The floor";
   const cand = [
     { label: "absence", h: w.absentH },
     { label: w.stops[0] ? `machine stops — most of it ${w.stops[0].label.toLowerCase()}` : "machine stops", h: w.stopsH },

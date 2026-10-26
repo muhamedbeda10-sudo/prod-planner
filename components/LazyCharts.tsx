@@ -21,6 +21,7 @@ export const ConsumedPerDayChart = dynamic(() => import("./FabAnalyticsCharts").
 export const PartCompareChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.PartCompareChart), { ssr: false, loading: () => <Placeholder h={330} /> });
 export const BreakdownChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.BreakdownChart), { ssr: false, loading: () => <Placeholder h={300} /> });
 export const OverrunChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.OverrunChart), { ssr: false, loading: () => <Placeholder h={300} /> });
+export const VolumeChart = dynamic(() => import("./ProductionCharts").then((m) => m.VolumeChart), { ssr: false, loading: () => <Placeholder h={290} /> });
 export const OdooDashboard = dynamic(() => import("./OdooDashboard").then((m) => m.OdooDashboard), { ssr: false, loading: () => <Placeholder h={520} /> });
 export const ConsumablesTrend = dynamic(() => import("./ConsumablesDashboard").then((m) => m.ConsumablesTrend), { ssr: false, loading: () => <Placeholder h={380} /> });
 export const ConsumablesBreakdown = dynamic(() => import("./ConsumablesDashboard").then((m) => m.ConsumablesBreakdown), { ssr: false, loading: () => <Placeholder h={420} /> });

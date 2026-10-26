@@ -1,6 +1,8 @@
 import "server-only";
 import { floorRequest } from "@/lib/domain/floorKpis";
 import { outputByTypeRows } from "@/lib/domain/outputByType";
+import { productionDayRows, productionRequest, productionSheetRows } from "@/lib/domain/productionDashboard";
+import { loadProductionDashboard } from "@/lib/server/productionDashboard";
 import { loadProductionAll } from "@/lib/server/dashboards";
 import { prisma } from "@/lib/db";
 import { hasPerm } from "@/lib/server/auth";
@@ -90,6 +92,8 @@ const SHEETS = {
   powder_scrap: { tab: "consumables", params: ["month"], about: "a month of powder scrap: the sections' totals, then each weighing — month" },
   shift_attendance: { tab: "shifts", params: ["day", "section"], about: "a day's attendance as saved: a row per worker — day, section" },
   machine_stops: { tab: "shifts", params: ["day", "section"], about: "a day's machine stops (an open one counted up to now) — day, section" },
+  production: { tab: "shifts", params: ["line", "from", "to", "dept"], about: "the Production dashboard's department table — each department's recorded days of the working days, person-days, booked hours, overtime, earned standard hours, efficiency and output in its unit, with the total row the tiles show — line (TR / LV; left out, the whole plant), from/to (default the last 7 days), dept" },
+  production_days: { tab: "shifts", params: ["line", "from", "to", "dept"], about: "every unit-day behind the Production dashboard's figures (work centre or department, day by day): hours booked, earned, people, overtime, attendance rows, Not set, day / night hours — same inputs as production" },
   output_by_type: { tab: "shifts", params: ["from", "to"], about: "the Production dashboard's What did we make, item by item?: each line's pieces per stage in the period by item and type (transformers by component and KVA class, panels by plan and panel type) against the month's plan — from/to (default the last 7 days)" },
   query: { tab: null, params: ["sql"], about: "anything else: the rows of ONE read-only SELECT (sql), as query_database reads them" },
 } as const satisfies Record<string, { tab: string | null; admin?: true; params: readonly Param[]; about: string }>;
@@ -144,13 +148,13 @@ export const makeSheetTool: ReadTool<Input> = {
     properties: {
       sheet: { type: "string", enum: Object.keys(SHEETS) },
       name: str(100, "The file's name, without .xlsx — short and saying what it holds (\"late-orders-october\"). Defaults to the screen's own."),
-      line: { type: "string", enum: ["TR", "LV"], description: "The product line, for plan_tracker, daily_log, orders_registry, trace (a code's), material and material_dashboard. Defaults to the chat's line." },
+      line: { type: "string", enum: ["TR", "LV"], description: "The product line, for plan_tracker, daily_log, orders_registry, trace (a code's), material and material_dashboard — defaults to the chat's line; for production / production_days left out means the whole plant." },
       filters: TRACKER_FILTER_SCHEMA,
       plan: { type: "integer", minimum: 1, description: "weekly_plan: the plan number; defaults to the newest." },
       q: str(160, "A search: weekly_plan (project, SOI, description), daily_log (BOM), orders_registry (MO, BOM, SOI, FG code, KVA, product). The plan tracker's search is filters.q."),
       hideDone: { type: "boolean", description: "weekly_plan: leave out the rows the measured stage has finished." },
       stages: str(60, `weekly_plan: the stage columns, comma-separated from ${STAGE_VALUES.join(",")}; all of them by default.`),
-      dept: str(40, "daily_log: one department, as the ledger names it (Cut, Welding, Painting, ShotBlast, Delivered, or an LV stage)."),
+      dept: str(40, "daily_log: one department, as the ledger names it (Cut, Welding, Painting, ShotBlast, Delivered, or an LV stage). production / production_days: one of the dashboard's departments (Fabrication, Welding, ShotBlast, Painting, Punching, Bending, WeldingLV, PaintingLV) — it names its line."),
       item: str(40, "daily_log: one component (TN, TC, CF, CB, …)."),
       flaggedOnly: { type: "boolean", description: "daily_log: only the entries the data guard flagged." },
       urgent: { type: "string", enum: ["yes", "no"], description: "orders_registry: urgent orders only, or none of them." },
@@ -158,7 +162,7 @@ export const makeSheetTool: ReadTool<Input> = {
       // material_dashboard's own scope, as get_material_dashboard takes it
       ...MATERIAL_SCOPE_PROPERTIES,
       mo: str(80, "trace: the order's MO; material_dashboard: one MO."),
-      from: { ...DAY, description: "The first day (YYYY-MM-DD) of daily_log, odoo_log, odoo_daily, consumables_log, consumables_edits, consumables_summary, material_dashboard; a period given by its first day alone runs to today." },
+      from: { ...DAY, description: "The first day (YYYY-MM-DD) of daily_log, odoo_log, odoo_daily, consumables_log, consumables_edits, consumables_summary, material_dashboard, production, production_days; a period given by its first day alone runs to today." },
       to: { ...DAY, description: "The last day (YYYY-MM-DD), the same sheets." },
       bom: str(80, "trace: the code (BOM), when no MO is given."),
       month: { type: "string", pattern: "^\\d{4}-\\d{2}$", description: "powder_scrap, consumables_monthly: the month (YYYY-MM); defaults to this one." },
@@ -349,8 +353,7 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
     }
     case "consumables_summary": {
       const p = consumablesPeriod({ from: i.from, to: i.to }, today);
-      const stats = await getConsumablesDashboard(p.from, p.to);
-      return { rows: consumablesSummaryRows(stats.items), name: `consumables-summary-${p.stamp}`, sheet: "Items", scope: `Consumables by item ${p.label}` };
+      return { rows: consumablesSummaryRows(await getConsumablesDashboard(p.from, p.to)), name: `consumables-summary-${p.stamp}`, sheet: "Items", scope: `Consumables by item ${p.label}` };
     }
     case "consumables_dashboard": {
       // the screen's own address, read by the screen's own rules
@@ -381,6 +384,17 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       const depts: readonly string[] = rosterDepts(at.filter);
       const data = await getDowntimeDay(at.day);
       return { rows: downtimeRows({ ...data, rows: data.rows.filter((r) => depts.includes(r.dept)) }, ctx.now), name: `machine-stops-${at.day}`, sheet: "Stops", scope: `Machine stops ${at.day}` };
+    }
+    case "production":
+    case "production_days": {
+      // the page's own reading of the request and its one loader, so the file holds the page's numbers
+      const req = productionRequest({ from: i.from, to: i.to, scope: i.line ?? "all", dept: i.dept }, today);
+      const d = await loadProductionDashboard(req, ctx.now);
+      if (d.failed.length > 0) return { error: "The shift log's figures could not load — try again shortly." };
+      const what = `${d.view.scopeName}, ${req.fromISO} – ${req.toISO}`;
+      return i.sheet === "production"
+        ? { rows: productionSheetRows(d.view), name: `production-${req.fromISO}_${req.toISO}`, sheet: "Departments", scope: `Production by department: ${what}` }
+        : { rows: productionDayRows(d.view), name: `production-days-${req.fromISO}_${req.toISO}`, sheet: "Unit-days", scope: `Production day by day: ${what}` };
     }
     case "output_by_type": {
       // the dashboard's own period rule and loaders: every department, both lines

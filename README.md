@@ -37,13 +37,15 @@ is the next shortfall, what does it take; feature 13), **Production**
 feature 13), **Material** (`/dashboards/material`, feature 5), **Consumables**
 (`/dashboards/consumables`) and **ODOO** (`/dashboards/odoo`). Each is seen with the screen it reads (its
 tab id: the Production dashboard with Shifts), and no dashboard is anywhere else; the old addresses
-(`/analytics`, `?view=dashboard`) land on them. Production shows **both lines on one page**: the
+(`/analytics`, `?view=dashboard`) land on them. Planning shows **both lines on one page**: the
 plant's figures first, then a section for the transformers and one for the LV panels (`components/LineSection.tsx`;
-each folds away, remembered in the browser, and a link opens it at `#tr` or `#lv`). Planning opens the same way
-under **All**, and its bar's **All | Transformers | LV Panels** switch (`?scope=`) shows one line's section alone.
-Neither takes the app's line (`BOTH_LINES` in `lib/domain/lines.ts`): the proxy sends an older address naming one to
-that line's section, and no line is carried onto them (`lib/domain/dashboardLinks.ts` builds Production's
-addresses, `planningUrl` in `lib/domain/planningDashboard.ts` Planning's). The recording screens still work one line at a time. **Material** holds the nesting sheets, Physical Material
+each folds away, remembered in the browser, and a link opens it at `#tr` or `#lv`); its bar's **All | Transformers |
+LV Panels** switch (`?scope=`) shows one line's section alone. Production reads both lines
+through its own **All | TR | LV** switch (`?scope=`, first in its bar). Neither takes the app's line
+(`BOTH_LINES` in `lib/domain/lines.ts`): the proxy sends an older address naming one to that line's section on
+Planning, and to `?scope=` on Production; no line is carried onto them, and the assistant reads both lines there
+(`lib/domain/dashboardLinks.ts` builds Production's addresses, `planningUrl` in `lib/domain/planningDashboard.ts`
+Planning's). The recording screens still work one line at a time. **Material** holds the nesting sheets, Physical Material
 and Consumables; **Plan Tracker** carries the tracker, the **Daily log** it
 adds up and the
 **ODOO log** (`/odoo`, whose alerts' badge rides on the Plan Tracker tab). The rule: the tab's panel moves
@@ -659,15 +661,35 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    beside every centre's status; **the month's pace** — each centre's share of the month's plan done against where an
    even pace through its working days stands today; the people as bullets (who comes against who is needed from
    today), with welding's coverage beside them. **Where did the hours go?** (`lib/domain/losses.ts`) walks a
-   centre's (or the floor's) rostered man-hours over the last 7, 14 or 30 days down to the standard hours earned —
+   choice's rostered man-hours over the Production dashboard's own period down to the standard hours earned —
    absence, overtime, the man-hours machine stops idled by cause (machine-hours × the centre's people's hours against
    its machines', never more than the hours not earned), and what is left: slower than the standard, or work not on the
    Daily log — as a waterfall, and says which of them moved the efficiency against the days before (the assistant's
    `explain_efficiency`; it sits on the Production dashboard). The headline figures each read against a week ago. The
-   Production dashboard (`/dashboards/production`) reads one period for both lines — the date bar at the top of the page
-   (the app's date slicer, the last 7 days by default, up to 92 days within the last 180; `?from=&to=`), with its
-   Interventions button at the end — and each line's section keeps its own department (`?dept=` All,
-   Fabrication, Welding, Shot blast or Painting on the transformers; `?lvDept=` on the panels), all reopened as left.
+   Production dashboard (`/dashboards/production`) answers *what did we make, at what efficiency, and where is the
+   gap between the effort and the output* for one choice in ONE bar, all in the URL: the line (`?scope=` All | TR | LV),
+   a department (`?dept=` — Fabrication, Welding, ShotBlast, Painting, Punching, Bending, WeldingLV or PaintingLV; it
+   names its line), on Fabrication a work centre (`?centre=`), and the period (the app's date slicer, the last 7 days by
+   default, up to 92 days within the last 180; `?from=&to=`); then, at the bar's end, three popups — **Data** (attendance
+   recorded on how many of the working days since recording began, the last recorded day, each line's output priced,
+   output on days nobody booked hours, today still being logged), **Worth a look** (the unit-days with the most hours
+   not earned, those unusually above the standard — over 130%, shown as they are — and what moved the efficiency) and
+   **Interventions**. The page: six tiles — earned standard hours, booked man-hours, efficiency, std-h a person-day,
+   attendance, overtime share — each against the equal stretch before (relative for amounts, points for ratios, N/A with
+   no valid base) and each opening the rows it adds up (`?focus=`); earned against booked day by day (a click opens a
+   day's rows, `?day=`); each work centre's (TR) or department's (LV) efficiency day by day (grey where nobody booked —
+   never red or zero); what each stage recorded each day by component in its own unit (`?stage=`; pieces at four stages
+   are never added as finished units); who came — present, absent, Not set (against today's workers list, from the day a
+   worker was added) — by department with the day and night shifts (`?shift=` narrows the attendance and the hours only:
+   the Daily log records no shift, so there is no efficiency by shift); **Where did the hours go?** over the same
+   choice (absence, overtime, the machine stops' man-hours as an estimate, the unexplained rest); and the departments'
+   table (recorded days of the working days, person-days, hours, overtime, earned, efficiency, output in its unit, a
+   link to the day's record), its total row the tiles. Efficiency is Σ earned ÷ Σ booked over the unit-days that booked
+   hours, never capped. Below, under More: the item card, the floor's trend, the machines' stops by cause and, on the
+   transformers, the machines and quality. The figures are `lib/domain/productionDashboard.ts` (tested), read by
+   `lib/server/productionDashboard.ts` from the same reads as the line periods (`getFloorPeriodWithFacts`,
+   `getLvFloorPeriodWithFacts`) — the page, `get_floor_performance`, `explain_efficiency` and the assistant's
+   `production` / `production_days` sheets all read that one loader.
    The transformers' **Floor performance**: the period's efficiency, standard hours and pieces
    a person a day (shot blast's pieces are every painted piece, as on Shifts), people a day, attendance, overtime share
    and machine availability; each centre's efficiency day by
