@@ -4,6 +4,7 @@ import { linePermKey } from "@/lib/domain/permissions";
 import { getMaterialData } from "@/lib/server/material";
 import { ExportMenu } from "@/components/ExportMenu";
 import { PageHead } from "@/components/ui";
+import { MaterialSections } from "@/components/MaterialSections";
 import { MaterialClient } from "@/components/MaterialClient";
 import { getActiveLine } from "@/lib/server/line";
 import { LINE_LABEL } from "@/lib/domain/lines";
@@ -75,6 +76,7 @@ export default async function MaterialPage({
   return (
     <div>
       <RememberLastVisit storageKey="material:last" />
+      <MaterialSections current="material" />
       <PageHead
         title="Material"
         sub={`Nesting sheet · ${LINE_LABEL[line]} · one living table, matched on the MO`}

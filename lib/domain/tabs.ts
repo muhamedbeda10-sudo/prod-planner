@@ -26,9 +26,10 @@ export const TABS: TabDef[] = [
 
   { id: "material", label: "Material", group: "Production", paths: ["/material"] },
   { id: "analytics", label: "Material dashboard", group: "Production", paths: ["/analytics"] },
-  { id: "physical", label: "Physical Material", group: "Production", paths: ["/physical"] },
+  // Physical Material and Consumables are places of the Material tab, each still switched on or off on its own
+  { id: "physical", label: "Material · Physical Material", group: "Production", paths: ["/physical"] },
   { id: "odoo", label: "ODOO", group: "Production", paths: ["/odoo"] },
-  { id: "consumables", label: "Consumables", group: "Production", paths: ["/consumables"] },
+  { id: "consumables", label: "Material · Consumables", group: "Production", paths: ["/consumables"] },
   { id: "shifts", label: "Shifts", group: "Production", paths: ["/shifts"] },
   { id: "barcode", label: "Tank barcodes", group: "Production", paths: ["/barcode", "/tank"] },
   { id: "chat", label: "Chat", group: "Production", paths: ["/chat"] },

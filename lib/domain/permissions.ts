@@ -56,7 +56,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
   {
     name: "Material",
     perms: [
-      { key: "stock.edit", label: "Physical material — count & import", desc: "Import the store's stock sheet on the PHYSICAL MATERIAL tab, correct a code's physical count or Odoo figure, add and remove items, and note why a count differs" },
+      { key: "stock.edit", label: "Physical material — count & import", desc: "Import the store's stock sheet on Material → Physical Material, correct a code's physical count or Odoo figure, add and remove items, and note why a count differs" },
       { key: "material.edit", label: "Material & nesting — record", desc: "Add and edit the material lines on the MATERIAL tab — the record of what each order actually consumed: which sheet (material, thickness, size) and how many of them were really used" },
     ],
   },
@@ -71,7 +71,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
   {
     name: "Consumables",
     perms: [
-      { key: "consumables.edit", label: "Consumables — record hand-outs & manage limits", desc: "Record on the CONSUMABLES tab what the store hands out (the item from the catalogue, the quantity, the department and the worker) and correct the rows you recorded yourself; a hand-out over a limit needs a reason. Also keeps the catalogue and its limits (Limits view) — every change is recorded. Deleting a hand-out stays the admin's" },
+      { key: "consumables.edit", label: "Consumables — record hand-outs & manage limits", desc: "Record on Material → Consumables what the store hands out (the item from the catalogue, the quantity, the department and the worker) and correct the rows you recorded yourself; a hand-out over a limit needs a reason. Also keeps the catalogue and its limits (Limits view) — every change is recorded. Deleting a hand-out stays the admin's" },
     ],
   },
   {

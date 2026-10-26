@@ -18,6 +18,7 @@ import { PrintHeader } from "@/components/PrintHeader";
 import { addDaysISO, clampISO } from "@/lib/domain/dateSlicer";
 import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 import { PageHead } from "@/components/ui";
+import { MaterialSections } from "@/components/MaterialSections";
 import { ExportMenu } from "@/components/ExportMenu";
 import { ViewTabs } from "@/components/ViewTabs";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
@@ -108,6 +109,7 @@ export default async function ConsumablesPage({
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
         <PrintHeader title="Powder scrap" subtitle={monthLong(month)} date={formatDate(factoryDayISO(new Date()))} />
+        <MaterialSections current="consumables" />
         <PageHead
           title="Consumables" sub={`Powder scrap · ${monthLong(month)}`} views={viewSwitch}
           actions={<ExportMenu excel={[{ rows: exportRows, filename: `powder-scrap-${month}.xlsx`, sheetName: month }]} print />}
@@ -145,6 +147,7 @@ export default async function ConsumablesPage({
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
+        <MaterialSections current="consumables" />
         <PageHead
           title="Consumables" sub="Catalogue & limits · where each stands now" views={viewSwitch}
           actions={<ExportMenu excel={[{ rows: exportRows, filename: `consumables-limits-${today}.xlsx`, sheetName: "Limits" }]} />}
@@ -172,6 +175,7 @@ export default async function ConsumablesPage({
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
         <PrintHeader title="Consumables — dashboard" subtitle={`${periodLabel} · monthly review ${monthLong(month)}`} date={formatDate(factoryDayISO(new Date()))} />
+        <MaterialSections current="consumables" />
         <PageHead
           title="Consumables" sub={`Dashboard · ${periodLabel}`} views={viewSwitch}
           actions={<ExportMenu excel={[
@@ -207,6 +211,7 @@ export default async function ConsumablesPage({
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
+        <MaterialSections current="consumables" />
         <PageHead
           title="Consumables" sub={`Edits · ${periodLabel}`} views={viewSwitch}
           actions={<ExportMenu excel={[{ rows: exportRows, filename: `consumables-edits-${period}.xlsx`, sheetName: "Edits" }]} />}
@@ -238,6 +243,7 @@ export default async function ConsumablesPage({
   return (
     <div className="space-y-3">
       <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
+      <MaterialSections current="consumables" />
       <PageHead
         title="Consumables" sub={`Log · ${periodLabel}`} views={viewSwitch}
         actions={<ExportMenu excel={[{ rows: exportRows, filename: `consumables-${period}.xlsx`, sheetName: "Consumables" }]} />}

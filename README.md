@@ -337,7 +337,9 @@ mobile drawer still lists every view flat, since it has the vertical room.
    then one step at a time the addition that rescues the most per man-hour (workers at a department, Fridays — overtime
    for today's crew is not in the model) — puts the result on the knobs with each step's effect, and Undo puts the scenario before back. The AI
    assistant reads and puts scenarios on it (feature 12), and runs the same search (`plan_for_deadlines`). Viewing is free.
-11. **Consumables** (`/consumables`) — the store's log of what it hands out to the floor. A hand-out is recorded
+11. **Consumables** (`/consumables`, a place of the **Material** tab beside the nesting sheets and Physical Material —
+   the strip at the top of the tab moves between the three, each keeping its own views; each is still switched on or
+   off per account) — the store's log of what it hands out to the floor. A hand-out is recorded
    on **one line above the log** (after a save the department and the person stay and the item box is ready for the
    next paste); a correction opens in a popup. Item (typed
    freely, earlier items suggested) · Qty (up to 3 decimals) · Department · **Requested / collected by** (a worker of

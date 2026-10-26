@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { PageHead } from "@/components/ui";
+import { MaterialSections } from "@/components/MaterialSections";
 import { getMaterialDashboard, resolveWindow, WINDOWS } from "@/lib/server/fabAnalytics";
 import { getActiveLine } from "@/lib/server/line";
 import { FabAnalyticsView } from "@/components/FabAnalyticsView";
@@ -30,6 +31,7 @@ export default async function AnalyticsPage({
     return (
       <div>
         <RememberLastVisit storageKey="analytics:last" />
+        <MaterialSections current="material" />
         <PageHead title="Material dashboard" sub="LV Panels" views={<ViewTabs views={MATERIAL_VIEWS} current="/analytics" label="Material view" />} />
         <p className="text-sm text-muted bg-surface border rounded-xl px-4 py-3">
           The sheet analytics are built on the nesting tracker and the cutting log, which the panels do not have yet — a panel is punched,
@@ -46,6 +48,7 @@ export default async function AnalyticsPage({
   return (
     <div>
       <RememberLastVisit storageKey="analytics:last" />
+      <MaterialSections current="material" />
       <PageHead title="Material dashboard" sub="Transformers · consumption booked when the MO is closed on Odoo" views={<ViewTabs views={MATERIAL_VIEWS} current="/analytics" label="Material view" />}>
         <nav className="seg" aria-label="Window">
           {WINDOWS.map((d) => (
