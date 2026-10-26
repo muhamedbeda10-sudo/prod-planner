@@ -1,5 +1,6 @@
 "use client";
 
+import { LineSwitch } from "@/components/LineSwitch";
 import { traceHref } from "@/lib/domain/links";
 import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
@@ -428,7 +429,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
       </div>
 
       <FilterBar count={filtered.length} total={rows.length} onReset={resetFilters} showReset={false} hasActive={activeFilters.length > 0}
-        head={<SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / FG / SEC…" wide />}
+        head={<><LineSwitch /><SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / FG / SEC…" wide /></>}
       >
         <SelectFilter label="Plan month" value={month} onChange={setMonth} options={months.map((m) => ({ value: m, label: m }))} />
         {families.length > 1 && <SelectFilter label="Plan" value={family} onChange={(v) => { setFamily(v); setProduct(""); }} options={families.map((f) => ({ value: f || "PNL", label: LV_FAMILY_LABEL[f] }))} />}

@@ -11,7 +11,6 @@ import { PrintButton } from "@/components/PrintButton";
 import { PrintHeader } from "@/components/PrintHeader";
 import { Cockpit } from "@/components/Cockpit";
 import { CockpitDecisions } from "@/components/CockpitDecisions";
-import { DashboardSections } from "@/components/DashboardSections";
 import { LineScopeTabs } from "@/components/LineScopeTabs";
 import { LvPlanning } from "@/components/LvPlanning";
 import { PlantPlanning } from "@/components/PlantPlanning";
@@ -58,7 +57,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
       <div className="space-y-3">
         <RememberLastVisit storageKey="dashboard:last" />
         <PrintHeader title="Planning — LV Panels" subtitle={`${data.month.monthLabel}'s plan`} date={formatDate(todayISO)} />
-        <DashboardSections current="planning" />
         {head(`${DASH_SCOPE_NAME.LV} · today ${formatDate(todayISO)}${floor && data.lastDayISO ? ` · last recorded day ${formatDate(data.lastDayISO)}` : ""} · the month's plan through four stages`, shown.actions)}
         <LvPlanning data={shown} floor={floor} />
       </div>
@@ -74,7 +72,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
       <div className="space-y-3">
         <RememberLastVisit storageKey="dashboard:last" />
         <PrintHeader title="Planning — whole plant" subtitle={tr.week.planNo ? `Weekly plan ${tr.week.planNo} · ${lv.month.monthLabel}` : lv.month.monthLabel} date={formatDate(todayISO)} />
-        <DashboardSections current="planning" />
         {head(`${DASH_SCOPE_NAME.all} · today ${formatDate(todayISO)} · each line in its own terms, the plant where figures add`, all.actions)}
         {/* the browser gets what the plant's page shows, not the whole of both lines */}
         <PlantPlanning
@@ -94,7 +91,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
     <div className="space-y-3">
       <RememberLastVisit storageKey="dashboard:last" />
       <PrintHeader title="Planning — Transformers" subtitle={tr.week.planNo ? `Weekly plan ${tr.week.planNo}` : undefined} date={formatDate(tr.todayISO)} />
-      <DashboardSections current="planning" />
       {head(`${DASH_SCOPE_NAME.TR} · today ${formatDate(tr.todayISO)}${floor && tr.lastDayISO ? ` · last recorded day ${formatDate(tr.lastDayISO)}` : ""} · everything in standard hours`, shown.actions)}
       <Cockpit data={shown} floor={floor} />
     </div>

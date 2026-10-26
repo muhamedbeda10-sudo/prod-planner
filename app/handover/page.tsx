@@ -8,7 +8,6 @@ import { DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE } from "@/lib/domain/constants"
 import { ledgerPermKey, trackerPermKey } from "@/lib/domain/permissions";
 import { getActiveLine } from "@/lib/server/line";
 import { LV_CHAIN, LV_ITEM } from "@/lib/domain/lv";
-import { TrackerSections } from "@/components/TrackerSections";
 import { LineSwitch } from "@/components/LineSwitch";
 import { PageHead } from "@/components/ui";
 
@@ -60,9 +59,8 @@ export default async function HandoverPage() {
 
   return (
     <>
-      <TrackerSections current="handover" />
-      <PageHead title="Daily log" sub="Every entry the tracker adds up"><LineSwitch /></PageHead>
-      <HandoverLog rows={rows} line={line} editableDepts={editableDepts} soi={soi} />
+      <PageHead title="Daily log" sub="Every entry the tracker adds up" />
+      <HandoverLog rows={rows} line={line} editableDepts={editableDepts} soi={soi} head={<LineSwitch />} />
     </>
   );
 }

@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { getWhatIfInputs } from "@/lib/server/whatif";
 import { PageHead } from "@/components/ui";
-import { TrackerSections } from "@/components/TrackerSections";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { WhatIfSimulator } from "@/components/WhatIfSimulator";
 
@@ -28,7 +27,6 @@ export default async function SimulatePage() {
     <div>
       {/* view / dept were the Floor's, gone — a browser that remembers them drops them */}
       <RememberLastVisit storageKey="simulate:last" forget={["view", "dept"]} />
-      <TrackerSections current="simulate" />
       <PageHead title="What-if Simulator" sub="Transformers · move the dates and the capacity and see what lands" />
       <WhatIfSimulator
         inputs={inputs}

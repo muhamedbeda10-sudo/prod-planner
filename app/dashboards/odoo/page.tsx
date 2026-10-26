@@ -6,7 +6,6 @@ import { factoryDayISO, factoryToday } from "@/lib/domain/dates";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { OdooBasisPicker, OdooBomPicker, OdooComparePicker } from "@/components/OdooPickers";
 import { OdooDashboard } from "@/components/LazyCharts";
-import { DashboardSections } from "@/components/DashboardSections";
 import { PageHead } from "@/components/ui";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
@@ -35,15 +34,11 @@ export default async function OdooDashboardPage({
   return (
     <div className="space-y-3">
       <RememberLastVisit storageKey="dashboards:odoo" />
-      <DashboardSections current="odoo" />
-      <PageHead title="ODOO" sub="Dashboard · both lines">
-        <OdooBasisPicker basis={basis} />
-        <OdooBomPicker bom={data.bom} boms={data.boms} />
-        <OdooComparePicker compare={data.compare} />
-      </PageHead>
+      <PageHead title="ODOO" sub="Dashboard · both lines" />
       <UrlDateSlicer
         encoding="odooDash" from={period.fromISO} to={period.fromISO ? period.toISO : null} min={addDaysISO(today, -120)} max={today} today={today}
         presets={["today", "yesterday", "last7", "thisMonth", "lastMonth", "last30", "last90"]} allLabel="All time"
+        end={<><OdooBasisPicker basis={basis} /><OdooBomPicker bom={data.bom} boms={data.boms} /><OdooComparePicker compare={data.compare} /></>}
       />
       <OdooDashboard data={data} />
     </div>

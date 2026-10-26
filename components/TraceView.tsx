@@ -71,7 +71,7 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
               Trace · {t.scope === "mo" ? "Manufacturing order" : "Code"}
             </div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-xl md:text-2xl font-extrabold leading-tight tracking-tight">{t.key}</h1>
+              <h2 className="text-xl md:text-2xl font-extrabold leading-tight tracking-tight">{t.key}</h2>
               {t.members.length > 0 && (openOrders > 0
                 ? <Chip tone="ok">Open</Chip>
                 : <Chip tone="muted">Closed</Chip>)}

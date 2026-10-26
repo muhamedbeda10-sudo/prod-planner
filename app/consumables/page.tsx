@@ -15,7 +15,6 @@ import { PrintHeader } from "@/components/PrintHeader";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { PageHead } from "@/components/ui";
-import { MaterialSections } from "@/components/MaterialSections";
 import { ExportMenu } from "@/components/ExportMenu";
 import { ViewTabs } from "@/components/ViewTabs";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
@@ -75,11 +74,14 @@ export default async function ConsumablesPage({
       label="Consumables view"
     />
   );
-  const slicer = (
+  // the period strip carries the view's actions and the view switch on its own
+  // row — the page has no head row of its own
+  const slicer = (actions: React.ReactNode) => (
     <UrlDateSlicer
       encoding="fromTo" from={from} to={to} min={min} max={today} today={today}
       presets={["yesterday", "last7", "thisMonth", "lastMonth", "last30", "last90"]}
       defaultRange={{ label: "Today", from: today, to: today }}
+      end={<>{actions}{viewSwitch}</>}
     />
   );
 
@@ -100,7 +102,6 @@ export default async function ConsumablesPage({
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:views" view={view} carry={["from", "to"]} />
         <PrintHeader title="Powder scrap" subtitle={monthLong(month)} date={formatDate(factoryDayISO(new Date()))} />
-        <MaterialSections current="consumables" />
         <PageHead
           title="Consumables" sub={`Powder scrap · ${monthLong(month)}`} views={viewSwitch}
           actions={<ExportMenu excel={[{ rows: exportRows, filename: `powder-scrap-${month}.xlsx`, sheetName: month }]} print />}
@@ -138,7 +139,6 @@ export default async function ConsumablesPage({
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:views" view={view} carry={["from", "to"]} />
-        <MaterialSections current="consumables" />
         <PageHead
           title="Consumables" sub="Catalogue & limits · where each stands now" views={viewSwitch}
           actions={<ExportMenu excel={[{ rows: exportRows, filename: `consumables-limits-${today}.xlsx`, sheetName: "Limits" }]} />}
@@ -170,12 +170,8 @@ export default async function ConsumablesPage({
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:views" view={view} carry={["from", "to"]} />
-        <MaterialSections current="consumables" />
-        <PageHead
-          title="Consumables" sub={`Edits · ${periodLabel}`} views={viewSwitch}
-          actions={<ExportMenu excel={[{ rows: exportRows, filename: `consumables-edits-${period}.xlsx`, sheetName: "Edits" }]} />}
-        />
-        {slicer}
+        <PageHead title="Consumables" sub={`Edits · ${periodLabel}`} />
+        {slicer(<ExportMenu excel={[{ rows: exportRows, filename: `consumables-edits-${period}.xlsx`, sheetName: "Edits" }]} />)}
         <ConsumableEdits edits={edits} periodLabel={periodLabel} />
       </div>
     );
@@ -202,12 +198,8 @@ export default async function ConsumablesPage({
   return (
     <div className="space-y-3">
       <RememberLastVisit storageKey="consumables:views" view={view} carry={["from", "to"]} />
-      <MaterialSections current="consumables" />
-      <PageHead
-        title="Consumables" sub={`Log · ${periodLabel}`} views={viewSwitch}
-        actions={<ExportMenu excel={[{ rows: exportRows, filename: `consumables-${period}.xlsx`, sheetName: "Consumables" }]} />}
-      />
-      {slicer}
+      <PageHead title="Consumables" sub={`Log · ${periodLabel}`} />
+      {slicer(<ExportMenu excel={[{ rows: exportRows, filename: `consumables-${period}.xlsx`, sheetName: "Consumables" }]} />)}
       <ConsumablesClient
         data={data}
         canRecord={hasPerm(me, "consumables.edit")}

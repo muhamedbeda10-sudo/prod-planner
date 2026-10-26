@@ -11,7 +11,6 @@ import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants";
 import { trackerPermKey } from "@/lib/domain/permissions";
 import { factoryDayISO } from "@/lib/domain/dates";
-import { TrackerSections } from "@/components/TrackerSections";
 import { LineSwitch } from "@/components/LineSwitch";
 import { PageHead } from "@/components/ui";
 import { LvTrackerTable } from "@/components/LvTrackerTable";
@@ -60,8 +59,7 @@ export default async function TrackerPage({
           canStatus={!!user && hasPerm(user, "lv.status")}
           prefs={lvPrefs}
           head={<>
-            <TrackerSections current="tracker" />
-            <PageHead title="Plan Tracker" sub="One row per panel or meter box order, every stage"><LineSwitch /></PageHead>
+            <PageHead title="Plan Tracker" sub="One row per panel or meter box order, every stage" />
           </>}
         />
       </>
@@ -79,11 +77,11 @@ export default async function TrackerPage({
           subtitle={data.planNo === null ? undefined : `Weekly plan ${data.planNo}`}
           date={issued}
         />
-        <TrackerSections current="tracker" />
-        <PageHead title="Plan Tracker" sub={`Weekly plan${data.planNo === null ? "" : ` ${data.planNo}`}, day by day`}><LineSwitch /></PageHead>
+        <PageHead title="Plan Tracker" sub={`Weekly plan${data.planNo === null ? "" : ` ${data.planNo}`}, day by day`} />
         <WeeklyPlanTrackerTable
           data={data}
           capacityCard={<PlanCapacityCard check={capacity} />}
+          lineSwitch={<LineSwitch />}
           // ONE permission for the whole weekly sheet — deliberately separate
           // from the monthly tracker's per-column keys
           canRecord={!!weeklyUser && hasPerm(weeklyUser, "weekly.record")}

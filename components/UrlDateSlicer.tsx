@@ -17,7 +17,7 @@ type Encoding = "fromTo" | "odooDay" | "odooDash" | "day";
 const ODOO_DASH_CODE: Partial<Record<string, string>> = { today: "today", yesterday: "yesterday", last7: "7d", last30: "30d", last90: "90d", thisMonth: "month" };
 
 export function UrlDateSlicer({
-  encoding, mode = "range", from, to, min, max, today, presets, allLabel, marks, label, defaultRange,
+  encoding, mode = "range", from, to, min, max, today, presets, allLabel, marks, label, defaultRange, start, end,
 }: {
   encoding: Encoding;
   mode?: "range" | "day";
@@ -34,6 +34,9 @@ export function UrlDateSlicer({
   /** The page's own default period, first among the quick filters: picking
    *  it clears the dates from the URL, so the page is back to itself. */
   defaultRange?: { label: string; from: string; to: string };
+  /** The page's own controls on the slicer's row (see DateSlicer). */
+  start?: React.ReactNode;
+  end?: React.ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -74,6 +77,7 @@ export function UrlDateSlicer({
     <DateSlicer
       mode={mode} from={from} to={mode === "day" ? from : to} min={min} max={max}
       presets={list} allLabel={allLabel} marks={marks} label={label} onChange={go}
+      start={start} end={end}
     />
   );
 }

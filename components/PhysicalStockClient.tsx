@@ -22,9 +22,11 @@ const STATUS_PILL: Record<StockStatus, string> = { match: "pill-ok", short: "pil
 /** Pieces read whole when they are whole, kilos to the kilo; a fraction keeps two places. */
 const qty = (n: number) => formatNumber(n, Number.isInteger(n) ? 0 : 2);
 
-export function PhysicalStockClient({ items, canEdit, lastUpdate }: {
+export function PhysicalStockClient({ items, canEdit, lastUpdate, exportButton }: {
   items: PhysicalStockItem[];
   canEdit: boolean;
+  /** The page's export, at the end of the filter bar. */
+  exportButton?: React.ReactNode;
   lastUpdate: { atISO: string; by: string | null } | null;
 }) {
   const [q, setQ] = useSavedFilter("physical.q");
@@ -65,7 +67,7 @@ export function PhysicalStockClient({ items, canEdit, lastUpdate }: {
         onReset={reset}
         hasActive={hasActive}
         head={<SearchBox value={q} onChange={setQ} placeholder="Search code, product, note…" wide />}
-        actions={canEdit ? <><ImportButton /><AddItem /></> : undefined}
+        actions={<>{canEdit && <><ImportButton /><AddItem /></>}{exportButton}</>}
       >
         <FilterSelect label="Family" value={group} onChange={setGroup} options={STOCK_GROUPS.filter((g) => items.some((i) => i.group === g)).map((g) => ({ value: g, label: g }))} />
         <FilterSelect label="Status" value={status} onChange={setStatus} options={(Object.keys(STATUS_LABEL) as StockStatus[]).map((s) => ({ value: s, label: STATUS_LABEL[s] }))} />

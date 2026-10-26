@@ -13,7 +13,7 @@ export default async function NoAccessPage() {
   if (next) redirect(next);
   return (
     <div className="max-w-md mx-auto mt-16 text-center space-y-2">
-      <h1 className="page-title">No screens open to your account</h1>
+      <h1 className="text-lg font-bold">No screens open to your account</h1>
       <p className="text-sm text-muted">The owner has not switched any screen on for {user.name}. Ask them to tick the ones you need on Users &amp; Permissions.</p>
     </div>
   );

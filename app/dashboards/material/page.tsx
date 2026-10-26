@@ -5,7 +5,6 @@ import { Layers } from "lucide-react";
 import { EmptyState } from "@/components/primitives";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { PageHead } from "@/components/ui";
-import { DashboardSections } from "@/components/DashboardSections";
 import { LineSwitch } from "@/components/LineSwitch";
 import { getMaterialDashboard, resolveWindow, WINDOWS } from "@/lib/server/fabAnalytics";
 import { getActiveLine } from "@/lib/server/line";
@@ -37,7 +36,6 @@ export default async function MaterialDashboardPage({
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="dashboards:material" />
-        <DashboardSections current="material" />
         <PageHead title="Material" sub="Dashboard · sheet analytics"><LineSwitch /></PageHead>
         <section className="bg-surface border rounded-xl">
           <EmptyState icon={Layers} title="No sheet analytics for the panels yet"
@@ -54,7 +52,6 @@ export default async function MaterialDashboardPage({
   return (
     <div className="space-y-3">
       <RememberLastVisit storageKey="dashboards:material" />
-      <DashboardSections current="material" />
       <PageHead title="Material" sub="Dashboard · consumption booked when the MO is closed on Odoo">
         <LineSwitch />
         <nav className="seg" aria-label="Window">

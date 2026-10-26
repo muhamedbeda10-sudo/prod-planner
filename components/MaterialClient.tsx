@@ -930,10 +930,12 @@ function FilterBar({ lines, filters, onChange, shown, extra }: { lines: Material
   );
 }
 
-export function MaterialClient({ lines, totals, month, knownBoms, canEdit, product = "TR", lvOrders = [], lvTemplates = {}, odooByMo = {}, exportButton }: {
+export function MaterialClient({ lines, totals, month, knownBoms, canEdit, product = "TR", lvOrders = [], lvTemplates = {}, odooByMo = {}, exportButton, lineSwitch }: {
   lines: MaterialLineView[]; totals: MaterialTotal[]; month: string; knownBoms: string[]; canEdit: boolean;
   /** The page's Export Excel, set in the action toolbar beside upload and add. */
   exportButton?: React.ReactNode;
+  /** The page's Transformers | LV Panels switch, first in its toolbar. */
+  lineSwitch?: React.ReactNode;
   /** MO (upper case) → its status on the ODOO log. */
   odooByMo?: Record<string, string>;
   /** Which product line's nesting this is — the transformer part presets are only offered on theirs. */
@@ -963,8 +965,9 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
   return (
     <div className="space-y-4">
       <div className="toolbar !mb-0">
-        {(canEdit || exportButton) && (
+        {(canEdit || exportButton || lineSwitch) && (
           <div className="toolbar-row no-print">
+            {lineSwitch}
             {canEdit && (
               <>
                 <ImportPanel product={product} />

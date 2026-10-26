@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList, Warehouse,
@@ -19,9 +19,9 @@ import { InboxBell } from "@/components/InboxBell";
 import { useAiPanel } from "@/components/AiPanel";
 import { useInboxPanel } from "@/components/InboxPanel";
 import { useOdooAlerts } from "@/components/OdooAlerts";
-import { useActiveLine } from "@/components/LineContext";
+import { useActiveLine, useCarryLine } from "@/components/LineContext";
 import { Avatar, UserMenu } from "@/components/UserMenu";
-import { LINE_LABEL, PRODUCT_LINES, hrefWithLine, type ProductLine } from "@/lib/domain/lines";
+import { LINE_LABEL, LINE_PARAM, PRODUCT_LINES, hrefWithLine, pinnedLine, type ProductLine } from "@/lib/domain/lines";
 import { signOut } from "@/lib/signOut";
 import { trapTab } from "@/components/Modal";
 
@@ -32,7 +32,11 @@ type Item = {
   match?: string;
   /** Extra routes that light this tab — the views that live inside it. */
   also?: string[];
+  /** The places the tab holds, offered in a panel when the pointer rests on it. */
+  places?: Place[];
 };
+/** One place inside a tab — a screen of its own. */
+type Place = { href: string; label: string; icon: Item["icon"]; title: string };
 
 // The department worklists live under ONE "Floor" tab — clicking it opens
 // them in a panel below it; picking one navigates and closes it again. Both
@@ -55,30 +59,52 @@ const FLOOR_DEPTS: readonly FloorDept[] = [
 const deptHref = (d: FloorDept) => hrefWithLine(d.path, d.line);
 const LINE_GROUPS = PRODUCT_LINES.map((line) => ({ line, label: LINE_LABEL[line] }));
 
-// The Dashboards tab's places beyond the home page (Planning).
-const DASHBOARD_PATHS = ["/dashboards/production", "/dashboards/material", "/dashboards/consumables", "/dashboards/odoo"] as const;
-
-// Tabs after Worklist. One tab per QUESTION, not per screen. Several of these
-// hold more than one place or view behind their own switch (components/
-// SectionStrip.tsx, components/ViewTabs.tsx), which is what keeps the strip
-// short enough to read:
+// Tabs after Floor. One tab per QUESTION, not per screen. Several hold more
+// than one place: resting the pointer on the tab (or focusing it) opens a
+// panel of its places, which is the only way between them — the pages carry
+// no strip of their own. A place's own views stay behind the switch in its
+// toolbar (components/ViewTabs.tsx).
 //   Dashboards   → every dashboard, one place each: Planning (the home page),
-//                  Production, Material, Consumables, ODOO (components/DashboardSections.tsx)
+//                  Production, Material, Consumables, ODOO
 //   Material     → the nesting sheets, the store's physical count, and the
-//                  consumables it hands out (components/MaterialSections.tsx)
+//                  consumables it hands out
 //   Plan Tracker → the tracker, the daily log, the what-if simulator and the ODOO close-out log
 // Chat is not here at all — it is the icon in the right cluster.
+const DASHBOARD_PLACES: Place[] = [
+  { href: "/", label: "Planning", icon: LayoutDashboard, title: "The plan: what needs a decision, the week, the load ahead, the month and its people" },
+  { href: "/dashboards/production", label: "Production", icon: Gauge, title: "How the floor worked: output, efficiency, where the hours went, what stopped the machines" },
+  { href: "/dashboards/material", label: "Material", icon: ChartColumnBig, title: "Consumption booked when the MO is closed on Odoo — sheets, tonnes, thicknesses, scrap" },
+  { href: "/dashboards/consumables", label: "Consumables", icon: PackageMinus, title: "What went out, to whom, against the limits — and the monthly review" },
+  { href: "/dashboards/odoo", label: "ODOO", icon: Boxes, title: "Closed quantities per product and the close-out time" },
+];
+const MATERIAL_PLACES: Place[] = [
+  { href: "/material", label: "Material", icon: Layers, title: "The nesting project tracker — what each order consumed" },
+  { href: "/physical", label: "Physical Material", icon: Warehouse, title: "The store's count against Odoo's stock, code by code" },
+  { href: "/consumables", label: "Consumables", icon: PackageMinus, title: "What the store hands out to the floor — item, quantity, department, worker" },
+];
+const TRACKER_PLACES: Place[] = [
+  { href: "/tracker", label: "Plan Tracker", icon: Table2, title: "One row per order, every stage" },
+  { href: "/handover", label: "Daily log", icon: BookOpenCheck, title: "The raw entries the tracker adds up — edit and correct them here" },
+  { href: "/simulate", label: "Simulator", icon: FlaskConical, title: "What-if: move the dates and the capacity and see what lands — the transformers' plan" },
+  { href: "/odoo", label: "ODOO log", icon: Boxes, title: "The daily close-out log on Odoo" },
+];
+/** A tab of places: it lights on any of them. */
+const placesTab = (href: string, label: string, icon: Item["icon"], places: Place[]): Item =>
+  ({ href, label, icon, places, also: places.map((p) => p.href).filter((h) => h !== href) });
+// the dashboards that take the plant as a whole (?line=all)
+const PLANT_WIDE = new Set(["/", "/dashboards/production"]);
+
 const REST: Item[] = [
   // the home page; the tab lights on every dashboard
-  { href: "/", label: "Dashboards", icon: LayoutDashboard, also: [...DASHBOARD_PATHS] },
+  placesTab("/", "Dashboards", LayoutDashboard, DASHBOARD_PLACES),
   // Material comes next: nesting is decided before a single sheet is cut. The
   // store's physical count against Odoo's stock and the consumables it hands
   // out to the floor live in the same tab, each with its own screens.
-  { href: "/material", label: "Material", icon: Layers, also: ["/physical", "/consumables"] },
+  placesTab("/material", "Material", Layers, MATERIAL_PLACES),
   // who worked today, how long, on what — the supervisors' page
   { href: "/shifts", label: "Shifts", icon: Clock },
-  // the ODOO close-out log is a view of this tab; the tab carries its alerts' badge
-  { href: "/tracker", label: "Plan Tracker", icon: Table2, also: ["/handover", "/simulate", "/odoo"] },
+  // the ODOO close-out log is one of its places; the tab carries its alerts' badge
+  placesTab("/tracker", "Plan Tracker", Table2, TRACKER_PLACES),
   // the tanks' sticker sheet — its own tab while per-piece tracking is on
   // (TANK_ONLY drops it otherwise), and still a button on the painting worklist
   { href: "/barcode", label: "Tank Barcodes", icon: QrCode, match: "/barcode" },
@@ -158,6 +184,101 @@ function DrawerLink({ href, label, icon: Icon, active, badge }: { href: string; 
   );
 }
 
+/** What a tab with places needs from the bar: which panel is open, where, and
+ *  the pointer's comings and goings. */
+type MenuCtl = {
+  open: string | null;
+  pos: { top: number; left: number } | null;
+  /** The pointer came to rest on the tab: open its panel after a breath, so
+   *  a pointer only passing over the bar opens nothing. */
+  onHover: (id: string, el: HTMLElement) => void;
+  /** Open now — keyboard focus, a tap. */
+  onOpen: (id: string, el: HTMLElement) => void;
+  onLeave: () => void;
+  onKeep: () => void;
+  onClose: () => void;
+};
+
+/** A tab holding several places. Resting the pointer on it — or focusing it
+ *  from the keyboard — opens a panel of its places below it (a disclosure: the
+ *  places are plain links). Clicked with a mouse, the tab opens its first
+ *  place; tapped on a touch screen, which has no resting pointer, the first
+ *  tap opens the panel. */
+function MenuTab({ ctl, id, label, icon: Icon, active, href, badge, children }: {
+  ctl: MenuCtl; id: string; label: string; icon: Item["icon"]; active: boolean; href?: string; badge?: React.ReactNode; children: React.ReactNode;
+}) {
+  const shown = ctl.open === id && ctl.pos;
+  const cls = `nav-tab ${active || ctl.open === id ? "nav-tab-active" : ""}`;
+  const panelId = `nav-places-${id.replace(/[^a-z0-9]/gi, "") || "home"}`;
+  const touch = useRef(false);
+  const inner = (
+    <>
+      <Icon size={15} className="shrink-0" />
+      {label}
+      {badge}
+      <ChevronDown size={13} className={`shrink-0 transition-transform duration-150 ${ctl.open === id ? "rotate-180" : ""}`} />
+    </>
+  );
+  return (
+    <li
+      data-nav-menu
+      className="relative flex items-center"
+      onPointerDown={(e) => { touch.current = e.pointerType === "touch"; }}
+      onMouseEnter={(e) => ctl.onHover(id, e.currentTarget)}
+      onMouseLeave={ctl.onLeave}
+      onFocus={(e) => { if (ctl.open !== id) ctl.onOpen(id, e.currentTarget); }}
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) ctl.onLeave(); }}
+    >
+      {href ? (
+        <Link
+          href={href} className={cls} aria-expanded={ctl.open === id} aria-controls={panelId}
+          onClick={(e) => {
+            if (!touch.current || ctl.open === id) return;
+            e.preventDefault();
+            ctl.onOpen(id, e.currentTarget.parentElement!);
+          }}
+        >
+          {inner}
+        </Link>
+      ) : (
+        // the Floor has no page of its own: a click opens or closes its departments
+        <button
+          type="button" className={cls} aria-expanded={ctl.open === id} aria-controls={panelId}
+          onClick={(e) => (ctl.open === id ? ctl.onClose() : ctl.onOpen(id, e.currentTarget.parentElement!))}
+        >
+          {inner}
+        </button>
+      )}
+      {shown && (
+        <div
+          id={panelId}
+          aria-label={label}
+          style={{ top: ctl.pos!.top, left: ctl.pos!.left }}
+          onMouseEnter={ctl.onKeep}
+          className="nav-drop nav-drop-left fixed w-64 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
+        >
+          {children}
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** One place in a tab's panel: its icon and its name. */
+function MenuLink({ href, label, icon: Icon, title, active }: { href: string; label: string; icon: Item["icon"]; title?: string; active: boolean }) {
+  return (
+    <Link
+      href={href}
+      title={title}
+      aria-current={active ? "page" : undefined}
+      className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-bold whitespace-nowrap transition-colors ${active ? "bg-brand-light text-brand-ink" : "hover:bg-surface-2"}`}
+    >
+      <Icon size={16} className={`shrink-0 ${active ? "text-brand-ink" : "text-muted"}`} />
+      {label}
+    </Link>
+  );
+}
+
 /** Unread chat badge, shared by the desktop tab and the drawer entry. */
 function UnreadBadge({ count }: { count: number }) {
   if (count <= 0) return null;
@@ -191,6 +312,7 @@ export function AppNav({
   inbox?: { unread: number; any: boolean };
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   // on the assistant's own pages it is already full size: the bar's buttons go there as links
   const aiPage = pathname === "/ai" || pathname.startsWith("/ai/");
   const panelCtx = useAiPanel();
@@ -241,26 +363,49 @@ export function AppNav({
   const singleDept = worklistDepts.length === 1 ? worklistDepts[0] : !user.isAdmin && deptEdits.length === 1 ? deptEdits[0] : null;
 
   const [open, setOpen] = useState(false); // desktop admin dropdown
-  const [worklistOpen, setWorklistOpen] = useState(false); // inline worklist dept expansion
+  const [tabMenu, setTabMenu] = useState<string | null>(null); // the tab whose places are open
   const [drawer, setDrawer] = useState(false); // mobile navigation drawer
   const menuRef = useRef<HTMLDivElement>(null);
-  const wlRef = useRef<HTMLLIElement>(null);
-  const wlBtnRef = useRef<HTMLButtonElement>(null);
   const navRef = useRef<HTMLElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null); // the drawer panel
   const drawerCloseRef = useRef<HTMLButtonElement>(null); // its ✕, focused on open
   // The tab strip scrolls horizontally, so it CLIPS anything that reaches below
   // it. An absolutely-positioned menu inside it is simply never visible. The
-  // panel is therefore fixed to the viewport and anchored to the button's
+  // panel is therefore fixed to the viewport and anchored to the tab's
   // measured rect, which no ancestor's overflow can cut off.
-  const [wlPos, setWlPos] = useState<{ top: number; left: number } | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  // the pointer may cross the gap between a tab and its panel without closing it
+  const closeTimer = useRef<number | null>(null);
+  const keepMenu = () => {
+    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    closeTimer.current = null;
+  };
+  const openMenu = (key: string, el: HTMLElement) => {
+    keepMenu();
+    const r = el.getBoundingClientRect();
+    // keep the panel on screen when the tab sits near the right edge
+    setMenuPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 268)) });
+    setTabMenu(key);
+  };
+  const closeMenuSoon = () => {
+    keepMenu();
+    closeTimer.current = window.setTimeout(() => setTabMenu(null), 150);
+  };
+  // a pointer resting on a tab — not one crossing the bar on its way elsewhere
+  const hoverMenu = (key: string, el: HTMLElement) => {
+    keepMenu();
+    if (tabMenu === key) return;
+    closeTimer.current = window.setTimeout(() => openMenu(key, el), tabMenu ? 0 : 120);
+  };
 
-  // close menus on navigation — state adjusted during render, not in an effect
-  const [prevPath, setPrevPath] = useState(pathname);
-  if (prevPath !== pathname) {
-    setPrevPath(pathname);
+  // close menus on navigation — state adjusted during render, not in an effect.
+  // The query counts: welding's two queues are one path, two lines.
+  const here = `${pathname}?${searchParams}`;
+  const [prevPath, setPrevPath] = useState(here);
+  if (prevPath !== here) {
+    setPrevPath(here);
     setOpen(false);
-    setWorklistOpen(false); // picking a dept collapses the expansion again
+    setTabMenu(null); // picking a place closes its panel again
     setDrawer(false);
   }
 
@@ -268,12 +413,12 @@ export function AppNav({
   useEffect(() => {
     function onDoc(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
-      if (wlRef.current && !wlRef.current.contains(e.target as Node)) setWorklistOpen(false);
+      if (!(e.target as Element).closest?.("[data-nav-menu]")) setTabMenu(null);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setOpen(false);
-        setWorklistOpen(false);
+        setTabMenu(null);
         setDrawer(false);
       }
     }
@@ -300,12 +445,12 @@ export function AppNav({
     };
   }, [drawer]);
 
-  // The worklist panel is fixed to where the button WAS. Resizing the window or
-  // scrolling the tab strip moves the button out from under it, so close it
+  // A tab's panel is fixed to where the tab WAS. Resizing the window or
+  // scrolling the tab strip moves the tab out from under it, so close it
   // rather than leave a menu floating away from its tab.
   useEffect(() => {
-    if (!worklistOpen) return;
-    const close = () => setWorklistOpen(false);
+    if (!tabMenu) return;
+    const close = () => setTabMenu(null);
     const nav = navRef.current;
     window.addEventListener("resize", close);
     nav?.addEventListener("scroll", close);
@@ -313,7 +458,14 @@ export function AppNav({
       window.removeEventListener("resize", close);
       nav?.removeEventListener("scroll", close);
     };
-  }, [worklistOpen]);
+  }, [tabMenu]);
+  useEffect(() => keepMenu, []); // no timer outlives the bar
+  const menuCtl: MenuCtl = { open: tabMenu, pos: menuPos, onHover: hoverMenu, onOpen: openMenu, onLeave: closeMenuSoon, onKeep: keepMenu, onClose: () => setTabMenu(null) };
+  // inside the tab on screen, a place keeps the line the address names — and
+  // the plant-wide dashboards keep "All"
+  const carry = useCarryLine();
+  const allPlant = searchParams.get(LINE_PARAM)?.trim().toLowerCase() === "all";
+  const placeHref = (href: string) => (allPlant && PLANT_WIDE.has(href) ? `${href}?${LINE_PARAM}=all` : carry(href));
 
   const on = (base: string) =>
     base === "/" ? pathname === "/" : pathname === base || pathname.startsWith(base + "/");
@@ -362,75 +514,51 @@ export function AppNav({
                   tab to its right along and left the bar a different width open
                   than closed. */}
               {machinePlanning && worklistDepts.length > 0 && (
-              <li ref={wlRef} className="relative flex items-center">
-                {singleDept ? (
+              singleDept ? (
+                <li>
                   <Link href={deptHref(singleDept)} className={`nav-tab ${isActive("/worklist") ? "nav-tab-active" : ""}`}>
                     <ListChecks size={15} className="shrink-0" />
                     Floor
                   </Link>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      ref={wlBtnRef}
-                      onClick={() => {
-                        if (!worklistOpen) {
-                          const r = wlBtnRef.current?.getBoundingClientRect();
-                          // keep the panel on screen when the tab sits near the right edge
-                          if (r) setWlPos({ top: r.bottom + 10, left: Math.max(8, Math.min(r.left, window.innerWidth - 248)) });
-                        }
-                        setWorklistOpen((v) => !v);
-                      }}
-                      aria-expanded={worklistOpen}
-                      className={`nav-tab ${isActive("/worklist") || worklistOpen ? "nav-tab-active" : ""}`}
-                    >
-                      <ListChecks size={15} className="shrink-0" />
-                      Floor
-                      <ChevronDown size={13} className={`shrink-0 transition-transform duration-150 ${worklistOpen ? "rotate-180" : ""}`} />
-                    </button>
-                    {worklistOpen && wlPos && (
-                      <div
-                        role="menu"
-                        style={{ top: wlPos.top, left: wlPos.left }}
-                        className="nav-drop nav-drop-left fixed w-60 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
-                      >
-                        {LINE_GROUPS.map((g) => {
-                          const depts = worklistDepts.filter((d) => d.line === g.line);
-                          if (depts.length === 0) return null;
-                          return (
-                            <div key={g.line} role="group" aria-label={g.label}>
-                              <p className="nav-drop-label" aria-hidden>{g.label}</p>
-                              {depts.map((d) => (
-                                <Link
-                                  key={deptHref(d)}
-                                  href={deptHref(d)}
-                                  role="menuitem"
-                                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-bold whitespace-nowrap transition-colors ${
-                                    deptOn(d) ? "bg-brand-light text-brand-ink" : "hover:bg-surface-2"
-                                  }`}
-                                >
-                                  <d.icon size={16} className={`shrink-0 ${deptOn(d) ? "text-brand-ink" : "text-muted"}`} />
-                                  {d.label}
-                                </Link>
-                              ))}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
-                )}
-              </li>
-              )}
-              {restTabs.map((l) => (
-                <li key={l.href}>
-                  <Link href={l.href} className={`nav-tab ${isActive(l.href, l.match, l.also) ? "nav-tab-active" : ""}`}>
-                    <l.icon size={15} className="shrink-0" />
-                    {l.label}
-                    {(l.href === "/odoo" || l.also?.includes("/odoo")) && canSee("/odoo") && odooBadge()}
-                  </Link>
                 </li>
-              ))}
+              ) : (
+                <MenuTab ctl={menuCtl} id="floor" label="Floor" icon={ListChecks} active={isActive("/worklist")}>
+                  {LINE_GROUPS.map((g) => {
+                    const depts = worklistDepts.filter((d) => d.line === g.line);
+                    if (depts.length === 0) return null;
+                    return (
+                      <div key={g.line} role="group" aria-label={g.label}>
+                        <p className="nav-drop-label" aria-hidden>{g.label}</p>
+                        {depts.map((d) => <MenuLink key={deptHref(d)} href={deptHref(d)} label={d.label} icon={d.icon} active={deptOn(d)} />)}
+                      </div>
+                    );
+                  })}
+                </MenuTab>
+              )
+              )}
+              {restTabs.map((l) => {
+                const active = isActive(l.href, l.match, l.also);
+                const badge = l.also?.includes("/odoo") && canSee("/odoo") && odooBadge();
+                const places = (l.places ?? []).filter((p) => shown(p) && (on(p.href) || (pinnedLine(p.href) ?? line) === line));
+                if (places.length < 2) {
+                  return (
+                    <li key={l.href}>
+                      <Link href={l.href} className={`nav-tab ${active ? "nav-tab-active" : ""}`}>
+                        <l.icon size={15} className="shrink-0" />
+                        {l.label}
+                        {badge}
+                      </Link>
+                    </li>
+                  );
+                }
+                return (
+                  <MenuTab ctl={menuCtl} key={l.href} id={l.href} label={l.label} icon={l.icon} active={active} href={active ? placeHref(l.href) : l.href} badge={badge}>
+                    {places.map((p) => (
+                      <MenuLink key={p.href} href={active ? placeHref(p.href) : p.href} label={p.label} icon={p.icon} title={p.title} active={on(p.href)} />
+                    ))}
+                  </MenuTab>
+                );
+              })}
             </ul>
           </nav>
 
