@@ -66,7 +66,7 @@ export interface RunOrderLineDTO {
   appliedAtISO: string;
 }
 
-/** The run order the admin committed from the Simulator, cut down to what
+/** The run order the admin committed through the assistant, cut down to what
  *  this dept still has to do — finished lines drop off by themselves. */
 export async function getRunOrderLines(dept: Dept): Promise<RunOrderLineDTO[]> {
   const entries = await prisma.runOrderEntry.findMany({ orderBy: { rank: "asc" } });

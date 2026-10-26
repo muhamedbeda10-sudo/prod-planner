@@ -92,6 +92,16 @@ describe("AI reads and writes", () => {
     expect(order).toEqual(["start 1", "start 2", "end 2", "end 1", "write"]);
     expect((result.added[3].content as { tool_use_id: string; content: string }[]).map((b) => [b.tool_use_id, b.content])).toEqual([["a", "Facts 1"], ["b", "Facts 2"], ["c", "Prepared"]]);
   });
+  it("runs a read that changes what the others start from alone, in the model's order", async () => {
+    const order: string[] = [];
+    const slow = (name: string, serial?: boolean): AiTool => ({
+      kind: "read", name, title: name, description: name, schema: { type: "object", properties: {}, additionalProperties: false }, ...(serial ? { serial: true as const } : {}),
+      run: async () => { order.push(`start ${name}`); await new Promise((r) => setTimeout(r, 5)); order.push(`end ${name}`); return { ok: true, text: name }; },
+    });
+    h.stream.mockReturnValueOnce(reply([use("a", "r1"), use("b", "keep"), use("c", "r2"), use("d", "r3")], "tool_use")).mockReturnValueOnce(done());
+    await run({ tools: [slow("r1"), slow("keep", true), slow("r2"), slow("r3"), tools[1]] });
+    expect(order).toEqual(["start r1", "end r1", "start keep", "end keep", "start r2", "start r3", "end r2", "end r3"]);
+  });
   it("tells the chat each step with its timing and rows, and how long the answer took", async () => {
     const step = vi.fn();
     read.mockResolvedValueOnce({ ok: true, text: '{"columns":["mo"],"rowCount":3,"rows":[[1],[2],[3]]}' }).mockResolvedValueOnce({ ok: false, text: "Unavailable" });

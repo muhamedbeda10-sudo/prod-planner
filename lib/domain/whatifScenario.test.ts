@@ -13,7 +13,7 @@ const inputs: WhatIfInputs = {
 const reality = defaultScenario(inputs);
 
 describe("parseScenario", () => {
-  it("keeps a scenario the Simulator made, and fills what is missing with reality", () => {
+  it("keeps a saved scenario, and fills what is missing with reality", () => {
     const sc = { ...reality, workersDelta: { ...reality.workersDelta, Welding: 2 }, workFridays: true, splits: { "A|TN": [1, 3] }, holds: { "B|CF": "2026-10-15" }, downtimes: [{ stage: "cut", fromISO: "2026-10-13", toISO: "2026-10-14" }] };
     expect(parseScenario(JSON.parse(JSON.stringify(sc)))).toEqual({ ok: true, scenario: sc });
     expect(parseScenario({ shiftHours: 9.5 })).toEqual({ ok: true, scenario: { ...reality, shiftHours: 9.5, queue: [] } });

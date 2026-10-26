@@ -1,11 +1,11 @@
-// What it takes to meet the deadlines — the Simulator's own model searched
+// What it takes to meet the deadlines — the what-if model searched
 // for the cheapest way to bring the late orders (or the ones named) back on
 // time: first what costs nothing (the order the jobs are worked in), then one
 // step at a time the addition that rescues the most per man-hour — a worker
 // more at a stage, an hour more on the shift, Fridays worked — until they
 // all make their day, nothing helps any more, or the time is up. Pure and
-// deterministic for a given clock; the Simulator's screen and the assistant
-// both call it.
+// deterministic for a given clock; the assistant
+// calls it.
 
 import { optimizeQueueWithin, simulate, WI_STAGES, type Scenario, type WhatIfInputs, type WhatIfResult, type WiStage } from "./whatif";
 import { deptLabel } from "./constants";
@@ -101,7 +101,7 @@ export function planForDeadlines(
   let complete = true;
   const done = () => cur.late === 0;
 
-  // 1. free: the order the jobs are worked in — the Simulator's own search,
+  // 1. free: the order the jobs are worked in — the what-if model's own search,
   //    and the target orders first, whichever serves them better
   if (!done()) {
     const tries: Scenario[] = [];

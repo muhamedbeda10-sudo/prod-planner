@@ -65,7 +65,7 @@ describe("delete a recorded shift day", () => {
     expect(h.prisma.deptDayHours.deleteMany).toHaveBeenCalledWith({ where: { date, dept } });
     expect(h.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
     expect(h.revalidate).toHaveBeenCalledWith("/shifts");
-    expect(h.revalidate).toHaveBeenCalledWith("/simulate");
+    expect(h.revalidate).not.toHaveBeenCalledWith("/simulate");
   });
   it("checks every department before writing and refuses partial permission", async () => {
     h.guard.mockImplementation(async (key) => key === "shifts.lv" ? { error: "No LV access" } : { user: {} });

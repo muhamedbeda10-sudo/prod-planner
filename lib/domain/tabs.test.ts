@@ -35,6 +35,10 @@ describe("tabs — which screens an account sees", () => {
     expect(firstVisiblePath(new Set())).toBe("/tracker");
     expect(firstVisiblePath(new Set(["tracker", "dashboard"]))).toBe("/material");
     expect(firstVisiblePath(new Set(TABS.map((t) => t.id)))).toBeNull();
+    // the what-ifs have no screen: never a place to land, nor a path's screen
+    expect(firstVisiblePath(new Set(TABS.filter((t) => t.id !== "simulate").map((t) => t.id)))).toBeNull();
+    expect(tabForPath("/simulate")).toBeNull();
+    expect(TABS.find((t) => t.id === "simulate")).toMatchObject({ paths: [] });
   });
   it("stores the ids sorted, unknown ones dropped", () => {
     expect(serializeHiddenTabs(["odoo", "chat", "odoo", "x"])).toBe("chat,odoo");

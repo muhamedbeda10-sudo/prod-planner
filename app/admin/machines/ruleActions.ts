@@ -21,7 +21,7 @@ const num = (v: FormDataEntryValue | null): number | null => {
 };
 
 function revalidate() {
-  for (const p of ["/admin/machines", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/simulate"]) revalidatePath(p);
+  for (const p of ["/admin/machines", "/worklist/cut", "/worklist/welding", "/worklist/painting"]) revalidatePath(p);
 }
 
 export async function createMachineRule(fd: FormData): Promise<RuleActionResult> {

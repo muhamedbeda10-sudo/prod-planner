@@ -16,12 +16,20 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-simulator-through-assistant",
+    dateISO: "2026-10-26",
+    title: "What-ifs are the assistant's now: the Simulator screen is gone",
+    where: "AI assistant · Plan Tracker",
+    href: "/ai",
+    body: "There is no Simulator screen any more — ask the assistant instead. “What if we add two welders?”, “and work Fridays too?”, “what do we need to deliver the late orders on time?”, “compare one more welder against Fridays”: it runs the same model, tells you what lands on time and what slips, draws it, and gives you the steps to take. Each chat remembers the what-if it is working on, so the next question builds on the last; say “start again” for a fresh one. Saving a scenario for everyone and applying one as the run order still wait for your approval. On the Planning dashboard, a work centre short of hours now has an Ask button that opens the assistant with the question ready. Users & Permissions keeps the right as “What-ifs (through the assistant)”. An old Simulator link opens the assistant.",
+  },
+  {
     id: "2026-10-26-tab-menus-no-titles",
     dateISO: "2026-10-26",
     title: "More room on every page: a tab's places open from the top bar, and pages drop their names",
     where: "Top bar → Dashboards · Material · Plan Tracker · Floor",
     href: "/tracker",
-    body: "Rest the pointer on Dashboards, Material, Plan Tracker or Floor in the top bar and a menu of its places opens — Planning, Production, Daily log, Simulator, Physical Material and the rest — pick one to go there. The row of tabs that used to sit at the top of those pages is gone, and so is each page's name: the lit tab in the top bar already says where you are. Each page keeps its controls in one bar — the Transformers | LV Panels switch first among the filters, the page's buttons at the end — so the table starts higher up.",
+    body: "Rest the pointer on Dashboards, Material, Plan Tracker or Floor in the top bar and a menu of its places opens — Planning, Production, Daily log, Physical Material and the rest — pick one to go there. The row of tabs that used to sit at the top of those pages is gone, and so is each page's name: the lit tab in the top bar already says where you are. Each page keeps its controls in one bar — the Transformers | LV Panels switch first among the filters, the page's buttons at the end — so the table starts higher up.",
   },
   {
     id: "2026-10-26-dashboards-all-tr-lv",

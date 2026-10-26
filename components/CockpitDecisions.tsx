@@ -17,8 +17,12 @@ const ACTION_TONE = { bad: "text-bad-fg", warn: "text-warn-fg", info: "text-info
 
 const NOTHING = "Nothing pressing — the plan, the centres and welding's parts are all on track.";
 
-/** The list itself; `onOpen` runs when one of its links is followed. */
+/** The list itself; `onOpen` runs when one of its links is followed. A
+ *  decision acted on through the assistant (`ask`) opens the chat with its
+ *  question ready — or, for someone without the assistant, has no link. */
 export function DecisionList({ actions, onOpen, nothing = NOTHING }: { actions: readonly (CockpitAction & { line?: string })[]; onOpen?: () => void; nothing?: string }) {
+  const panel = useAiPanel();
+  const ai = panel?.tabs.includes("chat") ? panel : null;
   if (actions.length === 0) return <p className="text-sm text-ok-fg font-semibold">{nothing}</p>;
   return (
     <ul className="space-y-2">
@@ -28,9 +32,17 @@ export function DecisionList({ actions, onOpen, nothing = NOTHING }: { actions: 
           <li key={i} className="flex items-start gap-2 text-sm">
             <Icon size={16} className={`mt-0.5 shrink-0 ${ACTION_TONE[a.tone]}`} aria-hidden />
             <span className="flex-1">{a.line && <span className="pill pill-muted me-1.5 align-middle">{a.line}</span>}{a.text}</span>
-            <Link href={a.href} onClick={onOpen} className="no-print shrink-0 text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">
-              Open <ArrowRight size={13} aria-hidden />
-            </Link>
+            {a.ask ? (
+              ai && (
+                <button type="button" onClick={() => { onOpen?.(); ai.ask(a.ask!); }} className="no-print shrink-0 text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline" title="Open the assistant in a new chat with this question ready to send" aria-label={`Ask the assistant: ${a.text}`}>
+                  <Bot size={13} aria-hidden /> Ask
+                </button>
+              )
+            ) : (
+              <Link href={a.href} onClick={onOpen} className="no-print shrink-0 text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">
+                Open <ArrowRight size={13} aria-hidden />
+              </Link>
+            )}
           </li>
         );
       })}
@@ -74,7 +86,7 @@ export function CockpitDecisions({ actions, kind = "decision" }: { actions: read
         )}
       </button>
       {open && (
-        <Modal title={k.title} sub="Worst first — open one to act on it." onClose={() => setOpen(false)} width="max-w-3xl" focusField={false}>
+        <Modal title={k.title} sub="Worst first — open one to act on it, or ask the assistant." onClose={() => setOpen(false)} width="max-w-3xl" focusField={false}>
           <DecisionList actions={actions} onOpen={() => setOpen(false)} nothing={k.nothing} />
           {ai && (
             <div className="flex justify-end mt-4 pt-3 border-t">

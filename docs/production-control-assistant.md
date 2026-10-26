@@ -8,7 +8,7 @@ The assistant supports decisions using the app's live data and existing tools. I
 | --- | --- | --- |
 | Start of shift | «اعملي مراجعة بداية اليوم للخط المختار واقترح أهم 3 أولويات بالأسباب» | Actual output, remaining quantities, holds, readiness and machine load; any missing data |
 | On the monthly tracker | «لخص الخطة حسب الفلاتر اللي قدامي، بالإنجاز والمتبقي ومصادر الأرقام» | Scope, units and source snapshots |
-| A constraint changes | «قارن الوضع الحالي بسيناريو تعطل الماكينة دي للوردية دي» with the machine and shift | Simulator assumptions, baseline and impact; apply only the chosen scenario |
+| A constraint changes | «قارن الوضع الحالي بسيناريو تعطل الماكينة دي للوردية دي» with the machine and shift | What-if assumptions, baseline and impact; apply only the chosen scenario |
 | End of day | «قارن الفعلي بالخطة، ووضح المتبقي وأولويات بكرة ونواقص البيانات» | Matching periods, units and recorded production |
 | Weekly review | «قارن إنتاج آخر 7 أيام بالفترة اللي قبلها واقترح تحسين قابل للقياس» | Comparable workdays, product mix and capacity changes |
 | Follow-up | «راجع آخر الإجراءات اللي اتفقنا عليها على البيانات الحالية» | Refreshed facts; conversation history alone is not a task register |
@@ -55,7 +55,7 @@ These remain proposed extensions; the comparison, stress-testing and readiness f
 
 ## Planning comparison, resilience and forecast readiness
 
-The What-if Simulator now has **Compare alternatives & test disruptions**. Keep up to three named alternatives, adjust the ordinary simulator controls, and compare them with the current scenario and plant baseline. All rows are recomputed on the same input set; kept alternatives are local to the page and do not save or apply a run order. Load restores a kept alternative into the controls.
+There is no Simulator screen: the assistant runs the what-ifs. **Compare alternatives & test disruptions** (`compare_scenarios`, `stress_test_plan`) weigh up to four named alternatives against the chat's working scenario (`keep_scenario`) and the plant baseline. All rows are recomputed on the same input set; comparing never saves or applies a run order — saving a scenario and applying a run order are changes with a card.
 
 **Stress tests** compare up to three independent cases: entire-station outages over inclusive calendar dates, worker reductions for the full modeled horizon, or material arriving on a chosen date for an exact job. Each case applies separately to each alternative. Worker losses are added to its existing crew change; existing stoppages stay in place and a material stress never brings an existing later hold forward. A stoppage at one physical machine cannot be treated as a whole-station outage without explicitly accepting that assumption.
 

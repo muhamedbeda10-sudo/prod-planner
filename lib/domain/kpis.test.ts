@@ -101,6 +101,18 @@ describe("the load ahead", () => {
     expect(cockpitActions({ late: [], coverage: { wipH: 0, ratePerDay: 0, days: null, band: null, byItem: [] }, load: [l], centres: [], topLoss: null, todayRecorded: true, ddmm: (iso) => iso })[0].text)
       .toBe("Bending is behind — Bending by up to 100 h from 2026-10-21, caught up by 2026-10-24 at the usual pace.");
   });
+  it("sends a centre's capacity decisions to the assistant with the question ready — there is no Simulator screen", () => {
+    const empty = { late: [], coverage: { wipH: 0, ratePerDay: 0, days: null, band: null, byItem: [] }, centres: [], topLoss: null, todayRecorded: true, ddmm: (iso: string) => iso };
+    const days = ["2026-10-20", "2026-10-21", "2026-10-22", "2026-10-24"];
+    const short = cockpitActions({ ...empty, load: [loadAhead("Welding", days, [{ dayISO: "2026-10-21", dueH: 300 }], 50)] })[0];
+    expect(short).toMatchObject({ tone: "bad", href: "/ai", ask: expect.stringContaining("Welding owes 100 h more than it can work in the next 4 working days") });
+    expect(short.ask).toContain("Give me the steps to take");
+    const behind = cockpitActions({ ...empty, load: [loadAhead("Bending", days, [{ dayISO: "2026-10-21", dueH: 200 }], 50)] })[0];
+    expect(behind).toMatchObject({ tone: "warn", href: "/ai", ask: expect.stringContaining("Bending falls behind by up to 100 h") });
+    // the other decisions still open their own screens
+    expect(cockpitActions({ ...empty, load: [], todayRecorded: false })[0]).toMatchObject({ href: "/shifts" });
+    expect(cockpitActions({ ...empty, load: [], todayRecorded: false })[0].ask).toBeUndefined();
+  });
   it("reads a measured centre left with no capacity as short from the first day it owes anything", () => {
     expect(loadAhead("ShotBlast", ["2026-10-20", "2026-10-21"], [{ dayISO: "2026-10-21", dueH: 8 }], 0)).toMatchObject({ measured: true, shortFromISO: "2026-10-21", shortH: 8, loadRate: null });
   });

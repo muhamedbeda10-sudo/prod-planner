@@ -74,7 +74,6 @@ export function hrefWithLine(href: string, line: ProductLine): string {
  *  address asks (proxy.ts hands them their own). A line named on one of them
  *  is the screen's own, not a choice to carry on to the next. */
 export const PINNED_LINE = {
-  "/simulate": "TR",
   "/import": "TR",
   "/worklist/cut": "TR",
   "/worklist/punching": "LV",

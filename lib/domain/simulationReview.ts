@@ -1,4 +1,4 @@
-import { ETA_STAGES, type EtaStage } from "./eta";
+import { ETA_STAGES } from "./eta";
 import { defaultScenario, simulate, WI_STAGES, type Scenario, type WhatIfInputs, type WhatIfResult, type WiStage } from "./whatif";
 import { scenarioCost, withKnobs, type ScenarioKnobs } from "./whatifScenario";
 
@@ -143,4 +143,3 @@ export function stressSimulations(inputs: WhatIfInputs, alternatives: readonly N
   const ranking = canRank ? [...rows].sort((a, b) => a.worst!.blockedOrders - b.worst!.blockedOrders || a.worst!.lateOrders - b.worst!.lateOrders || a.worst!.totalLateCalendarDays - b.worst!.totalLateCalendarDays || a.normal.addedManHoursPerWorkingDay - b.normal.addedManHoursPerWorkingDay).map((r) => r.label) : [];
   return { rows, ranking, rankingRule: "Minimise worst blocked orders, then worst late orders, then worst total late calendar days, then normal extra man-hours/day. Worst values may come from different independent stress cases; ties retain input order. No probability or combined-stress claim.", note: "Each stress is run independently on the same snapshot. Unknown coverage, missing capacity/due dates, blocking readiness issues or invalid trials suppress the ranking; review the metrics and assumptions." };
 }
-export const stressStage = (stage: EtaStage, fromISO: string, toISO: string): StressCase => ({ label: `${stage} station unavailable ${fromISO}–${toISO}`, downtimes: [{ stage, fromISO, toISO }] });

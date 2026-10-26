@@ -48,7 +48,7 @@ describe("product lines — transformers and LV panels, never mixed", () => {
 
 describe("screens pinned to one line", () => {
   it("names the transformers' and the panels' own screens", () => {
-    expect(pinnedLine("/simulate")).toBe("TR");
+    expect(pinnedLine("/import")).toBe("TR");
     expect(pinnedLine("/worklist/cut")).toBe("TR");
     expect(pinnedLine("/worklist/punching")).toBe("LV");
     expect(pinnedLine("/worklist/welding")).toBeNull();

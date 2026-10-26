@@ -84,7 +84,7 @@ export async function setMachinePlanning(formData: FormData): Promise<SettingsAc
     },
     update: { machinePlanning: on },
   });
-  for (const p of ["/admin/settings", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines", "/simulate"]) revalidatePath(p);
+  for (const p of ["/admin/settings", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines"]) revalidatePath(p);
   // the bar's Floor tab (the worklists) and the machine pages come and go with it
   revalidatePath("/", "layout");
   return { ok: true };
@@ -124,6 +124,6 @@ export async function saveShiftHours(formData: FormData): Promise<SettingsAction
   });
   // the day's man-hours are recomputed as they are read, so every screen that
   // shows them wants refreshing
-  for (const p of ["/admin/settings", "/shifts", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/simulate", "/admin/standard-times"]) revalidatePath(p);
+  for (const p of ["/admin/settings", "/shifts", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/admin/standard-times"]) revalidatePath(p);
   return { ok: true };
 }

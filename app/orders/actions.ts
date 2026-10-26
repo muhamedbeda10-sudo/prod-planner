@@ -243,7 +243,7 @@ export async function setOrderPriority(formData: FormData): Promise<{ ok: boolea
   return { ok: true };
 }
 
-const HOLD_PATHS = ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/punching", "/worklist/bending", "/trace", "/simulate"];
+const HOLD_PATHS = ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/punching", "/worklist/bending", "/trace"];
 
 /** tracker.status — put an order ON HOLD, or release it. A held order stays
  *  open on the tracker (tinted, with the reason) and leaves every worklist

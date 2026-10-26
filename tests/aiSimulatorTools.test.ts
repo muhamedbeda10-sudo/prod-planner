@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The assistant's Simulator tools: a what-if run against today's jobs, a
-// scenario put on the person's own Simulator screen, saving and deleting
-// scenarios, and the run order — what each card says, which of the
-// Simulator's own actions runs, and how each is undone.
+// The assistant's what-if tools (there is no Simulator screen): a what-if
+// run against today's jobs, a chat's working scenario kept on the chat,
+// saving and deleting scenarios, and the run order — what each card says,
+// which of the app's own actions runs, and how each is undone.
 
 const h = vi.hoisted(() => {
   const fn = () => vi.fn();
   return {
     prisma: {
       simScenario: { findUnique: fn(), findMany: fn() },
+      aiConversation: { updateMany: fn(), findFirst: fn() },
       runOrderEntry: { findMany: fn(), findFirst: fn(), count: fn() },
     },
     perms: new Set<string>(),
@@ -24,13 +25,14 @@ vi.mock("@/lib/server/auth", () => ({ hasPerm: (_u: unknown, k: string) => h.per
 vi.mock("@/lib/server/whatif", () => ({ getWhatIfInputs: h.getWhatIfInputs }));
 vi.mock("@/app/simulate/actions", () => h.actions);
 
-import type { User } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import type { WhatIfInputs, WhatIfJob } from "@/lib/domain/whatif";
 import { parseScenario } from "@/lib/domain/whatifScenario";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import {
-  applyRunOrderTool, clearRunOrderTool, deleteScenarioTool, restoreRunOrderTool, restoreScenarioTool, saveScenarioTool, showOnSimulatorTool, simulateScenarioTool,
+  applyRunOrderTool, clearRunOrderTool, deleteScenarioTool, keptForm, planForDeadlinesTool, restoreRunOrderTool, restoreScenarioTool, saveScenarioTool, keepScenarioTool, simulateScenarioTool,
 } from "@/lib/server/ai/tools/simulator";
+import { defaultScenario } from "@/lib/domain/whatif";
 import { compareScenariosTool, stressTestPlanTool, simulationReadinessTool } from "@/lib/server/ai/tools/simulationReview";
 import { checkToolInput, toolsFor } from "@/lib/server/ai/tools";
 
@@ -45,8 +47,8 @@ const inputs: WhatIfInputs = {
 const user = (o: Partial<User> = {}) => ({ id: 1, name: "Sara", isAdmin: false, ...o }) as User;
 const ctxOf = (u: User): ToolCtx => ({ user: u, hidden: new Set(), now: new Date(), todayISO: "2026-10-12", conversationId: 1, automationId: null });
 const ctx = ctxOf(user());
-/** A chat with the Simulator open beside it (or not), showing this scenario. */
-const onScreen = (scenario: unknown, open = true): ToolCtx => ({ ...ctx, screen: { simulator: { open, scenario } } });
+/** A chat whose working scenario is this one (null: none kept yet). */
+const working = (scenario: unknown): ToolCtx => ({ ...ctx, working: { scenario } });
 const fdOf = (m: ReturnType<typeof vi.fn>) => Object.fromEntries((m.mock.calls[0][0] as FormData).entries());
 
 beforeEach(() => {
@@ -56,6 +58,7 @@ beforeEach(() => {
   h.prisma.simScenario.findUnique.mockResolvedValue(null);
   h.prisma.runOrderEntry.findMany.mockResolvedValue([]);
   for (const f of Object.values(h.actions)) f.mockResolvedValue({ ok: true });
+  h.prisma.aiConversation.updateMany.mockResolvedValue({ count: 1 });
 });
 
 describe("simulate_scenario", () => {
@@ -79,55 +82,99 @@ describe("simulate_scenario", () => {
     expect(checkToolInput(simulateScenarioTool, { first: ["A"], optimize: true })).toEqual({ ok: false, error: expect.stringContaining("not both") });
   });
 
-  it("starts from what the person's Simulator shows, and leaves the screen as it is", async () => {
-    const c = onScreen({ workFridays: true, queue: ["A|TN", "B|CF"] });
+  it("starts from the chat's working scenario, and leaves it as it is", async () => {
+    const c = working({ workFridays: true, queue: ["A|TN", "B|CF"] });
     const j = JSON.parse((await simulateScenarioTool.run({ workersDelta: { Welding: 1 } }, c)).text);
-    expect(j).toMatchObject({ startedFrom: "the scenario on the person's Simulator", scenario: "+1 Welding · Fridays on", knobs: { workersDelta: { Welding: 1 }, workFridays: true } });
-    expect(c.screen?.simulator.scenario).toEqual({ workFridays: true, queue: ["A|TN", "B|CF"] });
+    expect(j).toMatchObject({ startedFrom: "this chat's working scenario", scenario: "+1 Welding · Fridays on", knobs: { workersDelta: { Welding: 1 }, workFridays: true } });
+    expect(c.working?.scenario).toEqual({ workFridays: true, queue: ["A|TN", "B|CF"] });
+    expect(h.prisma.aiConversation.updateMany).not.toHaveBeenCalled();
     expect(JSON.parse((await simulateScenarioTool.run({ from: "plant" }, c)).text)).toMatchObject({ startedFrom: "the plant as it stands", scenario: "reality as-is" });
   });
 });
 
-describe("show_on_simulator", () => {
-  it("turns the knobs on what the Simulator shows, puts the result on it, and the next call starts from there", async () => {
-    const c = onScreen({ workFridays: true, queue: ["A|TN", "B|CF"] });
-    const r = await showOnSimulatorTool.run({ workersDelta: { Welding: 2 } }, c);
+describe("keep_scenario", () => {
+  it("turns the knobs on the working scenario, keeps the result on the person's own chat, and the next call builds on it", async () => {
+    const c = working({ workFridays: true, queue: ["A|TN", "B|CF"] });
+    const r = await keepScenarioTool.run({ workersDelta: { Welding: 2 } }, c);
     expect(r.ok).toBe(true);
-    expect(r.simulator).toMatchObject({ label: "+2 Welding · Fridays on", scenario: { workFridays: true, workersDelta: { Welding: 2, Cut: 0 }, queue: ["A|TN", "B|CF"] } });
-    expect(JSON.parse(r.text)).toMatchObject({ screen: expect.stringContaining("On the person's Simulator now"), startedFrom: "the scenario on the person's Simulator", reality: { ordersOpen: 2 } });
-    const r2 = await showOnSimulatorTool.run({ shiftHours: 9 }, c);
-    expect(r2.simulator?.label).toBe("+2 Welding · 9h shifts · Fridays on");
+    expect(JSON.parse(r.text)).toMatchObject({ kept: expect.stringContaining("working scenario now"), startedFrom: "this chat's working scenario", scenario: "+2 Welding · Fridays on", reality: { ordersOpen: 2 } });
+    expect(h.prisma.aiConversation.updateMany).toHaveBeenCalledWith({ where: { id: 1, userId: 1 }, data: { scenario: expect.objectContaining({ workFridays: true, workersDelta: expect.objectContaining({ Welding: 2 }), queue: [] }) } });
+    expect(c.working?.scenario).toMatchObject({ workersDelta: expect.objectContaining({ Welding: 2 }) });
+    expect(JSON.parse((await keepScenarioTool.run({ shiftHours: 9 }, c)).text).scenario).toBe("+2 Welding · 9h shifts · Fridays on");
   });
 
-  it("with the Simulator closed, offers it as a button — and the next call builds on the one offered", async () => {
-    const c = onScreen(null, false);
-    const r = await showOnSimulatorTool.run({ workFridays: true }, c);
-    expect(JSON.parse(r.text)).toMatchObject({ screen: expect.stringContaining("a button that opens it"), startedFrom: "the plant as it stands" });
-    expect(c.screen?.simulator).toMatchObject({ open: false, scenario: { workFridays: true } });
-    expect((await showOnSimulatorTool.run({ first: ["B"] }, c)).simulator?.label).toBe("Fridays on · queue edited");
-  });
-
-  it("starts afresh from the plant, opens a saved scenario, and optimises the queue on request", async () => {
-    const c = onScreen({ workFridays: true });
-    expect((await showOnSimulatorTool.run({ from: "plant" }, c)).simulator?.label).toBe("reality as-is");
+  it("starts from the plant when the chat has none, afresh on request, from a saved scenario, and optimises on request", async () => {
+    const c = working(null);
+    expect(JSON.parse((await keepScenarioTool.run({ workFridays: true }, c)).text)).toMatchObject({ startedFrom: "the plant as it stands", scenario: "Fridays on" });
+    expect(JSON.parse((await keepScenarioTool.run({ first: ["B"] }, c)).text).scenario).toBe("Fridays on · queue edited");
+    expect(JSON.parse((await keepScenarioTool.run({ from: "plant" }, c)).text).scenario).toBe("reality as-is");
     h.prisma.simScenario.findUnique.mockResolvedValue({ data: { shiftHours: 9 } });
-    expect((await showOnSimulatorTool.run({ saved: "Short shifts" }, c)).simulator?.label).toBe("9h shifts");
+    expect(JSON.parse((await keepScenarioTool.run({ saved: "Short shifts" }, c)).text).scenario).toBe("9h shifts");
     const late = { ...inputs, jobs: [job("A|TN", { dueISO: "2026-10-30" }), job("B|CF", { dueISO: "2026-10-13" })] };
     h.getWhatIfInputs.mockResolvedValue(late);
-    const o = await showOnSimulatorTool.run({ from: "plant", optimize: true }, c);
-    expect(o.simulator).toMatchObject({ label: "queue optimised", scenario: { queue: ["B|CF", "A|TN"] } });
-    expect(checkToolInput(showOnSimulatorTool, { saved: "Short shifts", from: "plant" })).toEqual({ ok: false, error: expect.stringContaining("not both") });
+    expect(JSON.parse((await keepScenarioTool.run({ from: "plant", optimize: true }, c)).text)).toMatchObject({ scenario: "queue edited", queueOptimised: "yes", queueFront: ["B|CF", "A|TN"] });
+    expect(checkToolInput(keepScenarioTool, { saved: "Short shifts", from: "plant" })).toEqual({ ok: false, error: expect.stringContaining("not both") });
   });
 
-  it("says when the screen's scenario cannot be read, and needs a chat the person is in", async () => {
-    expect(await showOnSimulatorTool.run({}, onScreen({ holds: { "A|TN": "someday" } }))).toEqual({ ok: false, text: expect.stringContaining("cannot be read") });
-    expect(await showOnSimulatorTool.run({}, ctx)).toEqual({ ok: false, text: expect.stringContaining("only in a chat") });
+  it("says when the kept scenario cannot be read, needs a chat the person is in, and one that is still theirs", async () => {
+    expect(await keepScenarioTool.run({}, working({ holds: { "A|TN": "someday" } }))).toEqual({ ok: false, text: expect.stringContaining("cannot be read") });
+    expect(await keepScenarioTool.run({}, ctx)).toEqual({ ok: false, text: expect.stringContaining("only in a chat") });
+    h.prisma.aiConversation.updateMany.mockResolvedValue({ count: 0 });
+    expect(await keepScenarioTool.run({}, working(null))).toEqual({ ok: false, text: expect.stringContaining("not there any more") });
   });
 
-  it("is offered in a chat — with the changes paused too, as it changes nothing — never unattended", () => {
-    expect(toolsFor(user(), { hidden: new Set(), actionsPaused: true }).map((t) => t.name)).toContain("show_on_simulator");
-    expect(toolsFor(user(), { hidden: new Set(), actionsPaused: false, unattended: true }).map((t) => t.name)).not.toContain("show_on_simulator");
-    expect(toolsFor(user(), { hidden: new Set(["simulate"]), actionsPaused: false }).map((t) => t.name)).not.toContain("show_on_simulator");
+  it("is offered in a chat — with the changes paused too, as it changes nothing in the plant — never unattended, nor to whom the what-ifs are closed", () => {
+    expect(toolsFor(user(), { hidden: new Set(), actionsPaused: true }).map((t) => t.name)).toContain("keep_scenario");
+    expect(toolsFor(user(), { hidden: new Set(), actionsPaused: false, unattended: true }).map((t) => t.name)).not.toContain("keep_scenario");
+    expect(toolsFor(user(), { hidden: new Set(["simulate"]), actionsPaused: false }).map((t) => t.name)).not.toContain("keep_scenario");
+  });
+});
+
+describe("what a chat keeps", () => {
+  it("keeps the job order only when it was changed, and nothing for the plant as it stands", () => {
+    const d = defaultScenario(inputs);
+    expect(keptForm(inputs, d)).toBeNull();
+    expect(keptForm(inputs, { ...d, workFridays: true })).toMatchObject({ workFridays: true, queue: [] });
+    expect(keptForm(inputs, { ...d, queue: [...d.queue].reverse() })).toMatchObject({ queue: [...d.queue].reverse() });
+  });
+  it("so an order that joins tomorrow takes its place by its due day, and \"start again\" keeps nothing", async () => {
+    const c = working(null);
+    await keepScenarioTool.run({ workFridays: true }, c);
+    expect(h.prisma.aiConversation.updateMany.mock.calls[0][0].data.scenario).toMatchObject({ workFridays: true, queue: [] });
+    // the plant hands its jobs over in due-day order
+    h.getWhatIfInputs.mockResolvedValue({ ...inputs, jobs: [job("C|TN", { dueISO: "2026-10-13" }), ...inputs.jobs] });
+    const j = JSON.parse((await simulateScenarioTool.run({}, c)).text);
+    expect(j.queueFront[0]).toBe("C|TN");
+    expect(j.scenario).toBe("Fridays on");
+    await keepScenarioTool.run({ from: "plant" }, c);
+    expect(h.prisma.aiConversation.updateMany.mock.calls[1][0].data.scenario).toBe(Prisma.DbNull);
+    expect(c.working?.scenario).toBeNull();
+  });
+  it("refuses a scenario too large to keep, and keeps a reasonable one", async () => {
+    // only what names the plant's own jobs is kept, so it takes a huge plant to get there
+    const id = (i: number) => `${String(i).padStart(6, "0")}|${"X".repeat(110)}`;
+    const jobs = Array.from({ length: 1800 }, (_, i) => job(id(i)));
+    h.getWhatIfInputs.mockResolvedValue({ ...inputs, jobs });
+    const huge = {
+      queue: jobs.map((j) => j.id).reverse(),
+    };
+    expect(await keepScenarioTool.run({}, working(huge))).toEqual({ ok: false, text: expect.stringContaining("too large") });
+    expect(h.prisma.aiConversation.updateMany).not.toHaveBeenCalled();
+    h.getWhatIfInputs.mockResolvedValue(inputs);
+    expect((await keepScenarioTool.run({ holds: [{ job: "A|TN", untilISO: "2026-10-20" }] }, working(null))).ok).toBe(true);
+  });
+  it("plan_for_deadlines keeps its result exactly — its job order too — when asked, and runs alone", async () => {
+    const late = { ...inputs, jobs: [job("A|TN", { dueISO: "2026-10-30" }), job("B|CF", { dueISO: "2026-10-13" })] };
+    h.getWhatIfInputs.mockResolvedValue(late);
+    const c = working(null);
+    const j = JSON.parse((await planForDeadlinesTool.run({ keep: true }, c)).text);
+    expect(j.kept).toContain("exactly as found");
+    expect(h.prisma.aiConversation.updateMany).toHaveBeenCalledTimes(1);
+    expect(planForDeadlinesTool.serial).toBe(true);
+    expect(keepScenarioTool.serial).toBe(true);
+    expect(simulateScenarioTool.serial).toBeUndefined();
+    await planForDeadlinesTool.run({}, working(null));
+    expect(h.prisma.aiConversation.updateMany).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -136,7 +183,7 @@ describe("save_scenario", () => {
     expect(await saveScenarioTool.describe({ name: "Two welders", workersDelta: { Welding: 2 } }, ctx)).toEqual({ error: expect.stringContaining("save and delete scenarios") });
   });
 
-  it("says what it overwrites, saves a scenario the Simulator can load, and is undone by the one before", async () => {
+  it("says what it overwrites, saves a scenario the assistant can load again, and is undone by the one before", async () => {
     h.perms.add("simulator.edit");
     h.prisma.simScenario.findUnique.mockResolvedValue({ data: { workFridays: true }, savedBy: "Omar" });
     const p = await saveScenarioTool.describe({ name: "Two welders", workersDelta: { Welding: 2 } }, ctx);
@@ -156,6 +203,30 @@ describe("save_scenario", () => {
     h.perms.add("simulator.edit");
     const out = await saveScenarioTool.execute({ name: "New" }, ctx);
     expect(out.undo).toEqual({ tool: "restore_scenario", input: { name: "New", data: null } });
+  });
+});
+
+describe("saving and applying the chat's working scenario", () => {
+  it("builds exactly on what the chat keeps, read again when approved, and stands on it", async () => {
+    h.perms.add("simulator.edit");
+    const kept = { workFridays: true, queue: ["B|CF", "A|TN"] };
+    h.prisma.aiConversation.findFirst.mockResolvedValue({ scenario: kept });
+    const p = await saveScenarioTool.describe({ name: "Rushed", fromChat: true }, ctx);
+    expect(p).toMatchObject({ changes: [{ after: "Fridays on · queue edited" }], snapshot: { from: kept } });
+    expect(h.prisma.aiConversation.findFirst).toHaveBeenCalledWith({ where: { id: 1, userId: 1 }, select: { scenario: true } });
+    await saveScenarioTool.execute({ name: "Rushed", fromChat: true }, ctx);
+    expect(JSON.parse(String(fdOf(h.actions.saveScenario).data))).toMatchObject({ workFridays: true, queue: ["B|CF", "A|TN"] });
+    const admin = ctxOf(user({ isAdmin: true }));
+    h.prisma.runOrderEntry.findMany.mockResolvedValue([]);
+    await applyRunOrderTool.execute({ fromChat: true }, admin);
+    expect(JSON.parse(String(fdOf(h.actions.applyRunOrder).entries)).map((e: { mo: string }) => e.mo)).toEqual(["B", "A"]);
+  });
+  it("says when the chat keeps none, and will not mix it with a saved one", async () => {
+    h.perms.add("simulator.edit");
+    h.prisma.aiConversation.findFirst.mockResolvedValue({ scenario: null });
+    expect(await saveScenarioTool.describe({ name: "X", fromChat: true }, ctx)).toEqual({ error: expect.stringContaining("keeps no working scenario") });
+    expect(checkToolInput(saveScenarioTool, { name: "X", fromChat: true, saved: "Y" })).toEqual({ ok: false, error: expect.stringContaining("not both") });
+    expect(checkToolInput(applyRunOrderTool, { fromChat: true, saved: "Y" })).toEqual({ ok: false, error: expect.stringContaining("not both") });
   });
 });
 
@@ -224,8 +295,8 @@ describe("the run order", () => {
   });
 });
 
-describe("who is offered the Simulator", () => {
-  it("never the undo tools, and nothing when the Simulator screen is hidden from the person", () => {
+describe("who is offered the what-ifs", () => {
+  it("never the undo tools, and nothing when the what-ifs are closed to the person", () => {
     h.perms.add("ai.act.simulator").add("ai.act.delete");
     const names = toolsFor(user(), { hidden: new Set(), actionsPaused: false }).map((t) => t.name);
     expect(names).toEqual(expect.arrayContaining(["list_scenarios", "simulate_scenario", "save_scenario", "delete_scenario", "apply_run_order", "clear_run_order"]));
@@ -238,17 +309,18 @@ describe("who is offered the Simulator", () => {
 
 
 describe("single-snapshot planning reviews", () => {
-  it("loads live inputs once for all alternatives and keeps the person's screen untouched", async () => {
-    const c = onScreen({ workFridays: true });
-    const before = structuredClone(c.screen);
+  it("loads live inputs once for all alternatives, from the chat's working scenario, and leaves it untouched", async () => {
+    const c = working({ workFridays: true });
+    const before = structuredClone(c.working);
     const r = await compareScenariosTool.run({ variants: [{ label: "As shown" }, { label: "Crew", workersDelta: { Welding: 1 } }] }, c);
     expect(r.ok).toBe(true);
     expect(h.getWhatIfInputs).toHaveBeenCalledTimes(1);
     const data = JSON.parse(r.text);
-    expect(data.scope).toMatchObject({ line: "TR", startedFrom: "the scenario on the person's Simulator" });
+    expect(data.scope).toMatchObject({ line: "TR", startedFrom: "this chat's working scenario" });
     expect(data.variants).toHaveLength(2);
     expect(data.alternatives[1].knobs).toMatchObject({ workFridays: true, workersDelta: { Welding: 1 } });
-    expect(c.screen).toEqual(before);
+    expect(c.working).toEqual(before);
+    expect(h.prisma.aiConversation.updateMany).not.toHaveBeenCalled();
     expect(h.actions.saveScenario).not.toHaveBeenCalled();
     expect(h.actions.applyRunOrder).not.toHaveBeenCalled();
   });
@@ -280,6 +352,7 @@ describe("single-snapshot planning reviews", () => {
   it("reports missing coverage explicitly and returns saved-source navigation", async () => {
     const r = await simulationReadinessTool.run({}, ctx);
     expect(JSON.parse(r.text)).toMatchObject({ coverage: null, issues: expect.arrayContaining([expect.objectContaining({ code: "unknown-coverage" })]) });
-    expect(r.links).toContainEqual({ label: "What-if Simulator", href: "/simulate" });
+    // no screen to send the person to: the links are the orders' own
+    expect(r.links?.some((l) => l.href === "/simulate")).toBe(false);
   });
 });

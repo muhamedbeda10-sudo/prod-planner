@@ -462,6 +462,9 @@ export interface CockpitAction {
   text: string;
   /** Where to act on it. */
   href: string;
+  /** Acted on through the assistant (the what-ifs have no screen): the
+   *  question its button puts in the chat. */
+  ask?: string;
   /** Read off the shift log (a centre's pace, a stop, the attendance) — for
    *  the people who see the Shifts screen. */
   floor?: boolean;
@@ -525,13 +528,17 @@ export function cockpitActions(i: ActionInputs): CockpitAction[] {
   }
   for (const l of i.load) {
     // short at the end of the horizon: the plan does not fit as it stands
-    if (l.shortH > 0) out.push({ tone: "bad", href: "/simulate", text: `${WORK_CENTRE_LABEL[l.centre]} owes ${l.shortH} h more than it can work in the next ${l.days.length} working days${l.shortFromISO ? ` (short from ${i.ddmm(l.shortFromISO)})` : ""} — overtime, more people, or move work.` });
+    if (l.shortH > 0) out.push({
+      tone: "bad", href: "/ai",
+      ask: `${WORK_CENTRE_LABEL[l.centre]} owes ${l.shortH} h more than it can work in the next ${l.days.length} working days. What is the cheapest way to fit it — overtime, more people, Fridays or moving work? Give me the steps to take.`,
+      text: `${WORK_CENTRE_LABEL[l.centre]} owes ${l.shortH} h more than it can work in the next ${l.days.length} working days${l.shortFromISO ? ` (short from ${i.ddmm(l.shortFromISO)})` : ""} — overtime, more people, or move work.`,
+    });
   }
   // falling behind in the horizon but catching up in it: one line for all of them, the furthest behind named
   const catching = i.load.filter((l) => l.shortH === 0 && l.shortFromISO && l.clearsISO).sort((a, b) => b.behindH - a.behindH);
   if (catching.length > 0) {
     const top = catching[0];
-    out.push({ tone: "warn", href: "/simulate", text: `${catching.map((l) => WORK_CENTRE_LABEL[l.centre]).join(", ")} ${catching.length > 1 ? "are" : "is"} behind — ${WORK_CENTRE_LABEL[top.centre]} by up to ${top.behindH} h from ${i.ddmm(top.shortFromISO!)}, caught up by ${i.ddmm(top.clearsISO!)} at the usual pace.` });
+    out.push({ tone: "warn", href: "/ai", ask: `${WORK_CENTRE_LABEL[top.centre]} falls behind by up to ${top.behindH} h before it catches up. Which orders does that put at risk, and what should I do about it?`, text: `${catching.map((l) => WORK_CENTRE_LABEL[l.centre]).join(", ")} ${catching.length > 1 ? "are" : "is"} behind — ${WORK_CENTRE_LABEL[top.centre]} by up to ${top.behindH} h from ${i.ddmm(top.shortFromISO!)}, caught up by ${i.ddmm(top.clearsISO!)} at the usual pace.` });
   }
   if (i.coverage.band === "short") {
     const top = i.coverage.byItem[0];

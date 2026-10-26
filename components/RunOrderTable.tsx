@@ -3,8 +3,8 @@
 import { formatDateTime } from "@/lib/domain/format";
 import type { RunOrderLineDTO } from "@/lib/server/worklistExtras";
 
-/** 🎯 The approved run order — the sequence the admin committed from the
- *  Simulator. Informational: output is recorded on the normal tables below;
+/** 🎯 The approved run order — the sequence an admin committed through the
+ *  assistant (apply_run_order). Informational: output is recorded on the normal tables below;
  *  a line leaves this list when this dept's work on it is done. */
 export function RunOrderTable({ rows, deptWord }: { rows: RunOrderLineDTO[]; deptWord: string }) {
   if (rows.length === 0) return null;
@@ -37,7 +37,7 @@ export function RunOrderTable({ rows, deptWord }: { rows: RunOrderLineDTO[]; dep
                 <td className="p-2 text-center font-extrabold tabnum">{r.remaining}</td>
                 <td className="p-2 text-xs text-muted">
                   {r.batchQty !== null && (
-                    <span className="pill pill-warn tabnum" title="a rushed split from the Simulator">
+                    <span className="pill pill-warn tabnum" title="a split batch rushed ahead in the run order">
                       {r.batchNo !== null && r.batchNo > 1 ? `✂ batch ${r.batchNo} — ${r.batchQty} pcs` : `✂ first ${r.batchQty} ahead`}
                     </span>
                   )}
@@ -48,7 +48,7 @@ export function RunOrderTable({ rows, deptWord }: { rows: RunOrderLineDTO[]; dep
         </table>
       </div>
       <p className="text-[11px] text-muted mt-1">
-        Committed from the Simulator. Record output on the tables below — a line leaves this list the moment this department&apos;s work on it is done.
+        Set as the run order through the assistant. Record output on the tables below — a line leaves this list the moment this department&apos;s work on it is done.
       </p>
     </section>
   );

@@ -160,16 +160,13 @@ export const AI_PAGE_SUGGESTIONS: Record<string, string[]> = {
     "لخصلي الخطة الشهرية حسب الفلاتر الظاهرة، بالإنجاز والمتبقي ومصادر الأرقام",
     "Which lines of the weekly plan are behind, and at which stage?",
     "إيه أكتر الأوردرات اللي هتتأخر عن الـ delivery وليه؟",
+    "What do we need to deliver the late orders on time? Give me the steps.",
+    "لو زودنا عامل في اللحام واشتغلنا الجمعة، إيه اللي هيتغير في التسليمات؟",
   ],
   handover: [
     "لخصلي إنتاج النهارده بالقسم مقارنة بإمبارح",
     "Which days this week have no output recorded for a department?",
     "قارن إنتاج آخر 7 أيام بالفترة اللي قبلها ووضح فرص التحسين",
-  ],
-  simulate: [
-    "What do we need to deliver the late orders on time?",
-    "قارن السيناريو الحالي بإضافة عامل في اللحام وشغل الجمعة",
-    "راجع جاهزية توقعات المحولات ووضح البيانات الناقصة قبل ما نعتمد عليها",
   ],
   "worklist.cut": ["إيه الـ sheet jobs اللي واقفة في التقطيع وليه؟", "Which lines on the fabrication worklist have no machine yet?", "وزّع شغل النهارده على الليزرات واعرضلي الخطة"],
   "worklist.welding": ["إيه اللي متأخر في اللحام النهارده؟", "How is welding's coverage against the oven dates this week?", "مين أكتر عامل لحام إنتاجًا الأسبوع ده؟"],

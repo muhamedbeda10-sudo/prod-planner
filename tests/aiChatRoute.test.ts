@@ -100,6 +100,17 @@ describe("the AI chat route", () => {
     // the person's Stop reaches the model
     expect(h.ask.mock.calls[0][0].signal).toBeInstanceOf(AbortSignal);
   });
+  it("hands the tools the what-if this chat keeps, and tells the model — never to someone the what-ifs are closed to", async () => {
+    const kept = { workFridays: true, queue: ["A|TN"] };
+    h.find.mockResolvedValue({ id: 4, title: "Chat", model: "claude-opus-5-5", scenario: kept, messages: [] });
+    await events(await ask({ conversationId: 4, question: "And one more welder?" }));
+    expect(h.ask.mock.calls[0][0].ctx.working).toEqual({ scenario: kept });
+    expect(h.messages.mock.calls[0][1]).toContain("This chat keeps a working what-if scenario");
+    h.hidden.add("simulate");
+    await events(await ask({ conversationId: 4, question: "And one more welder?" }));
+    expect(h.ask.mock.calls[1][0].ctx.working).toEqual({ scenario: null });
+    expect(h.messages.mock.calls[1][1]).not.toContain("working what-if");
+  });
   it("does not forward a hidden screen's context", async () => {
     h.hidden.add("tracker");
     await events(await POST(request()));

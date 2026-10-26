@@ -8,7 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList, Warehouse,
   Table2, BookOpenCheck, ListChecks, ChevronDown,
   CalendarDays, Users, Timer,
-  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus, Bot, Gauge,
+  MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus, Bot, Gauge,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -85,7 +85,6 @@ const MATERIAL_PLACES: Place[] = [
 const TRACKER_PLACES: Place[] = [
   { href: "/tracker", label: "Plan Tracker", icon: Table2, title: "One row per order, every stage" },
   { href: "/handover", label: "Daily log", icon: BookOpenCheck, title: "The raw entries the tracker adds up — edit and correct them here" },
-  { href: "/simulate", label: "Simulator", icon: FlaskConical, title: "What-if: move the dates and the capacity and see what lands — the transformers' plan" },
   { href: "/odoo", label: "ODOO log", icon: Boxes, title: "The daily close-out log on Odoo" },
 ];
 /** A tab of places: it lights on any of them. */
@@ -119,7 +118,6 @@ const DRAWER_VIEWS: Item[] = [
   { href: "/dashboards/consumables", label: "Consumables dashboard", icon: ChartColumnBig },
   { href: "/dashboards/odoo", label: "ODOO dashboard", icon: ChartColumnBig },
   { href: "/handover", label: "Daily log", icon: BookOpenCheck },
-  { href: "/simulate", label: "Simulator", icon: FlaskConical },
   { href: "/odoo", label: "ODOO log", icon: Boxes },
   { href: "/physical", label: "Physical Material", icon: Warehouse },
   { href: "/consumables", label: "Consumables", icon: PackageMinus },

@@ -23,7 +23,7 @@ import { lockLvOrder } from "@/lib/server/outputGuard";
 // inside the transaction that writes, behind a lock on the order, so two
 // records on one MO at once cannot both pass against the same totals.
 
-const PATHS = ["/tracker", "/handover", "/", "/worklist/punching", "/worklist/bending", "/worklist/welding", "/worklist/painting", "/simulate", "/odoo"];
+const PATHS = ["/tracker", "/handover", "/", "/worklist/punching", "/worklist/bending", "/worklist/welding", "/worklist/painting", "/odoo"];
 
 interface Result { ok: boolean; error?: string }
 
