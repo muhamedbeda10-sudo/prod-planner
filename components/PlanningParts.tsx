@@ -3,7 +3,8 @@
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import { useHrefWith } from "@/components/useSetParam";
+import { CheckCircle2, Info } from "lucide-react";
 import { Badge, type BadgeTone } from "@/components/Badge";
 import { FilterSelect, SearchBox } from "@/components/FilterControls";
 import { Modal } from "@/components/Modal";
@@ -17,7 +18,7 @@ import { LV_FLOOR_DEPTS, LV_FLOOR_DEPT_LABEL } from "@/lib/domain/lvKpis";
 import { WORK_CENTRES, WORK_CENTRE_LABEL } from "@/lib/domain/shifts";
 import {
   FAMILY_PARAM, LOAD_STATE_LABEL, PLANNING_SCOPES, PLANNING_SCOPE_LABEL, RISK_LABEL, familyOfParam, isPlanningDetail, planningUrl, showsLv, showsTr,
-  type AtRiskRow, type LoadMatrixRow, type LoadState, type PlanningDetail, type PlanningFilters, type QualityNote, type RiskStatus,
+  type AtRiskRow, type LoadMatrixRow, type LoadState, type PlanningDetail, type PlanningFilters, type RiskStatus,
 } from "@/lib/domain/planningDashboard";
 
 // The Planning dashboard's own parts, shared by its plant figures and its two
@@ -33,15 +34,9 @@ import {
  *  nothing (Next keeps useSearchParams in step with history.pushState). A link
  *  still names it, so a new tab or a shared address opens it too. */
 export function useDetail() {
-  const sp = useSearchParams();
-  const raw = sp.get("detail") ?? "";
-  const urlWith = (key: PlanningDetail | null) => {
-    const p = new URLSearchParams(sp.toString());
-    if (key) p.set("detail", key);
-    else p.delete("detail");
-    const q = p.toString();
-    return q ? `/?${q}` : "/";
-  };
+  const raw = useSearchParams().get("detail") ?? "";
+  const hrefWith = useHrefWith();
+  const urlWith = (key: PlanningDetail | null) => hrefWith({ detail: key });
   return {
     detail: isPlanningDetail(raw) ? raw : null,
     /** A link's props that open the rows in place (a modified click still opens a new tab). */
@@ -122,27 +117,6 @@ function PlanSearch({ f }: { f: PlanningFilters }) {
     <form role="search" onSubmit={(e) => { e.preventDefault(); go({ q: q.trim() }); }}>
       <SearchBox value={q} onChange={(v) => { setQ(v); if (!v && f.q) go({ q: "" }); }} placeholder="TR plan: MO / BOM / SOI… (Enter)" />
     </form>
-  );
-}
-
-// ---------------------------------------------------------------- what the figures rest on
-
-const NOTE_TONE: Record<QualityNote["tone"], BadgeTone> = { ok: "success", warn: "warning", info: "neutral" };
-const NOTE_ICON = { ok: CheckCircle2, warn: AlertTriangle, info: Info } as const;
-
-export function QualityBar({ notes, label }: { notes: readonly QualityNote[]; label: string }) {
-  if (notes.length === 0) return null;
-  return (
-    <ul className="flex flex-wrap gap-1.5" aria-label={`${label}: what the figures rest on`}>
-      {notes.map((n) => {
-        const Icon = NOTE_ICON[n.tone];
-        return (
-          <li key={n.label} className="max-w-full">
-            <Badge tone={NOTE_TONE[n.tone]} icon={<Icon size={12} />} title={n.label}>{n.label}</Badge>
-          </li>
-        );
-      })}
-    </ul>
   );
 }
 

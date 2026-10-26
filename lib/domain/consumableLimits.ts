@@ -229,14 +229,32 @@ export function headcountResolver(
   }
   const months = [...byMonth.keys()].sort();
   return (month) => {
-    if (month >= currentMonth) return live;
-    let found: string | undefined;
-    for (const m of months) {
-      if (m > month) break;
-      found = m;
-    }
-    return found ? byMonth.get(found)! : live;
+    const s = headcountSource(months, month, currentMonth);
+    return s.kind === "recorded" || s.kind === "carried" ? byMonth.get(s.month)! : live;
   };
+}
+
+/** Where the headcount of a month comes from, as headcountResolver reads it. */
+export type HeadcountSource =
+  | { kind: "live" }
+  | { kind: "recorded"; month: string }
+  | { kind: "carried"; month: string }
+  | { kind: "fallback" };
+
+/** Whose headcount a month is held to: the list as it stands (the current
+ *  month or later), the month's own record, the latest record before it, or
+ *  — before any was kept — the list as it stands again. headcountResolver
+ *  reads the numbers by it; the dashboard says it in words.
+ *  `recordedMonths`: the months with a record, sorted. */
+export function headcountSource(recordedMonths: readonly string[], month: string, currentMonth: string): HeadcountSource {
+  if (month >= currentMonth) return { kind: "live" };
+  let found: string | undefined;
+  for (const m of recordedMonths) {
+    if (m > month) break;
+    found = m;
+  }
+  if (!found) return { kind: "fallback" };
+  return found === month ? { kind: "recorded", month } : { kind: "carried", month: found };
 }
 
 /** Do two limits count any department twice (an "every department" limit
@@ -291,7 +309,8 @@ export function windowsOverlapping(period: LimitPeriod, fromISO: string, toISO: 
 
 // ---------------------------------------------------------------- counting
 
-const round3 = (n: number) => Math.round(n * 1000) / 1000;
+/** A quantity to the gram / millilitre: three decimals. */
+export const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** What counts against a rule in one window (and, for a per-person rule, for one worker). */
 export function usageIn(rule: LimitRule, uses: readonly LimitUse[], w: { from: string; to: string }, workerId?: number): number {
@@ -418,6 +437,8 @@ export function standings(rules: readonly LimitRule[], uses: readonly LimitUse[]
 export interface LimitExceedance {
   ruleId: number;
   itemId: number;
+  /** The departments the counted limit covers. */
+  departments: typeof ALL_DEPARTMENTS | readonly string[];
   period: LimitPeriod;
   basis: LimitBasis;
   departmentsLabel: string;
@@ -439,7 +460,7 @@ export function exceedances(rules: readonly LimitRule[], uses: readonly LimitUse
     for (const w of windowsOverlapping(rule.period, fromISO, toISO)) {
       const inW = mine.filter((u) => u.dayISO >= w.from && u.dayISO <= w.to);
       if (inW.length === 0) continue;
-      const base = { ruleId: rule.id, itemId: rule.itemId, period: rule.period, basis: rule.basis, departmentsLabel: ruleLabel(rule), window: w, windowLabel: windowLabel(rule.period, w), limit: rule.qty };
+      const base = { ruleId: rule.id, itemId: rule.itemId, departments: rule.departments, period: rule.period, basis: rule.basis, departmentsLabel: ruleLabel(rule), window: w, windowLabel: windowLabel(rule.period, w), limit: rule.qty };
       if (rule.basis === "person") {
         const per = new Map<number, number>();
         for (const u of inW) per.set(u.workerId, round3((per.get(u.workerId) ?? 0) + u.qty));

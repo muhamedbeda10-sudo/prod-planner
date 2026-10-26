@@ -8,10 +8,12 @@ const LABELS: Record<string, string> = {
   dept: "Department", plan: "Plan", date: "Date",
   // the Production dashboard keeps the panels' department apart from the transformers'
   lvDept: "LV department",
-  // the Planning dashboard's scope (All | Transformers | LV Panels) and its transformers' filters
-  scope: "Scope shown", item: "Component", centre: "Work centre",
+  // the Planning dashboard's scope (All | Transformers | LV Panels) and its work centre filter
+  scope: "Scope shown", centre: "Work centre",
   // the line a page's address names (its Transformers | LV Panels switch)
   line: "Line shown",
+  // the Consumables dashboard's item (Planning's component) and catalogue filters
+  item: "Item", link: "Catalogue link",
 };
 
 export interface AiPageContext {

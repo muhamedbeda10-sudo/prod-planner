@@ -1092,6 +1092,21 @@ main select.ctl { padding-right: 1.6rem; }
   animation: tipfade 0.1s ease-out;
 }
 @keyframes tipfade { from { opacity: 0; } to { opacity: 1; } }
+/* the interactive one (Tooltip interactive): a small card on the page's own
+   surface — a chart's "about" with its Ask AI — that the pointer can rest on */
+.tooltip.tooltip-card {
+  max-width: min(380px, calc(100vw - 16px));
+  width: max-content;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--foreground);
+  border-color: var(--border);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--fs-body);
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) { .tooltip { animation: none; } }
 @media print { .tooltip { display: none; } }
 
 /* ---- the one count badge: a number on a tab or an icon (ODOO to close,

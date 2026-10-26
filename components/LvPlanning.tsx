@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { Info } from "lucide-react";
-import { Bullet, ChartCard, NO_BASE, NowBadge, StatTile, fmt, pct, pctOrDash, signed } from "@/components/charts/kit";
+import { Bullet, ChartCard, DataQualityBar, NO_BASE, NowBadge, StatTile, fmt, pct, pctOrDash, signed } from "@/components/charts/kit";
 import { LvMonthChart } from "@/components/LazyCharts";
-import { AtRiskTable, DetailModal, PeopleDetail, QualityBar, cols, useDetail } from "@/components/PlanningParts";
+import { AtRiskTable, DetailModal, PeopleDetail, cols, useDetail } from "@/components/PlanningParts";
 import { EmptyState } from "@/components/primitives";
 import { LvStageTable } from "@/components/LvStageTable";
 import { LV_FAMILY_LABEL, LV_STAGE_LABEL } from "@/lib/domain/lv";
 import { LV_FLOOR_DEPT_LABEL } from "@/lib/domain/lvKpis";
 import { traceHref } from "@/lib/domain/links";
-import { type LvView, type PlanningFilters } from "@/lib/domain/planningDashboard";
+import { isPartial, type LvView, type PlanningFilters } from "@/lib/domain/planningDashboard";
 import type { LvPlanningData } from "@/lib/server/lvKpis";
 
 // The LV panels' section of the Planning dashboard: will the month's plan be
@@ -49,7 +49,7 @@ export function LvPlanning({ data, view, f, floor = true }: { data: LvShown; vie
 
   return (
     <div className="space-y-3">
-      <QualityBar notes={view.quality} label="LV panels" />
+      <DataQualityBar items={view.quality} partial={isPartial(view.quality)} about="What the panels' figures are read from: the panels' monthly plan against the Daily log, the timings sheet's LV tab, the shift log's booked hours." />
 
       {/* the headline figures */}
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">

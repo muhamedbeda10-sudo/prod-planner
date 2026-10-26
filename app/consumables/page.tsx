@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { getConsumableEdits, getConsumablesData, getCustomDepartments } from "@/lib/server/consumables";
 import { getCatalogue, getCatalogueChanges, getCurrentStandings } from "@/lib/server/consumableLimits";
-import { consumablesPeriod, factoryDateTimeLabel } from "@/lib/domain/consumables";
+import { consumablesPeriod, factoryDateTimeLabel, readLogIds } from "@/lib/domain/consumables";
 import { WORKER_SECTIONS } from "@/lib/domain/tanks";
 import { ConsumableLimits } from "@/components/ConsumableLimits";
 import { PowderScrap } from "@/components/PowderScrap";
@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
 export default async function ConsumablesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; view?: string; month?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; view?: string; month?: string; ids?: string }>;
 }) {
   await guardTab("/consumables");
   // viewing the log is free for every account, like the rest of the app;
@@ -140,6 +140,8 @@ export default async function ConsumablesPage({
         canRecord={hasPerm(me, "consumables.edit")}
         isAdmin={me.isAdmin}
         periodLabel={periodLabel}
+        onlyIds={readLogIds(sp.ids)}
+        periodParams={[...(sp.from ? [["from", from]] : []), ...(sp.to ? [["to", to]] : [])] as [string, string][]}
       />
     </div>
   );

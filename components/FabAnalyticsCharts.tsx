@@ -1,115 +1,138 @@
 "use client";
 
-import { formatDate } from "@/lib/domain/format";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, LabelList, ReferenceLine, Pie, PieChart } from "recharts";
-import type { DayPoint, ThicknessSlice } from "@/lib/domain/fabAnalytics";
+import { formatDate, formatDayShort } from "@/lib/domain/format";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, LabelList } from "recharts";
+import { signedTonnes, tonnes, type Breakdown, type DayPoint, type Overrun, type PartCompare } from "@/lib/domain/materialDashboard";
+import { CAT, Legend, OTHER, TipBox, fmt } from "@/components/charts/kit";
 
-// The two charts of the Fabrication analytics page. Both measure the same
-// thing — sheets — so both are blue: the daily one a single mid step, the
-// thickness one (a donut up to six thicknesses, ranked bars past that) a
-// sequential ramp of that same hue, light to dark as the sheet gets thicker (brighter as it thickens on dark surfaces, where light reads as
-// "more"). One hue for one measure; the ramp's lightness is monotone and every
-// bar is direct-labelled, so the colour only reinforces what the labels say.
+// The Material dashboard's charts. Each one is clickable — a bar narrows the
+// whole page to what it stands for (a day, a part, a thickness, an MO) — and
+// each shows only figures the domain worked out (lib/domain/materialDashboard).
+// One measure per chart; the colour only reinforces what the labels say.
 
-const SHEETS = "var(--viz-2)";
+/** Every chart of the page is this tall (the dashboards' 280–320 band). */
+const H = 300;
+const ACTUAL = CAT[0];
+const ESTIMATE = CAT[1];
+const BOM = OTHER;
+const OVER = "var(--bad-fg)";
 
-/** Six steps, thin → thick. The values live in the stylesheet so the ramp
- *  re-steps itself for dark mode instead of being flipped here. */
-const RAMP = ["var(--ramp-1)", "var(--ramp-2)", "var(--ramp-3)", "var(--ramp-4)", "var(--ramp-5)", "var(--ramp-6)"];
+const t2 = tonnes;
+const AXIS = { fontSize: 11 } as const;
 
-const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const n1 = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 1 });
+// ---- calculated consumption per closing day ----
 
-function TipBox({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border bg-surface shadow-md px-3 py-2 text-xs space-y-0.5">{children}</div>
-  );
-}
-
-// ---- sheets a day ----
-
-export function SheetsPerDayChart({ days, avg }: { days: DayPoint[]; avg: number }) {
+export function ConsumedPerDayChart({ days, onPick }: { days: DayPoint[]; onPick?: (dateISO: string) => void }) {
   if (days.length === 0) return null;
-  const data = days.map((d) => ({ ...d, label: ddmm(d.dateISO), tons: d.kg / 1000 }));
+  const data = days.map((d) => ({ ...d, label: formatDayShort(d.dateISO), actualT: (d.kg - d.bomRateKg) / 1000, estT: d.bomRateKg / 1000 }));
   return (
-    <div className="viz w-full min-w-0" style={{ height: 260 }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barCategoryGap="18%">
-          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" minTickGap={18} />
-          <YAxis tick={{ fontSize: 10 }} width={38} />
-          <Tooltip
-            cursor={{ fillOpacity: 0.35 }}
-            content={({ active, payload }) => {
-              const p = active && payload?.length ? (payload[0].payload as (typeof data)[number]) : null;
-              if (!p) return null;
-              return (
-                <TipBox>
-                  <b className="tabnum">{formatDate(p.dateISO)}</b>
-                  <div className="tabnum"><b>{n1(p.sheets)}</b> sheets · {n1(p.tons)} t</div>
-                  <div className="tabnum text-muted">{n1(p.pieces)} units closed</div>
-                  {p.uncoveredPieces > 0 && (
-                    <div className="tabnum text-muted">{n1(p.uncoveredPieces)} of them not on the material sheet — no sheets counted</div>
-                  )}
-                </TipBox>
-              );
-            }}
-          />
-          {/* The plant's own pace, so a day reads as above or below it. It
-              carries no in-chart label: wherever the label sat it landed on a
-              bar, and the section header names the figure anyway. */}
-          {avg > 0 && <ReferenceLine y={avg} stroke="var(--muted)" strokeDasharray="5 4" />}
-          <Bar dataKey="sheets" fill={SHEETS} radius={[4, 4, 0, 0]} isAnimationActive={false} />
-        </BarChart>
-      </ResponsiveContainer>
+    <div className="space-y-2">
+      <Legend items={[{ label: "At the actual nesting rate", color: ACTUAL }, { label: "Estimated from BOM", color: ESTIMATE }]} />
+      <div className="viz w-full min-w-0" style={{ height: H }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barCategoryGap="18%"
+            onClick={(s: { activeLabel?: unknown; activeTooltipIndex?: unknown }) => {
+              const i = typeof s?.activeTooltipIndex === "number" ? s.activeTooltipIndex : Number(s?.activeTooltipIndex);
+              if (onPick && Number.isInteger(i) && data[i]) onPick(data[i].dateISO);
+            }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="label" tick={AXIS} interval="preserveStartEnd" minTickGap={18} />
+            <YAxis tick={AXIS} width={40} unit=" t" />
+            <Tooltip
+              cursor={{ fillOpacity: 0.35 }}
+              content={({ active, payload }) => {
+                const p = active && payload?.length ? (payload[0].payload as (typeof data)[number]) : null;
+                if (!p) return null;
+                const rows = [
+                  { label: "Consumed (calculated)", value: `${t2(p.kg)} t` },
+                  { label: "Estimated from BOM", value: `${t2(p.bomRateKg)} t`, color: ESTIMATE },
+                  { label: "Sheets", value: fmt(p.sheets, 1) },
+                  { label: "Units closed", value: fmt(p.units, 1) },
+                  { label: "Closings", value: String(p.closings) },
+                ];
+                if (p.unknownWeightSheets > 0) rows.push({ label: "Sheets of unknown weight", value: fmt(p.unknownWeightSheets, 1) });
+                return <TipBox title={formatDate(p.dateISO)} rows={rows} />;
+              }}
+            />
+            <Bar dataKey="actualT" stackId="t" fill={ACTUAL} isAnimationActive={false} cursor={onPick ? "pointer" : undefined} />
+            <Bar dataKey="estT" stackId="t" fill={ESTIMATE} radius={[4, 4, 0, 0]} isAnimationActive={false} cursor={onPick ? "pointer" : undefined} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
 
-// ---- where the sheets go, by thickness ----
+// ---- actual nesting against the BOM, per part, on the nested lines ----
 
-export function ThicknessChart({ rows }: { rows: ThicknessSlice[] }) {
-  if (rows.length === 0) return null;
-  const data = rows.map((r, i) => ({
-    ...r,
-    label: `${r.thicknessMm} mm`,
-    tons: r.kg / 1000,
-    // spread whatever thicknesses exist across the ramp's six steps
-    fill: RAMP[rows.length === 1 ? RAMP.length - 1 : Math.round((i / (rows.length - 1)) * (RAMP.length - 1))],
-  }));
-  // Up to six thicknesses the share of the whole is the point, so a donut —
-  // shaded thin → thick on the same ramp, the legend in thickness order.
-  // Past six the ramp would repeat a step, so the ranked bars stay.
-  if (rows.length <= RAMP.length) return <ThicknessDonut data={data} />;
+export function PartCompareChart({ parts, onPick }: { parts: PartCompare[]; onPick?: (part: string) => void }) {
+  if (parts.length === 0) return null;
+  const data = parts.slice(0, 10).map((p) => ({ ...p, label: p.part.length > 16 ? `${p.part.slice(0, 15)}…` : p.part, pick: p.partCode || p.part }));
   return (
-    <div className="viz w-full min-w-0" style={{ height: Math.max(150, rows.length * 34 + 24) }}>
+    <div className="space-y-2">
+      <Legend items={[{ label: "BOM sheets", color: BOM }, { label: "Actual nesting sheets", color: ACTUAL }]} />
+      <div className="viz w-full min-w-0" style={{ height: H }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 16, right: 8, left: 0, bottom: 0 }} barCategoryGap="22%">
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="label" tick={AXIS} interval={0} angle={data.length > 5 ? -20 : 0} textAnchor={data.length > 5 ? "end" : "middle"} height={data.length > 5 ? 48 : 24} />
+            <YAxis tick={AXIS} width={44} />
+            <Tooltip
+              cursor={{ fillOpacity: 0.35 }}
+              content={({ active, payload }) => {
+                const p = active && payload?.length ? (payload[0].payload as (typeof data)[number]) : null;
+                if (!p) return null;
+                return <TipBox title={`${p.part}${p.partCode ? ` · ${p.partCode}` : ""}`} rows={[
+                  { label: "BOM sheets", value: fmt(p.bomSheets, 1), color: BOM },
+                  { label: "Actual sheets", value: fmt(p.actualSheets, 1), color: ACTUAL },
+                  { label: "Difference", value: `${p.actualSheets - p.bomSheets > 0 ? "+" : ""}${fmt(p.actualSheets - p.bomSheets, 1)}` },
+                  { label: "Lines compared", value: String(p.lines) },
+                ]} />;
+              }}
+            />
+            <Bar dataKey="bomSheets" fill={BOM} radius={[3, 3, 0, 0]} isAnimationActive={false} cursor={onPick ? "pointer" : undefined} onClick={(d: { payload?: { pick?: string } }) => d?.payload?.pick && onPick?.(d.payload.pick)} />
+            <Bar dataKey="actualSheets" fill={ACTUAL} radius={[3, 3, 0, 0]} isAnimationActive={false} cursor={onPick ? "pointer" : undefined} onClick={(d: { payload?: { pick?: string } }) => d?.payload?.pick && onPick?.(d.payload.pick)} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// ---- where the steel goes: a breakdown, ranked bars ----
+
+export function BreakdownChart({ rows, measure, onPick }: { rows: Breakdown[]; measure: "consumed" | "nested" | "bom"; onPick?: (key: string, row: Breakdown) => void }) {
+  const all = rows.map((r) => ({ ...r, t: r[measure].kg / 1000, sheets: r[measure].sheets })).filter((r) => r.sheets > 0);
+  if (all.length === 0) return null;
+  // the shares are of the whole; past twelve groups the heaviest twelve stay, in the breakdown's own order
+  const total = all.reduce((n, d) => n + d.t, 0);
+  const keep = new Set([...all].sort((a, b) => b.t - a.t || b.sheets - a.sheets).slice(0, 12).map((d) => d.key));
+  const data = all.filter((d) => keep.has(d.key));
+  return (
+    <div className="viz w-full min-w-0" style={{ height: H }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 64, left: 0, bottom: 0 }} barCategoryGap="22%">
+        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 56, left: 0, bottom: 0 }} barCategoryGap="22%">
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-          <XAxis type="number" tick={{ fontSize: 10 }} />
-          <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} width={58} />
+          <XAxis type="number" tick={AXIS} unit=" t" />
+          <YAxis type="category" dataKey="key" tick={AXIS} width={84} />
           <Tooltip
             cursor={{ fillOpacity: 0.35 }}
             content={({ active, payload }) => {
               const p = active && payload?.length ? (payload[0].payload as (typeof data)[number]) : null;
               if (!p) return null;
-              return (
-                <TipBox>
-                  <b>{p.label} sheets</b>
-                  <div className="tabnum"><b>{n1(p.sheets)}</b> sheets · {(p.share * 100).toFixed(1)}% of the window</div>
-                  <div className="tabnum text-muted">{n1(p.tons)} t of steel</div>
-                </TipBox>
-              );
+              const rows = [
+                { label: "Tonnes", value: fmt(p.t, 2) },
+                { label: "Sheets", value: fmt(p.sheets, 1) },
+              ];
+              if (p[measure].unknownWeightSheets > 0) rows.push({ label: "Sheets of unknown weight", value: fmt(p[measure].unknownWeightSheets, 1) });
+              if (measure === "consumed" && p.scrapKg > 0) rows.push({ label: "Estimated scrap (known coverage)", value: `${t2(p.scrapKg)} t` });
+              return <TipBox title={p.key} rows={rows} />;
             }}
           />
-          <Bar dataKey="sheets" radius={[0, 4, 4, 0]} isAnimationActive={false}>
-            {data.map((d) => <Cell key={d.thicknessMm} fill={d.fill} />)}
-            <LabelList
-              dataKey="share"
-              position="right"
-              formatter={(v: unknown) => (typeof v === "number" ? `${(v * 100).toFixed(0)}%` : "")}
-              style={{ fontSize: 11, fontWeight: 700, fill: "var(--foreground)" }}
-            />
+          <Bar dataKey="t" radius={[0, 4, 4, 0]} isAnimationActive={false} fill={ACTUAL} cursor={onPick ? "pointer" : undefined}
+            onClick={(d: { payload?: Breakdown }) => d?.payload && onPick?.(d.payload.key, d.payload)}>
+            <LabelList dataKey="t" position="right" formatter={(v: unknown) => (typeof v === "number" && total > 0 ? `${Math.round((v / total) * 100)}%` : "")}
+              style={{ fontSize: 11, fontWeight: 700, fill: "var(--foreground)" }} />
           </Bar>
         </BarChart>
       </ResponsiveContainer>
@@ -117,46 +140,39 @@ export function ThicknessChart({ rows }: { rows: ThicknessSlice[] }) {
   );
 }
 
-type ThicknessDatum = ThicknessSlice & { label: string; tons: number; fill: string };
+// ---- the MOs whose nesting took most over the BOM ----
 
-function ThicknessDonut({ data }: { data: ThicknessDatum[] }) {
-  const sheets = data.reduce((n, d) => n + d.sheets, 0);
+export function OverrunChart({ rows, onPick }: { rows: Overrun[]; onPick?: (mo: string) => void }) {
+  if (rows.length === 0) return null;
+  const data = rows.map((r) => ({ ...r, label: r.mo.replace(/^.*\/MO\//i, "MO/") }));
   return (
-    <div className="flex flex-col sm:flex-row items-center gap-4">
-      <div className="relative shrink-0" style={{ width: 190, height: 190 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie data={data} dataKey="sheets" nameKey="label" innerRadius={58} outerRadius={90} paddingAngle={data.length > 1 ? 1.5 : 0}
-              stroke="var(--surface)" strokeWidth={2} startAngle={90} endAngle={-270} isAnimationActive={false}>
-              {data.map((d) => <Cell key={d.thicknessMm} fill={d.fill} />)}
-            </Pie>
-            <Tooltip content={({ active, payload }) => {
-              const p = active && payload?.length ? (payload[0].payload as ThicknessDatum) : null;
+    <div className="viz w-full min-w-0" style={{ height: H }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 56, left: 0, bottom: 0 }} barCategoryGap="22%">
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+          <XAxis type="number" tick={AXIS} />
+          <YAxis type="category" dataKey="label" tick={AXIS} width={84} />
+          <Tooltip
+            cursor={{ fillOpacity: 0.35 }}
+            content={({ active, payload }) => {
+              const p = active && payload?.length ? (payload[0].payload as (typeof data)[number]) : null;
               if (!p) return null;
-              return (
-                <TipBox>
-                  <b>{p.label} sheets</b>
-                  <div className="tabnum"><b>{n1(p.sheets)}</b> sheets · {(p.share * 100).toFixed(1)}% of the window</div>
-                  <div className="tabnum text-muted">{n1(p.tons)} t of steel</div>
-                </TipBox>
-              );
-            }} />
-          </PieChart>
-        </ResponsiveContainer>
-        <div className="absolute inset-0 grid place-items-center pointer-events-none text-center">
-          <div><div className="text-2xl font-semibold leading-none">{n1(sheets)}</div><div className="text-[11px] text-muted">sheets</div></div>
-        </div>
-      </div>
-      <ul className="space-y-1.5 text-sm w-full">
-        {data.map((d) => (
-          <li key={d.thicknessMm} className="flex items-center gap-2">
-            <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: d.fill }} aria-hidden />
-            <span className="flex-1 tabnum">{d.label}</span>
-            <span className="tabnum text-muted">{n1(d.sheets)}</span>
-            <span className="tabnum font-bold w-12 text-right">{(d.share * 100).toFixed(0)}%</span>
-          </li>
-        ))}
-      </ul>
+              return <TipBox title={`${p.mo}${p.part ? ` · ${p.part}` : ""}`} rows={[
+                { label: "Over the BOM, sheets", value: `+${fmt(p.deltaSheets, 1)}`, color: OVER },
+                { label: "Over the BOM, tonnes", value: p.deltaKg === null ? "unknown weight" : signedTonnes(p.deltaKg) },
+                { label: "BOM / actual sheets", value: `${fmt(p.bomSheets, 1)} / ${fmt(p.actualSheets, 1)}` },
+                { label: "Units", value: fmt(p.units, 1) },
+              ]} />;
+            }}
+          />
+          <Bar dataKey="deltaSheets" radius={[0, 4, 4, 0]} isAnimationActive={false} cursor={onPick ? "pointer" : undefined}
+            onClick={(d: { payload?: Overrun }) => d?.payload && onPick?.(d.payload.mo)}>
+            {data.map((d) => <Cell key={d.mo} fill={OVER} />)}
+            <LabelList dataKey="deltaSheets" position="right" formatter={(v: unknown) => (typeof v === "number" ? `+${fmt(v, 1)}` : "")}
+              style={{ fontSize: 11, fontWeight: 700, fill: "var(--foreground)" }} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }

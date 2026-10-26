@@ -178,6 +178,13 @@ export function readAiTarget(el: Element | null): AiTarget | null {
   return page ? { kind: "page", title: page } : null;
 }
 
+/** The card `el` sits in, read whole — what its own "about" card's Ask AI
+ *  explains, the same as a right-click on the card itself. */
+export function cardTarget(el: Element | null): AiTarget | null {
+  const reg = el ? registeredAbove(el) : null;
+  return reg ? { ...reg.info, text: reg.el instanceof HTMLElement ? reg.el.innerText : "" } : null;
+}
+
 /** The page's name — the screen-reader heading every page carries. */
 export function pageName(): string {
   const h = document.querySelector("main h1");

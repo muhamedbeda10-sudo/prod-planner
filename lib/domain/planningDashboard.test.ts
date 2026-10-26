@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { loadAhead, manpowerPlan, planAdherence } from "./kpis";
 import { lvMonthProgress } from "./lvKpis";
 import {
-  NO_FILTERS, capacityShortH, centreLoadRows, pageLineOf, plantTotals, dueByTodayRows, hoursLeftRows, lineDueHours, lvAtRisk, lvMonthRows, lvView, planningFiltersOf, planningUrl,
+  NO_FILTERS, capacityShortH, centreLoadRows, isPartial, pageLineOf, plantTotals, dueByTodayRows, hoursLeftRows, lineDueHours, lvAtRisk, lvMonthRows, lvView, planningFiltersOf, planningUrl,
   relativeChange, stageByDay, trAtRisk, trLinesOf, trView, type LvOrderLine, type PlanLine, type PlanningFilters, type TrViewInput,
 } from "./planningDashboard";
 import type { WorkCentre } from "./shifts";
@@ -122,9 +122,11 @@ describe("the transformers' view", () => {
 
   it("keeps the line on hold on the plan — in the adherence and listed on hold — and out of the hours", () => {
     expect(v.atRisk.find((r) => r.bom === "B3")).toMatchObject({ status: "on-hold", stage: "Fabrication", hoursLeft: expect.any(Number) });
-    expect(v.quality.some((q) => q.label.startsWith("On hold: 1 line, 5 pcs"))).toBe(true);
-    expect(v.quality.some((q) => q.label.startsWith("Outsourced (OSP): 6 pcs"))).toBe(true);
-    expect(v.quality.some((q) => q.label.includes("Fin folding"))).toBe(true);
+    const note = (label: string) => v.quality.find((q) => q.label === label);
+    expect(note("On hold")?.value).toBe("1 line, 5 pcs — on the plan, out of the load");
+    expect(note("Outsourced (OSP)")?.value).toBe("6 pcs — counted made, no hours here");
+    expect(note("Capacity not measured")).toEqual({ label: "Capacity not measured", value: "Fin folding", tone: "warn" });
+    expect(isPartial(v.quality)).toBe(true);
   });
 
   it("reads a centre as not measured, never as covered, and people only for those who see Shifts", () => {
@@ -261,14 +263,14 @@ describe("the panels' orders", () => {
     const v = lvView({ todayISO: TODAY, lastDayISO: null, orders: ORDERS, manpower: { rows, coverage: { orders: 6, priced: 5 } }, month: { leftWd: 5 }, wip: { heldOrders: 1 } }, F({ lvDept: "Bending" }), { floor: true });
     expect(v.people.rows.map((r) => r.centre)).toEqual(["Bending"]);
     expect(v.people.toAdd).toBe(1);
-    expect(v.quality.map((q) => q.label)).toEqual([
-      "No delivery dates on the panels' plan — judged on an even pace through the month",
-      "Std times price 5 of 6 month orders",
-      "On hold: 1 order — out of the queues",
-      "No shift day recorded lately — people present not measured",
+    expect(v.quality).toEqual([
+      { label: "Delivery dates", value: "none on the panels' plan — judged on an even pace through the month" },
+      { label: "Std times", value: "5 of 6 month orders priced", tone: "warn" },
+      { label: "On hold", value: "1 order — out of the queues" },
+      { label: "Last shift day", value: "none lately — people present not measured", tone: "warn" },
     ]);
     // one family's plan: who comes is the whole floor's, so no gap is read against it
     const mb = lvView({ todayISO: TODAY, lastDayISO: TODAY, orders: ORDERS, manpower: { rows, coverage: { orders: 6, priced: 5 } }, month: { leftWd: 5 }, wip: { heldOrders: 0 } }, F({ family: "MB" }), { floor: true });
-    expect(mb.quality.map((q) => q.label)).toContain("People present are the whole floor's, not one family's — no gap read");
+    expect(mb.quality).toContainEqual({ label: "People present", value: "the whole floor's, not one family's — no gap read" });
   });
 });

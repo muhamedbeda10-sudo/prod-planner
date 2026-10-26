@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { Badge } from "@/components/Badge";
+import { ChartAbout } from "@/components/ChartAbout";
+import { TableFrame, Th } from "@/components/DataTable";
 import { aiTargetRef } from "@/lib/aiTarget";
+import { formatFigure, formatShare } from "@/lib/domain/format";
 
 // The dashboards' shared parts, so every dashboard reads the same way:
 //
@@ -10,8 +13,8 @@ import { aiTargetRef } from "@/lib/aiTarget";
 //    dark — slots 7 and 8 are too close to 6 for a legend to separate), then
 //    "Other" in the neutral. A series keeps its slot for the whole view.
 //  - a card that carries only its title and its chart: what it means and
-//    how it is counted (`about`), and its numbers (`data`), go to the
-//    assistant on a right-click's "Ask AI" (lib/aiTarget), not on screen;
+//    how it is counted (`about`) opens from its title (ChartAbout), and with
+//    its numbers (`data`) goes to the assistant on "Ask AI" (lib/aiTarget);
 //  - stat tiles with a sparkline or a meter; a legend; a tooltip shell;
 //    a heatmap in one hue, light → dark; data bars for tables.
 
@@ -34,8 +37,8 @@ export const TONE_CELL = { ok: "bg-ok-bg text-ok-fg", warn: "bg-warn-bg text-war
 export const catColor = (i: number) => (i >= 0 && i < CAT.length ? CAT[i] : OTHER);
 export const catInk = (i: number) => (i >= 0 && i < INK_ON.length ? INK_ON[i] : INK_ON_OTHER);
 
-export const fmt = (n: number, digits = 3) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { maximumFractionDigits: digits }));
-export const pct = (f: number, digits = 0) => `${(f * 100).toFixed(digits)}%`;
+export const fmt = formatFigure;
+export const pct = formatShare;
 /** A rate, or a dash where there is none. */
 export const pctOrDash = (v: number | null | undefined) => (v === null || v === undefined ? "—" : pct(v));
 /** A difference with its sign: "+2.5" or "−1" (a plain minus is the number's own). */
@@ -54,6 +57,7 @@ export function ChartCard({
   about,
   data,
   right,
+  table = false,
   className = "",
   children,
 }: {
@@ -66,6 +70,9 @@ export function ChartCard({
   /** The chart's numbers, for the assistant's "Ask AI". */
   data?: TableRow[];
   right?: React.ReactNode;
+  /** The chart's numbers (`data`) as a table under it, a click away — the
+   *  same rows the chart draws, so the two cannot disagree. */
+  table?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -74,13 +81,40 @@ export function ChartCard({
     <section ref={ref} className={`bg-surface border rounded-xl p-4 min-w-0 ${className}`}>
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <div className="min-w-0">
-          <h2 className="font-bold leading-tight">{title}</h2>
+          <h2 className="font-bold leading-tight"><ChartAbout title={title} about={about} /></h2>
           {sub && <p className="text-xs text-muted mt-0.5">{sub}</p>}
         </div>
         {right && <div className="flex items-center gap-2 no-print">{right}</div>}
       </div>
       {children}
+      {table && data && data.length > 0 && <ChartTable title={title} rows={data} />}
     </section>
+  );
+}
+
+/** A chart's rows as a plain table, folded under the chart. */
+export function ChartTable({ title, rows }: { title: string; rows: TableRow[] }) {
+  const cols = Object.keys(rows[0] ?? {});
+  // a column is numeric when every filled cell is a number
+  const num = new Set(cols.filter((c) => rows.every((r) => typeof r[c] === "number" || r[c] === "")));
+  return (
+    <details className="mt-3 group">
+      <summary className="text-xs font-semibold text-muted cursor-pointer select-none hover:text-foreground w-fit">Table · {rows.length} row{rows.length === 1 ? "" : "s"}</summary>
+      <TableFrame className="mt-2 max-h-80 border rounded-lg">
+        <table className="w-full text-sm" aria-label={`${title} — table`}>
+          <thead>
+            <tr>{cols.map((c) => <Th key={c} label={c} num={num.has(c)} />)}</tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                {cols.map((c) => <td key={c} className={`px-2 ${num.has(c) ? "text-right tabnum" : ""}`}>{typeof r[c] === "number" ? fmt(r[c] as number, 2) : r[c]}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableFrame>
+    </details>
   );
 }
 
@@ -181,10 +215,6 @@ export function RelativeChip({ value, up, title }: { value: number | null; up?: 
 /** The change chip of a figure no earlier reading is kept of: "N/A", never a guessed trend. */
 export const NO_BASE = <RelativeChip value={null} title="No earlier reading of this figure is kept to compare with" />;
 
-/** A figure that is how things stand now, not over a period — the records say where, not since when. */
-export function NowBadge({ title = "How things stand now — not a period's figure" }: { title?: string }) {
-  return <Badge tone="info" title={title}>Now</Badge>;
-}
 
 /** A change as a badge — "▲ 3 pts", "▼ 12%", "• 0" — green where it is
  *  good news, red where bad, grey where `up` does not say (or nothing moved);
@@ -363,5 +393,60 @@ export function Bullet({ label, value, target, max, text, tone }: { label: strin
         {target !== null && <div className="absolute -inset-y-1 w-0.5 rounded bg-foreground" style={{ left: `calc(${w(target)} - 1px)` }} aria-hidden />}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- data quality
+
+/** A current reading — what the figure says right now, not over the period. */
+export function NowBadge({ title = "As it stands now, not over the period picked" }: { title?: string }) {
+  return <Badge tone="info" icon="●" title={title} className="shrink-0">Now</Badge>;
+}
+
+export interface QualityItem {
+  label: string;
+  value: React.ReactNode;
+  /** A status word goes with its colour: "partial" marks what is missing. */
+  tone?: "ok" | "warn" | "bad";
+  title?: string;
+}
+
+/**
+ * The dashboard's data-quality strip, under the filters: what the figures
+ * are read from and how much of it is there — how many records, how many of
+ * them can be counted, which rules were used, when it was read. A gap marks
+ * the strip "Partial data"; nothing is ever filled in to hide one.
+ */
+export function DataQualityBar({ items, partial, about }: { items: QualityItem[]; partial: boolean; about?: string }) {
+  const ref = aiTargetRef({ kind: "figure", title: "Data quality", about: [about, ...items.map((i) => `${i.label}: ${typeof i.value === "string" || typeof i.value === "number" ? i.value : i.title ?? ""}`)].filter(Boolean).join(" · ") });
+  return (
+    <section ref={ref} aria-label="Data quality" className="bg-surface border rounded-xl px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+      <Badge tone={partial ? "warning" : "success"} icon={partial ? "⚠" : "✓"} className="shrink-0">{partial ? "Partial data" : "Complete"}</Badge>
+      {items.map((i) => (
+        <span key={i.label} className="inline-flex items-baseline gap-1 min-w-0" title={i.title}>
+          <span className="text-muted">{i.label}</span>
+          <b className={`tabnum ${i.tone ? TONE_TEXT[i.tone] : ""}`}>{i.value}</b>
+        </span>
+      ))}
+    </section>
+  );
+}
+
+/** Under a row of tiles, shut until opened: what each figure is, how it is
+ *  counted and what it is read from — the tiles themselves say one line. */
+export function MetricNotes({ items, title = "How these are counted" }: { items: { label: string; definition: string; source: string; coverage?: string }[]; title?: string }) {
+  return (
+    <details className="bg-surface border rounded-xl px-4 py-2 text-sm no-print">
+      <summary className="cursor-pointer font-semibold text-muted">{title}</summary>
+      <dl className="mt-2 grid gap-x-6 gap-y-2 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+        {items.map((i) => (
+          <div key={i.label} className="min-w-0">
+            <dt className="font-bold">{i.label}</dt>
+            <dd>{i.definition}</dd>
+            <dd className="text-muted">Source: {i.source}{i.coverage ? ` · ${i.coverage}` : ""}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }

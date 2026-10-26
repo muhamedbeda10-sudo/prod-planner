@@ -2,6 +2,7 @@ import "server-only";
 import { ITEMS, deptLabel, isPaintExempt, type Item } from "@/lib/domain/constants";
 import { BASIS_EXPORT, PERIOD_LABEL } from "@/lib/domain/consumableLimits";
 import { MONTH_STATUS_LABEL } from "@/lib/domain/consumableMonthly";
+import { ROW_STATUS_LABEL, headcountText, limitBasisText, type DecisionRow } from "@/lib/domain/consumablesDecisions";
 import type { ConsumablesStats } from "@/lib/domain/consumablesStats";
 import type { LogRow } from "@/lib/domain/dailyLogView";
 import { downtimeLabel, stopDurationLabel } from "@/lib/domain/downtime";
@@ -24,6 +25,7 @@ import type { LvTraceResult } from "./lvTrace";
 import type { LvTrackerRow } from "./lvTracker";
 import type { MasterTrackerRow } from "./masterTracker";
 import type { MaterialPageData } from "./material";
+import { RATE_SOURCE_LABEL, WEIGHT_SOURCE_LABEL, type DetailRow } from "@/lib/domain/materialDashboard";
 import type { OdooDashboardView, OdooPageData } from "./odoo";
 import type { PhysicalStockData } from "./physicalStock";
 import type { PowderView } from "./powderScrap";
@@ -197,6 +199,38 @@ export function consumablesSummaryRows(items: ConsumablesStats["items"]): SheetR
   return items.map((i) => ({ Item: i.item, "Hand-outs": i.issues, Qty: i.qty, Workers: i.workers }));
 }
 
+/** The Consumables dashboard's detail table: a row per item and department,
+ *  against the limit that reads worst at the period's end — the screen's own
+ *  columns, under the same filters. */
+export function consumablesDecisionRows(rows: readonly DecisionRow[]): SheetRow[] {
+  return rows.map((r) => {
+    const l = r.limits[0];
+    return {
+      Item: r.item,
+      Code: r.code ?? "",
+      UOM: r.uom ?? "",
+      Department: r.departmentLabel,
+      Qty: r.qty,
+      "Hand-outs": r.handOuts,
+      "Limit basis": l ? limitBasisText(l, r.uom) : "",
+      Limit: l ? l.limit : "",
+      Per: l ? PERIOD_LABEL[l.period] : "",
+      Window: l ? `${l.windowLabel}${l.toDate ? " to date" : ""}` : "",
+      "Used in window": l ? l.used : "",
+      Left: l ? l.left : "",
+      Over: l ? l.over : "",
+      Status: ROW_STATUS_LABEL[r.status],
+      "Other limits": r.limits.length > 1 ? r.limits.slice(1).map((x) => `${limitBasisText(x, r.uom)} ${PERIOD_LABEL[x.period]}: ${x.used}/${x.limit}`).join(" | ") : "",
+      Headcount: l?.headcount ? headcountText(l.headcount) : "",
+      "Recorded over": r.recordedOver,
+      "Recorded reason": r.lastReason ?? "",
+      Catalogue: r.itemId !== null ? "linked" : "not linked",
+      "Suggested item (review)": r.suggestion ? `${r.suggestion.name}${r.suggestion.code ? ` (${r.suggestion.code})` : ""} — ${r.suggestion.match} name` : "",
+      "Last hand-out": r.lastDayISO,
+    };
+  });
+}
+
 /** The monthly review: a row per item, then a row per limit under it, and a
  *  column per month of the trend. */
 export function consumablesMonthlyRows(report: MonthlyReportView): SheetRow[] {
@@ -364,6 +398,20 @@ export function rosterRows(data: ShiftRosterData): SheetRow[] {
       Note: d.note,
     };
   });
+}
+
+/** The Material dashboard's detail table: a row per MO × part × sheet spec,
+ *  blank where a figure is unknown (never a zero). Closed qty is the MO's,
+ *  on each of its lines. */
+export function materialDashboardRows(rows: readonly DetailRow[]): SheetRow[] {
+  const blank = (v: number | null) => (v === null ? "" : v);
+  return rows.map((r) => ({
+    MO: r.mo, SOI: r.soi, BOM: r.bom, "Part code": r.partCode, "Part name": r.partName, Material: r.material, "Thickness mm": r.thicknessMm, "Sheet size": r.sheetSize,
+    "Sheet copy": r.month || "Living sheet", Units: r.units, "BOM sheets": r.bomSheets, "Actual sheets": blank(r.actualSheets), "Delta sheets": blank(r.deltaSheets),
+    "Sheet kg": blank(r.sheetKg), "Weight source": WEIGHT_SOURCE_LABEL[r.weightSource], Utilization: r.utilization === null ? "" : Math.round(r.utilization * 1000) / 1000,
+    "Closed qty (MO)": r.closedQty, "Consumed sheets": r.consumedSheets, "Consumed kg": blank(r.consumedKg), "Est. scrap kg": blank(r.scrapKg),
+    "Rate source": RATE_SOURCE_LABEL[r.rateSource], "Sheets per unit": r.ratePerUnit,
+  }));
 }
 
 /** The ODOO dashboard's days: a row per day with something logged or closed,

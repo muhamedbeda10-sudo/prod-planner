@@ -450,12 +450,17 @@ export function relativeChange(now: number | null | undefined, before: number | 
 
 // ------------------------------------------------------------ the data behind the page
 
-export type QualityTone = "ok" | "warn" | "info";
-/** One fact about the data the figures rest on — what they cover and what they leave out. */
+/** One fact about the data the figures rest on — what they cover and what
+ *  they leave out — as the dashboards' data-quality strip shows it (a word
+ *  with its colour: "warn" or "bad" marks what is missing). */
 export interface QualityNote {
   label: string;
-  tone: QualityTone;
+  value: string;
+  tone?: "ok" | "warn" | "bad";
 }
+
+/** Whether the notes mark the figures as resting on partial data. */
+export const isPartial = (notes: readonly QualityNote[]) => notes.some((n) => n.tone === "warn" || n.tone === "bad");
 
 // ------------------------------------------------------------ the transformers' view
 
@@ -510,22 +515,22 @@ export function trView(c: TrViewInput, f: PlanningFilters, o: { floor: boolean }
 
   const quality: QualityNote[] = [];
   const allOwed = c.week.lines.reduce((s, l) => s + l.owed, 0);
-  if (c.week.planNo === null) quality.push({ label: "No weekly plan imported", tone: "warn" });
+  if (c.week.planNo === null) quality.push({ label: "Weekly plan", value: "none imported", tone: "bad" });
   else {
+    quality.push({ label: "Weekly plan", value: c.week.newest ? `${c.week.planNo}` : `${c.week.planNo} — an earlier plan, its lines as they stand now` });
     quality.push(owedAll === 0
-      ? { label: "Nothing left to make on the plan", tone: "ok" }
-      : { label: `Std times price ${Math.round((owedPriced / owedAll) * 100)}% of the pieces left${unpriced > 0 ? ` · ${unpriced} line${unpriced === 1 ? "" : "s"} unpriced` : ""}`, tone: owedPriced < owedAll ? "warn" : "ok" });
+      ? { label: "Std times", value: "nothing left to price", tone: "ok" }
+      : { label: "Std times", value: `${Math.round((owedPriced / owedAll) * 100)}% of the pieces left priced${unpriced > 0 ? ` · ${unpriced} line${unpriced === 1 ? "" : "s"} not` : ""}`, tone: owedPriced < owedAll ? "warn" : "ok" });
     const osp = lines.reduce((s, l) => s + l.osp, 0);
-    if (osp > 0) quality.push({ label: `Outsourced (OSP): ${osp} pcs — counted made, no hours here`, tone: "info" });
+    if (osp > 0) quality.push({ label: "Outsourced (OSP)", value: `${osp} pcs — counted made, no hours here` });
     const na = lines.reduce((s, l) => s + l.na, 0);
-    if (na > 0) quality.push({ label: `N/A on the order: ${na} pcs — out of every figure`, tone: "info" });
+    if (na > 0) quality.push({ label: "N/A on the order", value: `${na} pcs — out of every figure` });
     const held = lines.filter((l) => l.held);
-    if (held.length > 0) quality.push({ label: `On hold: ${held.length} line${held.length === 1 ? "" : "s"}, ${held.reduce((s, l) => s + l.owed, 0)} pcs — still on the plan, out of the load`, tone: "info" });
-    if (allOwed > 0 && lines.length === 0) quality.push({ label: "The filters leave no plan line", tone: "warn" });
+    if (held.length > 0) quality.push({ label: "On hold", value: `${held.length} line${held.length === 1 ? "" : "s"}, ${held.reduce((s, l) => s + l.owed, 0)} pcs — on the plan, out of the load` });
+    if (allOwed > 0 && lines.length === 0) quality.push({ label: "Filters", value: "leave no plan line", tone: "warn" });
   }
-  if (unmeasured.length > 0) quality.push({ label: `No booked hours to measure capacity: ${unmeasured.map((x) => WORK_CENTRE_LABEL[x]).join(", ")}`, tone: "warn" });
-  if (o.floor) quality.push(c.lastDayISO ? { label: `Last recorded shift day ${formatDate(c.lastDayISO)}`, tone: c.lastDayISO < c.todayISO ? "info" : "ok" } : { label: "No shift day recorded lately — capacity and people not measured", tone: "warn" });
-  if (!c.week.newest && c.week.planNo !== null) quality.push({ label: `An earlier weekly plan (${c.week.planNo}): its lines as they stand now, not as they stood then`, tone: "info" });
+  if (unmeasured.length > 0) quality.push({ label: "Capacity not measured", value: unmeasured.map((x) => WORK_CENTRE_LABEL[x]).join(", "), tone: "warn" });
+  if (o.floor) quality.push(c.lastDayISO ? { label: "Last shift day", value: formatDate(c.lastDayISO) } : { label: "Last shift day", value: "none lately — capacity and people not measured", tone: "warn" });
 
   return {
     comparable: c.week.newest && !f.item && !f.q,
@@ -569,12 +574,12 @@ export function lvView(d: LvViewInput, f: PlanningFilters, o: { floor: boolean }
   const rows = d.manpower.rows.filter((r) => !f.lvDept || r.centre === f.lvDept);
   const cov = d.manpower.coverage;
   const quality: QualityNote[] = [
-    { label: "No delivery dates on the panels' plan — judged on an even pace through the month", tone: "info" },
-    cov.orders === 0 ? { label: "No order on the month's plan", tone: "warn" } : { label: `Std times price ${cov.priced} of ${cov.orders} month orders`, tone: cov.priced < cov.orders ? "warn" : "ok" },
+    { label: "Delivery dates", value: "none on the panels' plan — judged on an even pace through the month" },
+    cov.orders === 0 ? { label: "Month's plan", value: "no order", tone: "bad" } : { label: "Std times", value: `${cov.priced} of ${cov.orders} month orders priced`, tone: cov.priced < cov.orders ? "warn" : "ok" },
   ];
-  if (d.wip.heldOrders > 0) quality.push({ label: `On hold: ${d.wip.heldOrders} order${d.wip.heldOrders === 1 ? "" : "s"} — out of the queues`, tone: "info" });
-  if (f.family !== null && o.floor) quality.push({ label: "People present are the whole floor's, not one family's — no gap read", tone: "info" });
-  if (o.floor) quality.push(d.lastDayISO ? { label: `Last recorded shift day ${formatDate(d.lastDayISO)}`, tone: d.lastDayISO < d.todayISO ? "info" : "ok" } : { label: "No shift day recorded lately — people present not measured", tone: "warn" });
+  if (d.wip.heldOrders > 0) quality.push({ label: "On hold", value: `${d.wip.heldOrders} order${d.wip.heldOrders === 1 ? "" : "s"} — out of the queues` });
+  if (f.family !== null && o.floor) quality.push({ label: "People present", value: "the whole floor's, not one family's — no gap read" });
+  if (o.floor) quality.push(d.lastDayISO ? { label: "Last shift day", value: formatDate(d.lastDayISO) } : { label: "Last shift day", value: "none lately — people present not measured", tone: "warn" });
   return {
     month: lvMonthRows(d.orders),
     atRisk: lvAtRisk(d.orders, { dept: f.lvDept }),

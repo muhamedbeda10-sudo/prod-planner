@@ -3,16 +3,16 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { Info } from "lucide-react";
-import { Bullet, ChartCard, NO_BASE, NowBadge, RelativeChip, StatTile, fmt, pct, pctOrDash, signed } from "@/components/charts/kit";
+import { Bullet, ChartCard, DataQualityBar, NO_BASE, NowBadge, RelativeChip, StatTile, fmt, pct, pctOrDash, signed } from "@/components/charts/kit";
 import { StageByDayChart } from "@/components/LazyCharts";
-import { AtRiskTable, DetailModal, LoadMatrix, PeopleDetail, QualityBar, cols, useDetail } from "@/components/PlanningParts";
+import { AtRiskTable, DetailModal, LoadMatrix, PeopleDetail, cols, useDetail } from "@/components/PlanningParts";
 import { EmptyState } from "@/components/primitives";
 import { formatDate } from "@/lib/domain/format";
 import { traceHref } from "@/lib/domain/links";
 import { trItemName } from "@/lib/domain/outputByType";
 import { WORK_CENTRE_LABEL, isWorkCentre, type WorkCentre } from "@/lib/domain/shifts";
 import { STAGE_LABEL, monthPace, stageDueISO, weekChange, type KpiSnapshotData } from "@/lib/domain/kpis";
-import { centreLoadRows, dueByTodayRows, hoursLeftRows, relativeChange, type PlanLine, type PlanningFilters, type TrView } from "@/lib/domain/planningDashboard";
+import { centreLoadRows, dueByTodayRows, hoursLeftRows, isPartial, relativeChange, type PlanLine, type PlanningFilters, type TrView } from "@/lib/domain/planningDashboard";
 import type { CockpitData } from "@/lib/server/kpis";
 
 // 🧭 The transformers' section of the Planning dashboard: will the weekly plan
@@ -67,7 +67,7 @@ export function Cockpit({ data, view, f, floor = true }: { data: CockpitShown; v
 
   return (
     <div className="space-y-3">
-      <QualityBar notes={view.quality} label="Transformers" />
+      <DataQualityBar items={view.quality} partial={isPartial(view.quality)} about="What the transformers' figures are read from: the weekly plan (PlanSchedule) against the Daily log, the standard times by KVA class, the shift log's booked hours." />
 
       {/* the headline figures */}
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
