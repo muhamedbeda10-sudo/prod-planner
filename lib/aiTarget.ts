@@ -1,38 +1,35 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import type { AiTarget } from "@/lib/domain/aiExplain";
 
-// What "Ask AI" explains: the thing under the pointer, read off the page. A
-// card that knows more about itself than it shows (a chart's numbers, the
-// note on how it is counted) registers that here with `useAiTarget`; the
-// rest is read from the page as it stands — a table row by its column
-// headers, anything else by its own text. A server-rendered card says the
-// same in attributes: data-ai-title, and data-ai-about for its note. Plain DOM reading, no figures of
+// What "Ask AI" explains: the thing under the pointer, read off the page.
+// Two ways for a part of the page to say what it is:
+//  - a card explained whole (a chart, a tile) puts `aiTargetRef(info)` on
+//    its outer element — with what only it knows, a chart's numbers among it;
+//  - a section whose own cards and rows are explained one by one, in its
+//    light (a machine board), carries data-ai-title and data-ai-about — which
+//    a server-rendered card can carry too.
+// The rest is read from the page as it stands — a table row by its column
+// headers, anything else by its own text. Plain DOM reading, no figures of
 // its own: the question built from it (lib/domain/aiExplain) asks the
 // assistant to check them.
 
-type Registered = Omit<AiTarget, "within" | "column" | "fields">;
+type Registered = Pick<AiTarget, "kind" | "title" | "about" | "rows">;
 
 const registry = new WeakMap<Element, Registered>();
 
-/** Put on a card's outer element: right-click anywhere in it explains the
- *  card, with what `info` carries beyond its visible text. */
-export function useAiTarget<T extends HTMLElement>(info: Registered) {
-  const ref = useRef<T>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    registry.set(el, info);
-    return () => { registry.delete(el); };
-  });
-  return ref;
+/** The ref for a card's outer element: right-click anywhere in it explains
+ *  the card, with what `info` carries beyond its visible text. */
+export function aiTargetRef(info: Registered) {
+  return (el: HTMLElement | null) => {
+    if (el) registry.set(el, info);
+  };
 }
 
 const text = (el: Element | null | undefined) => (el instanceof HTMLElement ? el.innerText : el?.textContent ?? "").replace(/\s+/g, " ").trim();
 const firstLine = (s: string) => s.split(/\n+/).map((l) => l.trim()).find(Boolean) ?? "";
 
-/** The nearest card that says what it is: one made with `useAiTarget` (a
+/** The nearest card that says what it is: one made with `aiTargetRef` (a
  *  chart, a tile — explained whole), or a section marked in attributes (a
  *  board — whose own cards and rows are explained one by one, in it). */
 function registeredAbove(el: Element): { el: Element; info: Registered; section: boolean } | null {
@@ -100,10 +97,9 @@ function columnValues(table: HTMLTableElement, col: number, max = 25): string {
   return out.join("\n");
 }
 
-/** The name of the card or block a table sits in: a registered card's
- *  title, else the nearest heading above it inside its section. */
-function nameAround(el: Element): string | undefined {
-  const reg = registeredAbove(el);
+/** The name of the card or block `el` sits in: a registered card's title,
+ *  else the nearest heading above it inside its section. */
+function nameAround(el: Element, reg = registeredAbove(el)): string | undefined {
   if (reg) return reg.info.title;
   const box = el.closest("section, [role=dialog], article");
   const h = box?.querySelector("h2, h3, h4, [role=heading]");
@@ -117,6 +113,16 @@ const isBlock = (n: Element) => n.matches(BLOCK) || (n.classList.contains("borde
 /** Further up than this the "item" is the page itself. */
 const MAX_ITEM_TEXT = 1500;
 
+/** A block's shown text — null past the limit, told first by its raw length
+ *  (no layout), so a page's big table is never laid out as text for nothing. */
+function shownText(n: Element): string | null {
+  if ((n.textContent?.length ?? 0) > MAX_ITEM_TEXT * 4) return null;
+  const t = n instanceof HTMLElement ? n.innerText.trim() : "";
+  return t.length > MAX_ITEM_TEXT ? null : t;
+}
+
+const item = (t: string, within?: string, about?: string): AiTarget => ({ kind: "item", title: firstLine(t), within, about, text: t });
+
 /** What a right-click at `el` is about — null where there is nothing to
  *  explain (the assistant's own window, an open menu). */
 export function readAiTarget(el: Element | null): AiTarget | null {
@@ -129,21 +135,18 @@ export function readAiTarget(el: Element | null): AiTarget | null {
   const table = tr?.closest<HTMLTableElement>("table");
   if (cell && tr && table && (!reg || reg.el.contains(table))) {
     const { names, colOf } = headers(table);
-    const within = nameAround(table);
+    const within = nameAround(table, reg);
     // the card the table is in says how it is counted
     const about = reg?.info.about;
-    let col = 0;
-    for (const c of Array.from(tr.cells)) {
-      if (c === cell) break;
-      col += Math.max(1, c.colSpan);
-    }
     if (tr.parentElement?.tagName === "THEAD") {
-      const at = colOf.get(cell) ?? col;
+      const at = colOf.get(cell) ?? 0;
       return { kind: "column", title: (cell.colSpan > 1 ? text(cell) : names[at]) || text(cell) || "Column", within, about, text: columnValues(table, at) };
     }
     const fields: [string, string][] = [];
     let at = 0;
+    let col = 0;
     for (const c of Array.from(tr.cells)) {
+      if (c === cell) col = at;
       const v = text(c);
       if (v) fields.push([names[at] ?? "", v]);
       at += Math.max(1, c.colSpan);
@@ -156,22 +159,20 @@ export function readAiTarget(el: Element | null): AiTarget | null {
   if (reg?.section) {
     for (let n: Element | null = el; n && n !== reg.el; n = n.parentElement) {
       if (!isBlock(n)) continue;
-      const t = n instanceof HTMLElement ? n.innerText.trim() : "";
-      if (t.length >= 2 && t.length <= MAX_ITEM_TEXT) return { kind: "item", title: firstLine(t).slice(0, 160), within: reg.info.title, about: reg.info.about, text: t };
+      const t = shownText(n);
+      if (t === null) break;
+      if (t.length >= 2) return item(t, reg.info.title, reg.info.about);
     }
   }
 
-  if (reg) {
-    const shown = reg.el instanceof HTMLElement ? reg.el.innerText : "";
-    return { ...reg.info, text: reg.info.text ?? shown };
-  }
+  if (reg) return { ...reg.info, text: reg.el instanceof HTMLElement ? reg.el.innerText : "" };
 
   // anything else: the smallest block around it with something to say
   for (let n: Element | null = el.closest(BLOCK) ?? el; n && n !== document.body; n = n.parentElement) {
     if (n.tagName === "MAIN" || n.tagName === "NAV" || n.tagName === "HEADER") break;
-    const t = n instanceof HTMLElement ? n.innerText.trim() : "";
-    if (t.length > MAX_ITEM_TEXT) break;
-    if (t.length >= 2) return { kind: "item", title: firstLine(t).slice(0, 160), within: nameAround(n), text: t };
+    const t = shownText(n);
+    if (t === null) break;
+    if (t.length >= 2) return item(t, nameAround(n));
   }
   const page = pageName();
   return page ? { kind: "page", title: page } : null;

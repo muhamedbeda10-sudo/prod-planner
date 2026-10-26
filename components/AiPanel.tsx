@@ -56,8 +56,9 @@ interface PanelApi {
   /** Open where it was left. */
   open: () => void;
   /** Open a new chat with this question in its box, for the person to send —
-   *  or, with `send`, sent at once. Nothing for someone without the chat. */
-  ask: (question: string, opts?: { send?: boolean }) => void;
+   *  or, with `explain`, sent at once to explain only. Nothing for someone
+   *  without the chat. */
+  ask: (question: string, opts?: { explain?: boolean }) => void;
   /** The chat is open to this person. */
   canAsk: boolean;
   close: () => void;

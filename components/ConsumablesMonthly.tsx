@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { DeltaChip, Legend, Sparkline, StatTile, TipBox, arrowOf, fmt, pct } from "@/components/charts/kit";
+import { ChartCard, DeltaChip, Legend, Sparkline, StatTile, TipBox, fmt, pct } from "@/components/charts/kit";
 import {
   MONTH_STATUS_LABEL, monthLong, monthShort,
   type ItemMonthRow, type LimitMonthRow, type MonthStatus,
@@ -168,11 +168,11 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
             <StatTile label={MONTH_STATUS_LABEL[s]} value={fmt(r.counts[s])} sub={<span style={{ color: STATUS_COLOR[s] }}>● {s === "nolimit" ? "handed out, no limit set" : "items"}</span>} />
           </button>
         ))}
-        <StatTile label="Catalogue hand-outs" value={fmt(r.handOuts.month)} delta={r.prevComplete && handChange !== null ? <DeltaChip text={`${arrowOf(handChange)} ${Math.abs(handChange)}%`} title={`${monthShort(r.prevMonth)}: ${fmt(r.handOuts.prev)}`} /> : undefined} />
+        <StatTile label="Catalogue hand-outs" value={fmt(r.handOuts.month)} delta={r.prevComplete && handChange !== null ? <DeltaChip value={handChange} unit="%" title={`${monthShort(r.prevMonth)}: ${fmt(r.handOuts.prev)}`} /> : undefined} />
       </div>
 
-      <section className="bg-surface border rounded-xl p-4" data-ai-title="The last six months" data-ai-about="How many items ended each month over, close to, under their limit, or not issued. Each item is read against its monthly limit; a limit of several months is counted over its months so far, with the limits as they stand today.">
-        <h2 className="font-bold mb-2">The last six months</h2>
+      <ChartCard title="The last six months" about="How many items ended each month over, close to, under their limit, or not issued. Each item is read against its monthly limit; a limit of several months is counted over its months so far, with the limits as they stand today."
+        data={r.countsByMonth.map((c) => ({ Month: monthLong(c.month), Over: c.over, Close: c.near, Under: c.under, "Not issued": c.unused }))}>
         <div className="viz" style={{ height: 220 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={r.countsByMonth.map((c) => ({ ...c, label: monthShort(c.month) }))} margin={{ top: 8, right: 8, left: -4, bottom: 0 }} barCategoryGap="28%">
@@ -190,7 +190,7 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
           </ResponsiveContainer>
         </div>
         <div className="mt-2"><Legend items={(["over", "near", "under"] as const).map((s) => ({ label: MONTH_STATUS_LABEL[s], color: STATUS_COLOR[s] }))} /></div>
-      </section>
+      </ChartCard>
 
       <div className="flex flex-wrap items-center gap-2 no-print">
         <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search item, code…" aria-label="Search" className="px-2 py-1.5 text-sm font-semibold w-full sm:w-64" />

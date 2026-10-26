@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useState } from "react";
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { CAT, ChartCard, DeltaChip, Legend, StatTile, TipBox, arrowOf, fmt, pct } from "@/components/charts/kit";
+import { CAT, ChartCard, DeltaChip, Legend, StatTile, TipBox, fmt, pct } from "@/components/charts/kit";
 import { ActionMsg as Msg, useConsumableAction as useAction } from "@/components/consumablesUi";
 import { monthLong, monthShort } from "@/lib/domain/consumableMonthly";
 import { POWDER_DEPARTMENTS, SCRAP_LIMITS, type PowderFigures } from "@/lib/domain/powderScrap";
@@ -27,7 +27,7 @@ const rateText = (f: { rate: number | null }) => (f.rate === null ? "—" : pct(
 function RateChange({ now, prev, prevMonth }: { now: PowderFigures; prev: PowderFigures; prevMonth: string }) {
   if (now.rate === null || prev.rate === null) return null;
   const pts = Math.round((now.rate - prev.rate) * 1000) / 10;
-  return <DeltaChip text={`${arrowOf(pts)} ${Math.abs(pts)} pts`} good={pts === 0 ? null : pts < 0} title={`${monthShort(prevMonth)}: ${pct(prev.rate, 1)}`} />;
+  return <DeltaChip value={pts} unit=" pts" up="bad" title={`${monthShort(prevMonth)}: ${pct(prev.rate, 1)}`} />;
 }
 
 function Field({ label, className = "", children }: { label: string; className?: string; children: React.ReactNode }) {
@@ -206,7 +206,7 @@ export function PowderScrap({ r, canRecord, isAdmin, today, earliest }: { r: Pow
         <StatTile hero label={`Scrap rate · ${monthShort(r.month)}`} value={rateText(t)} about="Scrap ÷ powder drawn in the month. Powder is the hand-outs of items named “…Powder…”, in kg." delta={<RateChange now={t} prev={t.prev} prevMonth={r.prevMonth} />} spark={t.trend.map((x) => (x.rate ?? 0) * 100)} />
         <StatTile
           label="Powder drawn" value={`${fmt(t.withdrawn)} kg`} about="Hand-outs of items named “…Powder…” in the month, in kg."
-          delta={withdrawnChange === null ? undefined : <DeltaChip text={`${arrowOf(withdrawnChange)} ${Math.abs(withdrawnChange)}%`} title={`${monthShort(r.prevMonth)}: ${fmt(t.prev.withdrawn)} kg`} />}
+          delta={withdrawnChange === null ? undefined : <DeltaChip value={withdrawnChange} unit="%" title={`${monthShort(r.prevMonth)}: ${fmt(t.prev.withdrawn)} kg`} />}
         />
         <StatTile label="Scrap" value={`${fmt(t.scrap)} kg`} sub={`${r.entries.length} weighing${r.entries.length === 1 ? "" : "s"}`} />
         <StatTile label="Net used" value={`${fmt(t.net)} kg`} about={t.net < 0 ? "Powder drawn − scrap; below zero, more was scrapped than drawn (earlier stock)." : "Powder drawn − scrap."} />

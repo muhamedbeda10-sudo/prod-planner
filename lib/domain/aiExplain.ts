@@ -1,4 +1,4 @@
-import { AI_MAX_QUESTION } from "./ai";
+import { AI_MAX_QUESTION, AI_ROW_LIMIT, formatRows } from "./ai";
 
 // "Ask AI" on a right-click: the thing under the pointer, read off the page,
 // made into one question for the assistant — what it is, what it says now
@@ -37,10 +37,12 @@ const KIND_LABEL: Record<AiTargetKind, string> = {
   page: "Page",
 };
 
+/** Cut to `max` characters, an ellipsis where cut. */
+const clip = (t: string, max: number) => (t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t);
+
 /** One line of text: no control characters, no runs of white space. */
 export function oneLine(s: string, max = 200): string {
-  const t = s.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
-  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+  return clip(s.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim(), max);
 }
 
 /** Text kept in its lines (a card's figures sit on lines of their own),
@@ -54,30 +56,7 @@ export function screenText(s: string, max: number): string {
     seen.add(l);
     lines.push(l);
   }
-  const t = lines.join("\n");
-  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
-}
-
-/** A chart's numbers as a compact table: a header, then one line a row, as
- *  many rows as fit in `max` characters. */
-export function rowsText(rows: Record<string, string | number>[], max: number): string {
-  if (rows.length === 0 || max <= 0) return "";
-  const cols = Object.keys(rows[0]);
-  const cell = (v: unknown) => oneLine(typeof v === "number" ? String(Math.round(v * 1000) / 1000) : String(v ?? ""), 60);
-  const head = cols.map(cell).join(" | ");
-  const out = [head];
-  let used = head.length;
-  let shown = 0;
-  for (const r of rows) {
-    const line = cols.map((c) => cell(r[c])).join(" | ");
-    if (used + line.length + 1 > max) break;
-    out.push(line);
-    used += line.length + 1;
-    shown++;
-  }
-  if (shown === 0) return "";
-  if (shown < rows.length) out.push(`(${shown} of ${rows.length} rows)`);
-  return out.join("\n");
+  return clip(lines.join("\n"), max);
 }
 
 /** The question "Ask AI" sends: the ask first, then what was clicked, each
@@ -104,9 +83,6 @@ export function explainQuestion(t: AiTarget, page?: string): string {
     const shown = screenText(t.text, Math.min(1500, room()));
     if (shown) q += `\nOn screen:\n${shown}`;
   }
-  if (t.rows?.length && room() > 80) {
-    const table = rowsText(t.rows, room());
-    if (table) q += `\nIts numbers:\n${table}`;
-  }
-  return q.length > AI_MAX_QUESTION ? q.slice(0, AI_MAX_QUESTION) : q;
+  if (t.rows?.length && room() > 120) q += `\nIts numbers:\n${formatRows(t.rows, AI_ROW_LIMIT, room())}`;
+  return q.slice(0, AI_MAX_QUESTION);
 }

@@ -123,9 +123,7 @@ export async function POST(request: Request) {
     const hidden = hiddenTabsOf(user);
     const page = aiPageContext(body.page, hidden);
     const line = await getActiveLine();
-    // an "Ask AI" explanation reads and answers: no change, and no memory kept from the page
-    const explain = body.explain === true;
-    const tools = toolsFor(user, { hidden, actionsPaused: settings.actionsPaused || explain }).filter((t) => !explain || (t.name !== "remember" && t.name !== "forget"));
+    const tools = toolsFor(user, { hidden, actionsPaused: settings.actionsPaused, readOnly: body.explain === true });
     const areas = [...new Set(tools.flatMap((t) => (t.kind === "write" ? [t.area] : [])))] as AiArea[];
     const [outcomes, playbook, memories] = await Promise.all([existing ? pendingOutcomes(conversation.id) : { ids: [], notes: [] }, getPlaybookText(), memoriesOf(user.id)]);
     // the what-if this chat is working on (read against today's jobs only

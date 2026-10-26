@@ -30,8 +30,8 @@ export function AskAiAnywhere() {
   const on = !!ai?.canAsk && !ai.aiPage;
   const [menu, setMenu] = useState<Open | null>(null);
   const close = useCallback(() => setMenu(null), []);
-  // [separator, Ask AI] — here first under the name, not at the foot
-  const askAi = useAskAiEntry(menu?.target);
+  // here first under the name, not at the foot
+  const askAi = useAskAiEntry(menu ? () => menu.target : null);
 
   useEffect(() => {
     if (!on) return;
@@ -52,7 +52,7 @@ export function AskAiAnywhere() {
   }, [on]);
 
   if (!on || !menu) return null;
-  const entries: MenuEntry[] = [{ heading: oneLine(menu.target.title, 60) }, ...askAi.slice(1)];
+  const entries: MenuEntry[] = [{ heading: oneLine(menu.target.title, 60) }, ...(askAi ? [askAi] : [])];
   if (menu.href) {
     const href = menu.href;
     entries.push(

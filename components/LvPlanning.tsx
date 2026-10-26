@@ -48,7 +48,7 @@ export function LvPlanning({ data, floor = true }: { data: LvPlanningData; floor
         <StatTile hero label={`${m.monthLabel} — painted`} value={pctOrDash(pace.doneShare)} meter={pace.doneShare ?? undefined}
           sub={m.panels > 0 ? `${fmt(m.complete)} of ${fmt(m.panels)} panels` : undefined}
           about={m.panels > 0 ? `Panels of ${m.monthLabel}'s plan painted (finished): ${fmt(m.complete)} of ${fmt(m.panels)}. An even pace stands at ${pct(pace.expectedShare)} today; ${pace.aheadH >= 0 ? `${Math.floor(pace.aheadH)} panels ahead of` : `${Math.ceil(-pace.aheadH)} panels behind`} it.${m.paintedBefore > 0 ? ` ${fmt(m.paintedBefore)} were painted before the month.` : ""}` : "No panels on the month's plan."}
-          delta={pace.tone && m.panels > 0 ? <DeltaChip text={pace.aheadH >= 0 ? `▲ ${Math.floor(pace.aheadH)}` : `▼ ${Math.ceil(-pace.aheadH)}`} good={pace.tone === "ok" ? true : pace.tone === "bad" ? false : null} title={pace.aheadH >= 0 ? "Panels ahead of an even pace" : "Panels behind an even pace"} /> : undefined} />
+          delta={pace.tone && m.panels > 0 ? <DeltaChip value={pace.aheadH >= 0 ? Math.floor(pace.aheadH) : -Math.ceil(-pace.aheadH)} up="good" title={pace.aheadH >= 0 ? "Panels ahead of an even pace" : "Panels behind an even pace"} /> : undefined} />
         <StatTile label="Panels left this month" value={fmt(m.remaining)} sub={m.leftWd > 0 ? `${m.leftWd} of ${m.monthWd} working days left` : undefined} />
         <StatTile label="Urgent orders short" value={String(data.urgentStuck.length)} sub={`of ${data.open.urgent} urgent`} about="Urgent open orders with panels still to make." />
         <StatTile label="Not started" value={fmt(w.notStarted)} about="Panels planned on open orders and not punched yet." />

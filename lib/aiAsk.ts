@@ -7,19 +7,20 @@
 // chat already there. The chat takes it into a new chat (so no what-if kept
 // in an older one colours the answer). A plain hand-over is put in the box
 // for the person to send: nothing is spent until they do. One handed with
-// `send` — the person picked "Ask AI" itself — is sent as it is taken.
+// `explain` — the person picked "Ask AI" itself — is sent as it is taken, to
+// explain only: the reading tools alone (the chat route's readOnly).
 
 const EVENT = "ai:ask";
 
 export interface HandedQuestion {
   question: string;
-  send: boolean;
+  explain: boolean;
 }
 
 let pending: HandedQuestion | null = null;
 
-export function handToAssistant(question: string, opts: { send?: boolean } = {}) {
-  pending = { question, send: !!opts.send };
+export function handToAssistant(question: string, opts: { explain?: boolean } = {}) {
+  pending = { question, explain: !!opts.explain };
   window.dispatchEvent(new Event(EVENT));
 }
 

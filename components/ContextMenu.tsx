@@ -39,8 +39,8 @@ export interface MenuAt<T> {
   x: number;
   y: number;
   payload: T;
-  /** What it was opened on, for "Ask AI". */
-  ai: AiTarget | null;
+  /** What it was opened on — read for "Ask AI" only if it is picked. */
+  target: Element | null;
 }
 
 /** The open/close state of one menu: `open(e, payload)` goes on the row's
@@ -49,7 +49,7 @@ export function useContextMenu<T>() {
   const [menu, setMenu] = useState<MenuAt<T> | null>(null);
   const open = (e: { preventDefault: () => void; clientX: number; clientY: number; target?: EventTarget | null }, payload: T) => {
     e.preventDefault();
-    setMenu({ x: e.clientX, y: e.clientY, payload, ai: e.target instanceof Element ? readAiTarget(e.target) : null });
+    setMenu({ x: e.clientX, y: e.clientY, payload, target: e.target instanceof Element ? e.target : null });
   };
   const close = useCallback(() => setMenu(null), []);
   return { menu, open, close };
@@ -58,18 +58,23 @@ export function useContextMenu<T>() {
 const isSep = (e: MenuEntry): e is { sep: true } => "sep" in e;
 const isHeading = (e: MenuEntry): e is { heading: string } => "heading" in e;
 
-/** The menu's own last entry: explain `target` in a new chat — none for
- *  someone without the assistant, or with nothing to explain. */
-export function useAskAiEntry(target: AiTarget | null | undefined): MenuEntry[] {
+/** "Ask AI": explain what `read` finds in a new chat, answered at once —
+ *  null for someone without the assistant, or with nothing to read. */
+export function useAskAiEntry(read: (() => AiTarget | null) | null): MenuAction | null {
   const ai = useAiPanel();
-  if (!target || !ai?.canAsk) return [];
-  return [{ sep: true }, { key: "ask-ai", label: "Ask AI", icon: "✨", hint: "Explain this: what it is, what it says now and how it is worked out", onSelect: () => ai.ask(explainQuestion(target, pageName()), { send: true }) }];
+  if (!read || !ai?.canAsk) return null;
+  return {
+    key: "ask-ai", label: "Ask AI", icon: "✨", hint: "Explain this: what it is, what it says now and how it is worked out",
+    onSelect: () => {
+      const t = read();
+      if (t) ai.ask(explainQuestion(t, pageName()), { explain: true });
+    },
+  };
 }
 
-export function ContextMenu({ x, y, entries: own, ai, onClose }: { x: number; y: number; entries: MenuEntry[]; ai?: AiTarget | null; onClose: () => void }) {
-  const askAi = useAskAiEntry(ai);
-  // a menu with nothing of its own is the Ask AI one — no line above it
-  const entries = own.length === 0 ? askAi.slice(1) : [...own, ...askAi];
+export function ContextMenu({ x, y, entries: own, target, onClose }: { x: number; y: number; entries: MenuEntry[]; target?: Element | null; onClose: () => void }) {
+  const askAi = useAskAiEntry(target ? () => readAiTarget(target) : null);
+  const entries: MenuEntry[] = askAi ? [...own, ...(own.length ? [{ sep: true } as const] : []), askAi] : own;
   const box = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
   const [asking, setAsking] = useState<MenuAction | null>(null);
@@ -84,6 +89,12 @@ export function ContextMenu({ x, y, entries: own, ai, onClose }: { x: number; y:
     const top = Math.max(4, Math.min(y, window.innerHeight - r.height - 4));
     setPos({ left, top });
   }, [x, y, asking]);
+
+  // the keyboard starts on the first entry (the ⋯ button, Shift+F10), and
+  // Tab walks the rest — without scrolling the page under the menu
+  useEffect(() => {
+    box.current?.querySelector<HTMLElement>("[role=menuitem]:not([disabled])")?.focus({ preventScroll: true });
+  }, []);
 
   // a scroll closes the menu — but not the one the opening click itself
   // causes: a ⋯ button at the far right of a wide table scrolls its
@@ -132,6 +143,7 @@ export function ContextMenu({ x, y, entries: own, ai, onClose }: { x: number; y:
           <div className="text-xs font-bold">{asking.icon} {asking.label}</div>
           <input
             autoFocus
+            aria-label={asking.label}
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={asking.prompt.placeholder}

@@ -4,7 +4,7 @@ import { traceHref } from "@/lib/domain/links";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Info } from "lucide-react";
-import { Bullet, ChartCard, DeltaChip, Meter, StatTile, TONE_TEXT, arrowOf, fmt, pct, pctOrDash, signed } from "@/components/charts/kit";
+import { Bullet, ChartCard, DeltaChip, Meter, StatTile, TONE_TEXT, fmt, pct, pctOrDash, signed } from "@/components/charts/kit";
 import { BurnUpChart, LoadChart } from "@/components/LazyCharts";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/primitives";
@@ -46,9 +46,7 @@ function WeekChange({ trend, todayISO, pick, rate, unit = "", up }: {
   const c = weekChange(trend, todayISO, pick);
   if (!c) return null;
   const diff = rate ? Math.round((c.now - c.before) * 100) : Math.round((c.now - c.before) * 10) / 10;
-  const good = !up || diff === 0 ? null : (diff > 0) === (up === "good");
-  const amount = rate ? `${Math.abs(diff)} pts` : `${fmt(Math.abs(diff), 1)}${unit}`;
-  return <DeltaChip text={`${arrowOf(diff)} ${amount}`} good={good} title={`Since ${formatDate(c.beforeISO)}: ${rate ? pct(c.before) : `${fmt(c.before, 1)}${unit}`}`} />;
+  return <DeltaChip value={diff} unit={rate ? " pts" : unit} up={up} title={`Since ${formatDate(c.beforeISO)}: ${rate ? pct(c.before) : `${fmt(c.before, 1)}${unit}`}`} />;
 }
 
 /** `floor`: whether the account sees the Shifts screen — the shift log's

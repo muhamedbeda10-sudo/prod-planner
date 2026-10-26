@@ -1,6 +1,7 @@
 "use client";
 
-import { useAiTarget } from "@/lib/aiTarget";
+import { Badge } from "@/components/Badge";
+import { aiTargetRef } from "@/lib/aiTarget";
 
 // The dashboards' shared parts, so every dashboard reads the same way:
 //
@@ -67,7 +68,7 @@ export function ChartCard({
   className?: string;
   children: React.ReactNode;
 }) {
-  const ref = useAiTarget<HTMLElement>({ kind: "chart", title, about, rows: data });
+  const ref = aiTargetRef({ kind: "chart", title, about, rows: data });
   return (
     <section ref={ref} className={`bg-surface border rounded-xl p-4 min-w-0 ${className}`}>
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
@@ -142,7 +143,7 @@ export function StatTile({
   /** What the figure means and how it is counted, for "Ask AI". */
   about?: string;
 }) {
-  const ref = useAiTarget<HTMLDivElement>({ kind: "figure", title: label, about });
+  const ref = aiTargetRef({ kind: "figure", title: label, about });
   return (
     <div ref={ref} className={`bg-surface border ${compact ? "rounded-lg px-3 py-2 min-w-[8rem] gap-1" : "rounded-xl px-4 py-3 min-w-[10.5rem] gap-2"} flex-1 flex flex-col ${hero ? "sm:min-w-[15rem]" : ""}`}>
       <div className="flex min-w-0 items-start justify-between gap-2">
@@ -159,23 +160,21 @@ export function StatTile({
   );
 }
 
-/** A change in a small chip: green where it is good news, red where bad,
- *  grey where neither — what it is measured against on hover. */
-export function DeltaChip({ text, good = null, title }: { text: string; good?: boolean | null; title?: string }) {
-  const tone = good === null ? "bg-surface-2 text-muted" : good ? "bg-ok-bg text-ok-fg" : "bg-bad-bg text-bad-fg";
-  return <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[length:var(--fs-sm)] font-bold tabnum ${tone}`} title={title}>{text}</span>;
+/** A change as a badge — "▲ 3 pts", "▼ 12%", "• 0" — green where it is
+ *  good news, red where bad, grey where `up` does not say (or nothing moved);
+ *  what it is measured against on hover. */
+export function DeltaChip({ value, unit = "", up, title }: { value: number; unit?: string; up?: "good" | "bad"; title?: string }) {
+  const arrow = value > 0 ? "▲" : value < 0 ? "▼" : "•";
+  const tone = !up || value === 0 ? "neutral" : (value > 0) === (up === "good") ? "success" : "danger";
+  return <Badge tone={tone} title={title} className="tabnum">{arrow} {fmt(Math.abs(value), 1)}{unit}</Badge>;
 }
-
-/** An arrow for a change: up, down, or none. */
-export const arrowOf = (v: number) => (v > 0 ? "▲" : v < 0 ? "▼" : "•");
 
 /** "▲ 12%" against the period before — direction only; whether up is good
  *  depends on the measure, so the caller picks `tone`. Nothing where there
  *  was nothing before. */
 export function Delta({ pct: p, before, tone = "neutral" }: { pct: number | null; before: number; tone?: "neutral" | "upGood" | "upBad" }) {
   if (p === null) return null;
-  const good = tone === "neutral" || p === 0 ? null : (p > 0) === (tone === "upGood");
-  return <DeltaChip text={`${arrowOf(p)} ${Math.abs(p)}%`} good={good} title={`Against the period before: ${fmt(before)}`} />;
+  return <DeltaChip value={p} unit="%" up={tone === "upGood" ? "good" : tone === "upBad" ? "bad" : undefined} title={`Against the period before: ${fmt(before)}`} />;
 }
 
 // ---------------------------------------------------------------- legend & tooltip
