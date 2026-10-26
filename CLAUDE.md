@@ -44,6 +44,8 @@
    اعمل subscribe على الـ PR (`subscribe_pr_activity`) ومتعملش polling بـ
    `sleep`. لو الـ CI طلع أحمر، صلّح واعمل push تاني، وكرر لحد ما يخضر.
    **عمرك ما تعمل merge لـ PR الـ CI بتاعه أحمر أو لسه شغال.**
+   كل تشغيلة بتصرف من دقايق الـ Actions الشهرية: متعملش push غير لما الفحوصات
+   المحلية تعدّي، وجمّع التصليحات في push واحد.
 7. **اعمل merge بطريقة squash** (`mcp__github__merge_pull_request` مع
    `merge_method: "squash"`)، بنفس عنوان ووصف الـ commit. ده نفس اللي بيحصل
    مع كل الـ PRs اللي فاتت.
