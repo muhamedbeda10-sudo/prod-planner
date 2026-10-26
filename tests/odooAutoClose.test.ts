@@ -21,10 +21,10 @@ vi.mock("@/lib/server/events", () => ({ emitEvent: h.emit, listed: (xs: string[]
 vi.mock("@/lib/server/line", () => ({ withLine: (l: string, f: () => unknown) => { h.lines.push(l); return f(); } }));
 vi.mock("@/lib/server/masterTracker", () => ({ getMasterTracker: async () => h.rows }));
 
-import { closeOrdersClosedInOdoo, finishedAndClosedInOdooOf, settleOrdersAfterOdoo } from "@/lib/server/odooAutoClose";
+import { closeOrdersClosedInOdoo, settleOrdersAfterOdoo } from "@/lib/server/odooAutoClose";
 
 // an order of 2 needing its tank and top cover (core frame and cable box N/A)
-const item = (o: Record<string, unknown> = {}) => ({ cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: true, odooClosed: 0, odooTracked: true, ...o });
+const item = (o: Record<string, unknown> = {}) => ({ cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: true, odooClosed: 0, ...o });
 const row = (o: { mo?: string; status?: string; tc?: number; onHold?: boolean } = {}) => ({
   mo: o.mo ?? "MO-1", required: 2, complete: 2, status: o.status ?? "open",
   hold: { onHold: o.onHold ?? false, holdNote: null, holdSinceISO: null, holdBy: null }, pendingQty: null,
@@ -79,10 +79,3 @@ describe("settleOrdersAfterOdoo", () => {
   });
 });
 
-describe("finishedAndClosedInOdooOf", () => {
-  it("picks, of the orders asked about, the ones Odoo has closed in full — closed or not", async () => {
-    h.rows = [row({ status: "closed" }), row({ mo: "MO-2", status: "closed", tc: 1 }), row({ mo: "MO-3" })];
-    expect([...await finishedAndClosedInOdooOf(["MO-1", "MO-2"])]).toEqual(["MO-1"]);
-    expect([...await finishedAndClosedInOdooOf([])]).toEqual([]);
-  });
-});

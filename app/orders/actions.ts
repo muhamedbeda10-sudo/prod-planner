@@ -11,7 +11,6 @@ import { getActiveLine } from "@/lib/server/line";
 import { isLvFamily } from "@/lib/domain/lv";
 import { linePermKey } from "@/lib/domain/permissions";
 import { fullyDeliveredOpenOrders } from "@/lib/server/deliveredOrders";
-import { finishedAndClosedInOdooOf } from "@/lib/server/odooAutoClose";
 import { orderDeletePreview, type OrderDeletePreview } from "@/lib/server/orderDelete";
 import { userMessage } from "@/lib/server/errors";
 import { ORDER_TEXT_KEYS, orderTextValue, type OrderTextField } from "@/lib/domain/orderFields";
@@ -31,26 +30,21 @@ export async function setOrderStatus(formData: FormData): Promise<{ ok: boolean;
     const guard = await requirePerm(linePermKey(line, "status"));
     if (guard.error) return { ok: false, error: guard.error };
   }
-  const found = orders.map((o) => o.mo);
-  if (status === "closed") {
-    await prisma.masterOrder.updateMany({ where: { mo: { in: found } }, data: { status, closedAt: new Date(), autoCloseOff: false, autoClosedAt: null } });
-  } else {
-    // reopened by hand while Odoo has it all closed, it stays open — it would
-    // close by itself again within the hour — until someone closes it again;
-    // any other reopen (an undo, an order taken off the plan) still closes by
-    // itself once it is finished and Odoo has closed it all
-    const odooFull = await finishedAndClosedInOdooOf(orders.filter((o) => o.line === "TR").map((o) => o.mo));
-    await prisma.$transaction([
-      prisma.masterOrder.updateMany({ where: { mo: { in: found.filter((m) => odooFull.has(m)) } }, data: { status, closedAt: null, autoCloseOff: true, autoClosedAt: null } }),
-      prisma.masterOrder.updateMany({ where: { mo: { in: found.filter((m) => !odooFull.has(m)) } }, data: { status, closedAt: null, autoCloseOff: false, autoClosedAt: null } }),
-    ]);
-  }
+  const done = orders.map((o) => o.mo);
+  const data = { status, closedAt: status === "closed" ? new Date() : null, autoCloseOff: false, autoClosedAt: null };
+  await prisma.$transaction([
+    prisma.masterOrder.updateMany({ where: { mo: { in: done }, ...(status === "open" ? { autoClosedAt: null } : {}) }, data }),
+    // reopened by hand after it closed by itself, it stays open until someone
+    // closes it again (any other reopen still closes by itself once Odoo has
+    // closed it all) — the orders the write above left, autoClosedAt still set
+    ...(status === "open" ? [prisma.masterOrder.updateMany({ where: { mo: { in: done }, autoClosedAt: { not: null } }, data: { ...data, autoCloseOff: true } })] : []),
+  ]);
   for (const p of ["/tracker", "/orders", "/worklist/cut", "/trace"]) revalidatePath(p);
   await emitEvent({
     type: status === "closed" ? "order.closed" : "order.reopened",
-    subject: listed(found),
-    summary: `${status === "closed" ? "Closed" : "Reopened"} ${listed(found, 6)}`,
-    data: { mos: found, reason: "tracker" },
+    subject: listed(done),
+    summary: `${status === "closed" ? "Closed" : "Reopened"} ${listed(done, 6)}`,
+    data: { mos: done, reason: "tracker" },
   });
   return { ok: true };
 }

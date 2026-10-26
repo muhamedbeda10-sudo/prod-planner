@@ -4,15 +4,15 @@ import { prisma } from "@/lib/db";
 import { emitEvent, listed } from "@/lib/server/events";
 import { withLine } from "@/lib/server/line";
 import { getMasterTracker } from "@/lib/server/masterTracker";
-import { closesByItself, finishedAndClosedInOdoo } from "@/lib/domain/trackerOdoo";
+import { closesByItself } from "@/lib/domain/trackerOdoo";
 
 // An order closes by itself once it is finished AND Odoo has closed it all —
 // read off the Plan Tracker's own row (closesByItself), so it closes exactly
 // when the tracker shows it finished (what its Close button asks) and its
 // Odoo column full. Never one on hold or with a plan qty waiting for the
 // planner. The transformers only — the panels' Odoo rows are not allocated to
-// orders. An order someone reopened by hand while Odoo had it all closed
-// stays open (autoCloseOff) until they close it again. It never reopens by
+// orders. An order someone reopened by hand after it closed by itself
+// (autoClosedAt) stays open (autoCloseOff) until they close it again. It never reopens by
 // itself: the Odoo allocation is recomputed (a tracking start moved, another
 // order of the same BOM given more room), and an order must not come back on
 // the floor's screens for that. Runs after Odoo rows change, and each hour.
@@ -56,12 +56,3 @@ export async function settleOrdersAfterOdoo(): Promise<void> {
   }
 }
 
-/** Of these transformer orders, the ones that read finished and closed in
- *  full in Odoo — a reopen by hand keeps those from closing again by
- *  themselves. */
-export async function finishedAndClosedInOdooOf(mos: readonly string[]): Promise<Set<string>> {
-  if (mos.length === 0) return new Set();
-  const want = new Set(mos);
-  const rows = await withLine("TR", () => getMasterTracker());
-  return new Set(rows.filter((r) => want.has(r.mo) && finishedAndClosedInOdoo(r)).map((r) => r.mo));
-}

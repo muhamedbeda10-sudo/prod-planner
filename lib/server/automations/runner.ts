@@ -18,7 +18,7 @@ import { withLine } from "@/lib/server/line";
 import { automationWindowOf, configOf, eventReaches, nextRunOf, offDays, ownerDenied, runCondition } from "./store";
 import { runDailyReviews } from "./review";
 import { runWatch } from "@/lib/server/watchdog";
-import { closeOrdersClosedInOdoo } from "@/lib/server/odooAutoClose";
+import { settleOrdersAfterOdoo } from "@/lib/server/odooAutoClose";
 import { AI_DENY_TEXT, automationContext, costUsd } from "@/lib/domain/ai";
 import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
 import {
@@ -68,7 +68,7 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
     await withLine("TR", () => getCockpit(now)).then(recordKpiSnapshot).catch((e) => console.error("kpis: snapshot failed", e));
     // the finished orders Odoo has closed in full close by themselves — caught
     // here too, whatever finished them last (a paint log, a hold released)
-    await closeOrdersClosedInOdoo().catch((e) => console.error("orders: closing the orders Odoo closed failed", e));
+    await settleOrdersAfterOdoo();
   }
   const window = automationWindowOf(settings);
   const inHours = inAutomationWindow(now, window);

@@ -21,7 +21,7 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     title: "An order closes by itself once Odoo has closed it all",
     where: "Plan Tracker · ODOO log",
     href: "/tracker",
-    body: "No more closing a finished order by hand: once an order reads finished on the Plan Tracker and every component it needs has its full plan quantity closed in Odoo (the Odoo column reads full; outsourced pieces counted), it closes by itself — the moment the last Odoo row is marked Done, or at the next hourly check otherwise. It leaves the daily screens as a manual close does. An order on hold, or with a new plan qty waiting for you, stays open. If you reopen an order Odoo has closed in full, it stays open until you close it again. The Close button is still there for anything Odoo does not cover.",
+    body: "No more closing a finished order by hand: once an order reads finished on the Plan Tracker and every component it needs has its full plan quantity closed in Odoo (the Odoo column reads full; outsourced pieces counted), it closes by itself — the moment the last Odoo row is marked Done, or at the next hourly check otherwise. It leaves the daily screens as a manual close does. An order on hold, or with a new plan qty waiting for you, stays open. If you reopen an order that closed by itself, it stays open until you close it again. The Close button is still there for anything Odoo does not cover.",
   },
   {
     id: "2026-10-26-dashboards-tab",

@@ -2,6 +2,7 @@ import { ITEMS, isItem, type Item } from "./constants";
 import { isDoneStatus, odooRowBom } from "./odoo";
 import { ITEM_PRODUCT, sameProduct } from "./odooMirror";
 import { parseISODate, toISODate } from "./dates";
+import { isFullyDelivered } from "./groupSpread";
 
 /** Closed quantities exceeding the matching plans stay visible as unallocated. */
 export interface OdooUnallocatedQuantity { key: string; item: Item; qty: number; mos: string[] }
@@ -144,17 +145,6 @@ export function trackerOdooTotal(rows: readonly { mo: string; odooPlanMonth?: st
   return { qty, unallocated };
 }
 
-/** An order every needed component of which is closed in Odoo for its whole
- *  plan quantity — its outsourced pieces counted as they are on the tracker
- *  (they never pass the paint shop, so no Odoo row is born for them). At
- *  least one piece must have been closed in Odoo: an order wholly
- *  outsourced is not "closed in Odoo" by that alone. */
-export function closedInOdoo(planQty: number, needed: readonly { item: Item; osp: number }[], counts: Partial<Record<Item, number>> | undefined): boolean {
-  if (planQty <= 0 || needed.length === 0) return false;
-  if (!needed.some(({ item }) => (counts?.[item] ?? 0) > 0)) return false;
-  return needed.every(({ item, osp }) => (counts?.[item] ?? 0) + osp >= planQty);
-}
-
 /** What the auto-close reads off a Plan Tracker row. */
 export interface TrackerCloseRow {
   status: string;
@@ -162,16 +152,17 @@ export interface TrackerCloseRow {
   complete: number;
   hold: { onHold: boolean };
   pendingQty: unknown;
-  items: Record<Item, { osp: number; eligible: boolean; excluded: boolean; odooClosed?: number; odooTracked?: boolean }>;
+  items: Record<Item, { osp: number; eligible: boolean; excluded: boolean; odooClosed?: number }>;
 }
 
-const neededItems = (r: TrackerCloseRow) => ITEMS.filter((it) => r.items[it].eligible && !r.items[it].excluded);
-
-/** Finished on the tracker, and closed in full in Odoo — whatever its status. */
+/** Finished on the tracker, and every needed component closed in Odoo for
+ *  its whole plan quantity — whatever its status. Odoo's closings judged as
+ *  "Close N delivered" judges deliveries: outsourced pieces never pass the
+ *  paint shop, so no Odoo row is born for them and they are not owed; an
+ *  order wholly outsourced is never "closed in Odoo" by that alone. */
 export function finishedAndClosedInOdoo(r: TrackerCloseRow): boolean {
-  if (r.required <= 0 || r.complete < r.required) return false;
-  const counts = Object.fromEntries(ITEMS.map((it) => [it, r.items[it].odooClosed ?? 0]));
-  return closedInOdoo(r.required, neededItems(r).map((item) => ({ item, osp: r.items[item].osp })), counts);
+  if (r.complete < r.required) return false;
+  return isFullyDelivered(r.required, ITEMS.map((it) => ({ counts: r.items[it].eligible && !r.items[it].excluded, delivered: r.items[it].odooClosed ?? 0, osp: r.items[it].osp })));
 }
 
 /** An open order that closes by itself now: finished and closed in full in
@@ -179,4 +170,3 @@ export function finishedAndClosedInOdoo(r: TrackerCloseRow): boolean {
 export function closesByItself(r: TrackerCloseRow): boolean {
   return r.status === "open" && !r.hold.onHold && r.pendingQty == null && finishedAndClosedInOdoo(r);
 }
-

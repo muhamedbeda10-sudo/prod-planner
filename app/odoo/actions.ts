@@ -151,7 +151,8 @@ export async function createOdooEntry(formData: FormData): Promise<OdooActionRes
     data: { line, odooMo: f.odooMo, product: f.product, qty: f.qty, soi: f.soi },
   });
   // after its own event, so the order's close reads after the log that caused it
-  await settleOrdersAfterOdoo();
+  // only a transformer row closed can close an order — the panels' rows close none
+  if (line === "TR" && isDoneStatus(f.status)) await settleOrdersAfterOdoo();
   return { ok: true, id: created.id };
 }
 
@@ -182,7 +183,7 @@ export async function updateOdooEntry(formData: FormData): Promise<OdooActionRes
   });
   if (res.count === 0) return { ok: false, error: STALE };
   revalidateOdoo();
-  await settleOrdersAfterOdoo();
+  if (isDoneStatus(f.status)) await settleOrdersAfterOdoo();
   return { ok: true };
 }
 
@@ -248,7 +249,7 @@ export async function setOdooStatus(formData: FormData): Promise<OdooActionResul
     return prisma.odooEntry.update({ where: { id: p.id }, data: { status, doneAt, recordedBy: by } });
   }));
   revalidateOdoo();
-  await settleOrdersAfterOdoo();
+  if (isDoneStatus(status)) await settleOrdersAfterOdoo();
   return { ok: true };
 }
 
@@ -333,7 +334,7 @@ export async function updateOdooGroup(formData: FormData): Promise<OdooActionRes
     throw e;
   }
   revalidateOdoo();
-  await settleOrdersAfterOdoo();
+  if (isDoneStatus(f.status)) await settleOrdersAfterOdoo();
   return { ok: true };
 }
 
@@ -362,7 +363,7 @@ export async function importOdooAction(formData: FormData): Promise<OdooImportRe
     const res = await importOdooSheet(await file.arrayBuffer(), fallbackDay, guard.user?.name ?? null, preview, line);
     if (res.ok && !preview) {
       revalidateOdoo();
-      await settleOrdersAfterOdoo();
+      if (line === "TR") await settleOrdersAfterOdoo();
     }
     return res;
   } catch (e) {
