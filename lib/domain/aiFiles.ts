@@ -56,6 +56,12 @@ export const AI_FILE_ACCEPT = ".xlsx,.xlsm,.xls,.csv,.pdf,image/*";
 export const AI_IMAGE_MAX_SIDE = 2000;
 export const AI_IMAGE_QUALITY = 0.88;
 
+/** What "Scan a sheet" asks with the photo it takes: read the paper as it
+ *  is first, then prepare what it holds — the person checks the cards
+ *  against the paper before anything is recorded. */
+export const SCAN_SHEET_QUESTION =
+  "Read this handwritten sheet. Copy it into a table exactly as written first (mark any cell you cannot read with ?), say what it is and for which day, shift and department, then prepare the records it holds for my approval.";
+
 const startsWith = (b: Uint8Array, sig: readonly number[], at = 0) => sig.every((x, i) => b[at + i] === x);
 const ZIP = [0x50, 0x4b, 0x03, 0x04];
 const OLE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];

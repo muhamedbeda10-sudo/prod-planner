@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { aiFileKind, attachmentNote, cleanFileName, fileRef, fileRefId, fileSizeText, filesOfNote, filesToSend, isAttachmentNote, questionSeenProblem, seenTokensOf, type SeenWeight } from "./aiFiles";
-import { displayTurns } from "./ai";
+import { SCAN_SHEET_QUESTION, aiFileKind, attachmentNote, cleanFileName, fileRef, fileRefId, fileSizeText, filesOfNote, filesToSend, isAttachmentNote, questionSeenProblem, seenTokensOf, type SeenWeight } from "./aiFiles";
+import { AI_MAX_QUESTION, displayTurns } from "./ai";
 
 const bytes = (...b: number[]) => new Uint8Array(b);
 const ZIP = bytes(0x50, 0x4b, 0x03, 0x04, 0x14, 0x00);
@@ -97,5 +97,13 @@ describe("the files note", () => {
     ]);
     expect(turns[0]).toEqual({ role: "user", text: "Import this as the October plan", lookups: [], files: [{ id: 12, name: "October 'final' plan.xlsx", kind: "excel" }, { id: 13, name: "stock.csv", kind: "csv" }] });
     expect(turns[2]).toEqual({ role: "user", text: "Thanks", lookups: [] });
+  });
+});
+
+describe("scanning a sheet", () => {
+  it("asks within a question's length, to copy the sheet before recording it", () => {
+    expect(SCAN_SHEET_QUESTION.length).toBeLessThanOrEqual(AI_MAX_QUESTION);
+    expect(SCAN_SHEET_QUESTION).toMatch(/exactly as written/);
+    expect(SCAN_SHEET_QUESTION).toMatch(/for my approval/);
   });
 });
