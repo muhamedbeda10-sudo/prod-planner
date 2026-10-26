@@ -3,11 +3,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useAiPanel } from "@/components/AiPanel";
+import { pageName, readAiTarget } from "@/lib/aiTarget";
+import { explainQuestion, type AiTarget } from "@/lib/domain/aiExplain";
 
 // A right-click menu for a table row. The row decides what goes in it — a
 // list of entries built at open time — so a new action is one more entry,
 // not another button squeezed into the Status cell. An entry can ask for a
 // line of text first (a reason) before it runs.
+//
+// Every menu ends with "Ask AI" for whoever has the assistant: it explains
+// the row (or whatever it was opened on) in a new chat, answered at once.
 //
 // Manners: it opens at the pointer and stays inside the viewport; Escape, a
 // click elsewhere, a scroll or a resize close it; Enter submits a prompt.
@@ -33,15 +39,17 @@ export interface MenuAt<T> {
   x: number;
   y: number;
   payload: T;
+  /** What it was opened on — read for "Ask AI" only if it is picked. */
+  target: Element | null;
 }
 
 /** The open/close state of one menu: `open(e, payload)` goes on the row's
  *  onContextMenu (or a ⋯ button's onClick), `menu` is what to render. */
 export function useContextMenu<T>() {
   const [menu, setMenu] = useState<MenuAt<T> | null>(null);
-  const open = (e: { preventDefault: () => void; clientX: number; clientY: number }, payload: T) => {
+  const open = (e: { preventDefault: () => void; clientX: number; clientY: number; target?: EventTarget | null }, payload: T) => {
     e.preventDefault();
-    setMenu({ x: e.clientX, y: e.clientY, payload });
+    setMenu({ x: e.clientX, y: e.clientY, payload, target: e.target instanceof Element ? e.target : null });
   };
   const close = useCallback(() => setMenu(null), []);
   return { menu, open, close };
@@ -50,7 +58,23 @@ export function useContextMenu<T>() {
 const isSep = (e: MenuEntry): e is { sep: true } => "sep" in e;
 const isHeading = (e: MenuEntry): e is { heading: string } => "heading" in e;
 
-export function ContextMenu({ x, y, entries, onClose }: { x: number; y: number; entries: MenuEntry[]; onClose: () => void }) {
+/** "Ask AI": explain what `read` finds in a new chat, answered at once —
+ *  null for someone without the assistant, or with nothing to read. */
+export function useAskAiEntry(read: (() => AiTarget | null) | null): MenuAction | null {
+  const ai = useAiPanel();
+  if (!read || !ai?.canAsk) return null;
+  return {
+    key: "ask-ai", label: "Ask AI", icon: "✨", hint: "Explain this: what it is, what it says now and how it is worked out",
+    onSelect: () => {
+      const t = read();
+      if (t) ai.ask(explainQuestion(t, pageName()), { explain: true });
+    },
+  };
+}
+
+export function ContextMenu({ x, y, entries: own, target, onClose }: { x: number; y: number; entries: MenuEntry[]; target?: Element | null; onClose: () => void }) {
+  const askAi = useAskAiEntry(target ? () => readAiTarget(target) : null);
+  const entries: MenuEntry[] = askAi ? [...own, ...(own.length ? [{ sep: true } as const] : []), askAi] : own;
   const box = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
   const [asking, setAsking] = useState<MenuAction | null>(null);
@@ -65,6 +89,12 @@ export function ContextMenu({ x, y, entries, onClose }: { x: number; y: number; 
     const top = Math.max(4, Math.min(y, window.innerHeight - r.height - 4));
     setPos({ left, top });
   }, [x, y, asking]);
+
+  // the keyboard starts on the first entry (the ⋯ button, Shift+F10), and
+  // Tab walks the rest — without scrolling the page under the menu
+  useEffect(() => {
+    box.current?.querySelector<HTMLElement>("[role=menuitem]:not([disabled])")?.focus({ preventScroll: true });
+  }, []);
 
   // a scroll closes the menu — but not the one the opening click itself
   // causes: a ⋯ button at the far right of a wide table scrolls its
@@ -113,6 +143,7 @@ export function ContextMenu({ x, y, entries, onClose }: { x: number; y: number; 
           <div className="text-xs font-bold">{asking.icon} {asking.label}</div>
           <input
             autoFocus
+            aria-label={asking.label}
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={asking.prompt.placeholder}

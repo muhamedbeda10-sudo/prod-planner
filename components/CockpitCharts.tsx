@@ -11,7 +11,7 @@ import type { ProductivityPoint } from "@/lib/domain/floorKpis";
 // The cockpit's charts. One y-axis each (never two scales on one plot); the
 // plan and the line against it in neutral ink and the accent; a category keeps
 // its slot of the palette wherever it appears; the grid and the axes recede.
-// Every chart has its numbers one click away under the card's Table switch.
+// Every chart's numbers go with the card to "Ask AI" on a right-click.
 
 const TICK = { fontSize: 11 };
 const AXIS = { stroke: "var(--border-strong)" };

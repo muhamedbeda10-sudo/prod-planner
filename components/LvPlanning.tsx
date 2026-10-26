@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Info } from "lucide-react";
-import { Bullet, ChartCard, StatTile, TONE_TEXT, fmt, pct, pctOrDash, signed } from "@/components/charts/kit";
+import { Bullet, ChartCard, DeltaChip, StatTile, fmt, pct, pctOrDash, signed } from "@/components/charts/kit";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/primitives";
 import { TableFrame, Th } from "@/components/DataTable";
@@ -46,15 +46,17 @@ export function LvPlanning({ data, floor = true }: { data: LvPlanningData; floor
       {/* the headline figures */}
       <div className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
         <StatTile hero label={`${m.monthLabel} — painted`} value={pctOrDash(pace.doneShare)} meter={pace.doneShare ?? undefined}
-          sub={m.panels > 0 ? `${fmt(m.complete)} of ${fmt(m.panels)} panels · an even pace stands at ${pct(pace.expectedShare)}` : "no panels on the month's plan"}
-          delta={pace.tone && m.panels > 0 ? <span className={`text-xs font-bold ${TONE_TEXT[pace.tone]}`}>{pace.aheadH >= 0 ? `${Math.floor(pace.aheadH)} panels ahead of` : `${Math.ceil(-pace.aheadH)} panels behind`} the pace${m.paintedBefore > 0 ? ` · ${fmt(m.paintedBefore)} painted before the month` : ""}</span> : undefined} />
-        <StatTile label="Panels left this month" value={fmt(m.remaining)} sub={m.leftWd > 0 ? `${m.leftWd} of ${m.monthWd} working days left` : "the month's working days are over"} />
-        <StatTile label="Urgent orders short" value={String(data.urgentStuck.length)} sub={`of ${data.open.urgent} urgent open order${data.open.urgent === 1 ? "" : "s"}`} />
-        <StatTile label="Not started" value={fmt(w.notStarted)} sub="panels planned and not punched" />
+          sub={m.panels > 0 ? `${fmt(m.complete)} of ${fmt(m.panels)} panels` : undefined}
+          about={m.panels > 0 ? `Panels of ${m.monthLabel}'s plan painted (finished): ${fmt(m.complete)} of ${fmt(m.panels)}. An even pace stands at ${pct(pace.expectedShare)} today; ${pace.aheadH >= 0 ? `${Math.floor(pace.aheadH)} panels ahead of` : `${Math.ceil(-pace.aheadH)} panels behind`} it.${m.paintedBefore > 0 ? ` ${fmt(m.paintedBefore)} were painted before the month.` : ""}` : "No panels on the month's plan."}
+          delta={pace.tone && m.panels > 0 ? <DeltaChip value={pace.aheadH >= 0 ? Math.floor(pace.aheadH) : -Math.ceil(-pace.aheadH)} up="good" title={pace.aheadH >= 0 ? "Panels ahead of an even pace" : "Panels behind an even pace"} /> : undefined} />
+        <StatTile label="Panels left this month" value={fmt(m.remaining)} sub={m.leftWd > 0 ? `${m.leftWd} of ${m.monthWd} working days left` : undefined} />
+        <StatTile label="Urgent orders short" value={String(data.urgentStuck.length)} sub={`of ${data.open.urgent} urgent`} about="Urgent open orders with panels still to make." />
+        <StatTile label="Not started" value={fmt(w.notStarted)} about="Panels planned on open orders and not punched yet." />
         {floor && (
           <>
-            <StatTile label="Panels' efficiency" value={pctOrDash(recent.efficiency)} sub={recent.days > 0 ? `${fmt(recent.earnedH, 1)} std-h of ${fmt(recent.workedH, 1)} worked · last ${recent.days} recorded days` : "no shift day recorded on the panels lately"} />
-            <StatTile label="People short" value={m.leftWd > 0 && mp.rows.some((r) => r.gap !== null) ? String(short) : "—"} sub={m.leftWd > 0 ? `to finish ${m.monthLabel}'s panels` : "the month's working days are over"} />
+            <StatTile label="Panels' efficiency" value={pctOrDash(recent.efficiency)} sub={recent.days > 0 ? `${fmt(recent.earnedH, 1)} of ${fmt(recent.workedH, 1)} h` : undefined}
+              about={recent.days > 0 ? `Standard hours earned (${fmt(recent.earnedH, 1)}) over the man-hours worked (${fmt(recent.workedH, 1)}) on the panels, over the last ${recent.days} recorded days.` : "No shift day recorded on the panels lately."} />
+            <StatTile label="People short" value={m.leftWd > 0 && mp.rows.some((r) => r.gap !== null) ? String(short) : "—"} sub={m.monthLabel} about={m.leftWd > 0 ? `People missing to finish ${m.monthLabel}'s panels in the working days left.` : "The month's working days are over."} />
           </>
         )}
       </div>
@@ -64,8 +66,8 @@ export function LvPlanning({ data, floor = true }: { data: LvPlanningData; floor
         <ChartCard
           className="xl:col-span-4"
           title="Is the month on pace?"
-          sub={`${m.monthLabel}: each stage's panels done of the month's ${fmt(m.panels)}, the tick where an even pace stands today (${m.monthWd - m.leftWd} of ${m.monthWd} working days behind us). The panel is finished when painted; delivery is the customer's pace.`}
-          table={{ rows: m.byStage.map((b) => ({ Stage: LV_STAGE_LABEL[b.stage], Planned: b.required, Done: b.done, "Done %": b.required > 0 ? Math.round((b.done / b.required) * 100) : "", "Even pace %": Math.round(pace.expectedShare * 100) })) }}
+          about={`${m.monthLabel}: each stage's panels done of the month's ${fmt(m.panels)}, the tick where an even pace stands today (${m.monthWd - m.leftWd} of ${m.monthWd} working days behind us). The panel is finished when painted; delivery is the customer's pace.`}
+          data={m.byStage.map((b) => ({ Stage: LV_STAGE_LABEL[b.stage], Planned: b.required, Done: b.done, "Done %": b.required > 0 ? Math.round((b.done / b.required) * 100) : "", "Even pace %": Math.round(pace.expectedShare * 100) }))}
         >
           {m.panels === 0 ? (
             <EmptyState compact icon={Info} title={`No panels on ${m.monthLabel}'s plan`} hint="Import the panels' monthly plan on the Orders Registry (with the LV toggle on) — the month's pace is read from it." />
@@ -83,8 +85,8 @@ export function LvPlanning({ data, floor = true }: { data: LvPlanningData; floor
         <ChartCard
           className="xl:col-span-4"
           title="Where does the work wait?"
-          sub={`Panels between the stages over the ${w.orders} open order${w.orders === 1 ? "" : "s"}, netted order by order (punched − bent is waiting for bending) — never a stage's output added to the next's. The records say where a panel stands, not since when.`}
-          table={{ rows: wipRows.map(([label, pcs]) => ({ Where: label, Panels: pcs })) }}
+          about={`Panels between the stages over the ${w.orders} open order${w.orders === 1 ? "" : "s"}, netted order by order (punched − bent is waiting for bending) — never a stage's output added to the next's. The records say where a panel stands, not since when.`}
+          data={wipRows.map(([label, pcs]) => ({ Where: label, Panels: pcs }))}
         >
           {w.orders === 0 ? (
             <EmptyState compact icon={Info} title="No open panel order" hint="Every panel order is closed." />
@@ -101,8 +103,8 @@ export function LvPlanning({ data, floor = true }: { data: LvPlanningData; floor
         <ChartCard
           className="xl:col-span-4"
           title="Do we have the people?"
-          sub={`What is left of ${m.monthLabel}'s panels in standard hours (the timings sheet's LV tab) over the ${m.leftWd} working days left × ${fmt(mp.hoursPerPersonDay, 1)} h a person.${floor ? " The bar is who comes on an average recorded day; the tick is who is needed from today." : " The tick is who is needed from today."}${unpriced > 0 ? ` ${unpriced} of ${mp.coverage.orders} orders have no row on the sheet and ask no hours here — partial coverage.` : ""}`}
-          table={{ rows: mp.rows.map((r) => ({ Department: LV_FLOOR_DEPT_LABEL[r.centre], "Plan h": r.requiredH, "Done h": r.doneH, "Left h": r.leftH, "Needed (month)": r.needed ?? "", "Needed from today": r.neededNow ?? "", ...(floor ? { Present: r.present ?? "", Gap: r.gap ?? "" } : {}) })) }}
+          about={`What is left of ${m.monthLabel}'s panels in standard hours (the timings sheet's LV tab) over the ${m.leftWd} working days left × ${fmt(mp.hoursPerPersonDay, 1)} h a person.${floor ? " The bar is who comes on an average recorded day; the tick is who is needed from today." : " The tick is who is needed from today."}${unpriced > 0 ? ` ${unpriced} of ${mp.coverage.orders} orders have no row on the sheet and ask no hours here — partial coverage.` : ""}`}
+          data={mp.rows.map((r) => ({ Department: LV_FLOOR_DEPT_LABEL[r.centre], "Plan h": r.requiredH, "Done h": r.doneH, "Left h": r.leftH, "Needed (month)": r.needed ?? "", "Needed from today": r.neededNow ?? "", ...(floor ? { Present: r.present ?? "", Gap: r.gap ?? "" } : {}) }))}
         >
           {m.panels === 0 ? (
             <EmptyState compact icon={Info} title={`No panels on ${m.monthLabel}'s plan`} hint="The people the month needs are read from the panels' monthly plan." />
@@ -126,8 +128,8 @@ export function LvPlanning({ data, floor = true }: { data: LvPlanningData; floor
         <ChartCard
           className="xl:col-span-5"
           title="Urgent orders still short"
-          sub="Every urgent open order with panels still to make, the most short first, and the first stage that has not cleared it. The panels carry no delivery date, so nothing here is called late — urgency is the planner's flag."
-          table={{ rows: data.urgentStuck.map((u) => ({ MO: u.mo, BOM: u.bom, Product: u.product ?? "", Short: u.remaining, "Stuck at": u.stage ?? "not started" })) }}
+          about="Every urgent open order with panels still to make, the most short first, and the first stage that has not cleared it. The panels carry no delivery date, so nothing here is called late — urgency is the planner's flag."
+          data={data.urgentStuck.map((u) => ({ MO: u.mo, BOM: u.bom, Product: u.product ?? "", Short: u.remaining, "Stuck at": u.stage ?? "not started" }))}
         >
           {data.urgentStuck.length === 0 ? (
             <EmptyState compact icon={Info} title="No urgent order is short" hint="Every urgent panel order is painted, or none is flagged." />
@@ -155,9 +157,6 @@ export function LvPlanning({ data, floor = true }: { data: LvPlanningData; floor
         </div>
       </div>
 
-      <p className="text-xs text-muted">
-        Not here, and why: the load over the next working days and the lines behind their stage date need delivery dates the panels&apos; plan does not carry; machine stops are recorded by department on shared machines, so none is the panels&apos; alone — the plant&apos;s stops are on the Production dashboard.
-      </p>
     </div>
   );
 }

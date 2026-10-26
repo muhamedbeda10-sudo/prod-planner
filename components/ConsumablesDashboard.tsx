@@ -27,7 +27,7 @@ import { OTHER_KEY, WEEKDAYS, pctChange, type ConsumablesStats } from "@/lib/dom
 // A hand-out is recorded to a department — no worker is named — so every
 // "who" here is a department.
 //
-// Every chart has a Table view with its export. Departments keep one colour
+// Every chart's numbers go to "Ask AI" on a right-click. Departments keep one colour
 // across every chart on the page (slot by their rank in the period).
 
 const H = { trend: 280, donut: 260, stack: 280, pareto: 320, tree: 320, scatter: 300 };
@@ -350,8 +350,7 @@ export function ConsumablesDashboard({ s, periodLabel }: { s: ConsumablesStats; 
   const k = s.kpis;
   const singleDay = s.timeline.unit === "hour";
   const days = s.daily.length;
-
-  // ---- table twins
+  // ---- the charts' numbers, for "Ask AI"
   const trendRows: TableRow[] = singleDay
     ? s.timeline.buckets.map((b) => ({ Hour: b.label, "Hand-outs": b.issues }))
     : s.daily.map((d) => ({ Day: d.dayISO, "Hand-outs": d.issues, "7-day average": d.avg7 ?? "" }));
@@ -373,26 +372,25 @@ export function ConsumablesDashboard({ s, periodLabel }: { s: ConsumablesStats; 
       {/* ---- headline tiles */}
       <div className="flex flex-wrap gap-3">
         <StatTile hero label="Hand-outs" value={compact(s.totals.issues)} spark={days > 1 ? s.daily.map((d) => d.issues) : undefined}
-          delta={s.previousIssues === null ? undefined : <Delta pct={pctChange(s.totals.issues, s.previousIssues)} before={s.previousIssues} />}
-          sub={s.previousIssues === null ? "the log does not go back a whole period before — nothing to compare with yet" : undefined} />
+          delta={s.previousIssues === null ? undefined : <Delta pct={pctChange(s.totals.issues, s.previousIssues)} before={s.previousIssues} />} />
         <StatTile label="Per day with hand-outs" value={fmt(k.perActiveDay, 1)} sub={singleDay ? "one day on the slicer" : `${k.activeDays} of ${days} days with hand-outs`} meter={singleDay ? undefined : k.activeDays / days} />
         <StatTile label="Items" value={fmt(s.totals.items)} sub={`${k.vitalFew} make up 80% of hand-outs`} meter={s.totals.items ? k.vitalFew / s.totals.items : 0} />
-        <StatTile label="Departments" value={fmt(s.totals.departments)} sub={`${fmt(k.perWorker, 1)} hand-outs each on average`} />
+        <StatTile label="Departments" value={fmt(s.totals.departments)} sub={`${fmt(k.perWorker, 1)} each on average`} />
         <StatTile label="Top department" value={pct(k.topDepartmentShare)} sub={s.departments[0]?.label} meter={k.topDepartmentShare} />
         <StatTile label="Busiest hour" value={busiest ? (singleDay ? hh(busiest.hour) : `${WEEKDAYS[busiest.weekday]} ${hh(busiest.hour)}`) : "—"}
-          sub={busiest ? `${fmt(busiest.issues)} hand-out${busiest.issues === 1 ? "" : "s"} in that hour, ${periodLabel}` : "no hand-outs"} />
+          sub={busiest ? `${fmt(busiest.issues)} hand-out${busiest.issues === 1 ? "" : "s"}` : undefined} />
       </div>
 
       {/* ---- how much, over time · who, by share */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
         <ChartCard className="xl:col-span-2"
           title={singleDay ? "Hand-outs by hour" : "Hand-outs per day"}
-          sub={singleDay ? "When in the day the store was busy" : `Area = the day's hand-outs · line = the trailing 7-day average${days < 7 ? " (from a week on)" : ""}`}
-          table={{ rows: trendRows }}>
+          about={singleDay ? "When in the day the store was busy" : `Area = the day's hand-outs · line = the trailing 7-day average${days < 7 ? " (from a week on)" : ""}`}
+          data={trendRows}>
           <TrendChart s={s} />
         </ChartCard>
-        <ChartCard title="Share by department" sub={s.departments.length > 5 ? "The top five; the rest folded into Other" : "Of all hand-outs in the period"}
-          table={{ rows: shareRows }}>
+        <ChartCard title="Share by department" about={s.departments.length > 5 ? "The top five; the rest folded into Other" : "Of all hand-outs in the period"}
+          data={shareRows}>
           <DepartmentDonut s={s} colorOf={colorOf} />
         </ChartCard>
       </div>
@@ -401,16 +399,16 @@ export function ConsumablesDashboard({ s, periodLabel }: { s: ConsumablesStats; 
           column to stack, and the donut already splits it by department) */}
       {!singleDay && (
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-          <ChartCard title="When the store is busy" sub="Hand-outs by weekday and hour — the darker, the busier"
-            table={{ rows: weekRows }}>
+          <ChartCard title="When the store is busy" about="Hand-outs by weekday and hour — the darker, the busier"
+            data={weekRows}>
             <Heatmap compactCells rowHead="" rows={WEEK_ORDER.map((d) => WEEKDAYS[d])} cols={s.weekHour.hours.map((h) => String(h).padStart(2, "0"))}
               values={WEEK_ORDER.map((d) => s.weekHour.counts[d])}
               cellTitle={(i, j, v) => `${WEEKDAYS[WEEK_ORDER[i]]} ${hh(s.weekHour.hours[j])}: ${fmt(v)} hand-out${v === 1 ? "" : "s"}`} />
             <div className="mt-2"><HeatScale max={weekMax} /></div>
           </ChartCard>
           <ChartCard title={`Departments ${s.departmentTrend.unit === "week" ? "week by week" : "day by day"}`}
-            sub="Hand-outs, stacked by department"
-            table={{ rows: stackRows }}>
+            about="Hand-outs, stacked by department"
+            data={stackRows}>
             <DepartmentStack s={s} colorOf={colorOf} />
           </ChartCard>
         </div>
@@ -419,32 +417,32 @@ export function ConsumablesDashboard({ s, periodLabel }: { s: ConsumablesStats; 
       {/* ---- which items matter · the whole range */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <ChartCard title="Items — the 80/20 view"
-          sub={`${k.vitalFew} of ${s.totals.items} item${s.totals.items === 1 ? "" : "s"} make up 80% of hand-outs${s.pareto.rows.length > 15 ? " · top 15 shown" : ""}`}
-          table={{ rows: paretoRows }}>
+          about={`${k.vitalFew} of ${s.totals.items} item${s.totals.items === 1 ? "" : "s"} make up 80% of hand-outs${s.pareto.rows.length > 15 ? " · top 15 shown" : ""}`}
+          data={paretoRows}>
           <ParetoChart s={s} />
         </ChartCard>
-        <ChartCard title="Every item at a glance" sub={`Tile size = hand-outs · colour = the department that takes it most${s.itemTiles.length > 40 ? " · top 40" : ""}`}
-          table={{ rows: itemRows }}>
+        <ChartCard title="Every item at a glance" about={`Tile size = hand-outs · colour = the department that takes it most${s.itemTiles.length > 40 ? " · top 40" : ""}`}
+          data={itemRows}>
           <ItemTreemap s={s} colorOf={colorOf} inkOf={inkOf} />
         </ChartCard>
       </div>
 
       {/* ---- departments: how they draw on it, and for their size */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <ChartCard title="How departments draw on the store" sub="Each bubble: how often × how many different items"
-          table={{ rows: workerRows }}>
+        <ChartCard title="How departments draw on the store" about="Each bubble: how often × how many different items"
+          data={workerRows}>
           <WorkerScatter s={s} />
         </ChartCard>
         <ChartCard title="Hand-outs per worker, by department"
-          sub={perHead.length ? "A department's hand-outs over its workers on the workers list — a big crew is not a big spender" : "No department on the workers list took anything in the period"}
-          table={{ rows: perHeadRows }}>
+          about={perHead.length ? "A department's hand-outs over its workers on the workers list — a big crew is not a big spender" : "No department on the workers list took anything in the period"}
+          data={perHeadRows}>
           <RankedBars unit="Hand-outs per worker" color="var(--viz-2)" data={perHead.map((d) => ({ name: d.label, value: Math.round(d.perPerson! * 10) / 10, note: `${fmt(d.issues)} hand-outs · ${d.people} worker${d.people === 1 ? "" : "s"}` }))} />
         </ChartCard>
       </div>
 
       {/* ---- where each item goes */}
-      <ChartCard title="Where each item goes" sub="Quantity handed out, item by department"
-        table={{ rows: matrixRows }}>
+      <ChartCard title="Where each item goes" about="Quantity handed out, item by department"
+        data={matrixRows}>
         <Heatmap totals="rows" scale="row" rowHead="Item" rows={s.matrix.items} cols={s.matrix.departments.map((d) => d.label)} values={s.matrix.qty} />
       </ChartCard>
 

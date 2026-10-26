@@ -566,7 +566,6 @@ function HandoutSummary({ rows, periodLabel, onClose }: { rows: ConsumableIssueV
           </ul>
         </section>
       </div>
-      <p className="text-[11px] text-muted mt-4 pt-3 border-t">Counts the hand-outs the log is showing — search narrows them. A quantity in one unit never adds to another (kg apart from pcs).</p>
     </Modal>
   );
 }

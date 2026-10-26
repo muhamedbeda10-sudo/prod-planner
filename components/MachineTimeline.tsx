@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { buildTimeline, type TimelineBlock } from "@/lib/domain/machineTimeline";
 import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
@@ -58,7 +57,7 @@ export function MachineTimeline({ board }: { board: MachineBoardData }) {
   if (days.length === 0) return null;
 
   return (
-    <section className="bg-surface border rounded-xl p-3 no-print">
+    <section className="bg-surface border rounded-xl p-3 no-print" data-ai-title={`The ${word}s' next ${horizon} working days`} data-ai-about={`Each block is one line on that ${word}, as long as the machine needs for it (its standard hours over the hours it has in a day, at the planner's own time per piece where there is one). They run in the queue's order, what is running now first. A block turns red when it is still running after the day its stage was owed; the thin mark on the track is that day. The work is moved with the machine cards, or with the printed sheets on the machines worklist.`}>
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <span className="inline-flex rounded-md overflow-hidden border">
           <button type="button" className={`btn btn-sm rounded-none ${view === "machines" ? "btn-primary" : "btn-ghost"}`} onClick={() => setView("machines")} title={`What each ${word} runs, and when`}>By {word}</button>
@@ -127,13 +126,6 @@ export function MachineTimeline({ board }: { board: MachineBoardData }) {
         ))}
       </div>
 
-      <p className="text-[11px] text-muted mt-2">
-        Each block is one line on that {word}, as long as the machine needs for it (its standard hours over the hours it has
-        in a day, at the planner&apos;s own time per piece where there is one). They run in the queue&apos;s order — what is running
-        now first. A block turns <span className="text-bad-fg font-semibold">red</span> when it is still running after the day
-        its stage was owed, and the thin mark on the track is that day. Move the work with the cards below, or with{" "}
-        <Link href={`/worklist/machines?dept=${board.dept}`} className="text-brand-ink font-semibold hover:underline">the printed sheets</Link>.
-      </p>
       </>)}
     </section>
   );

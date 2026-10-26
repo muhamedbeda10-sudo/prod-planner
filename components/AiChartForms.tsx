@@ -19,7 +19,7 @@ import {
 // moved a total, a schedule, before → after, many parts of a whole, a dial,
 // spread group by group, a flow, a month of days and a process in control. Each
 // keeps the same rules — the palette's slots in order and gray for "Other",
-// one value scale, a tooltip on every mark, and the numbers as a table twin.
+// one value scale, a tooltip on every mark, and the numbers kept with the card.
 // A plot on an axis runs left to right whatever the answer's language, as the
 // axes do; bars with no axis (progress, a funnel) start where the text does.
 

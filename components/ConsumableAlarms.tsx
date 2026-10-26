@@ -77,16 +77,16 @@ export function ConsumableAlarms({ d, periodLabel }: { d: LimitDashboard; period
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap gap-3">
-        <StatTile label="Over a limit now" value={fmt(overNow.length)} sub={overNow.length ? "limits past their number this month (or their months so far)" : "✓ every limit within its number"} />
-        <StatTile label="Closed over a limit" value={fmt(d.exceedances.length)} sub={`months (or longer limits) that ended over, ${pastLabel}`} />
-        <StatTile label="Recorded over a limit" value={fmt(d.overLimitIssues.length)} sub={`hand-outs with a reason, ${periodLabel}`} />
-        {d.uncatalogued > 0 && <StatTile label="Not in the catalogue" value={fmt(d.uncatalogued)} sub="hand-outs no limit counts — add the item?" />}
+        <StatTile label="Over a limit now" value={fmt(overNow.length)} sub={overNow.length ? undefined : "✓ all within limits"} about="Limits past their number in their current window: this month, or a limit of several months over its months so far." />
+        <StatTile label="Closed over a limit" value={fmt(d.exceedances.length)} sub={pastLabel} about={`Months (or longer limits) that ended over their number, ${pastLabel}.`} />
+        <StatTile label="Recorded over a limit" value={fmt(d.overLimitIssues.length)} sub={periodLabel} about={`Hand-outs recorded over a limit, each with the reason the recorder gave, ${periodLabel}.`} />
+        {d.uncatalogued > 0 && <StatTile label="Not in the catalogue" value={fmt(d.uncatalogued)} about="Hand-outs of items not in the catalogue, which no limit counts — add the item to the catalogue to count them." />}
       </div>
 
       <ChartCard
         title="Alarms now"
-        sub={overNow.length ? "Every limit past its number in its current window — this month, or its months so far — the mark on each bar is the limit" : "No limit is past its number this month"}
-        table={{ rows: boardRows }}
+        about={overNow.length ? "Every limit past its number in its current window — this month, or its months so far — the mark on each bar is the limit" : "No limit is past its number this month"}
+        data={boardRows}
       >
         {overNow.length === 0 ? <p className="text-sm text-ok-fg">✓ Every item is within its limits.</p> : (
           <ul className="divide-y">{overNow.map((a) => <AlarmLine key={a.ruleId} a={a} />)}</ul>
@@ -96,10 +96,10 @@ export function ConsumableAlarms({ d, periodLabel }: { d: LimitDashboard; period
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <ChartCard
           title="Past months over the limit"
-          sub={d.exceedances.length
+          about={d.exceedances.length
             ? `The last finished months (${pastLabel}) whatever the slicer — each month (or longer limit) that ended over its number, per-worker limits with that month's workers. The running month is under Alarms now.`
             : `No month went over a limit ${pastLabel}`}
-          table={d.exceedances.length ? { rows: exRows } : undefined}
+          data={d.exceedances.length ? exRows : undefined}
         >
           {d.exceedances.length > 0 ? (
             <TableFrame className="max-h-[420px]">
@@ -133,8 +133,8 @@ export function ConsumableAlarms({ d, periodLabel }: { d: LimitDashboard; period
 
         <ChartCard
           title="Recorded over a limit"
-          sub={d.overLimitIssues.length ? "The recorder was warned and gave the reason" : `No hand-out was recorded over a limit ${periodLabel}`}
-          table={d.overLimitIssues.length ? { rows: issueRows } : undefined}
+          about={d.overLimitIssues.length ? "The recorder was warned and gave the reason" : `No hand-out was recorded over a limit ${periodLabel}`}
+          data={d.overLimitIssues.length ? issueRows : undefined}
         >
           {d.overLimitIssues.length > 0 ? (
             <ul className="divide-y max-h-[420px] overflow-auto">

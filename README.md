@@ -430,6 +430,14 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
 12. **AI assistant** (`/ai`) — Claude answers from the live data in Arabic or English: SQL through `ai_reader`, a
    read-only login that cannot see the private tables, nor the tables of a screen hidden from the person. What it may do
    is the owner's call per person (Users & Permissions → AI assistant), and never more than the person may do themselves.
+   - **Ask AI on a right-click** (`components/AskAi.tsx`, `lib/aiTarget.ts`, `lib/domain/aiExplain.ts`): right-click
+     (long-press on a phone) a card, a chart, a figure, a table row or a column header anywhere and **Ask AI** explains it
+     in a new chat, sent at once — what it is, what it says now and how it is worked out. The screens keep their cards
+     short: a chart's or tile's note on how it is counted (`about`) and its numbers (`data`) are no longer on screen but
+     ride in the question, so the answer explains the figure the person is looking at; a server-rendered card says the same
+     in `data-ai-title` / `data-ai-about`. A row menu of its own (hold, close, trace…) carries the entry at its foot. The
+     browser's own menu stays in a field, on selected text and on Shift + right-click; there is none of it for someone
+     without the assistant. Each Ask AI is one question, from the person's AI allowance.
    - **Tools on demand** (`lib/server/ai/agent.ts`): the model starts each question with two tools — `query_database` and
      `get_machine_board` (`loaded` on the tool) — and finds every other one with the API's tool search (BM25, the tools
      sent with `defer_loading`), so a question carries only the definitions it uses (two tools and the search ≈ 0.5 k
@@ -587,15 +595,15 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    its day, the lines behind, welding's coverage, and — over the last 7 recorded days — Fabrication's efficiency, the
    machine time lost and the people short. Then: **1** the newest weekly plan — each stage's pieces due by
    today (the oven date less the Settings lead days) against done, by delivery day, and the lines behind with the
-   stage they are stuck at (the card shows the oldest 20; its Table view carries them all); **2** the load ahead —
+   stage they are stuck at (the card shows the oldest 20; the assistant reads them all through `get_kpis`); **2** the load ahead —
    each centre's remaining plan hours over the next 10 working days against what it
    can work (its usual man-hours × its measured pace — "not measured" while no hours are booked there); **3** welding
    coverage — days of cut parts waiting in front of the welders; and **the month in
    people** — each centre's standard hours for the month's plan (its orders' components × pieces, outsourced ones
    left out) over the month's working days × the net hours a person works (Settings) give the people it needs, what
    is left over the days still to come the people needed from today, against who comes on an average recorded day
-   (the plant's manpower sheet, read live). Every card answers with a chart and keeps its numbers under its
-   Table switch: the week's plan as a burn-up (pieces asked and finished, summed day by day);
+   (the plant's manpower sheet, read live). Every card answers with a chart and shows no more than its
+   title: what it means, how it is counted and its numbers go to the assistant on a right-click's **Ask AI**: the week's plan as a burn-up (pieces asked and finished, summed day by day);
    the load as one centre's running totals (owed so far against what it could have worked, the short days shaded)
    beside every centre's status; **the month's pace** — each centre's share of the month's plan done against where an
    even pace through its working days stands today; the people as bullets (who comes against who is needed from
