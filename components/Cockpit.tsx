@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Info } from "lucide-react";
-import { Bullet, ChartCard, Meter, StatTile, TONE_TEXT, fmt, pct } from "@/components/charts/kit";
+import { Bullet, ChartCard, Meter, StatTile, TONE_TEXT, fmt, pct, pctOrDash } from "@/components/charts/kit";
 import { BurnUpChart, LoadChart } from "@/components/LazyCharts";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/primitives";
@@ -29,7 +29,6 @@ import type { CockpitData } from "@/lib/server/kpis";
 // The page is a 12-column grid: a short card sits beside a long one, so no
 // card leaves a hole under it, and every row fills the width.
 
-const pctOrDash = (v: number | null | undefined) => (v === null || v === undefined ? "—" : pct(v));
 const itemName = (it: string) => (isItem(it) ? ITEM_NAME[it] : it);
 const centreName = (c: WorkCentre) => WORK_CENTRE_LABEL[c];
 const signed = (v: number, digits = 1) => (v > 0 ? `+${fmt(v, digits)}` : fmt(v, digits));
@@ -97,7 +96,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           delta={<WeekChange {...tile} pick={(p) => p.coverageDays} unit=" d" />} />
         {floor && (
           <>
-            <StatTile label="Fabrication efficiency" value={pctOrDash(data.fabrication.efficiency)} sub={`${fmt(data.fabrication.earnedH, 1)} std-h of ${fmt(data.fabrication.workedH, 1)} worked`}
+            <StatTile label="Fabrication efficiency" value={pctOrDash(data.fabrication.efficiency)} sub={`${fmt(data.fabrication.earnedH, 1)} std-h of ${fmt(data.fabrication.workedH, 1)} worked · last 7 recorded days`}
               delta={<WeekChange {...tile} pick={(p) => p.fabEfficiency} rate up="good" />} />
             <StatTile label="Machine time lost" value={stopDurationLabel(data.losses.unplannedH)} sub={data.losses.fromISO ? `since ${formatDate(data.losses.fromISO)}` : "recent days"}
               delta={<WeekChange {...tile} pick={(p) => p.unplannedH} unit=" h" up="bad" />} />

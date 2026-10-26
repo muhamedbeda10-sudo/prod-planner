@@ -1,13 +1,16 @@
 import "server-only";
 import { getCockpit, getFloorPeriod, type CockpitData } from "@/lib/server/kpis";
-import { OUTPUT_GROUPS, dailyOutput, isFloorAction, monthPace, weekChange, type KpiSnapshotData } from "@/lib/domain/kpis";
-import { isFloorDept } from "@/lib/domain/floorKpis";
-import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
-import { addDaysISO } from "@/lib/domain/dateSlicer";
+import { OUTPUT_GROUPS, dailyOutput, isFloorAction, monthPace, weekChange, type KpiSnapshotData, type OutputDay } from "@/lib/domain/kpis";
+import { FLOOR_DEFAULT_DAYS, FLOOR_HISTORY_DAYS, FLOOR_MAX_DAYS, FLOOR_TREND_WINDOW, floorRequest } from "@/lib/domain/floorKpis";
+import { factoryDayISO } from "@/lib/domain/dates";
+import type { DowntimeCause } from "@/lib/domain/downtime";
 import type { ReadTool } from "./types";
 
-// The planner's KPIs for the assistant — exactly what the Cockpit
-// shows, from the same loader, so an answer never disagrees with the page.
+// The planner's KPIs for the assistant, from the loaders the Cockpit reads,
+// so an answer never disagrees with the page: get_kpis is the cockpit as it
+// stands today (the floor's figures over its last recorded days, as its
+// tiles read them), get_floor_performance its Floor performance section for
+// any period and department.
 
 const r2 = (n: number | null | undefined) => (n === null || n === undefined ? null : Math.round(n * 100) / 100);
 
@@ -27,6 +30,7 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
     "the load ahead — each centre's remaining plan hours over the next 10 working days against what it can work (falling behind and when it catches up, or short at the end; not measured without booked hours); " +
     "welding coverage — days of cut parts waiting in front of the welders; the month's pace — each centre's share of the month's plan done against an even pace through its working days; each recorded day's output in standard hours by department against the man-hours booked; each headline figure against a week ago; the month's manpower — the people each centre needs for the month's plan (its standard hours over the working days × the net hours a person works) and from today for what is left, against the people who come; the losses — machine stops by cause, absence and overtime; and the daily trend of these. " +
     "Read it first for any question about how the plant is doing, its KPIs, efficiency, capacity or the morning's priorities. " +
+    "The floor's figures here are over its last 7 recorded days, as the Cockpit's tiles read them; for another period or one department (the page's Floor performance section) use get_floor_performance. " +
     "For a person the Shifts screen is closed to, the shift log's figures (the centres, the losses) are left out.",
   schema: { type: "object", properties: {}, additionalProperties: false },
   tabs: ["dashboard"],
@@ -64,12 +68,12 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
           fabrication: { earnedH: c.fabrication.earnedH, workedH: c.fabrication.workedH, efficiency: r2(c.fabrication.efficiency) },
           losses: {
             unplannedH: c.losses.unplannedH, plannedMaintenanceH: c.losses.plannedH, since: c.losses.fromISO,
-            byCause: c.losses.causes.map((x) => ({ cause: x.label, planned: x.planned, hours: x.hours, stops: x.stops, share: r2(x.share) })),
+            byCause: c.losses.causes.map(lossRow),
             absentRate: r2(c.losses.absentRate), overtimeH: c.losses.overtimeH,
           },
           shareOfRecentOutputPriced: r2(c.pricedShare),
           // each recorded day's output in standard hours by department, against the man-hours booked
-          dailyOutput: dailyOutput(c.centres).map((d) => ({ day: d.dateISO, fabricationH: d.Fabrication, weldingH: d.Welding, shotBlastH: d.ShotBlast, paintingH: d.Painting, earnedH: d.earnedH, bookedH: d.workedH, efficiency: r2(d.efficiency) })),
+          dailyOutput: dailyOutput(c.centres).map(outputRow),
         } : {}),
         loadAhead: c.load.map((l) => ({
           centre: l.centre, measured: l.measured, loadRate: r2(l.loadRate), behindH: l.behindH, shortFrom: l.shortFromISO, clears: l.clearsISO, shortAtEndH: l.shortH,
@@ -100,18 +104,23 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
 
 const r1 = (n: number | null | undefined) => (n === null || n === undefined ? null : Math.round(n * 10) / 10);
 
+/** A day's output, as both tools give it. */
+const outputRow = (d: OutputDay) => ({ day: d.dateISO, fabricationH: d.Fabrication, weldingH: d.Welding, shotBlastH: d.ShotBlast, paintingH: d.Painting, earnedH: d.earnedH, bookedH: d.workedH, efficiency: r2(d.efficiency) });
+/** The stops by cause, as both tools give them. */
+const lossRow = (x: DowntimeCause) => ({ cause: x.label, planned: x.planned, hours: x.hours, stops: x.stops, share: r2(x.share) });
+
 /** The floor's performance over a period and a department — the Cockpit's
- *  Floor performance section, from the same loader. */
+ *  Floor performance section, from the same loader and the same reading of the request. */
 export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dept?: string }> = {
   kind: "read",
   name: "get_floor_performance",
   title: "Reading the floor's performance",
   description:
-    "How the transformer floor worked over a period the person names (a week, a month, from one date to another — at most 92 days; the last 7 days if none is named), for every department or one (Fabrication = laser / punch, bending and fin folding; Welding; ShotBlast; Painting) — the Cockpit's Floor performance section, all in STANDARD HOURS: " +
+    `How the transformer floor worked over a period the person names (a week, a month, from one date to another — at most ${FLOOR_MAX_DAYS} days, starting within the last ${FLOOR_HISTORY_DAYS}; the last ${FLOOR_DEFAULT_DAYS} days if none is named), for every department or one (Fabrication = laser / punch, bending and fin folding; Welding; ShotBlast; Painting) — the Cockpit's Floor performance section, all in STANDARD HOURS: ` +
     "efficiency (earned std-hours ÷ the man-hours the shift log booked; 100% = the standard pace), each centre's efficiency day by day and over the period, " +
-    "productivity — standard hours and pieces one person turned out on a recorded day, people a day, attendance, overtime share, machine availability — by department, " +
-    "the floor's efficiency each day with its rolling 7-recorded-day figure, each day's output by department against the hours booked, and the machine stops by cause. " +
-    "Use it for any question about productivity, efficiency or output over a period other than the last few days (\"last month\", \"since the 1st\", \"welding in September\"); get_kpis has today's cockpit.",
+    "productivity — standard hours and pieces one person turned out on a recorded day, people a day, attendance, overtime share, machine availability — by department (shot blast's pieces are every painted piece, as on Shifts), " +
+    `the floor's efficiency each day with its rolling ${FLOOR_TREND_WINDOW}-recorded-day figure, each day's output by department against the hours booked, and the machine stops by cause. ` +
+    "Use it for any question about productivity, efficiency or output over a period other than the last few recorded days (\"last month\", \"since the 1st\", \"welding in September\"); get_kpis has today's cockpit. periodAdjusted says the period asked for was moved to fit the limits.",
   schema: {
     type: "object",
     properties: {
@@ -125,16 +134,18 @@ export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dep
   tabs: ["dashboard", "shifts"],
   status: () => "Reading the floor's performance",
   async run(input, ctx) {
-    const today = factoryDayISO(ctx.now);
-    const to = input.to && parseISODate(input.to) ? input.to : today;
-    const from = input.from && parseISODate(input.from) ? input.from : addDaysISO(to, -6);
-    const dept = isFloorDept(input.dept) ? input.dept : "all";
-    const f = await getFloorPeriod({ fromISO: from, toISO: to, dept }, ctx.now);
+    const req = floorRequest(input, factoryDayISO(ctx.now));
+    const f = await getFloorPeriod(req, ctx.now);
     const s = f.summary;
+    const query = new URLSearchParams();
+    // the section's own period needs no dates, so the link does not pin the home page to a past week
+    if (!req.isDefault || f.clamped) { query.set("from", f.fromISO); query.set("to", f.toISO); }
+    if (f.dept !== "all") query.set("dept", f.dept);
+    const q = query.toString();
     return {
       ok: true,
       text: JSON.stringify({
-        from: f.fromISO, to: f.toISO, dept: f.dept, recordedDays: f.dates.length,
+        from: f.fromISO, to: f.toISO, dept: f.dept, periodAdjusted: f.clamped, recordedDays: f.dates.length,
         summary: {
           efficiency: r2(s.efficiency), earnedH: s.earnedH, bookedH: s.workedH, personDays: s.personDays, peopleADay: s.people,
           stdHPerPersonDay: r1(s.stdPerPersonDay), attendance: r2(s.attendance), overtimeH: s.overtimeH, overtimeShare: r2(s.overtimeShare),
@@ -146,12 +157,13 @@ export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dep
           overtimeShare: r2(g.overtimeShare), attendance: r2(g.attendance), machineAvailability: r2(g.availability), stoppedH: g.downtimeH,
         })),
         centres: f.grid.map((r) => ({ centre: r.centre, efficiency: r2(r.total), days: r.cells.filter((c) => c.efficiency !== null).map((c) => ({ day: c.dateISO, efficiency: r2(c.efficiency), earnedH: c.earnedH, bookedH: c.workedH })) })),
-        trend: f.trend.map((p) => ({ day: p.dateISO, efficiency: r2(p.efficiency), rolling7: r2(p.rolling), stdHPerPerson: r1(p.stdPerPersonDay) })),
-        dailyOutput: f.output.map((d) => ({ day: d.dateISO, fabricationH: d.Fabrication, weldingH: d.Welding, shotBlastH: d.ShotBlast, paintingH: d.Painting, earnedH: d.earnedH, bookedH: d.workedH })),
-        stops: { unplannedH: f.losses.unplannedH, plannedMaintenanceH: f.losses.plannedH, byCause: f.losses.causes.map((x) => ({ cause: x.label, planned: x.planned, hours: x.hours, stops: x.stops })) },
+        trend: f.trend.map((p) => ({ day: p.dateISO, efficiency: r2(p.efficiency), [`rolling${f.window}`]: r2(p.rolling), stdHPerPersonDay: r1(p.stdPerPersonDay) })),
+        dailyOutput: f.output.map(outputRow),
+        losses: { unplannedH: f.losses.unplannedH, plannedMaintenanceH: f.losses.plannedH, byCause: f.losses.causes.map(lossRow) },
         shareOfPiecesPriced: r2(f.pricedShare),
       }),
-      links: [{ label: "Floor performance", href: `/?from=${f.fromISO}&to=${f.toISO}${f.dept === "all" ? "" : `&dept=${f.dept}`}` }],
+      // the home page is the transformers' cockpit only on that line
+      links: ctx.line === "LV" ? [] : [{ label: "Floor performance", href: `/${q ? `?${q}` : ""}#floor-head` }],
     };
   },
 };

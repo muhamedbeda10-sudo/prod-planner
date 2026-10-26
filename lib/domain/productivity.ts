@@ -80,7 +80,10 @@ export function productivityOf(days: readonly ProdDay[]): ProdStat {
 }
 
 export type EfficiencyTone = "ok" | "warn" | "bad";
+/** Where an efficiency is on the standard, and where it is short of it but not yet a problem. */
+export const EFFICIENCY_OK = 0.9;
+export const EFFICIENCY_WARN = 0.7;
 /** 90% and up is on the standard, 70% and up is short of it, below that is a problem. */
 export function efficiencyTone(e: number): EfficiencyTone {
-  return e >= 0.9 ? "ok" : e >= 0.7 ? "warn" : "bad";
+  return e >= EFFICIENCY_OK ? "ok" : e >= EFFICIENCY_WARN ? "warn" : "bad";
 }

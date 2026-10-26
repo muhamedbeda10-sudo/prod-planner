@@ -78,7 +78,7 @@ describe("get_kpis", () => {
 
 describe("get_floor_performance", () => {
   const period = {
-    fromISO: "2026-10-01", toISO: "2026-10-25", dept: "Welding", dates: ["2026-10-24"],
+    fromISO: "2026-10-01", toISO: "2026-10-25", dept: "Welding", clamped: false, window: 7, dates: ["2026-10-24"],
     grid: [{ centre: "Welding", total: 0.9123, days: 1, cells: [{ dateISO: "2026-10-23", workedH: 0, earnedH: 0, efficiency: null }, { dateISO: "2026-10-24", workedH: 100, earnedH: 91.2, efficiency: 0.912 }] }],
     summary: { days: 1, workedH: 100, earnedH: 91.2, efficiency: 0.912, personDays: 12, people: 12, stdPerPersonDay: 7.6, overtimeH: 4, overtimeShare: 0.04, attendance: 0.9231, downtimeH: 2, availability: 0.95 },
     groups: [{ group: "Welding", days: 1, workedH: 100, earnedH: 91.2, efficiency: 0.912, personDays: 12, people: 12, stdPerPersonDay: 7.6, overtimeH: 4, overtimeShare: 0.04, attendance: 0.9231, downtimeH: 2, availability: 0.95, pieces: 30, piecesPerPersonDay: 2.5 }],
@@ -92,21 +92,31 @@ describe("get_floor_performance", () => {
     h.getFloorPeriod.mockResolvedValue(period);
     const now = new Date("2026-10-25T08:00:00Z");
     const out = await getFloorPerformanceTool.run({ from: "2026-10-01", dept: "Welding" }, { now, hidden: new Set() } as never);
-    expect(h.getFloorPeriod).toHaveBeenCalledWith({ fromISO: "2026-10-01", toISO: "2026-10-25", dept: "Welding" }, now);
+    expect(h.getFloorPeriod).toHaveBeenCalledWith(expect.objectContaining({ fromISO: "2026-10-01", toISO: "2026-10-25", dept: "Welding" }), now);
     const j = JSON.parse(out.text);
-    expect(j).toMatchObject({ from: "2026-10-01", to: "2026-10-25", dept: "Welding", recordedDays: 1 });
+    expect(j).toMatchObject({ from: "2026-10-01", to: "2026-10-25", dept: "Welding", recordedDays: 1, periodAdjusted: false });
+    expect(j.trend[0]).toEqual({ day: "2026-10-24", efficiency: 0.91, rolling7: 0.91, stdHPerPersonDay: 7.6 });
+    expect(j.dailyOutput[0]).toMatchObject({ weldingH: 91.2, efficiency: 0.91 });
+    expect(j.losses.byCause[0]).toEqual({ cause: "Breakdown", planned: false, hours: 2, stops: 1, share: 1 });
     expect(j.summary).toMatchObject({ efficiency: 0.91, stdHPerPersonDay: 7.6, attendance: 0.92 });
     expect(j.departments[0]).toMatchObject({ dept: "Welding", pieces: 30, piecesPerPersonDay: 2.5 });
     // a day without booked hours is left out of a centre's days
     expect(j.centres[0].days).toEqual([{ day: "2026-10-24", efficiency: 0.91, earnedH: 91.2, bookedH: 100 }]);
-    expect(out.links).toEqual([{ label: "Floor performance", href: "/?from=2026-10-01&to=2026-10-25&dept=Welding" }]);
+    expect(out.links).toEqual([{ label: "Floor performance", href: "/?from=2026-10-01&to=2026-10-25&dept=Welding#floor-head" }]);
   });
 
-  it("falls back to the last 7 days and every department on a bad or missing input", async () => {
-    h.getFloorPeriod.mockResolvedValue({ ...period, dept: "all" });
+  it("falls back to the last 7 days and every department on a bad or missing input, and links to the section without pinning its dates", async () => {
+    h.getFloorPeriod.mockResolvedValue({ ...period, fromISO: "2026-10-19", dept: "all" });
     const now = new Date("2026-10-25T08:00:00Z");
-    await getFloorPerformanceTool.run({ from: "soon", dept: "Cutting" }, { now, hidden: new Set() } as never);
-    expect(h.getFloorPeriod).toHaveBeenLastCalledWith({ fromISO: "2026-10-19", toISO: "2026-10-25", dept: "all" }, now);
+    const out = await getFloorPerformanceTool.run({ from: "soon", dept: "Cutting" }, { now, hidden: new Set() } as never);
+    expect(h.getFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ fromISO: "2026-10-19", toISO: "2026-10-25", dept: "all", isDefault: true }), now);
+    expect(out.links).toEqual([{ label: "Floor performance", href: "/#floor-head" }]);
+  });
+
+  it("gives no link on the LV line, where the home page is the panels' dashboard", async () => {
+    h.getFloorPeriod.mockResolvedValue(period);
+    const out = await getFloorPerformanceTool.run({}, { now: new Date("2026-10-25T08:00:00Z"), hidden: new Set(), line: "LV" } as never);
+    expect(out.links).toEqual([]);
   });
 
   it("is closed with the Shifts screen", () => {

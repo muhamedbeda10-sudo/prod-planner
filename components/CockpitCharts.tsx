@@ -6,6 +6,7 @@ import {
 import { CAT, Legend, TipBox, fmt, pct } from "@/components/charts/kit";
 import { formatDate } from "@/lib/domain/format";
 import { OUTPUT_GROUPS, OUTPUT_GROUP_LABEL, type OutputDay, type OutputGroup } from "@/lib/domain/kpis";
+import type { ProductivityPoint } from "@/lib/domain/floorKpis";
 
 // The cockpit's charts. One y-axis each (never two scales on one plot); the
 // plan and the line against it in neutral ink and the accent; a category keeps
@@ -164,7 +165,7 @@ export function OutputChart({ days, groups = OUTPUT_GROUPS }: { days: OutputDay[
                     title={formatDate(r.dateISO)}
                     rows={[
                       ...groups.map((g) => ({ label: OUTPUT_GROUP_LABEL[g], value: h1(r[g]), color: GROUP_COLOR[g] })),
-                      { label: "Earned, all", value: h1(r.earnedH) },
+                      { label: "Earned, total", value: h1(r.earnedH) },
                       { label: "Man-hours booked", value: h1(r.workedH), color: "var(--foreground)", line: true },
                       { label: "Efficiency", value: r.efficiency === null ? "—" : pct(r.efficiency) },
                     ]}
@@ -185,11 +186,9 @@ export function OutputChart({ days, groups = OUTPUT_GROUPS }: { days: OutputDay[
 
 // ---------------------------------------------------------------- the floor's productivity
 
-export interface TrendPoint { dateISO: string; efficiency: number | null; rolling: number | null; earnedH: number; workedH: number; stdPerPersonDay: number | null }
-
 /** The floor's efficiency day by day (dots, a day being noisy) and its rolling
  *  figure over the last recorded days (the line to read); 100% is the standard. */
-export function ProductivityTrendChart({ points, window }: { points: TrendPoint[]; window: number }) {
+export function ProductivityTrendChart({ points, window }: { points: ProductivityPoint[]; window: number }) {
   if (points.length === 0) return null;
   const data = points.map((p) => ({ ...p, label: ddmm(p.dateISO) }));
   const max = Math.max(1.2, ...points.map((p) => Math.max(p.efficiency ?? 0, p.rolling ?? 0)));
@@ -213,10 +212,10 @@ export function ProductivityTrendChart({ points, window }: { points: TrendPoint[
                     title={formatDate(r.dateISO)}
                     rows={[
                       { label: "That day", value: r.efficiency === null ? "—" : pct(r.efficiency), color: PLAN },
-                      { label: `Last ${window} days`, value: r.rolling === null ? "—" : pct(r.rolling), color: ACCENT, line: true },
+                      { label: `Last ${window} recorded days`, value: r.rolling === null ? "—" : pct(r.rolling), color: ACCENT, line: true },
                       { label: "Earned", value: h1(r.earnedH) },
                       { label: "Man-hours booked", value: h1(r.workedH) },
-                      { label: "Std-h a person", value: r.stdPerPersonDay === null ? "—" : h1(r.stdPerPersonDay) },
+                      { label: "Std-h a person a day", value: r.stdPerPersonDay === null ? "—" : h1(r.stdPerPersonDay) },
                     ]}
                   />
                 );

@@ -16,13 +16,13 @@ import { downtimeByCause, type DowntimeCause } from "@/lib/domain/downtime";
 import { downtimeHoursInRange, downtimeWindowWhere, splitDowntimeDays } from "@/lib/domain/downtimePeriods";
 import { FACTOR_MAX, FACTOR_MIN, MIN_CALIBRATION_DAYS } from "@/lib/domain/calibration";
 import {
-  centreStat, cockpitActions, combinedStat, dailyOutput, earnedOfRecord, inMonthPlan, isFloorAction, lateLines, loadAhead, manpowerPlan, parseKpiSnapshot, planAdherence, stageDueISO, weldingCoverage, workingDaysFrom, zeroCentres,
+  centreCells, centreStat, cockpitActions, combinedStat, dailyOutput, earnedOfRecord, inMonthPlan, isFloorAction, lateLines, loadAhead, manpowerPlan, parseKpiSnapshot, planAdherence, stageDueISO, weldingCoverage, workingDaysFrom, zeroCentres,
   type CentreDay, type CentreHours, type CentreStat, type CockpitAction, type Coverage, type CoverageInput, type KpiSnapshotData, type KpiSnapshotPoint,
-  type LateLine, type LoadAhead, type ManpowerRow, type OutputDay, type OutputGroup, type PlanCell, type Stage, type StageAdherence,
+  type LateLine, type LoadAhead, type ManpowerRow, type OutputDay, type PlanCell, type Stage, type StageAdherence,
 } from "@/lib/domain/kpis";
 import {
-  centresOf, efficiencyGrid, floorRange, floorStat, groupProductivity, groupsOf, productivityTrend,
-  type FloorDay, type FloorDept, type FloorPieces, type FloorStat, type GroupProductivity, type HeatRow, type ProductivityPoint,
+  FLOOR_TREND_WINDOW, centresOf, efficiencyGrid, floorDays, floorPieces, floorRange, floorStat, groupProductivity, groupsOf, ledgerGroups, productivityTrend, recordedDates as datesWithHours,
+  type FloorAttendance, type FloorDept, type FloorStat, type GroupProductivity, type HeatRow, type LedgerPieces, type ProductivityPoint,
 } from "@/lib/domain/floorKpis";
 import { getStdData } from "./standardTimes";
 import { getSettings, getShiftHours } from "./data";
@@ -116,23 +116,27 @@ export interface CockpitData {
 
 const dayStart = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 
-/** Every centre's recorded days since `fromISO` — worked man-hours from the
- *  shift log, earned standard hours from the Daily log, machine hours and
- *  stops — with what the cockpit's other figures need from the same reads. */
-async function readCentreDays(fromISO: string) {
+/** Every centre's recorded days from `fromISO` to `toISO` (today when left
+ *  out) — worked man-hours from the shift log, earned standard hours from the
+ *  Daily log, machine hours and stops — with what the cockpit's other figures
+ *  need from the same reads. Both ends bound the reads, so a past period reads
+ *  only its own days. */
+async function readCentreDays(fromISO: string, toISO?: string, now = new Date()) {
   const from = dayStart(fromISO);
-  const stopNow = new Date(), stopToday = factoryDayISO(stopNow);
+  const stopNow = now, stopToday = toISO ?? factoryDayISO(stopNow);
+  // up to the end of the last day, whatever time a row's date carries
+  const until = { gte: from, lt: dayStart(addDaysISO(stopToday, 1)) };
   const [std, hrs, orders, shiftRows, ledger, stops, machines, lvShotBlast] = await Promise.all([
     getStdData(),
     getShiftHours(),
     loadMasterOrdersOf("TR"),
-    prisma.shiftEntry.findMany({ where: { date: { gte: from } }, select: { date: true, dept: true, present: true, shift: true, overtimeH: true, center: true, worker: { select: { depts: true } } } }),
-    prisma.handoverEntry.findMany({ where: { date: { gte: from }, item: { not: LV_ITEM } }, select: { date: true, dept: true, mo: true, bom: true, item: true, qty: true } }),
+    prisma.shiftEntry.findMany({ where: { date: until }, select: { date: true, dept: true, present: true, shift: true, overtimeH: true, center: true, worker: { select: { depts: true } } } }),
+    prisma.handoverEntry.findMany({ where: { date: until, item: { not: LV_ITEM } }, select: { date: true, dept: true, mo: true, bom: true, item: true, qty: true } }),
     prisma.machineDowntime.findMany({ where: downtimeWindowWhere(fromISO, stopToday), select: { date: true, hours: true, startTime: true, endTime: true, endsNextDay: true, isOpen: true, endDate: true, reasonCode: true, reason: true, customDept: true, customCentre: true, machine: { select: { dept: true, center: true } } } }),
     prisma.machine.findMany({ where: { active: true }, select: { dept: true, center: true, hoursPerDay: true } }),
     // the one shot-blast crew blasts the LV panels as well — its booked hours
     // cover both, so the panels' shot-blast hours count on its side (as the calibration does)
-    lvShotBlastSince(fromISO),
+    lvShotBlastSince(fromISO, stopToday),
   ]);
 
   // ---- an order's KVA class, and the hours a piece per centre for it ----
@@ -162,7 +166,7 @@ async function readCentreDays(fromISO: string) {
     return m.get(c)!;
   };
   // the shift log's rows per centre-day — who came and the overtime — for the floor's period figures
-  const attendance = new Map<string, { rows: number; absent: number; overtimeH: number }>();
+  const attendance = new Map<string, FloorAttendance>();
   let absent = 0, rowsRecent = 0, overtimeH = 0;
   const recordedDates = [...new Set(shiftRows.map((r) => toISODate(r.date)))].sort();
   const recentDates = new Set(recordedDates.slice(-RECENT_DAYS));
@@ -173,7 +177,7 @@ async function readCentreDays(fromISO: string) {
     const c = centreOf(r.dept, sections, r.center) ?? deptCentre(r.dept);
     if (!c) continue; // the LV panels — not the transformers' figures
     const shift = isShiftCode(r.shift) ? r.shift : DEFAULT_SHIFT;
-    const a = attendance.get(`${iso}|${c}`) ?? { rows: 0, absent: 0, overtimeH: 0 };
+    const a = attendance.get(`${iso}|${c}`) ?? { dateISO: iso, centre: c, rows: 0, absent: 0, overtimeH: 0 };
     a.rows += 1;
     if (!r.present) a.absent += 1;
     else if (r.overtimeH > 0) a.overtimeH += r.overtimeH;
@@ -190,23 +194,18 @@ async function readCentreDays(fromISO: string) {
     d.people += 1;
   }
   let pricedQty = 0, recentQty = 0;
-  // pieces each department recorded a day, and how many of them carry standard hours
-  const pieces = new Map<string, { group: OutputGroup; pieces: number; priced: number }>();
+  // each record's pieces, the departments whose output they are, and whether they carry standard hours
+  const pieces: LedgerPieces[] = [];
   for (const e of ledger) {
     const iso = toISODate(e.date);
     const per = perPiece(tierOf(e.mo, e.bom), e.item);
     const got = earnedOfRecord(e.dept, e.qty, per);
-    const group = LEDGER_GROUP[e.dept];
-    if (group && recentDates.has(iso)) {
+    const groups = ledgerGroups(e.dept);
+    if (groups.length > 0 && recentDates.has(iso)) {
       recentQty += e.qty;
       if (per) pricedQty += e.qty;
     }
-    if (group) {
-      const p = pieces.get(`${iso}|${group}`) ?? { group, pieces: 0, priced: 0 };
-      p.pieces += e.qty;
-      if (per) p.priced += e.qty;
-      pieces.set(`${iso}|${group}`, p);
-    }
+    if (groups.length > 0) pieces.push({ dateISO: iso, groups, pieces: e.qty, priced: !!per });
     for (const c of WORK_CENTRES) if (got[c] !== 0) cell(iso, c).earnedH += got[c];
   }
   for (const [iso, h] of lvShotBlast) cell(iso, "ShotBlast").earnedH += h;
@@ -224,21 +223,18 @@ async function readCentreDays(fromISO: string) {
     if (d.workedH > 0) d.machineH = machineH[d.centre];
     all.push(d);
   }
-  return { std, orders, stops, days, all, recordedDates, tierByBom, tierOf, perPiece, absent, rowsRecent, overtimeH, pricedQty, recentQty, lvShotBlast, attendance, pieces };
+  return { std, orders, stops, days, all, recordedDates, tierByBom, tierOf, perPiece, absent, rowsRecent, overtimeH, pricedQty, recentQty, lvShotBlast, attendance: [...attendance.values()], pieces };
 }
-
-/** The Daily log's departments, as the floor's departments count their pieces. */
-const LEDGER_GROUP: Partial<Record<string, OutputGroup>> = { Cut: "Fabrication", Welding: "Welding", ShotBlast: "ShotBlast", Painting: "Painting" };
 
 /** The centre a stop belongs to: its machine's, else the one typed on it. */
 function stopCentre(s: { machine: { dept: string; center: string } | null; customCentre: string | null }): WorkCentre | null {
   return s.machine ? machineWorkCentre(s.machine.dept, s.machine.center) : s.customCentre && isWorkCentre(s.customCentre) ? s.customCentre : null;
 }
 
-/** The LV panels' shot-blast std-hours by day since `fromISO`. */
-async function lvShotBlastSince(fromISO: string): Promise<Map<string, number>> {
+/** The LV panels' shot-blast std-hours by day from `fromISO` to `toISO`. */
+async function lvShotBlastSince(fromISO: string, toISO: string): Promise<Map<string, number>> {
   // groupBy: Prisma's `distinct` dedupes in memory after reading every row
-  const rows = await prisma.handoverEntry.groupBy({ by: ["date"], where: { date: { gte: dayStart(fromISO) }, item: LV_ITEM } });
+  const rows = await prisma.handoverEntry.groupBy({ by: ["date"], where: { date: { gte: dayStart(fromISO), lt: dayStart(addDaysISO(toISO, 1)) }, item: LV_ITEM } });
   const earned = await earnedLvOnDays([...new Set(rows.map((r) => toISODate(r.date)))]);
   const out = new Map<string, number>();
   for (const [iso, lv] of earned) if (lv.ShotBlast) out.set(iso, lv.ShotBlast);
@@ -292,12 +288,7 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
     centre: c,
     last: centreStat(c, all.filter((d) => d.dateISO === lastDayISO)),
     recent: centreStat(c, all.filter((d) => recentWorked.has(d.dateISO))),
-    trend: workedDates.map((iso) => {
-      const d = days.get(iso)?.get(c);
-      const workedH = d?.workedH ?? 0;
-      const earnedH = d?.earnedH ?? 0;
-      return { dateISO: iso, workedH: round1(workedH), earnedH: round1(earnedH), efficiency: workedH > 0 ? earnedH / workedH : null };
-    }),
+    trend: centreCells(all, c, workedDates),
   }));
 
   // ---- the weekly plan ----
@@ -541,74 +532,52 @@ export interface FloorPeriod {
   fromISO: string;
   toISO: string;
   dept: FloorDept;
+  /** The period asked for was moved to fit the floor's limits (floorRange). */
+  clamped: boolean;
   /** The recorded days of the period (days with booked hours), oldest first. */
   dates: string[];
   grid: HeatRow[];
   summary: FloorStat;
   groups: GroupProductivity[];
   trend: ProductivityPoint[];
+  /** Recorded days the trend's rolling line covers. */
+  window: number;
   output: OutputDay[];
   losses: { causes: DowntimeCause[]; unplannedH: number; plannedH: number };
-  /** Share of the period's pieces that carry standard hours. */
+  /** Share of the period's records that carry standard hours. */
   pricedShare: number | null;
 }
 
 /** The floor's performance over a period the planner picks, one department or
- *  all — the cockpit's floor section and the assistant's period question.
- *  Only reads; today's trend point is the cockpit's own (getCockpit). */
-export async function getFloorPeriod(q: { fromISO: string; toISO: string; dept: FloorDept }, now = new Date()): Promise<FloorPeriod> {
-  const { fromISO, toISO } = floorRange(q.fromISO, q.toISO, factoryDayISO(now));
+ *  all — the cockpit's floor section and the assistant's period question
+ *  (both resolve the request with floorRequest). Reads only the period's own
+ *  days; today's trend point is the cockpit's own (getCockpit). */
+export async function getFloorPeriod(q: { fromISO: string; toISO: string; dept: FloorDept; clamped?: boolean }, now = new Date()): Promise<FloorPeriod> {
+  const { fromISO, toISO, clamped } = floorRange(q.fromISO, q.toISO, factoryDayISO(now));
   const centres = centresOf(q.dept);
   const keep = new Set<WorkCentre>(centres);
-  const read = await readCentreDays(fromISO);
-  const inRange = (iso: string) => iso >= fromISO && iso <= toISO;
-
-  // every centre-day of the period with booked hours, output, stops or a shift-log row
-  const days: FloorDay[] = [];
-  const seen = new Set<string>();
-  for (const d of read.all) {
-    if (!keep.has(d.centre) || !inRange(d.dateISO)) continue;
-    const key = `${d.dateISO}|${d.centre}`;
-    const a = read.attendance.get(key);
-    seen.add(key);
-    days.push({ ...d, overtimeH: a?.overtimeH ?? 0, rows: a?.rows ?? 0, absent: a?.absent ?? 0 });
-  }
-  // a centre-day where everyone was away has rows but no hours
-  for (const [key, a] of read.attendance) {
-    const [iso, c] = key.split("|") as [string, WorkCentre];
-    if (seen.has(key) || !keep.has(c) || !inRange(iso)) continue;
-    days.push({ dateISO: iso, centre: c, workedH: 0, people: 0, earnedH: 0, machineH: 0, downtimeH: 0, overtimeH: a.overtimeH, rows: a.rows, absent: a.absent });
-  }
-  const groups = groupsOf(q.dept);
-  const pieces: FloorPieces[] = [];
-  let qty = 0, priced = 0;
-  for (const [key, p] of read.pieces) {
-    const iso = key.slice(0, 10);
-    if (!inRange(iso) || !groups.includes(p.group)) continue;
-    pieces.push({ dateISO: iso, group: p.group, pieces: p.pieces });
-    qty += p.pieces;
-    priced += p.priced;
-  }
-
-  const dates = [...new Set(days.filter((d) => d.workedH > 0).map((d) => d.dateISO))].sort();
-  const output = dailyOutput(centres.map((centre) => ({ centre, trend: days.filter((d) => d.centre === centre && d.workedH > 0) })));
+  const read = await readCentreDays(fromISO, toISO, now);
+  const days = floorDays(read.all, read.attendance, centres, fromISO, toISO);
+  const { pieces, pricedShare } = floorPieces(read.pieces, groupsOf(q.dept), fromISO, toISO);
+  const dates = datesWithHours(days);
   const stops = read.stops.filter((s) => {
     const c = stopCentre(s);
     return c !== null && keep.has(c);
   });
-  const losses = downtimeByCause(stops.map((s) => ({ ...s, hours: downtimeHoursInRange(s, fromISO, toISO, now) })));
-
   return {
     fromISO,
     toISO,
     dept: q.dept,
+    // moved here, or already when the request was read (floorRequest)
+    clamped: clamped || !!q.clamped,
     dates,
     grid: efficiencyGrid(days, centres, dates),
     summary: floorStat(days),
-    groups: groupProductivity(days, pieces, groups),
-    trend: productivityTrend(days),
-    output,
-    losses,
-    pricedShare: qty > 0 ? priced / qty : null,
+    groups: groupProductivity(days, pieces, groupsOf(q.dept)),
+    trend: productivityTrend(days, FLOOR_TREND_WINDOW),
+    window: FLOOR_TREND_WINDOW,
+    output: dailyOutput(centres.map((centre) => ({ centre, trend: days.filter((d) => d.centre === centre && d.workedH > 0) }))),
+    losses: downtimeByCause(stops.map((s) => ({ ...s, hours: downtimeHoursInRange(s, fromISO, toISO, now) }))),
+    pricedShare,
   };
 }

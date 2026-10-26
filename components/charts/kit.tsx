@@ -29,12 +29,16 @@ export const TRACK = "color-mix(in srgb, var(--viz-1) 16%, var(--surface))";
 
 /** Text in a status's own ink — always beside a word that says the same. */
 export const TONE_TEXT = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" } as const;
+/** A cell filled in a status's own colours — a heatmap's band, with its number on it. */
+export const TONE_CELL = { ok: "bg-ok-bg text-ok-fg", warn: "bg-warn-bg text-warn-fg", bad: "bg-bad-bg text-bad-fg" } as const;
 
 export const catColor = (i: number) => (i >= 0 && i < CAT.length ? CAT[i] : OTHER);
 export const catInk = (i: number) => (i >= 0 && i < INK_ON.length ? INK_ON[i] : INK_ON_OTHER);
 
 export const fmt = (n: number, digits = 3) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { maximumFractionDigits: digits }));
 export const pct = (f: number, digits = 0) => `${(f * 100).toFixed(digits)}%`;
+/** A rate, or a dash where there is none. */
+export const pctOrDash = (v: number | null | undefined) => (v === null || v === undefined ? "—" : pct(v));
 /** 1,284 · 12.9K · 4.2M — for big standalone numbers. */
 const COMPACT = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 export const compact = (n: number) => (Math.abs(n) < 10_000 ? fmt(Math.round(n * 10) / 10, 1) : COMPACT.format(n));
