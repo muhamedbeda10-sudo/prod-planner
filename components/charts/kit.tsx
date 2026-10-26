@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/Badge";
 import { ChartAbout } from "@/components/ChartAbout";
+import { TableFrame, Th } from "@/components/DataTable";
 import { aiTargetRef } from "@/lib/aiTarget";
 
 // The dashboards' shared parts, so every dashboard reads the same way:
@@ -54,6 +55,7 @@ export function ChartCard({
   about,
   data,
   right,
+  table = false,
   className = "",
   children,
 }: {
@@ -66,6 +68,9 @@ export function ChartCard({
   /** The chart's numbers, for the assistant's "Ask AI". */
   data?: TableRow[];
   right?: React.ReactNode;
+  /** The chart's numbers (`data`) as a table under it, a click away — the
+   *  same rows the chart draws, so the two cannot disagree. */
+  table?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -80,7 +85,34 @@ export function ChartCard({
         {right && <div className="flex items-center gap-2 no-print">{right}</div>}
       </div>
       {children}
+      {table && data && data.length > 0 && <ChartTable title={title} rows={data} />}
     </section>
+  );
+}
+
+/** A chart's rows as a plain table, folded under the chart. */
+export function ChartTable({ title, rows }: { title: string; rows: TableRow[] }) {
+  const cols = Object.keys(rows[0] ?? {});
+  // a column is numeric when every filled cell is a number
+  const num = new Set(cols.filter((c) => rows.every((r) => typeof r[c] === "number" || r[c] === "")));
+  return (
+    <details className="mt-3 group">
+      <summary className="text-xs font-semibold text-muted cursor-pointer select-none hover:text-foreground w-fit">Table · {rows.length} row{rows.length === 1 ? "" : "s"}</summary>
+      <TableFrame className="mt-2 max-h-80 border rounded-lg">
+        <table className="w-full text-sm" aria-label={`${title} — table`}>
+          <thead>
+            <tr>{cols.map((c) => <Th key={c} label={c} num={num.has(c)} />)}</tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                {cols.map((c) => <td key={c} className={`px-2 ${num.has(c) ? "text-right tabnum" : ""}`}>{typeof r[c] === "number" ? fmt(r[c] as number, 2) : r[c]}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableFrame>
+    </details>
   );
 }
 

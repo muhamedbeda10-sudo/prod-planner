@@ -17,9 +17,12 @@ type Encoding = "fromTo" | "odooDay" | "odooDash" | "day";
 const ODOO_DASH_CODE: Partial<Record<string, string>> = { today: "today", yesterday: "yesterday", last7: "7d", last30: "30d", last90: "90d", thisMonth: "month" };
 
 export function UrlDateSlicer({
-  encoding, mode = "range", from, to, min, max, today, presets, allLabel, marks, label, defaultRange, start, end,
+  encoding, hrefFor, mode = "range", from, to, min, max, today, presets, allLabel, marks, label, defaultRange, start, end,
 }: {
   encoding: Encoding;
+  /** A page that writes its own address (its period among other choices it
+   *  keeps): the link for a pick — null, null is "All". Overrides `encoding`. */
+  hrefFor?: (from: string | null, to: string | null) => string;
   mode?: "range" | "day";
   from: string | null;
   to: string | null;
@@ -49,6 +52,7 @@ export function UrlDateSlicer({
   }, [presets, today, min, defaultRange]);
 
   const go = (f: string | null, t: string | null) => {
+    if (hrefFor) { router.push(hrefFor(f, t)); return; }
     const p = new URLSearchParams(params.toString());
     const isDefault = !!defaultRange && f === defaultRange.from && t === defaultRange.to;
     switch (encoding) {
