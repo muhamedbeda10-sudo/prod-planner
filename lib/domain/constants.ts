@@ -87,6 +87,11 @@ export function isItem(x: string): x is Item {
  *   • Painting targets / sets / balance ignore it.
  *  Everything upstream (Cut, Welding) is unaffected. */
 export const PAINT_EXEMPT = ["CF"] as const;
+/** The department a component's FINISH is recorded at: shot blast for the
+ *  core frame, painting for everything else (stageItemError's rule). */
+export function finishDeptOf(item: string): "ShotBlast" | "Painting" {
+  return isPaintExempt(item) ? "ShotBlast" : "Painting";
+}
 export function isPaintExempt(x: string): boolean {
   return (PAINT_EXEMPT as readonly string[]).includes(x);
 }

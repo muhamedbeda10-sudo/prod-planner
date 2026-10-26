@@ -150,8 +150,10 @@ export function depthPlan(depth: AiDepth, o: { model: string; effort: string; ma
  *  plant writes. The default set is for any other screen. */
 export const AI_PAGE_SUGGESTIONS: Record<string, string[]> = {
   dashboard: [
-    "إيه اللي محتاج قرار النهارده في الـ Planning dashboard؟",
-    "Why did efficiency fall this week, and where did the hours go?",
+    "إيه اللي هيأخر الخطة؟",
+    "أنهي مركز محتاج عمالة لنهاية الشهر؟",
+    "Where does the work wait between the stages, and which queue is the biggest?",
+    "قارن التزام TR وLV بالخطة، كل خط بمقياسه",
     "اعملي مراجعة بداية اليوم للخط المختار واقترح أهم 3 أولويات بالأسباب",
   ],
   tracker: [
@@ -178,7 +180,13 @@ export const AI_PAGE_SUGGESTIONS: Record<string, string[]> = {
   "worklist.bending": ["إيه اللي واقف في الـ bending النهارده؟", "Which LV panels are behind at bending?"],
   material: ["Which open orders still have no nesting on the Material tab?", "إيه الأوردرات اللي ناقصها خامة وبتأثر على خطة الأسبوع؟", "كام الـ scrap المتوقع في الـ nesting الحالي؟"],
   odoo: ["إيه الـ MOs اللي مستنية تتقفل في الأودو؟", "Which Odoo close-outs disagree with the Daily log?", "لخصلي إقفالات الشهر بالمكوّن"],
-  shifts: ["مين غايب النهارده في كل قسم؟", "Which machine stops cost the most hours this week, by cause?", "ارسملي الحضور والأوفرتايم آخر 14 يوم"],
+  shifts: [
+    "ليه كفاءة اللحام قلت؟",
+    "قارن أداء TR وLV بالساعات المعيارية آخر 7 أيام",
+    "Which machine stops cost the most hours this week, by cause — and which machines are stopped now?",
+    "إيه الأيام اللي فيها إنتاج من غير ساعات عمالة أو العكس؟",
+    "مين غايب النهارده في كل قسم؟",
+  ],
   consumables: ["إيه الأصناف اللي قربت تخلص أو عدّت الحد؟", "What did painting draw this month against its limit?", "كام البودرة اللي اتهدرت الشهر ده؟"],
   physical: ["إيه الخامات اللي رصيدها الفعلي أقل من المطلوب للخطة؟", "Which sheets are short for this week's jobs?"],
   barcode: ["فين التانك ده دلوقتي وإيه اللي حصله؟", "Which tanks were sent back this week, and why?"],

@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-dashboards-all-tr-lv",
+    dateISO: "2026-10-26",
+    title: "Planning and Production for both lines: All | TR | LV, the panels' own dashboards, and the plant in one view",
+    where: "Dashboards → Planning · Production",
+    href: "/?line=all",
+    body: "The two dashboards now show either line or the whole plant — an All | TR | LV switch in their head, kept in the address and carried on the links between them; it follows the nav's line toggle until you pick one, and never moves the toggle. The LV panels get their own Planning dashboard: the month's plan through the four stages against an even pace through the month's working days, the panels waiting between the stages (netted order by order), the urgent orders still short, the people each department needs against who comes, and Decisions — judged in the panels' terms (a month with no delivery dates, never the transformers' oven dates). The LV Production dashboard reads the panels' efficiency, productivity, attendance and output from the shift log's four LV departments and the timings sheet's LV tab, with a heatmap per department. The transformers' Production dashboard adds which machines stand still (the stops open now, the most stopped), quality and rework (the leak test passed first time, the days welding → test → painting, the pieces sent back by reason) and an Interventions button, and the Planning cockpit a card for where the work waits between the stages. Under All, the plant's efficiency is the two lines' sums (Σ earned ÷ Σ worked), standard hours and people add, stops are counted once, and pieces are never added — the lines sit side by side, each decision tagged with its line. Where a figure has no basis (no standard time, no shift day, no delivery date) the page says so instead of showing zero. The assistant reads the same figures with the same All | TR | LV, knows the line shown on the page, and offers the questions for it.",
+  },
+  {
     id: "2026-10-26-titles-and-settings",
     dateISO: "2026-10-26",
     title: "Pages are named after their tabs, and Settings uses the whole screen",

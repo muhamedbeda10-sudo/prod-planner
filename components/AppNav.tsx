@@ -138,8 +138,8 @@ const MACHINE_ONLY = new Set(["/admin/machines", "/admin/machine-times"]);
 const TANK_ONLY = new Set(["/worklist/leak-test", "/barcode"]);
 
 // The views that are the transformers' alone: the what-if simulator (it
-// models the transformers' plan) and the Production dashboard (the floor's figures).
-const TR_VIEWS = new Set(["/simulate", "/dashboards/production"]);
+// models the transformers' plan). The dashboards show either line or both.
+const TR_VIEWS = new Set(["/simulate"]);
 
 /** One entry of the tools menu: its name, with what it holds as the tooltip. */
 function ToolLink({ href, label, title, icon: Icon, active }: { href: string; label: string; title?: string; icon: Item["icon"]; active: boolean }) {

@@ -15,6 +15,9 @@
 //   adherence   the plan's pieces due so far that are done, ÷ those due
 
 import { DEPT_CENTRES, WORK_CENTRES, WORK_CENTRE_LABEL, round1, type WorkCentre } from "./shifts";
+import type { ProductLine } from "./lines";
+import { workingDaysInclusive } from "./insights";
+import { monthLabelFromInput } from "./dates";
 import { efficiencyTone, type EfficiencyTone } from "./productivity";
 import { stopDurationLabel } from "./downtime";
 
@@ -58,10 +61,11 @@ export function workingDaysFrom(fromISO: string, n: number, holidays: ReadonlySe
   return out;
 }
 
-/** One recorded day at one centre. */
-export interface CentreDay {
+/** One recorded day at one centre. The centre key is the transformers' work
+ *  centre by default; the panels' departments use the same shape (lvKpis). */
+export interface CentreDay<C extends string = WorkCentre> {
   dateISO: string;
-  centre: WorkCentre;
+  centre: C;
   workedH: number;
   people: number;
   earnedH: number;
@@ -88,7 +92,7 @@ export interface CentreStat {
  *  Days without worked hours are not recorded days — they count no
  *  efficiency, people or machine hours, but their stops still count. `days`
  *  counts the dates; `people` is the average present on one of them. */
-export function hoursStat(days: readonly CentreDay[]): Omit<CentreStat, "centre"> & { personDays: number } {
+export function hoursStat(days: readonly CentreDay<string>[]): Omit<CentreStat, "centre"> & { personDays: number } {
   const worked = days.filter((d) => d.workedH > 0);
   const workedH = worked.reduce((s, d) => s + d.workedH, 0);
   const earnedH = worked.reduce((s, d) => s + d.earnedH, 0);
@@ -116,7 +120,7 @@ export function centreStat(centre: WorkCentre, days: readonly CentreDay[]): Cent
 
 /** A centre's days lined up under `dates`: its hours and efficiency on each,
  *  null where it booked nothing. */
-export function centreCells(days: readonly CentreDay[], centre: WorkCentre, dates: readonly string[]): { dateISO: string; workedH: number; earnedH: number; efficiency: number | null }[] {
+export function centreCells<C extends string>(days: readonly CentreDay<C>[], centre: C, dates: readonly string[]): { dateISO: string; workedH: number; earnedH: number; efficiency: number | null }[] {
   const at = new Map(days.filter((d) => d.centre === centre).map((d) => [d.dateISO, d]));
   return dates.map((dateISO) => {
     const workedH = at.get(dateISO)?.workedH ?? 0;
@@ -132,7 +136,7 @@ export function efficiencyBand(e: number | null): EfficiencyTone | null {
 
 /** Several centres as one — Fabrication is laser / punch, bending and fin
  *  folding together. */
-export function combinedStat(stats: readonly CentreStat[]): { workedH: number; earnedH: number; efficiency: number | null } {
+export function combinedStat(stats: readonly Pick<CentreStat, "workedH" | "earnedH">[]): { workedH: number; earnedH: number; efficiency: number | null } {
   const workedH = stats.reduce((s, c) => s + c.workedH, 0);
   const earnedH = stats.reduce((s, c) => s + c.earnedH, 0);
   return { workedH: round1(workedH), earnedH: round1(earnedH), efficiency: workedH > 0 ? earnedH / workedH : null };
@@ -342,8 +346,8 @@ export function loadAhead(centre: WorkCentre, days: readonly string[], due: read
 
 // ------------------------------------------------------------------ manpower
 
-export interface ManpowerInput {
-  centre: WorkCentre;
+export interface ManpowerInput<C extends string = WorkCentre> {
+  centre: C;
   /** Std-hours the month's plan asks of the centre, outsourced pieces left out. */
   requiredH: number;
   /** Std-hours of that plan the centre has earned — all of it, an order carried over bringing its earlier work. */
@@ -354,8 +358,8 @@ export interface ManpowerInput {
   present: number | null;
 }
 
-export interface ManpowerRow {
-  centre: WorkCentre;
+export interface ManpowerRow<C extends string = WorkCentre> {
+  centre: C;
   requiredH: number;
   doneH: number;
   /** Of it, earned before the month began (carried-over orders). */
@@ -391,11 +395,39 @@ export function inMonthPlan(o: { months: string; source: string | null; status: 
 /** Short by half a person or more is a deficit to act on; a fraction is the rounding of a crew. */
 const MANPOWER_SHORT = 0.5;
 
+/** The people short across the rows judged short — the "People short" tile
+ *  and the plant's total: whole people, since half a person cannot be hired. */
+export function peopleShort(rows: readonly Pick<ManpowerRow<string>, "tone" | "gap">[]): number {
+  return Math.ceil(rows.reduce((s, r) => s + (r.tone === "bad" ? -(r.gap ?? 0) : 0), 0));
+}
+
+/** The month a day belongs to, as the month cards read it: its label (the
+ *  plan's own, "October 2026"), its first and last day, its working days and
+ *  those left from the day on (the day included), and the net hours a
+ *  person works a day. One rule for both lines' months. */
+export function monthCalendar(todayISO: string, holidays: Set<string>, hoursPerPersonDay: number): ManpowerCalendar & { monthLabel: string; monthStartISO: string; monthEndISO: string } {
+  const monthStartISO = `${todayISO.slice(0, 7)}-01`;
+  const [y, m] = todayISO.split("-").map(Number);
+  const monthEndISO = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  return {
+    monthLabel: monthLabelFromInput(todayISO.slice(0, 7)) ?? todayISO.slice(0, 7),
+    monthStartISO, monthEndISO,
+    hoursPerPersonDay,
+    monthWd: workingDaysInclusive(monthStartISO, monthEndISO, holidays),
+    leftWd: workingDaysInclusive(todayISO, monthEndISO, holidays),
+  };
+}
+
+/** Days of history the dashboards' "lately" figures read, and the recorded
+ *  days they cover — one window for both lines. */
+export const HISTORY_DAYS = 21;
+export const RECENT_DAYS = 7;
+
 /** The manpower plan: the month's required standard hours turned into people,
  *  against who comes — the plant's "required vs available manpower" sheet,
  *  read live. The plan's hours are divided over the working days a person
  *  works, so a month with a holiday needs more people a day, not fewer. */
-export function manpowerPlan(rows: readonly ManpowerInput[], cal: ManpowerCalendar): ManpowerRow[] {
+export function manpowerPlan<C extends string = WorkCentre>(rows: readonly ManpowerInput<C>[], cal: ManpowerCalendar): ManpowerRow<C>[] {
   const perPersonMonth = cal.hoursPerPersonDay * cal.monthWd;
   const perPersonLeft = cal.hoursPerPersonDay * cal.leftWd;
   return rows.map((r) => {
@@ -431,9 +463,41 @@ export interface CockpitAction {
   /** Read off the shift log (a centre's pace, a stop, the attendance) — for
    *  the people who see the Shifts screen. */
   floor?: boolean;
+  /** The line it is about — set when both lines' decisions are listed together. */
+  line?: ProductLine;
 }
 
 export const isFloorAction = (a: CockpitAction) => a.floor === true;
+
+/** Recorded days under which a centre's pace is not judged. */
+export const PACE_MIN_DAYS = 3;
+
+/** The shift log's decisions, one rule for both lines: the centres short of
+ *  people for the month (the shortest named), a centre well short of the
+ *  standard over enough recorded days, and today's attendance not in yet.
+ *  `words` says how the line names its work; the rules are the same. */
+export function floorActions<C extends string>(i: {
+  manpower?: readonly ManpowerRow<C>[];
+  centres: readonly { centre: C; days: number; efficiency: number | null }[];
+  todayRecorded: boolean;
+  label: Record<C, string>;
+  words?: { work?: string; finish?: string; standard?: string; where?: string };
+}): CockpitAction[] {
+  const w = { work: "plan", finish: "to finish it", standard: "the standard", where: "", ...i.words };
+  const out: CockpitAction[] = [];
+  const short = (i.manpower ?? []).filter((m) => m.tone === "bad").sort((a, b) => (a.gap ?? 0) - (b.gap ?? 0));
+  if (short.length > 0) {
+    const top = short[0];
+    out.push({ tone: "bad", href: "/shifts", floor: true, text: `${short.map((m) => i.label[m.centre]).join(", ")} ${short.length > 1 ? "are" : "is"} short of people for the month's ${w.work} — ${i.label[top.centre]} needs ${Math.ceil(-(top.gap ?? 0))} more from today ${w.finish}.` });
+  }
+  for (const c of i.centres) {
+    if (c.days >= PACE_MIN_DAYS && efficiencyBand(c.efficiency) === "bad") {
+      out.push({ tone: "warn", href: "/shifts", floor: true, text: `${i.label[c.centre]} worked at ${Math.round((c.efficiency ?? 0) * 100)}% of ${w.standard} over its last ${c.days} recorded days.` });
+    }
+  }
+  if (!i.todayRecorded) out.push({ tone: "info", href: "/shifts", floor: true, text: `Today's attendance${w.where} is not recorded yet — the hours and the efficiency wait for it.` });
+  return out;
+}
 
 export interface ActionInputs {
   late: readonly LateLine[];
@@ -473,19 +537,11 @@ export function cockpitActions(i: ActionInputs): CockpitAction[] {
   } else if (i.coverage.band === "heavy") {
     out.push({ tone: "warn", href: "/worklist/welding", text: `${i.coverage.days} days of cut parts are waiting for welding — Fabrication is far ahead; welding is the constraint.` });
   }
-  // people short of the month's plan: one line for all of them, the shortest named
-  const short = (i.manpower ?? []).filter((m) => m.tone === "bad").sort((a, b) => (a.gap ?? 0) - (b.gap ?? 0));
-  if (short.length > 0) {
-    const top = short[0];
-    out.push({ tone: "bad", href: "/shifts", floor: true, text: `${short.map((m) => WORK_CENTRE_LABEL[m.centre]).join(", ")} ${short.length > 1 ? "are" : "is"} short of people for the month's plan — ${WORK_CENTRE_LABEL[top.centre]} needs ${Math.ceil(-(top.gap ?? 0))} more from today to finish it.` });
-  }
-  for (const c of i.centres) {
-    if (c.days >= 3 && efficiencyBand(c.efficiency) === "bad") {
-      out.push({ tone: "warn", href: "/shifts", floor: true, text: `${WORK_CENTRE_LABEL[c.centre]} worked at ${Math.round((c.efficiency ?? 0) * 100)}% of the standard over its last ${c.days} recorded days.` });
-    }
-  }
+  // the shift log's side — the people short, a slow centre, today's attendance (floorActions, both lines' rule)
+  const floor = floorActions({ manpower: i.manpower, centres: i.centres, todayRecorded: i.todayRecorded, label: WORK_CENTRE_LABEL });
+  out.push(...floor.filter((a) => a.tone !== "info"));
   if (i.topLoss && i.topLoss.hours > 0) out.push({ tone: "warn", href: "/shifts", floor: true, text: `${i.topLoss.label} cost ${stopDurationLabel(i.topLoss.hours)} of machine time this week — the biggest loss.` });
-  if (!i.todayRecorded) out.push({ tone: "info", href: "/shifts", floor: true, text: "Today's attendance is not recorded yet — the hours and the efficiency wait for it." });
+  out.push(...floor.filter((a) => a.tone === "info"));
   return out.slice(0, 6);
 }
 
@@ -603,8 +659,8 @@ export function dailyOutput(centres: readonly { centre: WorkCentre; trend: reado
     }));
 }
 
-export interface MonthPaceRow {
-  centre: WorkCentre;
+export interface MonthPaceRow<C extends string = WorkCentre> {
+  centre: C;
   requiredH: number;
   doneH: number;
   /** done ÷ the month's plan. */
@@ -618,19 +674,23 @@ export interface MonthPaceRow {
 
 /** Behind the month's even pace by a tenth of its plan or more is a month that will not finish without help. */
 const PACE_BEHIND = 0.1;
+/** The tone a share reads in against the even pace — monthPace's own rule, for a bar beside it. */
+export function paceTone(doneShare: number, expectedShare: number): "ok" | "warn" | "bad" {
+  const gap = doneShare - expectedShare;
+  return gap >= 0 ? "ok" : gap > -PACE_BEHIND ? "warn" : "bad";
+}
 
 /** Each centre's month so far against an even pace through its working days:
  *  what it has done of the plan, and where it should stand by today. Work a
  *  carried-over order brought from before the month starts the pace there —
  *  the month owes only the rest, evenly over its working days. */
-export function monthPace(rows: readonly (Pick<ManpowerRow, "centre" | "requiredH" | "doneH"> & { doneBeforeH?: number })[], cal: Pick<ManpowerCalendar, "monthWd" | "leftWd">): MonthPaceRow[] {
+export function monthPace<C extends string = WorkCentre>(rows: readonly (Pick<ManpowerRow<C>, "centre" | "requiredH" | "doneH"> & { doneBeforeH?: number })[], cal: Pick<ManpowerCalendar, "monthWd" | "leftWd">): MonthPaceRow<C>[] {
   const elapsed = cal.monthWd > 0 ? Math.min(1, Math.max(0, (cal.monthWd - cal.leftWd) / cal.monthWd)) : 0;
   return rows.map((r) => {
     if (!(r.requiredH > 0)) return { centre: r.centre, requiredH: 0, doneH: round1(r.doneH), doneShare: null, expectedShare: elapsed, aheadH: 0, tone: null };
     const startShare = Math.min(1, Math.max(0, (r.doneBeforeH ?? 0) / r.requiredH));
     const expectedShare = startShare + (1 - startShare) * elapsed;
     const doneShare = r.doneH / r.requiredH;
-    const gap = doneShare - expectedShare;
     return {
       centre: r.centre,
       requiredH: round1(r.requiredH),
@@ -638,7 +698,7 @@ export function monthPace(rows: readonly (Pick<ManpowerRow, "centre" | "required
       doneShare,
       expectedShare,
       aheadH: round1(r.doneH - r.requiredH * expectedShare),
-      tone: gap >= 0 ? "ok" : gap > -PACE_BEHIND ? "warn" : "bad",
+      tone: paceTone(doneShare, expectedShare),
     };
   });
 }

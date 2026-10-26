@@ -44,6 +44,9 @@ export function lvStageAt(bay: string): LvStage | null {
   return bay === "Welding" || bay === "Painting" ? bay : null;
 }
 
+/** How far back the panels' stage table (and its date slicer) reaches, in days. */
+export const LV_STAGE_HISTORY_DAYS = 90;
+
 export const LV_DELIVERED = "Delivered";
 /** The whole chain a cell can sit on: the stages, then delivery. */
 export const LV_CHAIN = [...LV_STAGES, LV_DELIVERED] as const;

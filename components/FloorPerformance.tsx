@@ -3,19 +3,19 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { Info } from "lucide-react";
-import { Bullet, ChartCard, StatTile, TONE_CELL, TONE_TEXT, fmt, pct, pctOrDash } from "@/components/charts/kit";
+import { Bullet, ChartCard, StatTile, TONE_TEXT, fmt, pctOrDash } from "@/components/charts/kit";
+import { EfficiencyHeatmap } from "@/components/EfficiencyHeatmap";
 import { OutputChart, ProductivityTrendChart } from "@/components/LazyCharts";
+import { outputPoints } from "@/components/CockpitCharts";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { EmptyState, Tabs } from "@/components/primitives";
 import { useSetParam } from "@/components/useSetParam";
 import { TableFrame, Th } from "@/components/DataTable";
-import { formatDate, formatDayShort } from "@/lib/domain/format";
 import { addDaysISO, slicerRangeLabel } from "@/lib/domain/dateSlicer";
 import { stopDurationLabel } from "@/lib/domain/downtime";
 import { WORK_CENTRE_LABEL } from "@/lib/domain/shifts";
 import { OUTPUT_GROUPS, OUTPUT_GROUP_LABEL, efficiencyBand, paretoOf } from "@/lib/domain/kpis";
 import { FLOOR_HISTORY_DAYS, FLOOR_MAX_DAYS, groupsOf, type FloorDept } from "@/lib/domain/floorKpis";
-import { EFFICIENCY_OK, EFFICIENCY_WARN } from "@/lib/domain/productivity";
 import type { FloorPeriod } from "@/lib/server/kpis";
 
 // 🏭 How the floor worked over the period the planner picks — one department
@@ -27,12 +27,6 @@ import type { FloorPeriod } from "@/lib/server/kpis";
 // department live in the URL (?from=&to=&dept=), so a link opens as sent.
 
 const DEPT_TABS: { id: FloorDept; label: string }[] = [{ id: "all", label: "All" }, ...OUTPUT_GROUPS.map((g) => ({ id: g, label: OUTPUT_GROUP_LABEL[g] }))];
-
-const BAND_WORD = {
-  ok: `at the standard (${pct(EFFICIENCY_OK)} and up)`,
-  warn: `short (${pct(EFFICIENCY_WARN)}–${pct(EFFICIENCY_OK)})`,
-  bad: `well short (under ${pct(EFFICIENCY_WARN)})`,
-} as const;
 
 const hOrDash = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${fmt(v, 1)} h`);
 const oneDecimal = (v: number | null) => (v === null ? "" : Math.round(v * 10) / 10);
@@ -104,55 +98,7 @@ export function FloorPerformance({ period, todayISO, defaultRange }: {
           sub="Efficiency each recorded day: the standard hours the output was worth ÷ the man-hours booked there. Green is at the standard, amber short of it, red well short; the last column is the whole period."
           table={noDays ? undefined : { filename: `centre-efficiency-${stamp}.xlsx`, rows: grid.flatMap((r) => r.cells.filter((c) => c.workedH > 0).map((c) => ({ Centre: WORK_CENTRE_LABEL[r.centre], Day: c.dateISO, "Earned h": c.earnedH, "Booked h": c.workedH, "Efficiency %": c.efficiency === null ? "" : Math.round(c.efficiency * 100) }))) }}
         >
-          {noDays || grid.length === 0 ? empty : (
-            <>
-              <TableFrame className="!max-h-none">
-                <table className="border-separate w-full" style={{ borderSpacing: 3 }}>
-                  <thead>
-                    <tr>
-                      <th scope="col" className="px-2 text-left text-xs font-bold text-muted sticky left-0 bg-surface z-[1]">Centre</th>
-                      {dates.map((d) => (
-                        <th key={d} scope="col" className="px-1 text-[11px] font-bold text-muted text-center leading-tight whitespace-nowrap">
-                          <span className="block font-normal">{formatDate(d).split(" ")[0]}</span>{formatDayShort(d)}
-                        </th>
-                      ))}
-                      <th scope="col" className="px-2 text-xs font-bold text-muted text-center whitespace-nowrap">Period</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grid.map((r) => {
-                      const tb = efficiencyBand(r.total);
-                      return (
-                        <tr key={r.centre}>
-                          <th scope="row" className="px-2 text-left text-sm font-semibold whitespace-nowrap sticky left-0 bg-surface z-[1]">{WORK_CENTRE_LABEL[r.centre]}</th>
-                          {r.cells.map((c) => {
-                            const b = efficiencyBand(c.efficiency);
-                            return (
-                              <td key={c.dateISO}
-                                className={`min-w-[3.25rem] px-1.5 py-1.5 rounded text-center text-[13px] tabnum font-semibold ${b ? TONE_CELL[b] : "bg-surface-2 text-muted font-normal"}`}
-                                title={c.efficiency === null ? `${WORK_CENTRE_LABEL[r.centre]} · ${formatDate(c.dateISO)}: no hours booked` : `${WORK_CENTRE_LABEL[r.centre]} · ${formatDate(c.dateISO)}: ${pct(c.efficiency)} — ${fmt(c.earnedH, 1)} std-h of ${fmt(c.workedH, 1)} h booked`}>
-                                {c.efficiency === null ? "·" : pct(c.efficiency)}
-                              </td>
-                            );
-                          })}
-                          <td className={`min-w-[4rem] px-2 py-1.5 rounded text-center text-[13px] tabnum font-extrabold ${tb ? TONE_CELL[tb] : "text-muted"}`}
-                            title={`${WORK_CENTRE_LABEL[r.centre]}: ${pctOrDash(r.total)} over ${r.days} recorded day${r.days === 1 ? "" : "s"}`}>
-                            {pctOrDash(r.total)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </TableFrame>
-              <ul className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-muted" aria-label="Colour key">
-                {(["ok", "warn", "bad"] as const).map((b) => (
-                  <li key={b} className="inline-flex items-center gap-1.5"><span className={`inline-block w-3.5 h-3.5 rounded-sm ${TONE_CELL[b]}`} aria-hidden />{BAND_WORD[b]}</li>
-                ))}
-                <li className="inline-flex items-center gap-1.5"><span className="inline-block w-3.5 h-3.5 rounded-sm bg-surface-2" aria-hidden />no hours booked</li>
-              </ul>
-            </>
-          )}
+          {noDays || grid.length === 0 ? empty : <EfficiencyHeatmap grid={grid} dates={dates} labels={WORK_CENTRE_LABEL} />}
           {period.pricedShare !== null && period.pricedShare < 0.95 && (
             <p className="text-xs text-muted mt-2">
               {Math.round(period.pricedShare * 100)}% of the period&apos;s pieces carry standard hours — the rest earns nothing and reads as slow.{" "}
@@ -242,7 +188,7 @@ export function FloorPerformance({ period, todayISO, defaultRange }: {
           sub="Standard hours the output was worth, by department, against the man-hours the shift log booked — the gap between the bars and the line is the pace lost (or won)."
           table={noDays ? undefined : { filename: `output-${stamp}.xlsx`, rows: output.map((d) => ({ Day: d.dateISO, ...Object.fromEntries(groupsOf(period.dept).map((g) => [`${OUTPUT_GROUP_LABEL[g]} h`, d[g]])), "Earned h": d.earnedH, "Booked h": d.workedH, "Efficiency %": d.efficiency === null ? "" : Math.round(d.efficiency * 100) })) }}
         >
-          {output.length === 0 ? empty : <OutputChart days={output} groups={groupsOf(period.dept)} />}
+          {output.length === 0 ? empty : <OutputChart days={outputPoints(output, groupsOf(period.dept))} groups={groupsOf(period.dept)} />}
         </ChartCard>
         <ChartCard
           className="xl:col-span-5"

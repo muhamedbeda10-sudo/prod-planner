@@ -6,6 +6,8 @@ const LABELS: Record<string, string> = {
   status: "Status", progress: "Progress", urgent: "Urgency", deptStage: "Departments",
   view: "View", from: "From date", to: "To date", bom: "BOM", machine: "Machine",
   dept: "Department", plan: "Plan", date: "Date",
+  // the dashboards' All | TR | LV — a filter of the page, not the nav's toggle
+  line: "Line shown",
 };
 
 export interface AiPageContext {
