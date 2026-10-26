@@ -23,6 +23,22 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "Right-click a card, a chart, a figure, a table row or a column header — anywhere in the app — and pick Ask AI (on a phone, a long press): the assistant opens and explains it at once — what it is, what it says right now and how it is worked out, checked against the live data. The dashboards are cleaner for it: the Chart | Table switch is gone from every chart, the long notes under the cards and the warnings under the capacity check are gone too (the assistant has them), and the headline tiles show their figure with one short line and a small ▲ / ▼ chip against a week ago — nothing where there is no reading to compare with. A row's own menu (hold, close, trace…) ends with Ask AI too. In a field, on text you selected, or with Shift held, the browser's own menu still opens. Each Ask AI is one question from your AI allowance.",
   },
   {
+    id: "2026-10-26-excel-through-assistant",
+    dateISO: "2026-10-26",
+    title: "Excel files and printouts come from the assistant now",
+    where: "AI assistant · every screen",
+    href: "/ai",
+    body: "The Export Excel and Print / PDF buttons have left the screens — the Floor's worklists keep theirs, and tank barcodes print as before. Ask the assistant instead: “an Excel of the plan tracker for October”, “the daily log of last week as a sheet”, “the consumables handed out this month”, “print today's attendance”. It builds the same sheet the button made — the screen's own columns and headers, so the file still drops into the office's workbooks — or any other list you describe, and gives you two buttons in its answer: Download, and Print, which opens the sheet under the company header ready for paper or PDF. A dashboard or an analysis prints from the assistant's answer itself. The file stays in your chat for 14 days, for you alone.",
+  },
+  {
+    id: "2026-10-26-worklists-one-bar",
+    dateISO: "2026-10-26",
+    title: "Worklists and the Orders Registry lose their extra rows",
+    where: "Floor → Welding · Painting · Punching · Bending · Admin → Orders Registry",
+    href: "/worklist/welding",
+    body: "The worklists no longer carry a Transformers | LV Panels switch or a row of Punching / Bending / Welding / Painting tabs: the department and its line are picked in the Floor tab's menu, so the queue starts right under the top bar. The Orders Registry keeps its line switch in the orders' filter bar, and the weekly plan import is its own entry in the Admin menu.",
+  },
+  {
     id: "2026-10-26-simulator-through-assistant",
     dateISO: "2026-10-26",
     title: "What-ifs are the assistant's now: the Simulator screen is gone",

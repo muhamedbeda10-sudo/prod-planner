@@ -6,7 +6,6 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, CheckCheck, ChevronRight, CornerDownRight, Pause } from "lucide-react";
-import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { Num, Soi } from "@/components/ui";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
@@ -163,12 +162,6 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
   const complete = filtered.reduce((s, r) => s + r.complete, 0);
   const doneRows = rows.filter((r) => r.status === "open" && r.state.required > 0 && r.state.delivered >= r.state.required);
   const doneCount = doneRows.length;
-
-  const exportRows = filtered.map((r) => ({
-    MO: r.mo, SOI: r.soi ?? "", Customer: r.customer ?? "", Product: r.product ?? "", BoM: r.bom, "SEC Item": r.secItem ?? "",
-    Required: r.state.required, Punched: r.state.punch, Bent: r.state.bend, Welded: r.state.weld, Painted: r.state.paint,
-    Left: r.remaining, Status: r.status, "On hold": r.hold.onHold ? holdLabel(r.hold) : "",
-  }));
 
   function run(fn: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd: FormData, after?: () => void) {
     setCellErr("");
@@ -440,7 +433,6 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
         <span className="text-xs text-muted">
           {family === "MB" ? "Meter boxes" : family === "PNL" ? "Panels" : "Units"}: <b className="text-foreground tabnum">{complete}</b> / <b className="text-foreground tabnum">{required}</b> painted
         </span>
-        <ExportButton rows={exportRows} filename="lv-panels-tracker.xlsx" sheetName="LV Panels" />
         {canStatus && doneCount > 0 && (
           <button type="button" className="btn btn-sm btn-secondary normal-case" disabled={pending} onClick={closeDone} title="Close every open panel order whose panels have all been delivered">
             <CheckCheck size={13} className="text-ok-fg" />

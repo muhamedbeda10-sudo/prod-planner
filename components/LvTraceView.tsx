@@ -2,7 +2,6 @@ import Link from "next/link";
 import { traceHref, trackerHref } from "@/lib/domain/links";
 import { PageHeader, Soi } from "@/components/ui";
 import { TraceSearch } from "@/components/TraceSearch";
-import { ExportButton } from "@/components/ExportButton";
 import { LV_CHAIN, LV_STAGE_LABEL, LV_STAGE_SHORT, lvStageOf } from "@/lib/domain/lv";
 import type { LvTraceResult } from "@/lib/server/lvTrace";
 
@@ -16,9 +15,6 @@ const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.
 export function LvTraceView({ t }: { t: LvTraceResult }) {
   const open = t.members.filter((m) => m.status === "open");
   const urgent = t.members.filter((m) => m.urgent).length;
-  const exportRows = t.timeline.map((e) => ({
-    Date: e.dateISO, MO: e.mo ?? "", Stage: e.stage, Qty: e.qty, By: e.by ?? "", Source: e.source, Note: e.note ?? "",
-  }));
 
   return (
     <div className="space-y-6">
@@ -108,7 +104,6 @@ export function LvTraceView({ t }: { t: LvTraceResult }) {
           <b className="text-sm">Daily log — {t.ledgerCount} row(s)</b>
           <span className="inline-flex items-center gap-3 text-xs text-muted">
             {t.contributors.length > 0 && <span>{t.contributors.map((c) => `${c.name} ${fmt(c.qty)}`).join(" · ")}</span>}
-            <ExportButton rows={exportRows} filename={`lv-trace-${t.key.replace(/[^A-Za-z0-9-]+/g, "_")}.xlsx`} sheetName="Log" />
           </span>
         </div>
         {t.timeline.length === 0 ? (

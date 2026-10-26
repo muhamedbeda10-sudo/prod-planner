@@ -149,7 +149,7 @@ function Item({ item, actions, open, onToggle, onDelete, onAction }: {
       {open && (
         <div className="px-3 pb-3 sm:px-4 sm:pb-4 border-t pt-3">
           {item.fromName && <p className="text-xs text-muted mb-2" dir="auto">{item.fromName}</p>}
-          <AiMarkdown text={item.body} className="!text-[14px]" />
+          <AiMarkdown text={item.body} shared className="!text-[14px]" />
           {proposed.length > 1 && <ApproveAll views={proposed} onChange={onAction} />}
           {actions.map((a) => <AiActionCard key={a.id} view={a} onChange={onAction} />)}
           <div className="flex justify-end gap-1 mt-3">

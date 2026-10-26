@@ -35,3 +35,8 @@ export function traceHref(target: { mo?: string | null; bom?: string | null; lin
   if (target.line) qs.set(LINE_PARAM, target.line);
   return `/trace?${qs.toString()}`;
 }
+
+/** A file of the person's own in the assistant's chat: its download, and the
+ *  page that lays a sheet out to print (lib/domain/aiFiles.ts reads them back). */
+export const aiFileHref = (id: number) => `/api/ai/files/${id}`;
+export const aiPrintHref = (id: number) => `/ai/print/${id}`;

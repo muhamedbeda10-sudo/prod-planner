@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SCAN_SHEET_QUESTION, aiFileKind, attachmentNote, cleanFileName, fileRef, fileRefId, fileSizeText, filesOfNote, filesToSend, isAttachmentNote, questionSeenProblem, seenTokensOf, type SeenWeight } from "./aiFiles";
+import { SCAN_SHEET_QUESTION, aiFileKind, fileLinkKind, madeFileName, sheetNamesOf, attachmentNote, cleanFileName, fileRef, fileRefId, fileSizeText, filesOfNote, filesToSend, isAttachmentNote, questionSeenProblem, seenTokensOf, type SeenWeight } from "./aiFiles";
 import { AI_MAX_QUESTION, displayTurns } from "./ai";
 
 const bytes = (...b: number[]) => new Uint8Array(b);
@@ -105,5 +105,26 @@ describe("scanning a sheet", () => {
     expect(SCAN_SHEET_QUESTION.length).toBeLessThanOrEqual(AI_MAX_QUESTION);
     expect(SCAN_SHEET_QUESTION).toMatch(/exactly as written/);
     expect(SCAN_SHEET_QUESTION).toMatch(/for my approval/);
+  });
+});
+
+describe("fileLinkKind", () => {
+  it("knows the links to a file the assistant made — download or print — and nothing else", () => {
+    expect(fileLinkKind("/api/ai/files/12")).toBe("download");
+    expect(fileLinkKind("/ai/print/12")).toBe("print");
+    for (const href of ["/api/ai/files/0", "/api/ai/files/12/x", "/api/ai/files/12?x=1", "/ai/print/", "/ai/print/1a", "https://x/api/ai/files/1", "/tracker"]) expect(fileLinkKind(href)).toBeNull();
+  });
+});
+
+describe("the names of a file the assistant made", () => {
+  it("keep letters, digits and a few marks, and end in .xlsx", () => {
+    expect(madeFileName("plan-tracker")).toBe("plan-tracker.xlsx");
+    expect(madeFileName("My/odd:name.xlsx")).toBe("My-odd-name.xlsx");
+    expect(madeFileName("تقرير أكتوبر")).toBe("تقرير أكتوبر.xlsx");
+    expect(madeFileName("../..")).toBe("sheet.xlsx");
+    expect(madeFileName("x".repeat(400)).length).toBeLessThanOrEqual(160);
+  });
+  it("give each sheet a name Excel takes, every one different", () => {
+    expect(sheetNamesOf(["Plan", "plan", "Plan", "a/b:c", "", "L".repeat(40), "L".repeat(40)])).toEqual(["Plan", "plan 2", "Plan 3", "a b c", "Sheet", "L".repeat(31), `${"L".repeat(29)} 2`]);
   });
 });

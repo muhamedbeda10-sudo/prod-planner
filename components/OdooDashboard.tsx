@@ -1,13 +1,12 @@
 "use client";
 
 import { formatDate } from "@/lib/domain/format";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
 import { useSetParam } from "@/components/useSetParam";
 import { productColor, productInk } from "@/lib/domain/productColors";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList,
 } from "recharts";
-import { ExportButton } from "@/components/ExportButton";
 import { ChartCard, DeltaChip } from "@/components/charts/kit";
 import { Badge } from "@/components/Badge";
 import { OdooInsightsSection } from "@/components/OdooInsights";
@@ -384,29 +383,12 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
   const pal = PAL;
   const title = periodLabel(d.period);
   const setProduct = useProductFilter();
-  // the file name says what the numbers are of: the BOM, the product, the
-  // period — the product typed on a row or in the URL, kept to file-safe characters
-  const fileScope = `${d.bom ? `${d.bom}-` : ""}${d.product ? `${d.product.replace(/[^\w.-]+/g, "_")}-` : ""}${d.period.fromISO ?? "all"}-${d.period.toISO}`;
   // a narrowed dashboard must say so on the page, not only in the picker —
   // printed or screenshotted, the numbers are otherwise the whole plant's
   const bomLabel = d.bom === null ? null : d.bom === "" ? "rows with no known BOM" : d.bom;
   const prevTitle = d.previous ? periodLabel({ range: "custom", fromISO: d.previous.fromISO, toISO: d.previous.toISO }) : null;
   const closedBasis = d.basis === "closed";
   const word = closedBasis ? "closed" : "logged";
-
-  const exportRows = useMemo(
-    () => d.days.filter((p) => p.rows > 0 || p.loggedRows > 0 || p.doneRows > 0).map((p) => ({
-      Day: p.dateISO,
-      ...Object.fromEntries(present.map((s) => [`${s} (${word})`, p.bySeries[s]])),
-      [`Total ${word}`]: p.qty,
-      [`Rows ${word}`]: p.rows,
-      "Logged qty": p.loggedQty,
-      "Logged rows": p.loggedRows,
-      "Closed qty": p.doneQty,
-      "Closed rows": p.doneRows,
-    })),
-    [d, present, word]
-  );
 
   if (d.kpi.rows === 0) {
     const other = closedBasis
@@ -446,7 +428,6 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
           )}
           {prevTitle && <span className="text-muted"> · compared with {prevTitle}{d.compare !== "prev" ? ` (${ODOO_COMPARE_LABEL[d.compare].toLowerCase()})` : ""}</span>}
         </div>
-        <ExportButton rows={exportRows} filename={`odoo-dashboard-${fileScope}.xlsx`} sheetName="By day" />
       </div>
 
       {/* the products first, centred across the page, then the day by day */}
