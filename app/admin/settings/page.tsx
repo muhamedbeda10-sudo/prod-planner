@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { getSettings } from "@/lib/server/data";
-import { PageHead, ReadingColumn } from "@/components/ui";
+import { Boxes } from "lucide-react";
+import { PageHead } from "@/components/ui";
+import { SectionCard } from "@/components/primitives";
 import { TankTrackingToggle } from "./TankTrackingToggle";
 import { MachinePlanningToggle } from "./MachinePlanningToggle";
 import { OdooTrackingStart } from "@/components/OdooTrackingStart";
@@ -21,14 +23,16 @@ export default async function SettingsPage() {
   const settings = await getSettings();
 
   return (
-    <ReadingColumn className="space-y-4">
+    <div className="space-y-3">
       <PageHead title="Settings" sub="Plant-wide switches — what changes how several screens behave at once" />
-      <TankTrackingToggle initialOn={settings.tankTracking} />
-      <MachinePlanningToggle initialOn={settings.machinePlanning} />
-      <section className="bg-surface border rounded-xl p-4 space-y-3">
-        <h2 className="font-bold">Odoo monthly plan tracking</h2>
-        <OdooTrackingStart initialDate={settings.odooTrackingFrom} />
-      </section>
-    </ReadingColumn>
+      {/* side by side on a wide screen, one under the other on a narrow one */}
+      <div className="grid gap-4 xl:grid-cols-2 items-start">
+        <TankTrackingToggle initialOn={settings.tankTracking} />
+        <MachinePlanningToggle initialOn={settings.machinePlanning} />
+        <SectionCard icon={<Boxes size={16} aria-hidden />} title="Odoo monthly plan tracking" description="Where the tracker starts reading Odoo's closings into the monthly plan">
+          <OdooTrackingStart initialDate={settings.odooTrackingFrom} />
+        </SectionCard>
+      </div>
+    </div>
   );
 }

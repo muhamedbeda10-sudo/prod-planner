@@ -8,7 +8,7 @@ import { getDowntimeDay } from "@/lib/server/downtime";
 import { ShiftDowntime } from "@/components/ShiftDowntime";
 import { getShiftProductivity } from "@/lib/server/productivity";
 import { ShiftProductivity } from "@/components/ShiftProductivity";
-import { PageHeader } from "@/components/ui";
+import { PageHead } from "@/components/ui";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { ShiftRoster } from "@/components/ShiftRoster";
 import { ShiftHoursForm } from "@/components/ShiftHoursForm";
@@ -17,7 +17,7 @@ import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { parseRosterFilter, rosterDepts, rosterFilterLabel } from "@/lib/domain/roster";
 
-export const metadata = { title: "Shift log — ATC" };
+export const metadata = { title: "Shifts — ATC" };
 export const dynamic = "force-dynamic";
 
 // The supervisors' page: one day, one roster of everyone, filtered by line
@@ -44,7 +44,7 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
     <div className="space-y-3">
       <RememberLastVisit storageKey="shifts:last" />
       <div className="shrink-0 space-y-2 no-print">
-        <PageHeader title="🕘 Shift log" />
+        <PageHead title="Shifts" sub="The shift log: who worked, how long, and on what" />
         <UrlDateSlicer
           encoding="day" mode="day" from={day} to={day} min={[addDaysISO(today, -60), day].sort()[0]} max={today} today={today}
           presets={["today", "yesterday"]} marks={history.map((h) => h.dateISO)}

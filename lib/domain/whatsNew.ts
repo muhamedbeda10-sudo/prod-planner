@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-titles-and-settings",
+    dateISO: "2026-10-26",
+    title: "Pages are named after their tabs, and Settings uses the whole screen",
+    where: "Shifts · Orders Registry · Settings · Automations",
+    href: "/admin/settings",
+    body: "The Shifts tab's page is now called Shifts, and the Admin menu's “Orders & plan imports” is now Orders Registry, the same name as the page it opens (the monthly and weekly imports are still its two views). Settings lays its switches side by side on a wide screen, and Automations spans the full width like the rest of the app.",
+  },
+  {
     id: "2026-10-26-dashboards-tab",
     dateISO: "2026-10-26",
     title: "Every dashboard in one tab: Dashboards — ODOO moves into Plan Tracker, and Worklist is now Floor",

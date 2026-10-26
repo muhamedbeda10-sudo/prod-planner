@@ -26,7 +26,7 @@ export default async function OrdersPage() {
       {/* the weekly delivery schedule is the transformers' — the panels have the monthly plan only */}
       <PageHead
         title="Orders Registry"
-        sub={`${LINE_LABEL[line]} · ${orders.length} orders · ${totalQty} pcs planned · tick rows to take a wrong import back out`}
+        sub={`Monthly plan · ${LINE_LABEL[line]} · ${orders.length} orders · ${totalQty} pcs planned · tick rows to take a wrong import back out`}
         views={<ViewTabs views={line === "LV" ? PLANS_VIEWS.filter((v) => v.href === "/orders") : PLANS_VIEWS} current="/orders" label="Plans view" />}
       />
       <MonthlyImport line={line} />

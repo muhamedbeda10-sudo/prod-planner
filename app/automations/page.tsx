@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/server/auth";
 import { automationsData } from "@/lib/server/ai/panel";
-import { PageHead, ReadingColumn } from "@/components/ui";
+import { PageHead } from "@/components/ui";
 import { AutomationsView } from "@/components/AutomationsView";
 
 export const metadata = { title: "Automations — ATC" };
@@ -20,7 +20,7 @@ export default async function AutomationsPage() {
   if (!d.allowed && d.automations.length === 0) redirect("/");
 
   return (
-    <ReadingColumn>
+    <div className="space-y-3">
       <PageHead title="Automations" />
       <AutomationsView
         automations={d.automations}
@@ -28,6 +28,6 @@ export default async function AutomationsPage() {
         status={{ paused: d.paused, inHours: d.inHours, hours: d.hours, stale: d.stale, allowed: d.allowed }}
         builder={{ meId: d.meId, people: d.people }}
       />
-    </ReadingColumn>
+    </div>
   );
 }

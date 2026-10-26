@@ -492,7 +492,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
           <tbody>
             {filtered.length === 0 && (
               <tr><td colSpan={tableCols} className="p-4 text-center text-muted">
-                {rows.length === 0 ? "No LV panel orders yet — import their monthly plan from Tools → Orders & plan imports." : "No rows match the filters."}
+                {rows.length === 0 ? "No LV panel orders yet — import their monthly plan from Tools → Orders Registry." : "No rows match the filters."}
               </td></tr>
             )}
             {groups.map(([bom, members]) => {

@@ -20,7 +20,7 @@ export default async function ImportPage() {
   const plans = await getPlanNos();
   return (
     <ReadingColumn width="3xl" className="space-y-5">
-      <PageHead title="Import Weekly Plan" sub="The delivery schedule" views={<ViewTabs views={PLANS_VIEWS} current="/import" label="Plans view" />} />
+      <PageHead title="Orders Registry" sub="Weekly plan · the delivery schedule" views={<ViewTabs views={PLANS_VIEWS} current="/import" label="Plans view" />} />
       <p className="text-sm text-muted">
         <b>Delivery schedule only.</b> Dates per MO come from here; order quantities live in the monthly registry
         beside it, and progress in the daily logs.
