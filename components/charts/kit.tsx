@@ -29,12 +29,16 @@ export const TRACK = "color-mix(in srgb, var(--viz-1) 16%, var(--surface))";
 
 /** Text in a status's own ink — always beside a word that says the same. */
 export const TONE_TEXT = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" } as const;
+/** A cell filled in a status's own colours — a heatmap's band, with its number on it. */
+export const TONE_CELL = { ok: "bg-ok-bg text-ok-fg", warn: "bg-warn-bg text-warn-fg", bad: "bg-bad-bg text-bad-fg" } as const;
 
 export const catColor = (i: number) => (i >= 0 && i < CAT.length ? CAT[i] : OTHER);
 export const catInk = (i: number) => (i >= 0 && i < INK_ON.length ? INK_ON[i] : INK_ON_OTHER);
 
 export const fmt = (n: number, digits = 3) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { maximumFractionDigits: digits }));
 export const pct = (f: number, digits = 0) => `${(f * 100).toFixed(digits)}%`;
+/** A rate, or a dash where there is none. */
+export const pctOrDash = (v: number | null | undefined) => (v === null || v === undefined ? "—" : pct(v));
 /** 1,284 · 12.9K · 4.2M — for big standalone numbers. */
 const COMPACT = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 export const compact = (n: number) => (Math.abs(n) < 10_000 ? fmt(Math.round(n * 10) / 10, 1) : COMPACT.format(n));
@@ -332,6 +336,23 @@ export function HeatScale({ max, format = (v: number) => fmt(v) }: { max: number
       <span>less</span>
       {steps.map((s) => <span key={s} className="inline-block w-5 h-2.5 rounded-sm" style={heat(s * max, max)} />)}
       <span>more{max > 0 ? ` (max ${format(max)})` : ""}</span>
+    </div>
+  );
+}
+
+/** One row of a bullet chart: the bar is what there is, the tick is where it should be. */
+export function Bullet({ label, value, target, max, text, tone }: { label: string; value: number; target: number | null; max: number; text: React.ReactNode; tone?: "ok" | "warn" | "bad" | null }) {
+  const w = (v: number) => `${Math.max(0, Math.min(1, max > 0 ? v / max : 0)) * 100}%`;
+  return (
+    <div>
+      <div className="flex flex-wrap justify-between gap-x-3 text-sm mb-1">
+        <span className="font-semibold">{label}</span>
+        <span className={`tabnum ${tone ? TONE_TEXT[tone] : ""}`}>{text}</span>
+      </div>
+      <div className="relative h-3 rounded-full" style={{ background: TRACK }} role="img" aria-label={`${label}: ${typeof text === "string" ? text : ""}`}>
+        <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: w(value), background: "var(--viz-1)" }} />
+        {target !== null && <div className="absolute -inset-y-1 w-0.5 rounded bg-foreground" style={{ left: `calc(${w(target)} - 1px)` }} aria-hidden />}
+      </div>
     </div>
   );
 }

@@ -512,13 +512,14 @@ mobile drawer still lists every view flat, since it has the vertical room.
    (what the work is worth, from the hours a piece per work centre — typed, else the estimate), so Fabrication's
    ten projects a day add up and departments compare. The **Decisions** button in its head (icon: the worst news; badge: how many) opens what needs a decision today (lines behind, a centre
    short at the end of the horizon or falling behind in it and when it catches up, thin or heavy welding coverage, a slow centre, the
-   biggest loss, an unrecorded day) in a popup, the printout carrying the list; then five questions: **1** the newest weekly plan — each stage's pieces due by
+   biggest loss, an unrecorded day) in a popup, the printout carrying the list. The headline tiles: the plan delivered on
+   its day, the lines behind, welding's coverage, and — over the last 7 recorded days — Fabrication's efficiency, the
+   machine time lost and the people short. Then: **1** the newest weekly plan — each stage's pieces due by
    today (the oven date less the Settings lead days) against done, by delivery day, and the lines behind with the
-   stage they are stuck at (the card shows the oldest 20; its Excel export carries them all); **2** each work centre's earned std-hours against the man-hours the shift log booked
-   there — efficiency on the last recorded day and over the recent ones, people a day, machine availability, the
-   trend; **3** the load ahead — each centre's remaining plan hours over the next 10 working days against what it
-   can work (its usual man-hours × its measured pace — "not measured" while no hours are booked there); **4** welding coverage — days of cut parts waiting in front of
-   the welders; **5** what stopped the floor — machine stops by cause, absence and overtime; and **the month in
+   stage they are stuck at (the card shows the oldest 20; its Excel export carries them all); **2** the load ahead —
+   each centre's remaining plan hours over the next 10 working days against what it
+   can work (its usual man-hours × its measured pace — "not measured" while no hours are booked there); **3** welding
+   coverage — days of cut parts waiting in front of the welders; and **the month in
    people** — each centre's standard hours for the month's plan (its orders' components × pieces, outsourced ones
    left out) over the month's working days × the net hours a person works (Settings) give the people it needs, what
    is left over the days still to come the people needed from today, against who comes on an average recorded day
@@ -527,18 +528,29 @@ mobile drawer still lists every view flat, since it has the vertical room.
    the load as one centre's running totals (owed so far against what it could have worked, the short days shaded)
    beside every centre's status; **the month's pace** — each centre's share of the month's plan done against where an
    even pace through its working days stands today; the people as bullets (who comes against who is needed from
-   today); **each day's output** in standard hours by department against the man-hours booked; each centre's
-   efficiency day by day, one small chart a centre against the standard; and the stops as a Pareto, biggest cause
-   first with the share it and the causes above make up. **Where did the hours go?** (`lib/domain/losses.ts`) walks a
+   today), with welding's coverage beside them. **Where did the hours go?** (`lib/domain/losses.ts`) walks a
    centre's (or the floor's) rostered man-hours over the last 7, 14 or 30 days down to the standard hours earned —
    absence, overtime, the man-hours machine stops idled by cause (machine-hours × the centre's people's hours against
    its machines', never more than the hours not earned), and what is left: slower than the standard, or work not on the
    Daily log — as a waterfall, and says which of them moved the efficiency against the days before (the assistant's
-   `explain_efficiency`). The headline figures each read against a week ago. The page prints. An account the Shifts screen is closed to sees neither the centres'
-   efficiency, nor the losses, nor who is present (questions 2 and 5, and the people card's Present and Gap) — on the page or through the assistant. The day's figures are kept for their trend
+   `explain_efficiency`). The headline figures each read against a week ago. Under them,
+   **Floor performance** — the shift log's side over the period and the department picked in its toolbar (the app's
+   date slicer, the last 7 days by default, up to 92 days within the last 180; All, Fabrication, Welding, Shot blast or Painting; kept
+   in the URL as `?from=&to=&dept=` and reopened as it was left): the period's efficiency, standard hours and pieces
+   a person a day (shot blast's pieces are every painted piece, as on Shifts), people a day, attendance, overtime share
+   and machine availability; each centre's efficiency day by
+   day as a heatmap (green at the standard, 90% and up; amber 70–90%; red under 70%; the period at the end); what
+   stopped the machines as a Pareto; each department's productivity in one table (people, hours booked and earned,
+   efficiency, std-h and pieces a person a day, overtime, attendance, machines up, stopped hours); each day's output
+   in standard hours by department against the man-hours booked; and the floor's efficiency each day with its rolling
+   7-recorded-day line. The page prints. An account the Shifts screen is closed to sees neither the centres'
+   efficiency, nor the losses, nor who is present (the floor's tiles, Where did the hours go?, the Floor performance section, and the people
+   card's Present and Gap) — on the page or through the assistant. The day's figures are kept for their trend
    (`KpiSnapshot`): after the page is served, and each hour by the automations' housekeeping. The
-   pure arithmetic is `lib/domain/kpis.ts` (tested); the loader `lib/server/kpis.ts` is the one both the page and
-   the assistant's `get_kpis` read — the morning review starts from it. The calibration reads the ledger through
+   pure arithmetic is `lib/domain/kpis.ts` and `lib/domain/floorKpis.ts` (tested); the loader `lib/server/kpis.ts` is
+   the one both the page and the assistant read — `get_kpis` for the cockpit (the morning review starts from it),
+   `get_floor_performance` for a period and a department. The trend keeps the cockpit's own figures, whatever period
+   the Floor performance section shows. The calibration reads the ledger through
    the same `earnedOfRecord`. Admin → Standard Times shows, under each hours-a-piece cell,
    what the floor really took there over the calibration's window and limits (the centre's measured pace), to take
    with a click.

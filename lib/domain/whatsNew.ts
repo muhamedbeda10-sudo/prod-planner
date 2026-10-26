@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-floor-performance",
+    dateISO: "2026-10-26",
+    title: "Floor performance: any period, any department, with productivity",
+    where: "Plan Tracker → Cockpit → Floor performance",
+    href: "/",
+    body: "Under the plan, the cockpit now has a Floor performance section with its own filters: pick a period (the last 7 days by default, this month, last month, up to 92 days) and a department (All, Fabrication, Welding, Shot blast, Painting). Each centre's efficiency shows day by day as a colour grid — green at the standard, amber short, red well short — with the whole period at the end. New productivity figures show what one person turns out a day (standard hours and pieces), people a day, attendance, overtime and machine availability, with a table by department and a trend line. The output and machine-stop charts follow the same filters. The assistant can answer the same questions for any period.",
+  },
+  {
     id: "2026-10-26-lighter-polling",
     dateISO: "2026-10-26",
     title: "Open pages ask the server less often",

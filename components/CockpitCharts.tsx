@@ -1,11 +1,12 @@
 "use client";
 
 import {
-  Area, Bar, CartesianGrid, ComposedChart, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, Bar, CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { CAT, Legend, TONE_TEXT, TipBox, fmt, pct } from "@/components/charts/kit";
+import { CAT, Legend, TipBox, fmt, pct } from "@/components/charts/kit";
 import { formatDate } from "@/lib/domain/format";
-import { OUTPUT_GROUPS, OUTPUT_GROUP_LABEL, efficiencyBand, type OutputDay } from "@/lib/domain/kpis";
+import { OUTPUT_GROUPS, OUTPUT_GROUP_LABEL, type OutputDay, type OutputGroup } from "@/lib/domain/kpis";
+import type { ProductivityPoint } from "@/lib/domain/floorKpis";
 
 // The cockpit's charts. One y-axis each (never two scales on one plot); the
 // plan and the line against it in neutral ink and the accent; a category keeps
@@ -139,13 +140,13 @@ const GROUP_COLOR = Object.fromEntries(OUTPUT_GROUPS.map((g, i) => [g, CAT[i]]))
 
 /** Each recorded day's output in standard hours, department by department,
  *  against the man-hours the shift log booked — one unit, one axis. */
-export function OutputChart({ days }: { days: OutputDay[] }) {
+export function OutputChart({ days, groups = OUTPUT_GROUPS }: { days: OutputDay[]; groups?: readonly OutputGroup[] }) {
   if (days.length === 0) return null;
   const data = days.map((d) => ({ ...d, label: ddmm(d.dateISO) }));
   return (
     <div className="space-y-2">
       <Legend items={[
-        ...OUTPUT_GROUPS.map((g) => ({ label: OUTPUT_GROUP_LABEL[g], color: GROUP_COLOR[g] })),
+        ...groups.map((g) => ({ label: OUTPUT_GROUP_LABEL[g], color: GROUP_COLOR[g] })),
         { label: "Man-hours booked", color: "var(--foreground)", line: true },
       ]} />
       <div className="viz w-full min-w-0" style={{ height: 260 }} role="group" aria-label={`Output over ${days.length} recorded days, in standard hours by department, against the man-hours booked; the numbers are under Table`}>
@@ -163,8 +164,8 @@ export function OutputChart({ days }: { days: OutputDay[] }) {
                   <TipBox
                     title={formatDate(r.dateISO)}
                     rows={[
-                      ...OUTPUT_GROUPS.map((g) => ({ label: OUTPUT_GROUP_LABEL[g], value: h1(r[g]), color: GROUP_COLOR[g] })),
-                      { label: "Earned, all", value: h1(r.earnedH) },
+                      ...groups.map((g) => ({ label: OUTPUT_GROUP_LABEL[g], value: h1(r[g]), color: GROUP_COLOR[g] })),
+                      { label: "Earned, total", value: h1(r.earnedH) },
                       { label: "Man-hours booked", value: h1(r.workedH), color: "var(--foreground)", line: true },
                       { label: "Efficiency", value: r.efficiency === null ? "—" : pct(r.efficiency) },
                     ]}
@@ -172,8 +173,8 @@ export function OutputChart({ days }: { days: OutputDay[] }) {
                 );
               }}
             />
-            {OUTPUT_GROUPS.map((g, i) => (
-              <Bar key={g} dataKey={g} stackId="out" fill={GROUP_COLOR[g]} stroke="var(--surface)" strokeWidth={1} isAnimationActive={false} radius={i === OUTPUT_GROUPS.length - 1 ? [4, 4, 0, 0] : undefined} />
+            {groups.map((g, i) => (
+              <Bar key={g} dataKey={g} stackId="out" fill={GROUP_COLOR[g]} stroke="var(--surface)" strokeWidth={1} isAnimationActive={false} radius={i === groups.length - 1 ? [4, 4, 0, 0] : undefined} />
             ))}
             <Line type="monotone" dataKey="workedH" stroke="var(--foreground)" strokeWidth={2} dot={{ r: 3, strokeWidth: 2, stroke: "var(--surface)", fill: "var(--foreground)" }} isAnimationActive={false} />
           </ComposedChart>
@@ -183,58 +184,48 @@ export function OutputChart({ days }: { days: OutputDay[] }) {
   );
 }
 
-// ---------------------------------------------------------------- each centre's pace
+// ---------------------------------------------------------------- the floor's productivity
 
-export interface PacePanel { centre: string; recent: number | null; points: { dateISO: string; efficiency: number | null }[] }
-
-const TONE_WORD = { ok: "at the standard", warn: "short of it", bad: "well short" } as const;
-
-/** One small chart a centre — its efficiency each recorded day against the
- *  standard pace (100%) — so six trends read side by side without six lines
- *  tangled in one plot. */
-export function PaceMultiples({ panels }: { panels: PacePanel[] }) {
-  // one scale for all six, so a tall line is a fast centre and not a zoom
-  const max = Math.max(1.2, ...panels.flatMap((p) => p.points.map((t) => t.efficiency ?? 0)));
+/** The floor's efficiency day by day (dots, a day being noisy) and its rolling
+ *  figure over the last recorded days (the line to read); 100% is the standard. */
+export function ProductivityTrendChart({ points, window }: { points: ProductivityPoint[]; window: number }) {
+  if (points.length === 0) return null;
+  const data = points.map((p) => ({ ...p, label: ddmm(p.dateISO) }));
+  const max = Math.max(1.2, ...points.map((p) => Math.max(p.efficiency ?? 0, p.rolling ?? 0)));
   return (
-    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3">
-      {panels.map((p) => {
-        const band = efficiencyBand(p.recent);
-        const data = p.points.filter((t) => t.efficiency !== null).map((t) => ({ ...t, label: ddmm(t.dateISO) }));
-        return (
-          <figure key={p.centre} className="rounded-lg border px-3 pt-2 pb-1 min-w-0">
-            <figcaption className="flex items-baseline justify-between gap-2 text-sm">
-              <span className="font-semibold">{p.centre}</span>
-              <span className="tabnum">
-                <b className={band ? TONE_TEXT[band] : "text-muted"}>{p.recent === null ? "—" : pct(p.recent)}</b>
-                {band && <span className="text-muted"> · {TONE_WORD[band]}</span>}
-              </span>
-            </figcaption>
-            {data.length < 2 ? (
-              <p className="text-sm text-muted py-6 text-center">Not enough recorded days yet</p>
-            ) : (
-              <div className="viz w-full min-w-0" style={{ height: 96 }} role="group" aria-label={`${p.centre}: efficiency over ${data.length} recorded days; the numbers are under Table`}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
-                    <CartesianGrid vertical={false} />
-                    <XAxis dataKey="label" tick={TICK} axisLine={AXIS} tickLine={false} interval="preserveStartEnd" minTickGap={18} />
-                    <YAxis domain={[0, max]} tick={TICK} axisLine={false} tickLine={false} width={34} ticks={[0, 0.5, 1]} tickFormatter={(v: number) => pct(v)} />
-                    <ReferenceLine y={1} stroke="var(--border-strong)" />
-                    <Tooltip
-                      cursor={{ stroke: "var(--border-strong)" }}
-                      content={(tp: TipProps) => {
-                        const r = rowOf<(typeof data)[number]>(tp);
-                        if (!r) return null;
-                        return <TipBox title={`${p.centre} · ${formatDate(r.dateISO)}`} rows={[{ label: "Efficiency", value: r.efficiency === null ? "—" : pct(r.efficiency), color: ACCENT, line: true }]} />;
-                      }}
-                    />
-                    <Line type="monotone" dataKey="efficiency" stroke={ACCENT} strokeWidth={2} dot={{ r: 2.5, strokeWidth: 1.5, stroke: "var(--surface)", fill: ACCENT }} isAnimationActive={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </figure>
-        );
-      })}
+    <div className="space-y-2">
+      <Legend items={[{ label: "Each day", color: PLAN }, { label: `Last ${window} recorded days together`, color: ACCENT, line: true }, { label: "The standard, 100%", color: "var(--border-strong)", line: true }]} />
+      <div className="viz w-full min-w-0" style={{ height: 230 }} role="group" aria-label={`Floor efficiency over ${points.length} recorded days, against the standard; the numbers are under Table`}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
+            <CartesianGrid vertical={false} />
+            <XAxis dataKey="label" tick={TICK} axisLine={AXIS} tickLine={false} interval="preserveStartEnd" minTickGap={12} />
+            <YAxis domain={[0, max]} tick={TICK} axisLine={false} tickLine={false} width={44} tickFormatter={(v: number) => pct(v)} />
+            <ReferenceLine y={1} stroke="var(--border-strong)" strokeDasharray="4 3" />
+            <Tooltip
+              cursor={{ stroke: "var(--border-strong)" }}
+              content={(tp: TipProps) => {
+                const r = rowOf<(typeof data)[number]>(tp);
+                if (!r) return null;
+                return (
+                  <TipBox
+                    title={formatDate(r.dateISO)}
+                    rows={[
+                      { label: "That day", value: r.efficiency === null ? "—" : pct(r.efficiency), color: PLAN },
+                      { label: `Last ${window} recorded days`, value: r.rolling === null ? "—" : pct(r.rolling), color: ACCENT, line: true },
+                      { label: "Earned", value: h1(r.earnedH) },
+                      { label: "Man-hours booked", value: h1(r.workedH) },
+                      { label: "Std-h a person a day", value: r.stdPerPersonDay === null ? "—" : h1(r.stdPerPersonDay) },
+                    ]}
+                  />
+                );
+              }}
+            />
+            <Line type="monotone" dataKey="efficiency" stroke="none" dot={{ r: 3.5, strokeWidth: 1.5, stroke: "var(--surface)", fill: PLAN }} activeDot={{ r: 5 }} isAnimationActive={false} />
+            <Line type="monotone" dataKey="rolling" stroke={ACCENT} strokeWidth={2.5} dot={false} isAnimationActive={false} connectNulls />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }

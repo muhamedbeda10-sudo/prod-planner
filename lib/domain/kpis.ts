@@ -84,25 +84,45 @@ export interface CentreStat {
   people: number;
 }
 
-/** A centre over a window of recorded days. Days without worked hours are
- *  not recorded days — they count no efficiency, but their stops still count. */
-export function centreStat(centre: WorkCentre, days: readonly CentreDay[]): CentreStat {
-  const mine = days.filter((d) => d.centre === centre);
-  const worked = mine.filter((d) => d.workedH > 0);
+/** Centre-days as one figure — one centre's, or several centres' together.
+ *  Days without worked hours are not recorded days — they count no
+ *  efficiency, people or machine hours, but their stops still count. `days`
+ *  counts the dates; `people` is the average present on one of them. */
+export function hoursStat(days: readonly CentreDay[]): Omit<CentreStat, "centre"> & { personDays: number } {
+  const worked = days.filter((d) => d.workedH > 0);
   const workedH = worked.reduce((s, d) => s + d.workedH, 0);
   const earnedH = worked.reduce((s, d) => s + d.earnedH, 0);
   const machineH = worked.reduce((s, d) => s + d.machineH, 0);
-  const downtimeH = mine.reduce((s, d) => s + d.downtimeH, 0);
+  const personDays = worked.reduce((s, d) => s + d.people, 0);
+  const downtimeH = days.reduce((s, d) => s + d.downtimeH, 0);
+  const dates = new Set(worked.map((d) => d.dateISO)).size;
   return {
-    centre,
-    days: worked.length,
+    days: dates,
     workedH: round1(workedH),
     earnedH: round1(earnedH),
     efficiency: workedH > 0 ? earnedH / workedH : null,
     downtimeH: round1(downtimeH),
     availability: machineH > 0 ? Math.max(0, 1 - downtimeH / machineH) : null,
-    people: worked.length ? round1(worked.reduce((s, d) => s + d.people, 0) / worked.length) : 0,
+    people: dates ? round1(personDays / dates) : 0,
+    personDays,
   };
+}
+
+/** A centre over a window of recorded days. */
+export function centreStat(centre: WorkCentre, days: readonly CentreDay[]): CentreStat {
+  const s = hoursStat(days.filter((d) => d.centre === centre));
+  return { centre, days: s.days, workedH: s.workedH, earnedH: s.earnedH, efficiency: s.efficiency, downtimeH: s.downtimeH, availability: s.availability, people: s.people };
+}
+
+/** A centre's days lined up under `dates`: its hours and efficiency on each,
+ *  null where it booked nothing. */
+export function centreCells(days: readonly CentreDay[], centre: WorkCentre, dates: readonly string[]): { dateISO: string; workedH: number; earnedH: number; efficiency: number | null }[] {
+  const at = new Map(days.filter((d) => d.centre === centre).map((d) => [d.dateISO, d]));
+  return dates.map((dateISO) => {
+    const workedH = at.get(dateISO)?.workedH ?? 0;
+    const earnedH = at.get(dateISO)?.earnedH ?? 0;
+    return { dateISO, workedH: round1(workedH), earnedH: round1(earnedH), efficiency: workedH > 0 ? earnedH / workedH : null };
+  });
 }
 
 /** The tone an efficiency reads in — the Shifts page's own bands. */
@@ -547,7 +567,9 @@ export function loadSeries(l: Pick<LoadAhead, "days">): { dayISO: string; dueH: 
 export const OUTPUT_GROUPS = ["Fabrication", "Welding", "ShotBlast", "Painting"] as const;
 export type OutputGroup = (typeof OUTPUT_GROUPS)[number];
 export const OUTPUT_GROUP_LABEL: Record<OutputGroup, string> = { Fabrication: "Fabrication", Welding: "Welding", ShotBlast: "Shot blast", Painting: "Painting" };
-const groupOf = (c: WorkCentre): OutputGroup => ((DEPT_CENTRES.Cut as readonly WorkCentre[]).includes(c) ? "Fabrication" : (c as OutputGroup));
+/** The department a centre's output and people count under — laser / punch,
+ *  bending and fin folding are Fabrication. */
+export const groupOfCentre = (c: WorkCentre): OutputGroup => ((DEPT_CENTRES.Cut as readonly WorkCentre[]).includes(c) ? "Fabrication" : (c as OutputGroup));
 
 export interface OutputDay extends Record<OutputGroup, number> {
   dateISO: string;
@@ -565,7 +587,7 @@ export function dailyOutput(centres: readonly { centre: WorkCentre; trend: reado
   for (const c of centres) {
     for (const t of c.trend) {
       const d = days.get(t.dateISO) ?? { dateISO: t.dateISO, Fabrication: 0, Welding: 0, ShotBlast: 0, Painting: 0, earnedH: 0, workedH: 0, efficiency: null };
-      d[groupOf(c.centre)] += t.earnedH;
+      d[groupOfCentre(c.centre)] += t.earnedH;
       d.earnedH += t.earnedH;
       d.workedH += t.workedH;
       days.set(t.dateISO, d);
