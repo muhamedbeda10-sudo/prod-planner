@@ -155,6 +155,15 @@ const MAX_TOKENS: Record<AiEffort, number> = { low: 16_000, medium: 16_000, high
 /** Calls per question — each look-up or prepared change takes one; the last one must answer. */
 const MAX_CALLS = 14;
 
+/** The time one question may take, at most, whatever the caller allows —
+ *  the chat's route runs under Vercel's Fluid compute limit (800 s) and
+ *  keeps a minute in hand to save the answer. A caller that says nothing
+ *  gets the automations' four minutes. */
+export const AI_ASK_TIMEOUT_MAX = 740_000;
+const AI_ASK_TIMEOUT_DEFAULT = 240_000;
+/** Past this share of the time, the next call must answer with what it has. */
+const TIME_BUDGET_SHARE = 0.75;
+
 export interface AskEvents {
   /** Enables verified source cards for chat reads; unattended reports omit it. */
   source?(source: AiEvidence): void;
@@ -396,14 +405,16 @@ export async function ask(opts: {
    *  kept stays the references. */
   expand?: (messages: MessageParam[]) => Promise<MessageParam[]>;
 }): Promise<AskResult> {
-  const client = new Anthropic({ apiKey: opts.apiKey, maxRetries: 2, timeout: 180_000 });
+  const timeoutMs = Number.isFinite(opts.timeoutMs) ? Math.max(1, Math.min(AI_ASK_TIMEOUT_MAX, Math.floor(opts.timeoutMs!))) : AI_ASK_TIMEOUT_DEFAULT;
+  // one model call may think for most of the question's time; the question's own deadline still rules
+  const client = new Anthropic({ apiKey: opts.apiKey, maxRetries: 2, timeout: Math.max(180_000, Math.min(600_000, timeoutMs)) });
   const m = aiModel(opts.model);
   const effort = aiEffort(opts.effort);
   const system = systemBlocks(opts.playbook ?? "");
   const byName = new Map(opts.tools.map((t) => [t.name, t]));
   const names: ReadonlySet<string> = new Set(byName.keys());
   const maxCalls = Number.isFinite(opts.maxCalls) ? Math.max(2, Math.min(AI_CALLS_RANGE.max, Math.floor(opts.maxCalls!))) : MAX_CALLS;
-  const timeout = AbortSignal.timeout(Number.isFinite(opts.timeoutMs) ? Math.max(1, Math.min(240_000, Math.floor(opts.timeoutMs!))) : 240_000);
+  const timeout = AbortSignal.timeout(timeoutMs);
   const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
   const history = sendableHistory(opts.history);
   const turn: MessageParam[] = [...opts.question];
@@ -425,6 +436,8 @@ export async function ask(opts: {
   const expand = opts.expand ?? (async (msgs: MessageParam[]) => msgs);
   const startedAt = Date.now();
   let firstTokenMs: number | null = null;
+  /** The time budget is nearly spent: the next call answers, with what it has. */
+  let outOfTime = false;
 
   const events: AskEvents = {
     status: opts.events.status,
@@ -450,13 +463,21 @@ export async function ask(opts: {
       resumed = false;
       let msg: Message;
       const textBeforeCall = answer;
+      // most of the time gone after a round of look-ups: the answer now, from
+      // what was read, rather than a timeout with nothing — the note goes
+      // with the last results, where the model reads it
+      if (!outOfTime && step > 0 && Date.now() - startedAt > timeoutMs * TIME_BUDGET_SHARE) {
+        outOfTime = true;
+        const last = turn[turn.length - 1];
+        if (last?.role === "user" && Array.isArray(last.content)) last.content.push({ type: "text", text: "The time for this question is nearly up — answer now with what you have, and say what you could not check or prepare." });
+      }
       // the model reads the question, or what its look-ups brought back
       events.status(step === 0 ? "Reading the question" : "Thinking it through");
       try {
         const sent = withKnownFinds(await expand([...history, ...turn]), names);
         const loaded = loadedTools(opts.tools, sent);
         const tools = { full: apiTools(opts.tools, true, loaded), plain: apiTools(opts.tools, false, loaded) };
-        msg = await callModel(client, m, system, tools, sent, { plain, answerNow: step === maxCalls - 1, effort }, events, signal);
+        msg = await callModel(client, m, system, tools, sent, { plain, answerNow: step === maxCalls - 1 || outOfTime, effort }, events, signal);
         jsonRetries = 0;
       } catch (e) {
         // Once words reached the person, replaying the request would duplicate
