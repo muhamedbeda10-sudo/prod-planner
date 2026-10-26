@@ -21,7 +21,8 @@ import { useInboxPanel } from "@/components/InboxPanel";
 import { useOdooAlerts } from "@/components/OdooAlerts";
 import { useActiveLine, useCarryLine } from "@/components/LineContext";
 import { Avatar, UserMenu } from "@/components/UserMenu";
-import { LINE_LABEL, LINE_PARAM, PRODUCT_LINES, hrefWithLine, pinnedLine, type ProductLine } from "@/lib/domain/lines";
+import { BOTH_LINES_PATHS } from "@/lib/domain/dashboardLinks";
+import { LINE_LABEL, PRODUCT_LINES, hrefWithLine, pinnedLine, type ProductLine } from "@/lib/domain/lines";
 import { signOut } from "@/lib/signOut";
 import { trapTab } from "@/components/Modal";
 
@@ -90,8 +91,6 @@ const TRACKER_PLACES: Place[] = [
 /** A tab of places: it lights on any of them. */
 const placesTab = (href: string, label: string, icon: Item["icon"], places: Place[]): Item =>
   ({ href, label, icon, places, also: places.map((p) => p.href).filter((h) => h !== href) });
-// the dashboards that take the plant as a whole (?line=all)
-const PLANT_WIDE = new Set(["/", "/dashboards/production"]);
 
 const REST: Item[] = [
   // the home page; the tab lights on every dashboard
@@ -459,11 +458,10 @@ export function AppNav({
   }, [tabMenu]);
   useEffect(() => keepMenu, []); // no timer outlives the bar
   const menuCtl: MenuCtl = { open: tabMenu, pos: menuPos, onHover: hoverMenu, onOpen: openMenu, onLeave: closeMenuSoon, onKeep: keepMenu, onClose: () => setTabMenu(null) };
-  // inside the tab on screen, a place keeps the line the address names — and
-  // the plant-wide dashboards keep "All"
+  // inside the tab on screen, a place keeps the line the address names — but
+  // the two plant dashboards show both lines and take none
   const carry = useCarryLine();
-  const allPlant = searchParams.get(LINE_PARAM)?.trim().toLowerCase() === "all";
-  const placeHref = (href: string) => (allPlant && PLANT_WIDE.has(href) ? `${href}?${LINE_PARAM}=all` : carry(href));
+  const placeHref = (href: string) => (BOTH_LINES_PATHS.has(href) ? href : carry(href));
 
   const on = (base: string) =>
     base === "/" ? pathname === "/" : pathname === base || pathname.startsWith(base + "/");

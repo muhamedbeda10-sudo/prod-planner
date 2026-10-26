@@ -6,9 +6,10 @@ import { WORK_CENTRES, WORK_CENTRE_LABEL, type WorkCentre } from "@/lib/domain/s
 import { LOSS_DAYS } from "@/lib/domain/losses";
 import { OUTPUT_GROUPS, dailyOutput, isFloorAction, monthPace, weekChange, type KpiSnapshotData, type OutputDay } from "@/lib/domain/kpis";
 import { FLOOR_DEFAULT_DAYS, FLOOR_HISTORY_DAYS, FLOOR_MAX_DAYS, FLOOR_TREND_WINDOW, floorRequest } from "@/lib/domain/floorKpis";
-import { LV_FLOOR_DEPTS, lvFloorDeptOf } from "@/lib/domain/lvKpis";
-import { DASH_SCOPES, DASH_SCOPE_NAME, dashHref, resolveDashScope, type DashScope } from "@/lib/domain/dashboardScope";
-import { DEFAULT_LINE } from "@/lib/domain/lines";
+import { LV_FLOOR_DEPTS, isLvFloorDept, lvFloorDeptOf, type LvFloorFilter } from "@/lib/domain/lvKpis";
+import { BOTH_LINES_PATHS, DASH_SECTION_ID, planningHref, productionHref } from "@/lib/domain/dashboardLinks";
+import { DEFAULT_LINE, lineParam as namedLine } from "@/lib/domain/lines";
+import { LV_TYPE_STAGES, TR_TYPE_STAGES, type TypeGroup, type TypeRow } from "@/lib/domain/outputByType";
 import { linePart, plantEfficiency } from "@/lib/domain/plantKpis";
 import { factoryDayISO } from "@/lib/domain/dates";
 import type { DowntimeCause } from "@/lib/domain/downtime";
@@ -18,7 +19,7 @@ import type { ReadTool, ToolCtx } from "./types";
 // so an answer never disagrees with the page: get_kpis is the Planning
 // dashboard as it stands today, get_floor_performance the Production
 // dashboard for a period and a department — each for the transformers, the
-// LV panels, or the whole plant (the dashboards' own All | TR | LV), with
+// LV panels, or the whole plant (the dashboards show both lines), with
 // the same rules of combination (lib/domain/plantKpis.ts): efficiency from
 // the sums, standard hours added, pieces never, nothing split between the
 // lines without a record that says so.
@@ -26,10 +27,21 @@ import type { ReadTool, ToolCtx } from "./types";
 const r2 = (n: number | null | undefined) => (n === null || n === undefined ? null : Math.round(n * 100) / 100);
 const r1 = (n: number | null | undefined) => (n === null || n === undefined ? null : Math.round(n * 10) / 10);
 
-/** The scope a call asks for: its own `line`, else the line the app is on. */
-const scopeOf = (line: unknown, ctx: ToolCtx): DashScope => resolveDashScope(line, ctx.line ?? DEFAULT_LINE);
-const lineParam = { type: "string" as const, enum: [...DASH_SCOPES], description: "TR (the transformers), LV (the panels) or all (the whole plant — each line in its own terms, the plant's figures only where they add). Left out: the line the app is showing." };
-const scopeWord = (s: DashScope) => (s === "all" ? DASH_SCOPE_NAME.all.toLowerCase() : s);
+/** What a call reads: one line, or the whole plant (both, as the dashboards show them). */
+const SCOPES = ["all", "TR", "LV"] as const;
+type Scope = (typeof SCOPES)[number];
+const SCOPE_NAME: Record<Scope, string> = { all: "whole plant", TR: "transformers", LV: "LV panels" };
+/** The scope a call asks for: its own `line`; else both lines when the person
+ *  is on a dashboard (which shows both), else the line the app is on. */
+const scopeOf = (line: unknown, ctx: ToolCtx): Scope => {
+  if (typeof line === "string" && line.trim().toLowerCase() === "all") return "all";
+  const named = namedLine(line);
+  if (named) return named;
+  return ctx.page && BOTH_LINES_PATHS.has(ctx.page.path) ? "all" : ctx.line ?? DEFAULT_LINE;
+};
+const lineParam = { type: "string" as const, enum: [...SCOPES], description: "TR (the transformers), LV (the panels) or all (the whole plant — each line in its own terms, the plant's figures only where they add). Left out: both lines when the person is on a dashboard (they show both on one page), else the line the app is showing." };
+/** Where a scope's figures are on a dashboard: a line's section, or the page's top. */
+const sectionOf = (s: Scope) => (s === "all" ? undefined : DASH_SECTION_ID[s]);
 
 /** The plant's rules, said once in every combined answer. */
 const PLANT_NOTES = [
@@ -140,12 +152,12 @@ function lvPlanningView(d: LvPlanningData, floor: boolean) {
   };
 }
 
-export const getKpisTool: ReadTool<{ line?: DashScope }> = {
+export const getKpisTool: ReadTool<{ line?: Scope }> = {
   kind: "read",
   name: "get_kpis",
   title: "Reading the Planning dashboard",
   description:
-    "The planner's KPIs as the Planning dashboard (the home page, /, the first place of the Dashboards tab) shows them, for one line or the whole plant (line: TR, LV or all — the page's own All | TR | LV; left out, the line the app is on). " +
+    "The planner's KPIs as the Planning dashboard (the home page, /, the first place of the Dashboards tab) shows them, for one line or the whole plant (line: TR, LV or all — the page shows both lines, the plant's figures first and a section per line; left out, both on a dashboard, else the line the app is on). " +
     "TR (the transformers), all in STANDARD HOURS (what the work is worth, never pieces): the decisions it flags today; the newest weekly plan — each stage's pieces due by today against done (adherence), and the lines behind with the stage they are stuck at (the oldest 20; behindCount counts them all); " +
     "each work centre (laser / punch, bending, fin folding, welding, shot blast, painting) — earned std-hours against the man-hours the shift log booked there (efficiency, 100% = the standard pace) on the last recorded day and over the recent recorded days, people a day, machine availability, the daily trend, and Fabrication's three centres together; " +
     "the load ahead — each centre's remaining plan hours over the next 10 working days against what it can work (falling behind and when it catches up, or short at the end; not measured without booked hours); " +
@@ -162,7 +174,7 @@ export const getKpisTool: ReadTool<{ line?: DashScope }> = {
     const scope = scopeOf(input.line, ctx);
     // the shift log's figures stay with the people who see Shifts, as on the page
     const floor = !ctx.hidden.has("shifts");
-    const link = (s: DashScope) => ({ label: `Planning dashboard (${scopeWord(s)})`, href: dashHref("/", s) });
+    const link = (s: Scope) => ({ label: `Planning dashboard (${SCOPE_NAME[s]})`, href: planningHref(sectionOf(s)) });
     if (scope === "LV") {
       const d = await getLvPlanning({}, ctx.now);
       return { ok: true, text: JSON.stringify(lvPlanningView(floor ? d : lvWithoutFloor(d), floor)), links: [link("LV")] };
@@ -190,7 +202,7 @@ export const getKpisTool: ReadTool<{ line?: DashScope }> = {
         transformers: trPlanningView(tr, floor),
         lvPanels: lvPlanningView(lv, floor),
       }),
-      links: [link("all"), link("TR"), link("LV")],
+      links: [link("all")],
     };
   },
 };
@@ -199,6 +211,20 @@ export const getKpisTool: ReadTool<{ line?: DashScope }> = {
 const outputRow = (d: OutputDay) => ({ day: d.dateISO, fabricationH: d.Fabrication, weldingH: d.Welding, shotBlastH: d.ShotBlast, paintingH: d.Painting, earnedH: d.earnedH, bookedH: d.workedH, efficiency: r2(d.efficiency) });
 /** The stops by cause, as both tools give them. */
 const lossRow = (x: DowntimeCause) => ({ cause: x.label, planned: x.planned, hours: x.hours, stops: x.stops, share: r2(x.share) });
+
+/** One row of the item card as the model reads it. */
+const typeRowView = <S extends string>(r: TypeRow<S>) => ({
+  made: r.made,
+  plan: r.plan ? { planned: r.plan.required, doneByStage: r.plan.done, left: r.plan.left, shareDone: r2(r.plan.share) } : null,
+});
+/** What a period made item by item and type by type, against the month's plan. */
+function byTypeView<S extends string>(b: { monthLabel: string; groups: TypeGroup<S>[] }, stages: readonly S[], typeWord: string) {
+  return {
+    stages, planMonth: b.monthLabel, typeIs: typeWord,
+    items: b.groups.map((g) => ({ item: g.item, ...typeRowView(g.total), types: g.types.map((t) => ({ type: t.type, ...typeRowView(t) })) })),
+    note: "made = pieces each stage recorded in the period, whatever order they were for; plan = the month's orders, each counted up to what it asks (an extra on one never covers another's shortfall); pieces add within an item, never across items or lines; plan null = not on the month's plan.",
+  };
+}
 
 /** The transformers' floor over a period as the model reads it. */
 function trFloorView(f: FloorPeriod) {
@@ -230,6 +256,7 @@ function trFloorView(f: FloorPeriod) {
     },
     daysWithDisagreeingRecords: f.gapDays,
     shareOfPiecesPriced: r2(f.pricedShare),
+    byItemAndType: byTypeView(f.byType, TR_TYPE_STAGES, "the order's KVA class"),
   };
 }
 
@@ -254,8 +281,9 @@ function lvFloorView(f: LvFloorPeriod) {
     panelsMovedPerStage: f.moved,
     daysWithDisagreeingRecords: f.gapDays,
     shareOfPanelsPriced: r2(f.pricedShare),
+    byItemAndType: byTypeView(f.byType, LV_TYPE_STAGES, "the panel type the plan sheet names"),
     notAvailable: [
-      "Machine stops and availability: recorded by department on shared machines — the plant's, under line=all or TR.",
+      "Machine stops and availability: recorded by department on shared machines — the plant's, under line all or TR.",
       "Quality (leak test, returns): the panels are recorded as quantities, with no serial, test or return of their own.",
     ],
   };
@@ -263,24 +291,26 @@ function lvFloorView(f: LvFloorPeriod) {
 
 /** The floor's performance over a period and a department — the Production dashboard's
  *  Floor performance section, from the same loaders and the same reading of the request. */
-export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dept?: string; line?: DashScope }> = {
+export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dept?: string; lvDept?: string; line?: Scope }> = {
   kind: "read",
   name: "get_floor_performance",
   title: "Reading the floor's performance",
   description:
-    `How the floor worked over a period the person names (a week, a month, from one date to another — at most ${FLOOR_MAX_DAYS} days, starting within the last ${FLOOR_HISTORY_DAYS}; the last ${FLOOR_DEFAULT_DAYS} days if none is named), for one line or the whole plant (line: TR, LV or all; left out, the line the app is on) and for every department or one — the Production dashboard (Dashboards → Production), all in STANDARD HOURS: ` +
+    `How the floor worked over a period the person names (a week, a month, from one date to another — at most ${FLOOR_MAX_DAYS} days, starting within the last ${FLOOR_HISTORY_DAYS}; the last ${FLOOR_DEFAULT_DAYS} days if none is named), for one line or the whole plant (line: TR, LV or all; left out, both on a dashboard, else the line the app is on) and for every department or one — the Production dashboard (Dashboards → Production, both lines on one page), all in STANDARD HOURS: ` +
     "TR (the transformers; departments Fabrication = laser / punch, bending and fin folding; Welding; ShotBlast; Painting): efficiency (earned std-hours ÷ the man-hours the shift log booked; 100% = the standard pace), each centre's efficiency day by day and over the period, " +
     "productivity — standard hours and pieces one person turned out on a recorded day, people a day, attendance, overtime share, machine availability — by department (shot blast's pieces are every painted piece, as on Shifts), " +
     `the floor's efficiency each day with its rolling ${FLOOR_TREND_WINDOW}-recorded-day figure, each day's output by department against the hours booked, the machine stops by cause, the machines stopped now and the most stopped, quality and rework (the tanks' leak test passed first time, their waits welding → test → painting while tanks are tracked piece by piece; the pieces sent back upstream), the days whose records disagree (output with no hours, hours with no output), and what needs intervention. ` +
     "LV (the panels; departments Punching, Bending, WeldingLV, PaintingLV — or the stage names Welding / Painting): the same efficiency, productivity (in standard hours and in panels), attendance, overtime, each department day by day, output day by day and the panels moved per stage — priced by the timings sheet's LV tab (shareOfPanelsPriced says how far). No stop and no quality figure is the panels' own. " +
     "all (the whole plant): both views and the plant's efficiency from the sums (Σ earned ÷ Σ worked, both lines), its standard hours and man-hours added, its stops counted once, both lines' interventions tagged by line — pieces per line, never added. " +
-    "Use it for any question about productivity, efficiency, output, stops, quality or lost time over a period other than the last few recorded days (\"last month\", \"since the 1st\", \"welding in September\", \"compare TR and LV\"); get_kpis has today's cockpit. periodAdjusted says the period asked for was moved to fit the limits.",
+    "Each line also carries byItemAndType — what the period made item by item and type by type (the transformers by component and the order's KVA class through cut, welded and finished; the panels by plan, LV panels or meter boxes, and panel type, USS / LSS, through punched, bent, welded and painted) against the plan of the month the period ends in (planned, finished on the month's orders — each order counted up to what it asks — left, share done); it covers every department whatever dept asks. " +
+    "Use it for any question about productivity, efficiency, output, stops, quality or lost time over a period other than the last few recorded days (\"last month\", \"since the 1st\", \"welding in September\", \"compare TR and LV\") and for what was made of an item or type (\"how many 630 kVA tanks did we weld this month?\", \"USS panels painted against the plan\"); get_kpis has today's cockpit. periodAdjusted says the period asked for was moved to fit the limits.",
   schema: {
     type: "object",
     properties: {
       from: { type: "string", description: "First day, YYYY-MM-DD (the factory's calendar)." },
       to: { type: "string", description: "Last day, YYYY-MM-DD; today when left out." },
-      dept: { type: "string", enum: ["all", ...OUTPUT_GROUPS, ...LV_FLOOR_DEPTS], description: "One department, or all (the default). The transformers' four, or the panels' four (Welding / Painting read as the panels' department of that stage when line is LV). Under all, the department is read on each line that has it." },
+      dept: { type: "string", enum: ["all", ...OUTPUT_GROUPS, ...LV_FLOOR_DEPTS], description: "One department, or all (the default). The transformers' four — or, when line is LV, the panels' four (Welding / Painting read as the panels' department of that stage). Under all it filters the transformers' section, or the panels' when it names one of theirs (Punching, Bending, WeldingLV, PaintingLV)." },
+      lvDept: { type: "string", enum: ["all", ...LV_FLOOR_DEPTS], description: "The panels' department under line all — the Production dashboard keeps it apart from the transformers' (its \"LV department\" filter). Left out: every panels' department, unless dept names one of theirs." },
       line: lineParam,
     },
     additionalProperties: false,
@@ -293,15 +323,19 @@ export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dep
     const req = floorRequest(input, factoryDayISO(ctx.now));
     // the section's own period needs no dates, so the link does not pin the page to a past week
     const period = !req.isDefault || req.clamped ? { from: req.fromISO, to: req.toISO } : {};
-    const href = (s: DashScope, dept?: string | null) => dashHref("/dashboards/production", s, { ...period, dept: dept && dept !== "all" ? dept : null });
-    const lvDept = lvFloorDeptOf(input.dept);
+    // each line's department in its own parameter, as the page keeps them; the link opens at the line's section
+    const href = (s: Scope, o: { dept?: string; lvDept?: string } = {}) => productionHref({ ...period, ...o, section: sectionOf(s) });
+    // the panels' department: its own parameter; on the panels' line also the stage names in dept; under all, a panels' department dept names
+    const lvDept: LvFloorFilter = input.lvDept !== undefined ? lvFloorDeptOf(input.lvDept)
+      : scope === "LV" ? lvFloorDeptOf(input.dept)
+      : isLvFloorDept(input.dept) ? input.dept : "all";
     if (scope === "LV") {
       const f = await getLvFloorPeriod({ ...req, dept: lvDept }, ctx.now);
-      return { ok: true, text: JSON.stringify(lvFloorView(f)), links: [{ label: "Production dashboard (LV)", href: href("LV", f.dept) }] };
+      return { ok: true, text: JSON.stringify(lvFloorView(f)), links: [{ label: "Production dashboard (LV panels)", href: href("LV", { lvDept: f.dept }) }] };
     }
     if (scope === "TR") {
       const f = await getFloorPeriod(req, ctx.now);
-      return { ok: true, text: JSON.stringify(trFloorView(f)), links: [{ label: "Production dashboard (TR)", href: href("TR", f.dept) }] };
+      return { ok: true, text: JSON.stringify(trFloorView(f)), links: [{ label: "Production dashboard (transformers)", href: href("TR", { dept: f.dept }) }] };
     }
     // the plant as the page assembles it (lib/server/dashboards.ts): the department read on each line that has it
     const { tr, lv, actions } = await loadProductionAll(req, lvDept, ctx.now);
@@ -311,7 +345,7 @@ export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dep
       text: JSON.stringify({
         line: "all",
         from: tr.fromISO, to: tr.toISO, periodAdjusted: tr.clamped || lv.clamped,
-        dept: { asked: typeof input.dept === "string" ? input.dept : "all", TR: tr.dept, LV: lv.dept, note: input.dept && input.dept !== "all" && tr.dept === "all" && lv.dept === "all" ? "The department asked for belongs to neither line; every department is shown." : "A department is read on the line that has it; the other line shows every department." },
+        dept: { asked: typeof input.dept === "string" ? input.dept : "all", TR: tr.dept, LV: lv.dept, askedLv: typeof input.lvDept === "string" ? input.lvDept : null, note: "Each line keeps its own department, as the page does: dept the transformers' (or the panels' when it names one of theirs), lvDept the panels'." },
         interventions: actions.map((a) => `${a.line} ${a.tone}: ${a.text}`),
         plant: {
           efficiency: r2(plant.efficiency), earnedH: plant.earnedH, bookedH: plant.workedH, personDays: plant.personDays, stdHPerPersonDay: r1(plant.stdPerPersonDay),
@@ -322,7 +356,7 @@ export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dep
         transformers: trFloorView(tr),
         lvPanels: lvFloorView(lv),
       }),
-      links: [{ label: "Production dashboard (whole plant)", href: href("all") }, { label: "Production dashboard (TR)", href: href("TR", tr.dept) }, { label: "Production dashboard (LV)", href: href("LV", lv.dept) }],
+      links: [{ label: "Production dashboard (whole plant)", href: href("all", { dept: tr.dept, lvDept: lv.dept }) }],
     };
   },
 };
@@ -368,7 +402,7 @@ export const explainEfficiencyTool: ReadTool<{ centre?: WorkCentre; days?: numbe
         note: "Stops are machine-hours turned into the man-hours they idled (the centre's people's hours against its machines'), never more than the hours not earned. 'Slower or not logged' is what remains — slower than the standard, or work done but not on the Daily log; it is not, by itself, the people's fault.",
       }),
       // the card lives on the transformers' Production dashboard
-      links: [{ label: "Production dashboard (TR)", href: dashHref("/dashboards/production", "TR") }],
+      links: [{ label: "Production dashboard (transformers)", href: productionHref({ section: "tr" }) }],
     };
   },
 };

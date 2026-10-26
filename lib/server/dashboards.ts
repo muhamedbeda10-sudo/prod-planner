@@ -6,11 +6,13 @@ import type { FloorDept } from "@/lib/domain/floorKpis";
 import type { LvFloorFilter } from "@/lib/domain/lvKpis";
 import { mergeActions, plantPlanningSummary, type PlantPlanningSummary } from "@/lib/domain/plantKpis";
 
-// The whole plant's dashboards, assembled once for the pages and the
-// assistant: both lines' loaders in parallel, the shift log's figures
-// stripped for an account the Shifts screen is closed to, both lines'
-// decisions in one list and the plant's headline from the domain's rules.
-// The page and the tool render the same object, so they cannot disagree.
+// The whole plant's dashboards — Planning and Production each show both
+// lines on one page — assembled by one rule for the pages and the assistant:
+// the shift log's figures stripped for an account the Shifts screen is
+// closed to, both lines' decisions in one list and the plant's headline from
+// the domain's rules. The pages load each line on its own (a line that fails
+// to load leaves the other on screen) and assemble with the same functions
+// the assistant's loaders use, so the two cannot disagree.
 
 export interface PlanningAll {
   tr: CockpitData;
@@ -19,10 +21,9 @@ export interface PlanningAll {
   summary: PlantPlanningSummary;
 }
 
-/** Planning for the whole plant. `floor`: whether the account sees Shifts —
- *  without it the shift log's figures leave on the server. */
-export async function loadPlanningAll(floor: boolean, period: { from?: Date | null; to?: Date | null } = {}, now = new Date()): Promise<PlanningAll> {
-  const [trRaw, lvRaw] = await Promise.all([getCockpit(now), getLvPlanning(period, now)]);
+/** The plant's Planning from the two lines' own loaders. `floor`: whether the
+ *  account sees Shifts — without it the shift log's figures leave here. */
+export function assemblePlanning(trRaw: CockpitData, lvRaw: LvPlanningData, floor: boolean): PlanningAll {
   const tr = floor ? trRaw : withoutFloor(trRaw);
   const lv = floor ? lvRaw : lvWithoutFloor(lvRaw);
   return {
@@ -32,16 +33,27 @@ export async function loadPlanningAll(floor: boolean, period: { from?: Date | nu
   };
 }
 
+/** Planning for the whole plant. */
+export async function loadPlanningAll(floor: boolean, period: { from?: Date | null; to?: Date | null } = {}, now = new Date()): Promise<PlanningAll> {
+  const [tr, lv] = await Promise.all([getCockpit(now), getLvPlanning(period, now)]);
+  return assemblePlanning(tr, lv, floor);
+}
+
 export interface ProductionAll {
   tr: FloorPeriod;
   lv: LvFloorPeriod;
   actions: (CockpitAction & { line: "TR" | "LV" })[];
 }
 
-/** Production for the whole plant over one period — the department asked for
- *  read on each line that has it (the names differ per line). The page is
- *  behind the Shifts screen, so nothing is stripped here. */
+/** The plant's Production from the two lines' periods. The page is behind
+ *  the Shifts screen, so nothing is stripped here. */
+export function assembleProduction(tr: FloorPeriod, lv: LvFloorPeriod): ProductionAll {
+  return { tr, lv, actions: mergeActions(tr.actions, lv.actions) };
+}
+
+/** Production for the whole plant over one period — each line's own
+ *  department (the names differ per line). */
 export async function loadProductionAll(req: { fromISO: string; toISO: string; dept: FloorDept; clamped?: boolean }, lvDept: LvFloorFilter, now = new Date()): Promise<ProductionAll> {
   const [tr, lv] = await Promise.all([getFloorPeriod(req, now), getLvFloorPeriod({ ...req, dept: lvDept }, now)]);
-  return { tr, lv, actions: mergeActions(tr.actions, lv.actions) };
+  return assembleProduction(tr, lv);
 }

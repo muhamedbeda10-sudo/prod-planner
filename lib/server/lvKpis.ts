@@ -5,7 +5,8 @@ import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { LV_ITEM, LV_STAGES, type LvStage } from "@/lib/domain/lv";
 import type { LvRate } from "@/lib/domain/lvStd";
 import { DEFAULT_SHIFT, isShiftCode, lineHours } from "@/lib/domain/shifts";
-import { HISTORY_DAYS, RECENT_DAYS, hoursStat, manpowerPlan, monthCalendar, type CentreDay, type CockpitAction, type ManpowerRow } from "@/lib/domain/kpis";
+import { HISTORY_DAYS, RECENT_DAYS, hoursStat, manpowerPlan, monthCalendar, monthOf, type CentreDay, type CockpitAction, type ManpowerRow } from "@/lib/domain/kpis";
+import { LV_ITEM_ORDER, LV_TYPE_STAGES, lvItemType, lvPlanLine, outputByType, type TypeGroup } from "@/lib/domain/outputByType";
 import {
   FLOOR_TREND_WINDOW, efficiencyGrid, floorDays, floorRange, floorStat, productivityTrend as trendOf, recordedDates as datesWithHours,
   type FloorAttendance, type FloorStat, type HeatRow, type ProductivityPoint,
@@ -37,8 +38,8 @@ interface LvRead {
   /** Each department's recorded days with the panels' earned hours. */
   all: CentreDay<LvFloorDept>[];
   attendance: FloorAttendance<LvFloorDept>[];
-  /** Panels moved per stage per day, and whether their order is priced. */
-  moves: { dateISO: string; stage: LvStage; qty: number; priced: boolean }[];
+  /** Panels moved per stage per day, their order, and whether it is priced. */
+  moves: { dateISO: string; stage: LvStage; qty: number; priced: boolean; mo: string | null }[];
 }
 
 /** The panels' departments day by day from `fromISO` to `toISO`: man-hours
@@ -81,7 +82,7 @@ async function readLvDeptDays(fromISO: string, toISO: string): Promise<LvRead> {
     const stage = e.dept as LvStage;
     const iso = toISODate(e.date);
     const rate = e.mo ? rateOf.get(e.mo) ?? null : null;
-    moves.push({ dateISO: iso, stage, qty: e.qty, priced: !!rate });
+    moves.push({ dateISO: iso, stage, qty: e.qty, priced: !!rate, mo: e.mo });
     if (!rate) continue;
     const dept = lvDeptOfStage(stage);
     if (dept) cell(iso, dept).earnedH += lvRateAt(rate, dept) * e.qty;
@@ -127,6 +128,10 @@ export interface LvFloorPeriod {
   /** What needs intervention on the panels' side, worst first. No stop is
    *  ever here: the machines are recorded by department, the punches shared. */
   actions: CockpitAction[];
+  /** What the period moved, plan by plan and panel type by type, against the
+   *  plan of the month the period ends in — every stage, whatever the
+   *  department picked. */
+  byType: { monthLabel: string; groups: TypeGroup<LvStage>[] };
 }
 
 /** The panels' floor over a period and a department — the Production
@@ -134,8 +139,20 @@ export interface LvFloorPeriod {
 export async function getLvFloorPeriod(q: { fromISO: string; toISO: string; dept: LvFloorFilter; clamped?: boolean }, now = new Date()): Promise<LvFloorPeriod> {
   const { fromISO, toISO, clamped } = floorRange(q.fromISO, q.toISO, factoryDayISO(now));
   const depts = lvDeptsOf(q.dept);
-  const read = await readLvDeptDays(fromISO, toISO);
+  const [read, tracker] = await Promise.all([readLvDeptDays(fromISO, toISO), getLvTracker()]);
   const days = floorDays(read.all, read.attendance, depts, fromISO, toISO);
+  // the item card: each panel moved under its order's plan and type, against the month the period ends in
+  const orderOf = new Map(tracker.map((r) => [r.mo, r]));
+  const month = monthOf(toISO);
+  const byType = {
+    monthLabel: month.monthLabel,
+    groups: outputByType(
+      LV_TYPE_STAGES,
+      read.moves.filter((m) => m.dateISO >= fromISO && m.dateISO <= toISO).map((m) => ({ ...lvItemType(m.mo ? orderOf.get(m.mo) : undefined), stage: m.stage, qty: m.qty })),
+      tracker.filter((r) => r.months.includes(month.monthLabel)).map(lvPlanLine),
+      LV_ITEM_ORDER,
+    ),
+  };
   const dates = datesWithHours(days);
   // the period's moves bucketed once by stage — what the departments, the totals, the gaps and the coverage all read
   const stages = new Set(depts.map((d) => LV_DEPT_STAGE_OF[d]));
@@ -196,6 +213,7 @@ export async function getLvFloorPeriod(q: { fromISO: string; toISO: string; dept
     pricedShare,
     gapDays: gaps,
     actions,
+    byType,
   };
 }
 

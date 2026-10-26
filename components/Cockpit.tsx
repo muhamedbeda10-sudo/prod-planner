@@ -9,7 +9,6 @@ import { BurnUpChart, LoadChart } from "@/components/LazyCharts";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/primitives";
 import { TableFrame, Th } from "@/components/DataTable";
-import { PrintDecisions } from "@/components/CockpitDecisions";
 import { formatDate } from "@/lib/domain/format";
 import { stopDurationLabel } from "@/lib/domain/downtime";
 import { ITEM_NAME, isItem } from "@/lib/domain/constants";
@@ -58,8 +57,6 @@ function WeekChange({ trend, todayISO, pick, rate, unit = "", up }: {
  *  figures (each centre's pace, the losses, who is present) are shown only then. */
 export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boolean }) {
   const finish = data.week.adherence.find((a) => a.stage === "finish");
-  // already without the shift log's decisions for an account Shifts is closed to (withoutFloor)
-  const actions = data.actions;
   // the card shows the oldest lines behind; the export carries them all
   const lateShown = data.week.late.slice(0, 20);
   const mp = data.manpower;
@@ -85,10 +82,6 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
 
   return (
     <div className="space-y-3">
-      {/* today's decisions sit behind the Decisions button in the page head
-          (CockpitDecisions); the paper carries them here */}
-      <PrintDecisions actions={actions} />
-
       {/* the headline figures, each against a week ago */}
       <div className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
         <StatTile hero label="Plan delivered on its day" value={pctOrDash(finish?.rate)} meter={finish?.rate ?? undefined}

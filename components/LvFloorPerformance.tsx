@@ -5,12 +5,10 @@ import { Info } from "lucide-react";
 import { ChartCard, StatTile, TONE_TEXT, fmt, pctOrDash } from "@/components/charts/kit";
 import { EfficiencyHeatmap } from "@/components/EfficiencyHeatmap";
 import { OutputChart, ProductivityTrendChart } from "@/components/LazyCharts";
-import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { EmptyState, Tabs } from "@/components/primitives";
 import { useSetParam } from "@/components/useSetParam";
 import { TableFrame, Th } from "@/components/DataTable";
-import { PrintDecisions } from "@/components/CockpitDecisions";
-import { addDaysISO, slicerRangeLabel } from "@/lib/domain/dateSlicer";
+import { slicerRangeLabel } from "@/lib/domain/dateSlicer";
 import { efficiencyBand } from "@/lib/domain/kpis";
 import { FLOOR_HISTORY_DAYS, FLOOR_MAX_DAYS } from "@/lib/domain/floorKpis";
 import { LV_STAGES, LV_STAGE_LABEL, LV_STAGE_SHORT } from "@/lib/domain/lv";
@@ -23,7 +21,9 @@ import type { LvFloorPeriod } from "@/lib/server/lvKpis";
 // day by day and the floor's efficiency over the days. The panels' own
 // hours (the timings sheet's LV tab) against their own four departments on
 // the shift log; nothing of the transformers' is mixed in, and no machine
-// stop is here — stops are recorded by department on shared machines.
+// stop is here — stops are recorded by department on shared machines. The
+// panels' section of the Production dashboard: the period is the page's (its
+// date bar), the department this section's own (?lvDept=).
 
 const DEPT_TABS: { id: LvFloorFilter; label: string }[] = [{ id: "all", label: "All" }, ...LV_FLOOR_DEPTS.map((d) => ({ id: d, label: LV_FLOOR_DEPT_LABEL[d] }))];
 const hOrDash = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${fmt(v, 1)} h`);
@@ -32,10 +32,10 @@ const whole = (v: number | null) => (v === null ? "" : Math.round(v * 100));
 
 function DeptTabs({ dept }: { dept: LvFloorFilter }) {
   const setParam = useSetParam();
-  return <Tabs label="Department" items={DEPT_TABS} value={dept} onChange={(id) => setParam("dept", id === "all" ? "" : id)} />;
+  return <Tabs label="Panels' department" items={DEPT_TABS} value={dept} onChange={(id) => setParam("lvDept", id === "all" ? "" : id)} />;
 }
 
-export function LvFloorPerformance({ period, todayISO, defaultRange }: { period: LvFloorPeriod; todayISO: string; defaultRange: { label: string; from: string; to: string } }) {
+export function LvFloorPerformance({ period }: { period: LvFloorPeriod }) {
   const { summary: s, grid, dates, groups, trend, output, window, moved } = period;
   const single = period.dept === "all" ? null : groups.find((g) => g.dept === period.dept) ?? null;
   const range = slicerRangeLabel(period.fromISO, period.toISO);
@@ -52,21 +52,13 @@ export function LvFloorPerformance({ period, todayISO, defaultRange }: { period:
   const points = output.map((d) => ({ dateISO: d.dateISO, earnedH: d.earnedH, workedH: d.workedH, efficiency: d.efficiency, values: Object.fromEntries(depts.map((g) => [g, d.byDept[g]])) }));
 
   return (
-    <section className="space-y-3" aria-labelledby="lv-floor-head">
-      <PrintDecisions actions={period.actions} kind="intervention" nothing="Nothing pressing on the panels' floor." />
-      <div className="bg-surface border rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 no-print">
-        <div className="min-w-0 me-auto">
-          <h2 id="lv-floor-head" className="font-bold leading-tight">Floor performance — LV panels</h2>
-          <p className="text-xs text-muted mt-0.5">
-            {range} · {deptLabel} · {dates.length} recorded day{dates.length === 1 ? "" : "s"} · in the panels&apos; standard hours
-            {period.clamped && <span className="pill pill-warn ms-2" title={`A period is at most ${FLOOR_MAX_DAYS} days, within the last ${FLOOR_HISTORY_DAYS}, and never past today`}>period adjusted</span>}
-          </p>
-        </div>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 no-print">
         <DeptTabs dept={period.dept} />
-        <UrlDateSlicer
-          encoding="fromTo" from={period.fromISO} to={period.toISO} min={addDaysISO(todayISO, -(FLOOR_HISTORY_DAYS - 1))} max={todayISO} today={todayISO} marks={dates} label="Period"
-          presets={["yesterday", "thisWeek", "last14", "thisMonth", "lastMonth", "last30", "last90"]} defaultRange={defaultRange}
-        />
+        <p className="text-xs text-muted">
+          {deptLabel} · {dates.length} recorded day{dates.length === 1 ? "" : "s"} · in the panels&apos; standard hours
+          {period.clamped && <span className="pill pill-warn ms-2" title={`A period is at most ${FLOOR_MAX_DAYS} days, within the last ${FLOOR_HISTORY_DAYS}, and never past today`}>period adjusted</span>}
+        </p>
       </div>
       <p className="print-only text-sm font-bold">Floor performance · LV panels · {range} · {deptLabel}</p>
 
@@ -101,7 +93,7 @@ export function LvFloorPerformance({ period, todayISO, defaultRange }: { period:
           title="What stopped the machines?"
           sub="Stops are recorded on the machine, by department — the punches are shared with the transformers — so no stop is the panels' alone."
         >
-          <EmptyState compact icon={Info} title="Not separable by line" hint={<>The plant&apos;s stops, counted once, are under <Link href="/dashboards/production?line=all" className="text-brand-ink font-semibold hover:underline">All</Link> and on the transformers&apos; side.</>} />
+          <EmptyState compact icon={Info} title="Not separable by line" hint={<>The plant&apos;s stops, counted once, are in the <a href="#tr" className="text-brand-ink font-semibold hover:underline">transformers&apos; section</a> and the plant&apos;s figures above.</>} />
         </ChartCard>
       </div>
 
@@ -169,6 +161,6 @@ export function LvFloorPerformance({ period, todayISO, defaultRange }: { period:
           {trend.length === 0 ? empty : <ProductivityTrendChart points={trend} window={window} />}
         </ChartCard>
       </div>
-    </section>
+    </div>
   );
 }

@@ -408,15 +408,22 @@ export function peopleShort(rows: readonly Pick<ManpowerRow<string>, "tone" | "g
  *  those left from the day on (the day included), and the net hours a
  *  person works a day. One rule for both lines' months. */
 export function monthCalendar(todayISO: string, holidays: Set<string>, hoursPerPersonDay: number): ManpowerCalendar & { monthLabel: string; monthStartISO: string; monthEndISO: string } {
-  const monthStartISO = `${todayISO.slice(0, 7)}-01`;
-  const [y, m] = todayISO.split("-").map(Number);
-  const monthEndISO = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  const { monthLabel, monthStartISO, monthEndISO } = monthOf(todayISO);
   return {
-    monthLabel: monthLabelFromInput(todayISO.slice(0, 7)) ?? todayISO.slice(0, 7),
-    monthStartISO, monthEndISO,
+    monthLabel, monthStartISO, monthEndISO,
     hoursPerPersonDay,
     monthWd: workingDaysInclusive(monthStartISO, monthEndISO, holidays),
     leftWd: workingDaysInclusive(todayISO, monthEndISO, holidays),
+  };
+}
+
+/** The month a day belongs to: the plan's own label ("October 2026") and its first and last day. */
+export function monthOf(dayISO: string): { monthLabel: string; monthStartISO: string; monthEndISO: string } {
+  const [y, m] = dayISO.split("-").map(Number);
+  return {
+    monthLabel: monthLabelFromInput(dayISO.slice(0, 7)) ?? dayISO.slice(0, 7),
+    monthStartISO: `${dayISO.slice(0, 7)}-01`,
+    monthEndISO: new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10),
   };
 }
 

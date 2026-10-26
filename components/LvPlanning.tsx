@@ -6,7 +6,6 @@ import { Bullet, ChartCard, StatTile, TONE_TEXT, fmt, pct, pctOrDash, signed } f
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/primitives";
 import { TableFrame, Th } from "@/components/DataTable";
-import { PrintDecisions } from "@/components/CockpitDecisions";
 import { LvStageTable } from "@/components/LvStageTable";
 import { LV_STAGE_LABEL } from "@/lib/domain/lv";
 import { LV_FLOOR_DEPT_LABEL } from "@/lib/domain/lvKpis";
@@ -41,8 +40,6 @@ export function LvPlanning({ data, floor = true }: { data: LvPlanningData; floor
 
   return (
     <div className="space-y-3">
-      <PrintDecisions actions={data.actions} nothing="Nothing pressing — the month's plan, the chain and the people are on track." />
-
       {/* the headline figures */}
       <div className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
         <StatTile hero label={`${m.monthLabel} — painted`} value={pctOrDash(pace.doneShare)} meter={pace.doneShare ?? undefined}

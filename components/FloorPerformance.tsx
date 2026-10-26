@@ -7,24 +7,25 @@ import { Bullet, ChartCard, StatTile, TONE_TEXT, fmt, pctOrDash } from "@/compon
 import { EfficiencyHeatmap } from "@/components/EfficiencyHeatmap";
 import { OutputChart, ProductivityTrendChart } from "@/components/LazyCharts";
 import { outputPoints } from "@/components/CockpitCharts";
-import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { EmptyState, Tabs } from "@/components/primitives";
 import { useSetParam } from "@/components/useSetParam";
 import { TableFrame, Th } from "@/components/DataTable";
-import { addDaysISO, slicerRangeLabel } from "@/lib/domain/dateSlicer";
+import { slicerRangeLabel } from "@/lib/domain/dateSlicer";
 import { stopDurationLabel } from "@/lib/domain/downtime";
 import { WORK_CENTRE_LABEL } from "@/lib/domain/shifts";
 import { OUTPUT_GROUPS, OUTPUT_GROUP_LABEL, efficiencyBand, paretoOf } from "@/lib/domain/kpis";
 import { FLOOR_HISTORY_DAYS, FLOOR_MAX_DAYS, groupsOf, type FloorDept } from "@/lib/domain/floorKpis";
 import type { FloorPeriod } from "@/lib/server/kpis";
 
-// 🏭 How the floor worked over the period the planner picks — one department
-// or all: each centre's efficiency day by day (a heatmap, green at the
-// standard), what one person turns out, how the hours went (attendance,
-// overtime, the machines' availability), the output day by day and what
-// stopped the machines. Shown to the accounts that see Shifts; the figures
-// come from getFloorPeriod (lib/server/kpis.ts). The period and the
-// department live in the URL (?from=&to=&dept=), so a link opens as sent.
+// 🏭 How the transformers' floor worked over the period the planner picks —
+// one department or all: each centre's efficiency day by day (a heatmap,
+// green at the standard), what one person turns out, how the hours went
+// (attendance, overtime, the machines' availability), the output day by day
+// and what stopped the machines. The transformers' section of the Production
+// dashboard, shown to the accounts that see Shifts; the figures come from
+// getFloorPeriod (lib/server/kpis.ts). The period is the page's (its date
+// bar) and the department this section's own, both in the URL
+// (?from=&to=&dept=), so a link opens as sent.
 
 const DEPT_TABS: { id: FloorDept; label: string }[] = [{ id: "all", label: "All" }, ...OUTPUT_GROUPS.map((g) => ({ id: g, label: OUTPUT_GROUP_LABEL[g] }))];
 
@@ -38,12 +39,7 @@ function DeptTabs({ dept }: { dept: FloorDept }) {
   return <Tabs label="Department" items={DEPT_TABS} value={dept} onChange={(id) => setParam("dept", id === "all" ? "" : id)} />;
 }
 
-export function FloorPerformance({ period, todayISO, defaultRange }: {
-  period: FloorPeriod;
-  todayISO: string;
-  /** The section's own period — picking it clears the dates from the URL. */
-  defaultRange: { label: string; from: string; to: string };
-}) {
+export function FloorPerformance({ period }: { period: FloorPeriod }) {
   const { summary: s, grid, dates, groups, trend, output, losses, window } = period;
   const pareto = useMemo(() => paretoOf(losses.causes), [losses.causes]);
   const plannedStops = losses.causes.filter((c) => c.planned);
@@ -58,21 +54,14 @@ export function FloorPerformance({ period, todayISO, defaultRange }: {
   );
 
   return (
-    <section className="space-y-3" aria-labelledby="floor-head">
-      {/* the section's head: what it is, and its two filters in one wrapping toolbar */}
-      <div className="bg-surface border rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 no-print">
-        <div className="min-w-0 me-auto">
-          <h2 id="floor-head" className="font-bold leading-tight">Floor performance</h2>
-          <p className="text-xs text-muted mt-0.5">
-            {range} · {deptLabel} · {dates.length} recorded day{dates.length === 1 ? "" : "s"} · in standard hours
-            {period.clamped && <span className="pill pill-warn ms-2" title={`A period is at most ${FLOOR_MAX_DAYS} days, within the last ${FLOOR_HISTORY_DAYS}, and never past today`}>period adjusted</span>}
-          </p>
-        </div>
+    <div className="space-y-3">
+      {/* the section's own filter, and what it is showing */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 no-print">
         <DeptTabs dept={period.dept} />
-        <UrlDateSlicer
-          encoding="fromTo" from={period.fromISO} to={period.toISO} min={addDaysISO(todayISO, -(FLOOR_HISTORY_DAYS - 1))} max={todayISO} today={todayISO} marks={dates} label="Period"
-          presets={["yesterday", "thisWeek", "last14", "thisMonth", "lastMonth", "last30", "last90"]} defaultRange={defaultRange}
-        />
+        <p className="text-xs text-muted">
+          {deptLabel} · {dates.length} recorded day{dates.length === 1 ? "" : "s"} · in standard hours
+          {period.clamped && <span className="pill pill-warn ms-2" title={`A period is at most ${FLOOR_MAX_DAYS} days, within the last ${FLOOR_HISTORY_DAYS}, and never past today`}>period adjusted</span>}
+        </p>
       </div>
       <p className="print-only text-sm font-bold">Floor performance · {range} · {deptLabel}</p>
 
@@ -199,6 +188,6 @@ export function FloorPerformance({ period, todayISO, defaultRange }: {
           {trend.length === 0 ? empty : <ProductivityTrendChart points={trend} window={window} />}
         </ChartCard>
       </div>
-    </section>
+    </div>
   );
 }
