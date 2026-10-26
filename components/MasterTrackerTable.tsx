@@ -11,7 +11,6 @@ import { Num, PageHead, Soi } from "@/components/ui";
 import { LineSwitch } from "@/components/LineSwitch";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
 import { TrackerScope, type TrackerFilter } from "@/components/TrackerScope";
-import { ExportMenu } from "@/components/ExportMenu";
 import { PrintScope } from "@/components/PrintHeader";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle } from "@/components/PlanViewToggle";
@@ -723,57 +722,6 @@ export function MasterTrackerTable({
   // always talk about the same stage.
   const itemStats = trackerItemStats(filtered, cardStage);
 
-  // The export mirrors the CURRENT view: the rows already follow the search /
-  // month / status / progress / urgent filters, and the columns now follow the
-  // Dept (stage) filter too — only the picked stages per component, and the
-  // summary columns (Welded / Complete / Left / Achievement) only in the full,
-  // unfiltered view (the table hides them under a stage filter).
-  const exportStages = scoped ? stages : ["Cut", "Welding", "Painting", "Delivered"];
-  const stageColLabel = (s: string, it: Item) =>
-    s === "Cut" ? "Fab" : s === "Welding" ? "Weld" : s === "Delivered" ? "Dlvd" : isPaintExempt(it) ? "SHB" : "Paint";
-  const stageColValue = (c: MasterTrackerRow["items"][Item], s: string, it: Item) =>
-    s === "Cut" ? c.cut : s === "Welding" ? c.weld : s === "Delivered" ? c.delivered : isPaintExempt(it) ? c.shp : c.paint;
-
-  const exportRows = filtered.map((r) => {
-    const row: Record<string, string | number> = {
-      MO: r.mo,
-      BOM: r.bom,
-      "Plan months": r.months.join(", "),
-      "Odoo allocated to plan": r.odooPlanMonth ?? "No plan month",
-      SOI: r.soi ?? "",
-      Customer: r.customer ?? "",
-      Urgent: r.urgent ? "Yes" : "",
-      KVA: r.kva ?? "",
-      "Color RAL": r.colorRal ?? "",
-      "CRC Size": r.crcSize ?? "",
-      SFM: r.sfm ?? "",
-      Required: r.required,
-      "On hold": r.hold.onHold ? holdLabel(r.hold) : "",
-      Fins: r.fins ?? "",
-    };
-    for (const it of ITEMS) {
-      const c = r.items[it];
-      for (const s of exportStages) {
-        // N/A components (rule or manual) export blank, like the table's dashes
-        row[`${it} ${stageColLabel(s, it)}`] = !c.eligible || c.excluded ? "" : stageColValue(c, s, it);
-      }
-      const odoo = trackerOdooTotal([r], it, month);
-      row[`${it} Odoo closed`] = !c.eligible || c.excluded ? "" : c.odooTracked === false && odoo.qty === 0 ? "Not tracked" : odoo.qty;
-      if (odoo.unallocated) row[`${it} Odoo not allocated`] = `${odoo.unallocated} project pcs outside the allocated plan quantities`;
-    }
-    row.OSP = ITEMS.filter((it) => r.items[it].osp > 0).map((it) => `${it}×${r.items[it].osp}`).join(" ");
-    if (!scoped) {
-      row.Welded = r.welded;
-      row["Complete (painted)"] = r.complete;
-      row.Left = r.remaining;
-      row["Achievement %"] = r.achievement === null ? "" : Math.round(r.achievement * 100);
-    }
-    row.Status = r.status;
-    return row;
-  });
-  // filename hints at the active stage scope, so exports don't get confused
-  const exportName = `plan-tracker${scoped ? "-" + stages.join("-").toLowerCase() : ""}.xlsx`;
-
   // the printed sheet is very wide unfiltered (six components × four stages);
   // it only fits A4 landscape at the tighter `print-tight` step. A dept-scoped
   // view has far fewer columns and keeps the roomier size.
@@ -825,7 +773,6 @@ export function MasterTrackerTable({
             <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / Customer / KVA…" wide />
           </>
         }
-        actions={<ExportMenu excel={[{ rows: exportRows, filename: exportName, sheetName: "Tracker" }]} print />}
       >
         <SelectFilter
           label="Plan month"

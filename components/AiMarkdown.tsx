@@ -4,10 +4,11 @@ import { Children, cloneElement, createContext, isValidElement, memo, useContext
 import dynamic from "next/dynamic";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AlertTriangle, CheckCircle2, ChevronDown, Crosshair, FileSpreadsheet, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Crosshair, FileSpreadsheet, Printer, XCircle } from "lucide-react";
 import { isChartBlock } from "@/lib/domain/aiChart";
 import { humanizeKey, looksLikeColumn, readableDate } from "@/lib/domain/fieldNames";
 import { isEvidenceAnchor, safeHref } from "@/lib/domain/aiEvidence";
+import { fileLinkKind } from "@/lib/domain/aiFiles";
 import { scopeLineOf } from "@/lib/domain/aiAnswer";
 import { calloutOf, columnKind, FIGURE_UNITS, groupedFigure, TABLE_FOLD_AT, withoutCalloutMark } from "@/lib/domain/aiTable";
 import { downloadXlsx } from "@/components/ExportButton";
@@ -25,7 +26,8 @@ import { downloadXlsx } from "@/components/ExportButton";
 // drawn as a chart; a ```followups block (the next questions the assistant
 // offers) is never drawn here — the chat draws it as buttons. A blockquote
 // that opens with ⚠️, ✅ or ❌ is a callout in that tone, and the closing
-// "Scope: …" line is a quiet strip. No raw HTML is
+// "Scope: …" line is a quiet strip. A link to a file the assistant made is a
+// button — download it, or print it. No raw HTML is
 // rendered — only Markdown — and nothing in an answer is fetched from
 // outside: no images, and outside links are text.
 
@@ -160,7 +162,7 @@ function MdTable({ node, children, dir }: { node: HastNode | undefined; children
   );
 }
 
-function components(streaming: boolean): Components {
+function components(streaming: boolean, ownFiles: boolean): Components {
   return {
     p: ({ children, node }) => {
       // the closing scope line — the line, the period, the moment — as a strip
@@ -199,8 +201,18 @@ function components(streaming: boolean): Components {
     h4: ({ children }) => <h4 dir="auto" className="mt-3 mb-1 text-sm font-semibold">{children}</h4>,
     // a link into the app is a link; anything outside is shown, not followed —
     // a row of data could tell the model to put figures in an address
+    // a file the assistant made is a button in the chat it was made in —
+    // download it, or print it in a tab of its own; shared onward (the inbox,
+    // a task) it stays the asker's, so it reads as plain text
     a: ({ children, href }) =>
-      href && (safeHref(href) || isEvidenceAnchor(href)) ? (
+      href && fileLinkKind(href) ? (
+        !ownFiles ? <span>{children}</span>
+        : fileLinkKind(href) === "download" ? (
+          <a href={href} download className="no-print btn btn-secondary btn-sm my-0.5 no-underline"><FileSpreadsheet size={14} className="text-ok-fg" aria-hidden />{children}</a>
+        ) : (
+          <a href={href} target="_blank" rel="noopener" className="no-print btn btn-secondary btn-sm my-0.5 no-underline"><Printer size={14} aria-hidden />{children}</a>
+        )
+      ) : href && (safeHref(href) || isEvidenceAnchor(href)) ? (
         <a href={href} className="text-brand-ink underline underline-offset-2" onClick={isEvidenceAnchor(href) ? (event) => {
           const source = document.getElementById(href.slice(1));
           if (source instanceof HTMLDetailsElement) {
@@ -268,15 +280,18 @@ function trimStart(nodes: ReactNode[]): ReactNode[] {
   return nodes;
 }
 
-const LIVE = components(true);
-const DONE = components(false);
+const LIVE = components(true, true);
+const DONE = components(false, true);
+const SHARED = components(false, false);
 
 /** Parsed again only when its text changes — not on every streamed token
  *  of the answer after it. */
-export const AiMarkdown = memo(function AiMarkdown({ text, streaming = false, className = "" }: { text: string; streaming?: boolean; className?: string }) {
+/** `shared`: an answer read away from its chat (the inbox, a task) — the
+ *  files it links to are the asker's, so they are not offered there. */
+export const AiMarkdown = memo(function AiMarkdown({ text, streaming = false, shared = false, className = "" }: { text: string; streaming?: boolean; shared?: boolean; className?: string }) {
   return (
     <div className={`ai-md min-w-0 ${className}`} dir={textDirection(text)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={streaming ? LIVE : DONE}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={streaming ? LIVE : shared ? SHARED : DONE}>
         {text}
       </ReactMarkdown>
     </div>

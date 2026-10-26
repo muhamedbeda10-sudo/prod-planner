@@ -4,10 +4,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MasterTrackerTable } from "@/components/MasterTrackerTable";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { ITEMS } from "@/lib/domain/constants";
+import { masterTrackerRows } from "@/lib/domain/sheets";
+import { filterMasterTracker } from "@/lib/domain/trackerSummary";
 
-const { filters, exported } = vi.hoisted(() => ({
+const { filters } = vi.hoisted(() => ({
   filters: {} as Record<string, string>,
-  exported: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), useSearchParams: () => new URLSearchParams(), usePathname: () => "/tracker" }));
@@ -24,7 +25,6 @@ vi.mock("@/components/FilterControls", async (original) => ({
   useSavedFilter: (key: string) => [filters[key] ?? "", vi.fn()],
 }));
 vi.mock("@/components/ProgressRing", () => ({ RING_GRID: "", RingCard: () => null }));
-vi.mock("@/components/ExportMenu", () => ({ ExportMenu: exported }));
 
 const row = (mo: string, extra: Partial<MasterTrackerRow>, tank: Partial<MasterTrackerRow["items"]["TN"]>): MasterTrackerRow => ({
   mo, bom: `BOM-${mo}`, soi: null, customer: null, urgent: false, kva: "1000", rating: null,
@@ -53,14 +53,14 @@ function odooCell(html: string, mo: string) {
   if (!m) throw new Error(`no TN Odoo cell for ${mo}`);
   return m[1].replace(/<[^>]+>/g, "");
 }
-function exportedOdoo(mo: string) {
-  const list = exported.mock.calls[0][0].excel[0].rows as Record<string, string | number>[];
-  return list.find((r) => r.MO === mo)?.["TN Odoo closed"];
+/** The cell in the sheet the assistant makes of the tracker, under the screen's month. */
+function sheetOdoo(mo: string) {
+  const month = filters["tracker.month"] ?? "";
+  return masterTrackerRows(filterMasterTracker(rows, { month }), [], month).find((r) => r.MO === mo)?.["TN Odoo closed"];
 }
 
 beforeEach(() => {
   for (const key of Object.keys(filters)) delete filters[key];
-  exported.mockReset().mockReturnValue(null);
 });
 
 describe("tracker Odoo cell for an MO older than the tracking start", () => {
@@ -68,17 +68,17 @@ describe("tracker Odoo cell for an MO older than the tracking start", () => {
     const html = render();
     expect(odooCell(html, "OLD")).toBe("—");
     expect(odooCell(html, "NEW")).toBe("3");
-    expect(exportedOdoo("OLD")).toBe("Not tracked");
+    expect(sheetOdoo("OLD")).toBe("Not tracked");
   });
 
-  it("stays unknown under a later month it was carried into, matching the export", () => {
+  it("stays unknown under a later month it was carried into, matching the assistant's sheet", () => {
     filters["tracker.month"] = "October 2026";
     const html = render();
     expect(html).toContain('aria-label="OLD TN Odoo closed"');
     expect(odooCell(html, "OLD")).toBe("—");
     expect(odooCell(html, "NEW")).toBe("3");
-    expect(exportedOdoo("OLD")).toBe("Not tracked");
-    expect(exportedOdoo("NEW")).toBe(3);
+    expect(sheetOdoo("OLD")).toBe("Not tracked");
+    expect(sheetOdoo("NEW")).toBe(3);
   });
 
   it("still shows a tracked zero as 0", () => {

@@ -10,34 +10,23 @@ import { PlanViewToggle, WeekPlanPicker } from "@/components/PlanViewToggle";
 import { PrintScope } from "@/components/PrintHeader";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
 import { ExportMenu } from "@/components/ExportMenu";
+import { weeklyPlanRows } from "@/lib/domain/sheets";
+import { WEEKLY_STAGES, filterWeeklyDays, owedOf, weeklyCoverage as coverage, weeklyMetricOf as metricOf, weeklyStagesOf, type WeeklyStage } from "@/lib/domain/weeklyPlanView";
 import { itemColor } from "@/lib/domain/productColors";
-import { ITEMS, ITEM_NAME, isPaintExempt, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
+import { ITEMS, ITEM_NAME, isPaintExempt, type Item } from "@/lib/domain/constants";
 import { traceHref } from "@/lib/domain/links";
-import type { WeeklyPlanTracker, WeeklyPlanRow, WeeklyPlanCell, WeeklyPlanDay } from "@/lib/server/weeklyPlanTracker";
+import type { WeeklyPlanTracker, WeeklyPlanDay } from "@/lib/server/weeklyPlanTracker";
 
 /* One weekly plan by DELIVERY DAY. The date runs down the left edge as a rail
    so it never breaks the grid, and every day repeats its own column headers —
    each day asks for different components, so each day gets its own columns. */
 
-const STAGE_OPTS = [
-  { value: "cut", label: "Fabrication", short: "Fab" },
-  { value: "weld", label: "Welding", short: "Weld" },
-  { value: "finish", label: FINISHING_LABEL, short: "Paint" },
-  { value: "delivered", label: "Delivered", short: "Dlvd" },
-] as const;
-type Stage = (typeof STAGE_OPTS)[number]["value"];
+const STAGE_OPTS = WEEKLY_STAGES;
+type Stage = WeeklyStage;
 
 const TINT: Record<Stage, string> = {
   cut: "var(--cut-tint)", weld: "var(--weld-tint)", finish: "var(--paint-tint)", delivered: "var(--dlvd-tint)",
 };
-
-/** Achievement is measured at ONE stage — the last one still in view. Filter to
- *  Fabrication and the percentage becomes "how much of this day is fabricated";
- *  pick several and the LAST in pipeline order wins, since a later stage can't
- *  run ahead of an earlier one. Unfiltered it stays at finishing, the final
- *  production stage — delivery lags production and would read as a false zero. */
-const metricOf = (stages: readonly Stage[], filtered: boolean): Stage =>
-  filtered ? stages[stages.length - 1] : "finish";
 
 /** What the measured stage DID to a component — the core is shot blasted, not
  *  painted, so its finishing card has to say so. */
@@ -46,12 +35,6 @@ const doneWord = (metric: Stage, it: Item): string =>
   : metric === "weld" ? "welded"
   : metric === "delivered" ? "delivered"
   : isPaintExempt(it) ? "shot blasted" : "painted";
-
-/** Work a cell actually OWES: the scheduled qty minus what the order marked
- *  N/A, minus what the sheet had already promised earlier this week. Every
- *  percentage and total reads against this — a promise we will not manufacture,
- *  and a promise asked for twice, can neither hurt nor help a day's score. */
-const owedOf = (c: WeeklyPlanCell): number => c.req - c.na - c.over;
 
 /** Which ledger department a visible stage column writes to. The core's
  *  finishing column IS its shot blast — it is never painted. */
@@ -75,11 +58,6 @@ interface RecCtl {
   save: (a: { dept: string; bom: string; item: Item; mos: string[]; dayISO: string }) => void;
 }
 
-const coverage = (r: WeeklyPlanRow, metric: Stage): number | null => {
-  const cells = Object.values(r.items) as WeeklyPlanCell[];
-  const owed = cells.reduce((s, c) => s + owedOf(c), 0);
-  return owed > 0 ? cells.reduce((s, c) => s + c[metric], 0) / owed : null;
-};
 
 export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, fabrication = false, lineSwitch }: {
   data: WeeklyPlanTracker;
@@ -142,12 +120,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
   const [stage, setStage] = useSavedFilter(`${filterKey}.stage`);
   const [hideDone, setHideDone] = useSavedFilter(`${filterKey}.hideDone`);
 
-  const stages = useMemo((): Stage[] => {
-    if (fabrication) return ["cut"];
-    const sel = new Set(stage.split(",").filter(Boolean));
-    const picked = STAGE_OPTS.filter((o) => sel.has(o.value));
-    return (picked.length > 0 ? picked : [...STAGE_OPTS]).map((o) => o.value);
-  }, [stage, fabrication]);
+  const stages = useMemo((): Stage[] => (fabrication ? ["cut"] : weeklyStagesOf(stage)), [stage, fabrication]);
   const toggleStage = (v: Stage) => {
     const sel = new Set(stage.split(",").filter(Boolean));
     if (sel.has(v)) sel.delete(v); else sel.add(v);
@@ -156,30 +129,9 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
 
   const metric = fabrication ? "cut" : metricOf(stages, !!stage);
 
-  const days = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return data.days
-      .map((d) => {
-        const rows = d.rows.filter((r) => {
-          if (hideDone === "1" && (coverage(r, metric) ?? 0) >= 1) return false;
-          if (!needle) return true;
-          return [r.bom, r.soi, r.description].some((v) => v?.toLowerCase().includes(needle));
-        });
-        // the rail totals follow the SAME stage and the SAME rows as the table,
-        // so the day header can never disagree with the rows under it
-        let req = 0;
-        let covered = 0;
-        for (const r of rows) {
-          for (const c of Object.values(r.items) as WeeklyPlanCell[]) {
-            req += owedOf(c);
-            covered += c[metric];
-          }
-        }
-        // a day's columns follow the rows that survived the filters
-        return { ...d, rows, req, covered, items: d.items.filter((it) => rows.some((r) => r.items[it])) };
-      })
-      .filter((d) => d.rows.length > 0);
-  }, [data, q, hideDone, metric]);
+  // the rail totals follow the SAME stage and the SAME rows as the table, so
+  // the day header can never disagree with the rows under it
+  const days = useMemo(() => filterWeeklyDays(data.days, { q, hideDone: hideDone === "1" }, metric), [data, q, hideDone, metric]);
 
   // one card per component the plan asks for, measured at the SAME stage as the
   // table — required across every day in view against how much is covered
@@ -202,24 +154,9 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
   const total = data.days.reduce((s, d) => s + d.rows.length, 0);
   const hasActive = !!q || !!stage || hideDone === "1";
 
-  const exportRows = useMemo(
-    () =>
-      days.flatMap((d) =>
-        d.rows.flatMap((r) =>
-          (Object.keys(r.items) as Item[]).map((it) => ({
-            "Delivery date": d.iso, Project: r.bom, SOI: r.soi ?? "", Component: it,
-            Required: r.items[it]!.req,
-            // pcs scheduled but NOT to be manufactured (order marked N/A) and
-            // pcs covered by outsourcing — the sheet must read like the screen
-            "N/A (not manufactured)": r.items[it]!.na,
-            "Already promised earlier": r.items[it]!.over,
-            OSP: r.items[it]!.osp,
-            ...Object.fromEntries(stages.map((s) => [STAGE_OPTS.find((o) => o.value === s)!.short, r.items[it]![s]])),
-          }))
-        )
-      ),
-    [days, stages]
-  );
+  // the Floor's weekly sheet keeps its own export; the Plan Tracker's comes
+  // from the assistant (lib/server/ai/tools/sheets.ts), built the same way
+  const exportRows = useMemo(() => (fabrication ? weeklyPlanRows(days, stages) : []), [fabrication, days, stages]);
 
   const metricLabel = STAGE_OPTS.find((o) => o.value === metric)!.label;
 
@@ -283,9 +220,11 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
           <input type="checkbox" checked={hideDone === "1"} onChange={(e) => setHideDone(e.target.checked ? "1" : "")} />
           <span className="text-muted text-[11px] font-bold uppercase tracking-wide">Hide finished</span>
         </label>
-        <div className="col-span-2 flex items-center gap-2 sm:col-span-1">
-          <ExportMenu excel={[{ label: "CSV", rows: exportRows, filename: `${fabrication ? "fabrication-" : ""}weekly-plan-${data.planNo ?? "none"}.csv` }]} print />
-        </div>
+        {fabrication && (
+          <div className="col-span-2 flex items-center gap-2 sm:col-span-1">
+            <ExportMenu excel={[{ label: "CSV", rows: exportRows, filename: `fabrication-weekly-plan-${data.planNo ?? "none"}.csv` }]} print />
+          </div>
+        )}
       </FilterBar>
 
       {data.planNo === null ? (

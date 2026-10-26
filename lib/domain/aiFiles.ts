@@ -207,3 +207,11 @@ export function filesOfNote(text: string): { id: number; name: string; kind: str
   }
   return out;
 }
+
+/** What a link in an answer does with one of the person's files: download
+ *  it, or open it laid out to print — null for any other link. */
+export function fileLinkKind(href: string): "download" | "print" | null {
+  if (/^\/api\/ai\/files\/[1-9]\d{0,9}$/.test(href)) return "download";
+  if (/^\/ai\/print\/[1-9]\d{0,9}$/.test(href)) return "print";
+  return null;
+}

@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
 import { getMaterialData } from "@/lib/server/material";
-import { ExportMenu } from "@/components/ExportMenu";
 import { PageHead } from "@/components/ui";
 import { LineSwitch } from "@/components/LineSwitch";
 import { MaterialClient } from "@/components/MaterialClient";
@@ -29,48 +28,6 @@ export default async function MaterialPage({
   const line = await getActiveLine(); // one product line at a time
   const { lines, totals, knownBoms, lvOrders, lvTemplates, odooByMo } = await getMaterialData(month);
 
-  // the export carries the sheet's OWN column names in its order, then the
-  // tab's additions, so the file drops straight back into the workbook
-  const exportRows = line === "LV" ? lines.map((l) => ({
-    MO: l.mo,
-    Product: l.partName,
-    "Sec Item": l.materialCode,
-    "Planned qty": l.units,
-    BOM: l.bom,
-    Material: l.material,
-    Thickness: l.thicknessMm,
-    "Sheet Size": l.sheetSize,
-    "No. of Sheets In BOM For One Unit": l.sheetsPerUnit,
-    "Sheets Qty as Per Bom": l.forJob,
-    Produced: l.producedUsed ?? "",
-    "Actually Consumed Sheets Qty as per Nesting": l.forProduced ?? "",
-    "Remaining units": l.remainingUnits ?? "",
-    REMARKS: l.note ?? "",
-  })) : lines.map((l) => ({
-    "MTR Request #": l.mtr,
-    SOI: l.soi,
-    MO: l.mo,
-    "BOM Ref": l.bom,
-    "Quantity of Units": l.units,
-    "Part Code": l.partCode,
-    "Part Name": l.partName,
-    "Material Code": l.materialCode,
-    Material: l.material,
-    "Thickness (mm)": l.thicknessMm,
-    "Sheet Size": l.sheetSize,
-    "Weight(Kg)": l.weightKg ?? "",
-    "BOM Qty for one Unit": l.sheetsPerUnit,
-    "No. of Pieces in Actual Nesting for one Unit": l.actualPerUnit === null ? "" : Number(l.actualPerUnit.toFixed(4)),
-    "BOM Pieces for Job": l.forJob,
-    "No. of Pieces in Actual Nesting for Job": l.sheetsUsed ?? "",
-    "Average Utilization": l.utilization ?? "",
-    "Actual Weight (Kg)": l.actualWeightKg ?? "",
-    Difference: l.difference ?? "",
-    Notes: l.note ?? "",
-    Quantity: l.producedQty ?? "",
-    "Actual for Quantity": l.forProduced ?? "",
-  }));
-
   return (
     <div>
       <RememberLastVisit storageKey="material:last" />
@@ -79,7 +36,6 @@ export default async function MaterialPage({
         lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))}
         product={line} lvOrders={lvOrders} lvTemplates={lvTemplates} odooByMo={odooByMo}
         lineSwitch={<LineSwitch />}
-        exportButton={<ExportMenu excel={[{ rows: exportRows, filename: "material-sheet.xlsx", sheetName: "Sheet1" }]} />}
       />
     </div>
   );

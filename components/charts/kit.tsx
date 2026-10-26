@@ -60,8 +60,10 @@ export function ChartCard({
   title: string;
   sub?: React.ReactNode;
   right?: React.ReactNode;
-  /** The chart's numbers as a table — a Chart | Table switch and an export. */
-  table?: { rows: TableRow[]; filename: string; sheet?: string };
+  /** The chart's numbers as a table — a Chart | Table switch; with a
+   *  filename, an export too (the assistant's own charts — the dashboards'
+   *  sheets come from the assistant). */
+  table?: { rows: TableRow[]; filename?: string; sheet?: string };
   className?: string;
   children: React.ReactNode;
 }) {
@@ -81,7 +83,7 @@ export function ChartCard({
                 <button type="button" className={asTable ? "" : "on"} onClick={() => setAsTable(false)}>Chart</button>
                 <button type="button" className={asTable ? "on" : ""} onClick={() => setAsTable(true)}>Table</button>
               </nav>
-              {asTable && <ExportButton rows={table.rows} filename={table.filename} sheetName={table.sheet ?? "Sheet1"} label="Export" />}
+              {asTable && table.filename && <ExportButton rows={table.rows} filename={table.filename} sheetName={table.sheet ?? "Sheet1"} label="Export" />}
             </>
           )}
         </div>
@@ -112,7 +114,7 @@ export function DataTable({ rows, max = 400 }: { rows: TableRow[]; max?: number 
           ))}
         </tbody>
       </table>
-      {rows.length > max && <p className="text-xs text-muted mt-1">First {max} of {rows.length} rows — the export has them all.</p>}
+      {rows.length > max && <p className="text-xs text-muted mt-1">First {max} of {rows.length} rows — ask the assistant for the full list as an Excel file.</p>}
     </div>
   );
 }

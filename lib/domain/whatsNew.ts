@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-excel-through-assistant",
+    dateISO: "2026-10-26",
+    title: "Excel files and printouts come from the assistant now",
+    where: "AI assistant · every screen",
+    href: "/ai",
+    body: "The Export Excel and Print / PDF buttons have left the screens — the Floor's worklists keep theirs, and tank barcodes print as before. Ask the assistant instead: “an Excel of the plan tracker for October”, “the daily log of last week as a sheet”, “the consumables handed out this month”, “print today's attendance”. It builds the same sheet the button made — the screen's own columns and headers, so the file still drops into the office's workbooks — or any other list you describe, and gives you two buttons in its answer: Download, and Print, which opens the sheet under the company header ready for paper or PDF. A dashboard or an analysis prints from the assistant's answer itself. The file stays in your chat for 14 days, for you alone.",
+  },
+  {
     id: "2026-10-26-worklists-one-bar",
     dateISO: "2026-10-26",
     title: "Worklists and the Orders Registry lose their extra rows",

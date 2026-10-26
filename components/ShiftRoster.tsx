@@ -16,9 +16,7 @@ import { clearShiftDay, saveShiftRoster } from "@/app/shifts/actions";
 import { ShiftBoard, type BoardLine } from "@/components/ShiftBoard";
 import { FilterSelect, SearchBox } from "@/components/FilterControls";
 import { TableFrame, Th, useConfirm } from "@/components/DataTable";
-import { ExportButton } from "@/components/ExportButton";
 import { SAVE_UNCONFIRMED } from "@/components/ui";
-import { PrintButton } from "@/components/PrintButton";
 import { PrintHeader, PrintScope } from "@/components/PrintHeader";
 import { reconcileShiftDrafts, replaceShiftDepartment, shiftDepartmentDirty, type ShiftDraft } from "@/lib/domain/shiftDraft";
 
@@ -253,20 +251,6 @@ export function ShiftRoster({ data, editableDepts, filter }: {
       centre: d.dept === "Cut" && d.center ? WORK_CENTRE_LABEL[d.center] : null,
     };
   });
-  const exportRows = boardLines.map((l) => ({
-    Date: data.dateISO,
-    Badge: l.empId,
-    Name: l.name,
-    "Job title": l.jobTitle ?? "",
-    Department: WORKER_DEPT_LABEL[l.dept],
-    Section: l.sectionLabels.join(", "),
-    "Work centre": l.centre ?? "",
-    Attendance: l.attendance === "unset" ? "Not set" : ATTENDANCE_LABEL[l.attendance],
-    Time: l.attendance === "day" || l.attendance === "night" ? ATTENDANCE_TIME[l.attendance] : "",
-    "Overtime h": l.overtimeH || "",
-    Hours: l.attendance === "unset" ? "" : l.hours,
-    Note: l.note,
-  }));
 
   const printed = needle ? shiftSplit(searched, hrs) : split;
   const statusPill = allRecorded
@@ -343,8 +327,6 @@ export function ShiftRoster({ data, editableDepts, filter }: {
           <div className="ms-auto flex flex-wrap items-center gap-2">
             {statusPill}
             {(view === "record" ? departmentDirty : dirty) && <span className="pill pill-warn">unsaved changes</span>}
-            <PrintButton />
-            <ExportButton rows={exportRows} filename={`shift-attendance-${data.dateISO}.xlsx`} sheetName="Attendance" />
             {view === "record" && recordedHere.some(canEdit) && (
               <button type="button" className="btn btn-sm btn-ghost text-bad-fg" disabled={busy} onClick={clearDay}>
                 Clear {departmentName}

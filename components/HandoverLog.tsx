@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { updateHandover, deleteHandover, bulkDeleteHandover, bulkSetHandoverDate } from "@/app/handover/actions";
 import { factoryDayISO, toISODate } from "@/lib/domain/dates";
 import type { SoiLookup } from "@/lib/server/soi";
-import { ExportButton } from "@/components/ExportButton";
 import { SAVE_UNCONFIRMED, Soi, soiOf } from "@/components/ui";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { DateSlicer } from "@/components/DateSlicer";
@@ -193,20 +192,6 @@ export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }
     });
   }
 
-  const exportRows = filtered.map((r) => ({
-    Date: r.date,
-    DEPT: deptLabel(r.dept),
-    BOM: r.bom,
-    MO: r.mo ?? "",
-    SOI: soiOf(soi, r.mo, r.bom) ?? "",
-    Item: r.item,
-    QTY: r.qty,
-    Source: r.source,
-    By: r.createdBy ?? "",
-    "Corrected From": r.bomRaw && r.bomRaw !== r.bom ? r.bomRaw : "",
-    "Check ⚠": r.flags?.join(" | ") ?? "",
-  }));
-
   function save(id: number) {
     const fd = new FormData();
     fd.set("id", String(id));
@@ -262,7 +247,6 @@ export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }
             ⚠ <span className="tabnum">{flaggedCount}</span> to check
           </button>
         )}
-        <ExportButton rows={exportRows} filename={`daily-handover.xlsx`} sheetName="Daily HandOver" />
       </FilterBar>
       <div className="mb-3">
         <DateSlicer

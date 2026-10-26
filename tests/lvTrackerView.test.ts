@@ -6,11 +6,12 @@ import { MasterTrackerTable } from "@/components/MasterTrackerTable";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { ITEMS } from "@/lib/domain/constants";
 import type { LvTrackerRow } from "@/lib/server/lvTracker";
+import { lvTrackerRows } from "@/lib/domain/sheets";
+import { filterLvTracker } from "@/lib/domain/trackerSummary";
 
-const { filters, cards, exported } = vi.hoisted(() => ({
+const { filters, cards } = vi.hoisted(() => ({
   filters: {} as Record<string, string>,
   cards: vi.fn(),
-  exported: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), useSearchParams: () => new URLSearchParams(), usePathname: () => "/tracker" }));
@@ -28,7 +29,6 @@ vi.mock("@/components/FilterControls", async (original) => ({
   useSavedFilter: (key: string) => [filters[key] ?? "", vi.fn()],
 }));
 vi.mock("@/components/ProgressRing", () => ({ RING_GRID: "", RingCard: cards }));
-vi.mock("@/components/ExportButton", () => ({ ExportButton: exported }));
 vi.mock("@/components/ExportMenu", () => ({ ExportMenu: () => null }));
 
 const row = (mo: string, required: number, paint: number, extra: Partial<LvTrackerRow> = {}): LvTrackerRow => ({
@@ -48,6 +48,11 @@ const rows = [
 function render() {
   return renderToStaticMarkup(createElement(LvTrackerTable, { rows, editableStages: [], canStatus: false }));
 }
+/** The sheet the assistant makes of the LV tracker under the screen's filters. */
+function sheet() {
+  const f = Object.fromEntries(Object.entries(filters).map(([k, v]) => [k.replace(/^lvtracker\./, ""), v]));
+  return lvTrackerRows(filterLvTracker(rows, f)) as { Required: number; Painted: number }[];
+}
 function paintCard() {
   return cards.mock.calls.map(([props]) => props).find((props) => props.label === "Paint");
 }
@@ -55,7 +60,6 @@ function paintCard() {
 beforeEach(() => {
   for (const key of Object.keys(filters)) delete filters[key];
   cards.mockReset().mockReturnValue(null);
-  exported.mockReset().mockReturnValue(null);
 });
 
 describe("LV tracker view", () => {
@@ -69,11 +73,11 @@ describe("LV tracker view", () => {
     expect(html.indexOf('aria-label="Active tracker filters"')).toBeLessThan(html.indexOf('aria-expanded="false"'));
     expect(html).toContain("Open orders");
   });
-  it("shows only the four making stages in the cards, columns, column menu and export", () => {
+  it("shows only the four making stages in the cards, columns, column menu and the sheet", () => {
     const html = render();
     expect(cards.mock.calls.map(([props]) => props.label)).toEqual(["Punch", "Bend", "Weld", "Paint"]);
     expect(html).not.toMatch(/Deliver|Dlvd/);
-    expect(exported.mock.calls[0][0].rows[0]).not.toHaveProperty("Delivered");
+    expect(sheet()[0]).not.toHaveProperty("Delivered");
     expect(paintCard()).toMatchObject({ done: 25, need: 30 });
   });
 
@@ -87,11 +91,11 @@ describe("LV tracker view", () => {
     ["status", "closed", 0, 30],
     ["status", "all", 25, 60],
     ["q", "no match", 0, 0],
-  ])("keeps cards and exported rows aligned with the %s filter", (key, value, done, need) => {
+  ])("keeps the cards and the assistant's sheet aligned with the %s filter", (key, value, done, need) => {
     filters[`lvtracker.${key}`] = value;
     render();
     expect(paintCard()).toMatchObject({ done, need });
-    const visible = exported.mock.calls[0][0].rows as { Required: number; Painted: number }[];
+    const visible = sheet();
     expect(visible.reduce((sum, r) => sum + r.Required, 0)).toBe(need);
     expect(visible.reduce((sum, r) => sum + r.Painted, 0)).toBe(done);
   });
@@ -101,7 +105,7 @@ describe("LV tracker view", () => {
     filters["lvtracker.urgent"] = "yes";
     render();
     expect(paintCard()).toMatchObject({ done: 0, need: 0 });
-    expect(exported.mock.calls[0][0].rows).toEqual([]);
+    expect(sheet()).toEqual([]);
   });
 });
 

@@ -121,7 +121,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
             className="xl:col-span-6"
             title="Are we on this week's plan?"
             sub={`Weekly plan ${data.week.planNo}: ${data.week.covered} of ${data.week.req} pcs finished. Up to today the gap between the two lines is what is behind; after it, what is still to make.`}
-            table={{ filename: `weekly-plan-${data.todayISO}.xlsx`, rows: [
+            table={{ rows: [
               ...burn.map((d) => ({ Row: "Delivery day", Day: d.iso, Name: d.label, "Asked pcs": d.req, "Finished pcs": d.covered, "Asked summed": d.planCum, "Finished summed": d.doneCum })),
               ...data.week.adherence.map((a) => ({ Row: "Stage due by today", Day: data.todayISO, Name: STAGE_LABEL[a.stage], "Asked pcs": a.due, "Finished pcs": a.done, "Asked summed": "", "Finished summed": "" })),
             ] }}
@@ -139,8 +139,8 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           <ChartCard
             className="xl:col-span-6"
             title="Behind — where each line is stuck"
-            sub={data.week.lateCount > lateShown.length ? `The oldest ${lateShown.length} of ${data.week.lateCount} — the export has them all; the first stage that is short` : "Oldest first; the first stage that is short"}
-            table={{ filename: `plan-behind-${data.todayISO}.xlsx`, rows: data.week.late.map((l) => ({ Day: l.dayISO, Project: l.bom, SOI: l.soi ?? "", Item: itemName(l.item), "Stuck at": STAGE_LABEL[l.stage], Owed: l.owed, Short: l.short })) }}
+            sub={data.week.lateCount > lateShown.length ? `The oldest ${lateShown.length} of ${data.week.lateCount} — the Table view lists them all; the first stage that is short` : "Oldest first; the first stage that is short"}
+            table={{ rows: data.week.late.map((l) => ({ Day: l.dayISO, Project: l.bom, SOI: l.soi ?? "", Item: itemName(l.item), "Stuck at": STAGE_LABEL[l.stage], Owed: l.owed, Short: l.short })) }}
           >
             {lateShown.length === 0 ? (
               <EmptyState compact icon={Info} title="Nothing behind" hint="Every line is at or ahead of its stage date." />
@@ -171,7 +171,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
       <ChartCard
         title="Where is the crunch?"
         sub="Each centre's remaining plan hours over the next 10 working days against what it can work (the man-hours it usually has × the pace it has measured). It is short where what it owes so far passes what it could have worked so far. Pick a centre on the right."
-        table={{ filename: `load-${data.todayISO}.xlsx`, rows: data.load.flatMap((l) => loadSeries(l).map((d) => ({ Centre: centreName(l.centre), Day: d.dayISO, "Due h": d.dueH, "Owed summed h": d.owedCum, "Can work summed h": d.canCum ?? "not measured" }))) }}
+        table={{ rows: data.load.flatMap((l) => loadSeries(l).map((d) => ({ Centre: centreName(l.centre), Day: d.dayISO, "Due h": d.dueH, "Owed summed h": d.owedCum, "Can work summed h": d.canCum ?? "not measured" }))) }}
       >
         {data.load.length === 0 || !loadCentre ? (
           <EmptyState compact icon={Info} title="No load to show" hint="The weekly plan has nothing left to make, or nothing is priced yet." />
@@ -208,7 +208,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           className="xl:col-span-3"
           title="Are we on the month's pace?"
           sub={`${mp.monthLabel}: each centre's share of the month's plan done, the tick where an even pace stands today (${mp.monthWd - mp.leftWd} of ${mp.monthWd} working days behind us).`}
-          table={{ filename: `month-pace-${data.todayISO}.xlsx`, rows: pace.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Done %": r.doneShare === null ? "" : Math.round(r.doneShare * 100), "Even pace %": Math.round(r.expectedShare * 100), "Ahead (+) / behind (−) h": r.aheadH })) }}
+          table={{ rows: pace.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Done %": r.doneShare === null ? "" : Math.round(r.doneShare * 100), "Even pace %": Math.round(r.expectedShare * 100), "Ahead (+) / behind (−) h": r.aheadH })) }}
         >
           {mp.pieces === 0 ? (
             <EmptyState compact icon={Info} title={`No orders on ${mp.monthLabel}'s plan`} hint="Import the monthly plan on the Orders Registry — the month's pace is read from it." />
@@ -225,7 +225,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           className="xl:col-span-3"
           title="Do we have the people?"
           sub={`What is left of ${mp.monthLabel}'s plan over the ${mp.leftWd} working days left × ${fmt(mp.hoursPerPersonDay, 1)} h a person.${floor ? " The bar is who comes on an average recorded day; the tick is who is needed from today." : " The tick is who is needed from today."}`}
-          table={{ filename: `people-${data.todayISO}.xlsx`, rows: mp.rows.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Left h": r.leftH, "Needed (month)": r.needed ?? "", "Needed from today": r.neededNow ?? "", ...(floor ? { Present: r.present ?? "", Gap: r.gap ?? "" } : {}) })) }}
+          table={{ rows: mp.rows.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Left h": r.leftH, "Needed (month)": r.needed ?? "", "Needed from today": r.neededNow ?? "", ...(floor ? { Present: r.present ?? "", Gap: r.gap ?? "" } : {}) })) }}
         >
           {mp.pieces === 0 ? (
             <EmptyState compact icon={Info} title={`No orders on ${mp.monthLabel}'s plan`} hint="Import the monthly plan on the Orders Registry — the people it needs are read from it." />
@@ -246,7 +246,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           sub={data.coverage.days === null
             ? "No recent welding to measure against."
             : `${fmt(data.coverage.days, 1)} days of cut parts in front of the welders: ${fmt(data.coverage.wipH, 1)} welding std-h waiting, against ${fmt(data.coverage.ratePerDay, 1)} std-h earned on a recorded day. Under 1 day they may wait; over 4, parts pile up.`}
-          table={{ filename: `welding-coverage-${data.todayISO}.xlsx`, rows: data.coverage.byItem.map((b) => ({ Item: itemName(b.item), "Pieces waiting": b.pcs, "Welding std-h": b.weldH })) }}
+          table={{ rows: data.coverage.byItem.map((b) => ({ Item: itemName(b.item), "Pieces waiting": b.pcs, "Welding std-h": b.weldH })) }}
         >
           {data.coverage.byItem.length === 0 ? (
             <EmptyState compact icon={Info} title="Nothing cut and waiting" hint="Every cut piece has been welded." />
@@ -262,7 +262,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           className="xl:col-span-3"
           title="Where does the work wait?"
           sub="Pieces between the stages over the open orders, netted project by project (cut − welded is waiting for welding) — never a stage's output added to the next's. The records say where a piece stands, not since when."
-          table={{ filename: `wip-${data.todayISO}.xlsx`, rows: wipRows.map((r) => ({ Where: r.where, Detail: r.detail, Pieces: r.pcs })) }}
+          table={{ rows: wipRows.map((r) => ({ Where: r.where, Detail: r.detail, Pieces: r.pcs })) }}
         >
           {wipRows.every((r) => r.pcs === 0) ? (
             <EmptyState compact icon={Info} title="Nothing waiting between the stages" hint="Every cut piece is welded and every welded piece finished; nothing is sent back or on hold." />

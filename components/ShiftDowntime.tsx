@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Pencil, Plus, Trash2, Wrench } from "lucide-react";
 import { EmptyState, Note } from "@/components/primitives";
 import { Badge } from "@/components/Badge";
-import { ExportButton } from "@/components/ExportButton";
 import { SAVE_UNCONFIRMED } from "@/components/ui";
 import { TableFrame, Th, useConfirm } from "@/components/DataTable";
 import { DOWNTIME_REASONS, downtimeByCause, downtimeLabel, clockMinutes, stopDurationLabel } from "@/lib/domain/downtime";
@@ -131,15 +130,6 @@ export function ShiftDowntime({ data, editableDepts }: { data: DowntimeDay; edit
           {data.rows.length === 0 ? "none recorded" : `${stopDurationLabel(unplannedH)} lost${plannedH > 0 ? ` · ${stopDurationLabel(plannedH)} planned maintenance` : ""}`}
         </span>
         {data.rows.some((r) => r.isOpen) && <Badge tone="danger">{data.rows.filter((r) => r.isOpen).length} still open</Badge>}
-        {data.rows.length > 0 && (
-          <span className="ms-auto">
-            <ExportButton
-              filename={`machine-stops-${data.dateISO}.xlsx`}
-              sheetName="Stops"
-              rows={liveRows.map((r) => ({ Date: r.dateISO ?? data.dateISO, Status: r.isOpen ? "Open" : "Resolved", "As of": now.toISOString(), "Hours on selected day": r.dayHours, "End date": r.endDateISO ?? "", Machine: r.machineCode, Name: r.machineName, Department: deptName(r.dept), Centre: r.centre ? WORK_CENTRE_LABEL[r.centre] : deptName(r.dept), From: r.startTime ?? "", To: r.endTime ?? "", "End next day": r.endsNextDay ? "Yes" : "", Duration: stopDurationLabel(r.hours), Hours: r.hours, Why: downtimeLabel(r.reasonCode, r.reason), Note: r.reasonCode ? r.reason ?? "" : "", By: r.recordedBy ?? "" }))}
-            />
-          </span>
-        )}
       </div>
 
       {(editableDepts.length > 0 || editing) && (

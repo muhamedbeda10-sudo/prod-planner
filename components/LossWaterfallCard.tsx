@@ -73,7 +73,7 @@ export function LossWaterfallCard({ className = "" }: { className?: string }) {
       title="Where did the hours go?"
       sub={data ? `${formatDate(data.fromISO)} – ${formatDate(data.toISO)}, against the ${days} days before (whole days, up to yesterday). Rostered hours walked down to the standard hours earned: what absence took, what overtime added, what machine stops idled, and what is left — slower than the standard, or work not on the Daily log.` : "Rostered hours walked down to the standard hours earned."}
       right={controls}
-      table={w ? { filename: `where-the-hours-went-${data!.toISO}.xlsx`, rows: [
+      table={w ? { rows: [
         ...w.steps.map((s) => ({ Step: s.label, Hours: s.hours, Total: s.total ? "yes" : "" })),
         ...w.stops.map((s) => ({ Step: `Stop — ${s.label}`, Hours: -s.manH, Total: "", "Machine h": s.machineH })),
       ] } : undefined}

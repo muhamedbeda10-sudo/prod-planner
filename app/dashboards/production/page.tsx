@@ -20,7 +20,6 @@ import { CockpitDecisions } from "@/components/CockpitDecisions";
 import { LineScopeTabs } from "@/components/LineScopeTabs";
 import { ErrorState } from "@/components/DataTable";
 import { PageHead } from "@/components/ui";
-import { PrintButton } from "@/components/PrintButton";
 import { PrintHeader } from "@/components/PrintHeader";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 
@@ -60,7 +59,7 @@ export default async function ProductionDashboardPage({ searchParams }: { search
     <div className="space-y-3">
       <RememberLastVisit storageKey="dashboards:production" />
       <PrintHeader title={o.printTitle} subtitle="How the floor worked" date={formatDate(todayISO)} />
-      <PageHead title="Production" sub={o.sub} actions={<><CockpitDecisions actions={o.actions} kind="intervention" /><PrintButton /></>}>
+      <PageHead title="Production" sub={o.sub} actions={<CockpitDecisions actions={o.actions} kind="intervention" />}>
         <LineScopeTabs scope={scope} />
       </PageHead>
       {o.children}
