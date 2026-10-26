@@ -1106,7 +1106,7 @@ main select.ctl { padding-right: 1.6rem; }
   font-size: var(--fs-body);
   pointer-events: auto;
 }
-@media (prefers-reduced-motion: reduce) { .tooltip, .tooltip.tooltip-card { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .tooltip { animation: none; } }
 @media print { .tooltip { display: none; } }
 
 /* ---- the one count badge: a number on a tab or an icon (ODOO to close,

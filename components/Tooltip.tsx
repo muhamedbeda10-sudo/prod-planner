@@ -2,8 +2,10 @@
 
 import { cloneElement, isValidElement, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { FOCUSABLE } from "@/components/Modal";
 
 const EDGE = 8; // px kept clear of the window's edge
+const GAP = 6; // px between the trigger and the bubble
 
 /**
  * The one tooltip. Opens on hover (after a short pause) and on keyboard
@@ -43,8 +45,11 @@ export function Tooltip({
   // the trigger's box when it opened, and the side asked for
   const [pos, setPos] = useState<{ x: number; top: number; bottom: number; below: boolean } | null>(null);
 
+  const clearTimer = () => clearTimeout(timer.current ?? undefined);
+  const focusTrigger = () => ref.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+
   const show = useCallback((now = false) => {
-    if (timer.current) clearTimeout(timer.current);
+    clearTimeout(timer.current ?? undefined);
     const open = () => {
       const r = ref.current?.getBoundingClientRect();
       if (!r) return;
@@ -56,15 +61,16 @@ export function Tooltip({
     else timer.current = setTimeout(open, delay);
   }, [delay, side]);
   const hide = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current);
+    clearTimeout(timer.current ?? undefined);
     setPos(null);
   }, []);
-  // what the card's own content may call to close it
+  // what the card's own content calls to close it (no timer can be pending
+  // while the pointer is on it to reopen it)
   const close = useCallback(() => setPos(null), []);
   // a card closes a beat after the pointer leaves — time to cross the gap to it
   const leave = useCallback(() => {
     if (!interactive) return hide();
-    if (timer.current) clearTimeout(timer.current);
+    clearTimeout(timer.current ?? undefined);
     timer.current = setTimeout(() => setPos(null), 200);
   }, [interactive, hide]);
 
@@ -77,20 +83,21 @@ export function Tooltip({
     const half = width / 2;
     const x = Math.max(half + EDGE, Math.min(pos.x, window.innerWidth - half - EDGE));
     let below = pos.below;
-    if (below && pos.bottom + 6 + height > window.innerHeight - EDGE && pos.top - 6 - height >= EDGE) below = false;
-    else if (!below && pos.top - 6 - height < EDGE) below = true;
+    if (below && pos.bottom + GAP + height > window.innerHeight - EDGE && pos.top - GAP - height >= EDGE) below = false;
+    else if (!below && pos.top - GAP - height < EDGE) below = true;
     el.style.left = `${x}px`;
-    el.style.top = `${below ? pos.bottom + 6 : pos.top - 6}px`;
+    el.style.top = `${below ? pos.bottom + GAP : pos.top - GAP}px`;
     el.style.transform = below ? "translate(-50%, 0)" : "translate(-50%, -100%)";
     el.style.visibility = "visible";
   }, [pos]);
 
+  const open = pos !== null;
   useEffect(() => {
-    if (!pos) return;
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       // focus inside the card goes back to its trigger
-      if (bubble.current?.contains(document.activeElement)) ref.current?.querySelector<HTMLElement>("button, a, [tabindex]")?.focus();
+      if (bubble.current?.contains(document.activeElement)) ref.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
       hide();
     };
     // a card: a tap or click anywhere else closes it
@@ -107,14 +114,14 @@ export function Tooltip({
       window.removeEventListener("scroll", hide, true);
       window.removeEventListener("pointerdown", onDown);
     };
-  }, [pos, hide, interactive]);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  }, [open, hide, interactive]);
+  useEffect(() => () => clearTimeout(timer.current ?? undefined), []);
 
   // Tab from the trigger goes into the open card (it sits at the end of the
   // page); Tab past its last control, or Shift+Tab from its first, comes back
   const onKeyDown = (e: ReactKeyboardEvent) => {
     if (!interactive || !pos || e.key !== "Tab") return;
-    const items = Array.from(bubble.current?.querySelectorAll<HTMLElement>("button, a[href], [tabindex]:not([tabindex='-1'])") ?? []);
+    const items = Array.from(bubble.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter((el) => el.offsetParent !== null);
     if (items.length === 0) return;
     const inside = bubble.current?.contains(e.target as Node);
     if (!inside && !e.shiftKey) {
@@ -122,7 +129,7 @@ export function Tooltip({
       items[0].focus();
     } else if (inside && ((e.shiftKey && e.target === items[0]) || (!e.shiftKey && e.target === items.at(-1)))) {
       e.preventDefault();
-      ref.current?.querySelector<HTMLElement>("button, a, [tabindex]")?.focus();
+      focusTrigger();
       if (!e.shiftKey) hide();
     }
   };
@@ -137,7 +144,7 @@ export function Tooltip({
       ref={ref}
       className="inline-flex max-w-full"
       // the card is this span's child in React's tree, so resting on it is still "in"
-      onMouseEnter={() => (interactive && pos ? show(true) : show())}
+      onMouseEnter={() => (interactive && pos ? clearTimer() : show())}
       onMouseLeave={leave}
       onFocus={() => { if (!pos) show(true); }}
       // a card stays while focus is in it, or nowhere (a click on its text);
@@ -149,7 +156,7 @@ export function Tooltip({
       }}
       onKeyDown={onKeyDown}
       // a tap opens it (never a click inside it, which would reopen what its button closed)
-      onClick={interactive ? (e) => { if (!bubble.current?.contains(e.target as Node)) show(true); } : undefined}
+      onClick={interactive ? (e) => { if (!pos && !bubble.current?.contains(e.target as Node)) show(true); } : undefined}
     >
       {trigger}
       {pos && typeof document !== "undefined" && createPortal(
@@ -161,7 +168,7 @@ export function Tooltip({
           aria-label={interactive ? label : undefined}
           className={interactive ? "tooltip tooltip-card" : "tooltip"}
           // placed once measured (above), so it never flashes in the wrong spot
-          style={{ left: pos.x, top: pos.below ? pos.bottom + 6 : pos.top - 6, transform: pos.below ? "translate(-50%, 0)" : "translate(-50%, -100%)", visibility: "hidden" }}
+          style={{ left: 0, top: 0, visibility: "hidden" }}
         >
           {typeof content === "function" ? content(close) : content}
         </span>,

@@ -3,29 +3,21 @@
 import { useRef } from "react";
 import { Info, Sparkles } from "lucide-react";
 import { Tooltip } from "@/components/Tooltip";
-import { useAiPanel } from "@/components/AiPanel";
-import { explainQuestion } from "@/lib/domain/aiExplain";
-import { pageName } from "@/lib/aiTarget";
+import { useAskAiEntry } from "@/components/ContextMenu";
+import { cardTarget } from "@/lib/aiTarget";
 
 /**
  * A chart's title that explains the chart: rest the pointer on it (or on its
  * ⓘ), focus it or tap it, and a small card says what the chart shows and how
  * it is counted — the note the screen keeps off the card — with Ask AI for
- * what its numbers say now. Only the title where there is nothing to say.
- * Put it inside the card's heading; the card is the nearest <section> (or
- * element with data-ai-title) around it.
+ * what its numbers say now (the same question a right-click on the card
+ * asks). Only the title where there is nothing to say. Put it inside the
+ * heading of a card that says what it is (ChartCard, or data-ai-title).
  */
-export function ChartAbout({ title, about, rows }: { title: string; about?: string; rows?: Record<string, string | number>[] }) {
-  const ai = useAiPanel();
+export function ChartAbout({ title, about }: { title: string; about?: string }) {
   const trigger = useRef<HTMLButtonElement>(null);
+  const askAi = useAskAiEntry(() => cardTarget(trigger.current));
   if (!about) return <>{title}</>;
-
-  const ask = (close: () => void) => {
-    const card = trigger.current?.closest("section, [data-ai-title]");
-    const text = card instanceof HTMLElement ? card.innerText : undefined;
-    close();
-    ai?.ask(explainQuestion({ kind: "chart", title, about, rows, text }, pageName()), { explain: true });
-  };
 
   return (
     <Tooltip
@@ -39,8 +31,8 @@ export function ChartAbout({ title, about, rows }: { title: string; about?: stri
             {title}
           </span>
           <span className="leading-relaxed text-muted">{about}</span>
-          {ai?.canAsk && (
-            <button type="button" className="btn btn-sm btn-primary self-start" onClick={() => ask(close)}>
+          {askAi && (
+            <button type="button" className="btn btn-sm btn-primary self-start" onClick={() => { close(); askAi.onSelect?.(); }}>
               <Sparkles size={13} aria-hidden /> Ask AI about these numbers
             </button>
           )}

@@ -65,7 +65,7 @@ export function MachineTimeline({ board }: { board: MachineBoardData }) {
           <button type="button" className={`btn btn-sm rounded-none ${view === "machines" ? "btn-primary" : "btn-ghost"}`} onClick={() => setView("machines")} title={`What each ${word} runs, and when`}>By {word}</button>
           <button type="button" className={`btn btn-sm rounded-none ${view === "load" ? "btn-primary" : "btn-ghost"}`} onClick={() => setView("load")} title="What the whole department has promised, against the hours it has">Department load</button>
         </span>
-        <span className="text-sm font-bold">{view === "machines" ? <ChartAbout title={`the next ${horizon} working days`} about={about} /> : `the next ${horizon} working days`}</span>
+        <span className="text-sm font-bold"><ChartAbout title={`the next ${horizon} working days`} about={view === "machines" ? about : undefined} /></span>
         {view === "machines" && t.lateCount > 0 ? (
           <span className="pill pill-bad tabnum" title="Blocks that finish after the day their stage was promised">{t.lateCount} job(s) land late</span>
         ) : view === "machines" ? (

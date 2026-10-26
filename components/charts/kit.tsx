@@ -74,7 +74,7 @@ export function ChartCard({
     <section ref={ref} className={`bg-surface border rounded-xl p-4 min-w-0 ${className}`}>
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <div className="min-w-0">
-          <h2 className="font-bold leading-tight"><ChartAbout title={title} about={about} rows={data} /></h2>
+          <h2 className="font-bold leading-tight"><ChartAbout title={title} about={about} /></h2>
           {sub && <p className="text-xs text-muted mt-0.5">{sub}</p>}
         </div>
         {right && <div className="flex items-center gap-2 no-print">{right}</div>}
