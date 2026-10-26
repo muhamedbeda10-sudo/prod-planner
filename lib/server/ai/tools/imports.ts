@@ -299,7 +299,7 @@ export const importOdooSheetTool = importTool<OdooInput, OdooImportResult>({
   name: "import_odoo_sheet",
   title: "Import an ODOO close-out sheet",
   description:
-    "Import an attached ODOO close-out sheet onto the ODOO tab, as its Import does: a row is the same as one there when it is the same Odoo MO on the same day — updated in place, never doubled; status is taken from the sheet only for new rows. Rows with no date go under `day`.",
+    "Import an attached ODOO close-out sheet onto the ODOO log, as its Import does: a row is the same as one there when it is the same Odoo MO on the same day — updated in place, never doubled; status is taken from the sheet only for new rows. Rows with no date go under `day`.",
   tabs: ["odoo"],
   properties: { line: LINE, day: { type: "string", format: "date", description: "The day for rows whose Date cell is blank." } },
   required: ["line"],

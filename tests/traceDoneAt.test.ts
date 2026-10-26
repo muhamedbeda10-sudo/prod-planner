@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // ---- Trace → On ODOO → "Closed on" is the moment the row was closed ------------
 // The trace used to carry the UTC day only, so the cell read 02:00/03:00 on
-// the factory clock while the ODOO tab showed the real time for the same row.
+// the factory clock while the ODOO log showed the real time for the same row.
 
 const h = vi.hoisted(() => {
   const fn = () => vi.fn();
@@ -26,7 +26,7 @@ const closedAt = new Date("2026-08-02T10:00:00Z");
 const now = new Date("2026-08-20T08:00:00Z");
 
 describe("getTrace → odoo rows", () => {
-  it("carries the closing as an instant, so it reads the same stamp as the ODOO tab", async () => {
+  it("carries the closing as an instant, so it reads the same stamp as the ODOO log", async () => {
     for (const m of [h.prisma.planOrder, h.prisma.masterOrder, h.prisma.plan, h.prisma.queueNote, h.prisma.returnEntry]) m.findMany.mockResolvedValue([]);
     h.prisma.handoverEntry.findMany.mockResolvedValue([{
       id: 7, date: new Date("2026-08-01T00:00:00Z"), planNo: 3, dept: "Painting", bom: "B1", bomRaw: "B1", mo: "MO-1", item: "TN", qty: 1,
@@ -38,7 +38,7 @@ describe("getTrace → odoo rows", () => {
     const t = await getTrace({ mo: "MO-1" });
     expect(t.odoo).toHaveLength(1);
     expect(t.odoo[0].doneAtISO).toBe(closedAt.toISOString());
-    // the ODOO tab stamps `doneAt.toISOString()` with formatDateTime — the trace must agree
+    // the ODOO log stamps `doneAt.toISOString()` with formatDateTime — the trace must agree
     const traceStamp = formatDateTime(t.odoo[0].doneAtISO, now);
     expect(traceStamp).toBe(formatDateTime(closedAt.toISOString(), now));
     expect(traceStamp).toBe("2 Aug 13:00");

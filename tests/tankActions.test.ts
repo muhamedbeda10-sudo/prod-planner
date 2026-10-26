@@ -114,7 +114,7 @@ beforeEach(() => {
         },
       },
       plan: { upsert: async () => ({}) },
-      // the painting record's row on the ODOO tab: the order names the SOI,
+      // the painting record's row on the ODOO log: the order names the SOI,
       // an earlier row of that SOI and product lends its FG-CODE
       masterOrder: { findUnique: async () => ({ soi: "S01259-4", bom: "12011E16M13" }) },
       odooEntry: {
@@ -237,7 +237,7 @@ describe("paintTanks", () => {
     // each tank remembers WHICH log row painted it, so deleting that row later
     // can take exactly these tanks back out of the barcode tab
     expect(writes.tankUpdates.map((u) => u.paintLedgerId)).toEqual([901, 901, 902]);
-    // each painting row is a closing: its row on the ODOO tab is born in the
+    // each painting row is a closing: its row on the ODOO log is born in the
     // same transaction — SOI from the order, FG-CODE from the earlier row of
     // that SOI and product, Odoo's MO left for the office to type
     expect(writes.odoo).toEqual([

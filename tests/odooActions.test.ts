@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ---- the ODOO tab's writes (app/odoo/actions.ts) ----------------------------
+// ---- the ODOO log's writes (app/odoo/actions.ts) ----------------------------
 // A merged line's edit carries each row's last change as the page drew it, so
 // a stale modal cannot put a row someone closed meanwhile back to open; an
 // existing row moved to Done is closed NOW whichever control was used; a row

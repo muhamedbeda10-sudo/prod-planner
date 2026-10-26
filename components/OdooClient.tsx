@@ -27,7 +27,7 @@ import { ODOO_CHANGED_EVENT } from "@/lib/domain/odooAlerts";
 import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, addOdooNote, deleteOdooNote, updateOdooGroup, deleteOdooEntries } from "@/app/odoo/actions";
 import { factoryDayISO } from "@/lib/domain/dates";
 
-// The ODOO tab — the office's daily log of Odoo close attempts, one strip per
+// The ODOO log — the office's daily log of Odoo close attempts, one strip per
 // row, the columns of the sheet it replaces: Date · SOI# · FG-CODE · Product ·
 // MO# · QTY · Status. Two people work a row: the clerk enters it, the planner
 // moves the Status in place and keeps Notes on it — a list, each deletable.
@@ -51,7 +51,7 @@ function useAction() {
           if (res.ok) {
             after?.();
             router.refresh();
-            window.dispatchEvent(new Event(ODOO_CHANGED_EVENT)); // the ODOO tab's count follows now
+            window.dispatchEvent(new Event(ODOO_CHANGED_EVENT)); // the ODOO log's count follows now
           }
         } catch {
           setMsg({ ok: false, text: SAVE_UNCONFIRMED });

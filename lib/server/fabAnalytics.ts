@@ -25,7 +25,7 @@ export interface MaterialDashboardData extends MaterialDashboard {
 
 /**
  * The material dashboard: the whole material sheet, and the window's
- * closings on the ODOO tab of the sheet's MOs — booked on the day each was
+ * closings on the ODOO log of the sheet's MOs — booked on the day each was
  * moved to Done.
  */
 export async function getMaterialDashboard(windowDays: Window): Promise<MaterialDashboardData> {

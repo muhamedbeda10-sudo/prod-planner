@@ -182,7 +182,7 @@ export async function recordLvOutput(formData: FormData): Promise<Result> {
       const ledger = await tx.handoverEntry.create({
         data: { date, dept: stage, bom: cur.bom, mo, item: LV_ITEM, qty, planNo, source: "worklist", createdBy: guard.user?.name ?? null },
       });
-      // a panel's painting is its closing — it gets its row on the ODOO tab
+      // a panel's painting is its closing — it gets its row on the ODOO log
       await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
     });
     for (const p of PATHS) revalidatePath(p);

@@ -12,6 +12,17 @@ describe("tabs — which screens an account sees", () => {
     expect(tabForPath("/trace")).toBeNull();
     expect(tabForPath("/admin/users")).toBeNull();
   });
+  it("sees each dashboard with the screen it reads, so nobody's access changes with the Dashboards tab", () => {
+    expect(tabForPath("/dashboards/production")?.id).toBe("shifts");
+    expect(tabForPath("/dashboards/material?days=30")?.id).toBe("analytics");
+    expect(tabForPath("/dashboards/consumables")?.id).toBe("consumables");
+    expect(tabForPath("/dashboards/odoo")?.id).toBe("odoo");
+    expect(tabForPath("/analytics")?.id).toBe("analytics");
+    const hidden = parseHiddenTabs("shifts,consumables");
+    expect(canSeePath(hidden, "/dashboards/production")).toBe(false);
+    expect(canSeePath(hidden, "/dashboards/consumables")).toBe(false);
+    expect(canSeePath(hidden, "/dashboards/odoo")).toBe(true);
+  });
   it("keeps what is not hidden, and every screen outside the catalog", () => {
     const hidden = parseHiddenTabs("odoo,dashboard,nonsense");
     expect([...hidden].sort()).toEqual(["dashboard", "odoo"]);

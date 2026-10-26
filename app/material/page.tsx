@@ -9,7 +9,6 @@ import { MaterialClient } from "@/components/MaterialClient";
 import { getActiveLine } from "@/lib/server/line";
 import { LINE_LABEL } from "@/lib/domain/lines";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
-import { ViewTabs, MATERIAL_VIEWS } from "@/components/ViewTabs";
 
 export const metadata = { title: "Material — ATC" };
 export const dynamic = "force-dynamic";
@@ -80,7 +79,6 @@ export default async function MaterialPage({
       <PageHead
         title="Material"
         sub={`Nesting sheet · ${LINE_LABEL[line]} · one living table, matched on the MO`}
-        views={<ViewTabs views={MATERIAL_VIEWS} current="/material" label="Material view" />}
         actions={<ExportMenu excel={[{ rows: exportRows, filename: "material-sheet.xlsx", sheetName: "Sheet1" }]} />}
       />
       <MaterialClient

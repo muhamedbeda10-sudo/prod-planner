@@ -46,7 +46,7 @@ class TankSyncError extends UserError {}
 // Every screen a production record moves. TANK_PATHS adds the two the
 // per-piece layer feeds: the leak-test stage and the barcode sheet.
 // /odoo is on the list because a painting (or shot-blast) record writes its
-// own row on the ODOO tab.
+// own row on the ODOO log.
 const RECORD_PATHS = ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/odoo"];
 const TANK_PATHS = [...RECORD_PATHS, "/worklist/leak-test", "/barcode"];
 
@@ -167,7 +167,7 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
       const ledger = await tx.handoverEntry.create({
         data: { date, dept, bom, mo: mo || null, item, qty, planNo, source: "worklist", machineId, createdBy: guard.user?.name ?? null },
       });
-      // a painting record is a closing — it gets its row on the ODOO tab
+      // a painting record is a closing — it gets its row on the ODOO log
       await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
       if (!mintsTanks) return { ledgerId: ledger.id, serials: [] as string[] };
       const minted = await mintTankSerials(tx, {

@@ -41,7 +41,7 @@ const TANK_PATHS = [
   "/tracker",
   "/trace",
   "/",
-  "/odoo", // painting a batch writes its row on the ODOO tab
+  "/odoo", // painting a batch writes its row on the ODOO log
 ];
 
 function revalidateTanks(extra: string[] = []) {

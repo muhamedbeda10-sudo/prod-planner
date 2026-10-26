@@ -41,7 +41,7 @@ describe("get_kpis", () => {
     expect(j.manpower).toMatchObject({ month: "October 2026", workingDaysLeft: 5, centres: [{ centre: "Welding", peopleNeeded: 20, peopleNeededFromToday: 25, peoplePresent: 22, gap: -3 }] });
     expect(j.losses).toMatchObject({ unplannedH: 6.5, absentRate: 0.11, overtimeH: 126 });
     expect(j.trend[0]).toMatchObject({ day: "2026-10-25", behind: 29, efficiency: { Welding: 0.9 } });
-    expect(out.links).toEqual([{ label: "Cockpit", href: "/" }]);
+    expect(out.links).toEqual([{ label: "Planning dashboard", href: "/" }]);
   });
 
   it("leaves the shift log's figures out for a person the Shifts screen is closed to", async () => {
@@ -102,7 +102,7 @@ describe("get_floor_performance", () => {
     expect(j.departments[0]).toMatchObject({ dept: "Welding", pieces: 30, piecesPerPersonDay: 2.5 });
     // a day without booked hours is left out of a centre's days
     expect(j.centres[0].days).toEqual([{ day: "2026-10-24", efficiency: 0.91, earnedH: 91.2, bookedH: 100 }]);
-    expect(out.links).toEqual([{ label: "Floor performance", href: "/?from=2026-10-01&to=2026-10-25&dept=Welding#floor-head" }]);
+    expect(out.links).toEqual([{ label: "Production dashboard", href: "/dashboards/production?from=2026-10-01&to=2026-10-25&dept=Welding" }]);
   });
 
   it("falls back to the last 7 days and every department on a bad or missing input, and links to the section without pinning its dates", async () => {
@@ -110,7 +110,7 @@ describe("get_floor_performance", () => {
     const now = new Date("2026-10-25T08:00:00Z");
     const out = await getFloorPerformanceTool.run({ from: "soon", dept: "Cutting" }, { now, hidden: new Set() } as never);
     expect(h.getFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ fromISO: "2026-10-19", toISO: "2026-10-25", dept: "all", isDefault: true }), now);
-    expect(out.links).toEqual([{ label: "Floor performance", href: "/#floor-head" }]);
+    expect(out.links).toEqual([{ label: "Production dashboard", href: "/dashboards/production" }]);
   });
 
   it("gives no link on the LV line, where the home page is the panels' dashboard", async () => {
@@ -120,6 +120,6 @@ describe("get_floor_performance", () => {
   });
 
   it("is closed with the Shifts screen", () => {
-    expect(getFloorPerformanceTool.tabs).toEqual(["dashboard", "shifts"]);
+    expect(getFloorPerformanceTool.tabs).toEqual(["shifts"]);
   });
 });

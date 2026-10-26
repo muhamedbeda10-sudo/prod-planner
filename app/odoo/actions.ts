@@ -12,7 +12,7 @@ import { isDoneStatus } from "@/lib/domain/odoo";
 import { importOdooSheet, type OdooImportResult } from "@/lib/server/odoo";
 import { UserError, userMessage } from "@/lib/server/errors";
 
-// The ODOO tab's writes — a daily log of close attempts. Rows are plain
+// The ODOO log's writes — a daily log of close attempts. Rows are plain
 // entries: no identity key, because the same Odoo MO retried tomorrow is a
 // second, separate attempt and the log must keep both.
 //

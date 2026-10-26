@@ -1,22 +1,19 @@
 import { formatDate } from "@/lib/domain/format";
 import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
-import { getConsumableEdits, getConsumablesDashboard, getConsumablesData, getCustomDepartments } from "@/lib/server/consumables";
-import { getCatalogue, getCatalogueChanges, getCurrentStandings, getLimitDashboard } from "@/lib/server/consumableLimits";
-import { factoryDateTimeLabel } from "@/lib/domain/consumables";
+import { getConsumableEdits, getConsumablesData, getCustomDepartments } from "@/lib/server/consumables";
+import { getCatalogue, getCatalogueChanges, getCurrentStandings } from "@/lib/server/consumableLimits";
+import { consumablesPeriod, factoryDateTimeLabel } from "@/lib/domain/consumables";
 import { WORKER_SECTIONS } from "@/lib/domain/tanks";
-import { PERIOD_LABEL } from "@/lib/domain/consumableLimits";
+import { BASIS_EXPORT, PERIOD_LABEL } from "@/lib/domain/consumableLimits";
 import { ConsumableLimits } from "@/components/ConsumableLimits";
-import { ConsumableAlarms } from "@/components/ConsumableAlarms";
-import { ConsumablesMonthly } from "@/components/ConsumablesMonthly";
 import { PowderScrap } from "@/components/PowderScrap";
 import { getPowderReport } from "@/lib/server/powderScrap";
 import { SCRAP_LIMITS } from "@/lib/domain/powderScrap";
-import { getMonthlyReport } from "@/lib/server/consumableMonthly";
-import { MONTH_STATUS_LABEL, isMonthKey, monthLong } from "@/lib/domain/consumableMonthly";
+import { isMonthKey, monthLong } from "@/lib/domain/consumableMonthly";
 import { PrintHeader } from "@/components/PrintHeader";
-import { addDaysISO, clampISO } from "@/lib/domain/dateSlicer";
-import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
+import { factoryDayISO } from "@/lib/domain/dates";
+import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { PageHead } from "@/components/ui";
 import { MaterialSections } from "@/components/MaterialSections";
 import { ExportMenu } from "@/components/ExportMenu";
@@ -25,15 +22,10 @@ import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { ConsumablesClient } from "@/components/ConsumablesClient";
 import { ConsumableEdits } from "@/components/ConsumableEdits";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
-import { ConsumablesDashboard } from "@/components/LazyCharts";
 
 export const metadata = { title: "Consumables — ATC" };
 export const dynamic = "force-dynamic";
 
-const BASIS_EXPORT = { pool: "shared", each: "each department", person: "per worker" } as const;
-
-// How far back the slicer reaches — a year of hand-outs.
-const HISTORY_DAYS = 365;
 
 export default async function ConsumablesPage({
   searchParams,
@@ -48,21 +40,21 @@ export default async function ConsumablesPage({
   if (!me) redirect("/login");
 
   const sp = await searchParams;
+  // the dashboard and its monthly review live in the Dashboards tab now — an
+  // old ?view=dashboard (or ?view=monthly) link lands there, period and month kept
+  if (sp.view === "dashboard" || sp.view === "monthly") {
+    const q = new URLSearchParams();
+    for (const k of ["from", "to", "month"] as const) if (sp[k]) q.set(k, sp[k]!);
+    redirect(`/dashboards/consumables${q.size ? `?${q}` : ""}`);
+  }
   const today = factoryDayISO(new Date());
-  const min = addDaysISO(today, -HISTORY_DAYS);
-  const valid = (s?: string) => (s && parseISODate(s) ? clampISO(s, min, today) : null);
   // the tab opens on today; a period in the URL replaces it
-  let from = valid(sp.from) ?? today;
-  let to = valid(sp.to) ?? today;
-  if (from > to) [from, to] = [to, from];
-  const periodLabel = from === to ? (from === today ? "today" : `on ${formatDate(from)}`) : `from ${formatDate(from)} to ${formatDate(to)}`;
-  const period = from === to ? from : `${from}_to_${to}`;
+  const { from, to, min, label: periodLabel, stamp: period } = consumablesPeriod(sp, today);
 
-  // the log and the dashboard are everyone's; the history of edits the admin's
-  // the monthly review lives on the dashboard now — an old ?view=monthly link lands there
-  const view = sp.view === "dashboard" || sp.view === "monthly" ? "dashboard" : sp.view === "limits" ? "limits" : sp.view === "powder" ? "powder" : me.isAdmin && sp.view === "edits" ? "edits" : "log";
+  // the log is everyone's; the history of edits the admin's
+  const view = sp.view === "limits" ? "limits" : sp.view === "powder" ? "powder" : me.isAdmin && sp.view === "edits" ? "edits" : "log";
   // the switch keeps the period on screen
-  const hrefFor = (v: "log" | "dashboard" | "limits" | "powder" | "edits") => {
+  const hrefFor = (v: "log" | "limits" | "powder" | "edits") => {
     const p = new URLSearchParams();
     if (sp.from) p.set("from", from);
     if (sp.to) p.set("to", to);
@@ -75,7 +67,6 @@ export default async function ConsumablesPage({
     <ViewTabs
       views={[
         { href: hrefFor("log"), label: "Log", title: "Hand out and record" },
-        { href: hrefFor("dashboard"), label: "Dashboard", title: "What went out, to whom, against the limits" },
         { href: hrefFor("powder"), label: "Powder", title: "Powder scrap" },
         { href: hrefFor("limits"), label: "Limits", title: "The catalogue, its limits, and where each stands now" },
         ...(me.isAdmin ? [{ href: hrefFor("edits"), label: "Edits", title: "Every change made to a recorded hand-out" }] : []),
@@ -107,7 +98,7 @@ export default async function ConsumablesPage({
     ];
     return (
       <div className="space-y-3">
-        <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
+        <RememberLastVisit storageKey="consumables:views" view={view} carry={["from", "to"]} />
         <PrintHeader title="Powder scrap" subtitle={monthLong(month)} date={formatDate(factoryDayISO(new Date()))} />
         <MaterialSections current="consumables" />
         <PageHead
@@ -146,7 +137,7 @@ export default async function ConsumablesPage({
     }));
     return (
       <div className="space-y-3">
-        <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
+        <RememberLastVisit storageKey="consumables:views" view={view} carry={["from", "to"]} />
         <MaterialSections current="consumables" />
         <PageHead
           title="Consumables" sub="Catalogue & limits · where each stands now" views={viewSwitch}
@@ -159,38 +150,6 @@ export default async function ConsumablesPage({
           changes={changes}
           canEdit={hasPerm(me, "consumables.edit")}
         />
-      </div>
-    );
-  }
-
-  if (view === "dashboard") {
-    // the monthly review at the bottom goes by calendar month, not the slicer
-    const month = sp.month && isMonthKey(sp.month) && sp.month <= today.slice(0, 7) ? sp.month : today.slice(0, 7);
-    const [stats, limits, report] = await Promise.all([getConsumablesDashboard(from, to), getLimitDashboard(from, to, today), getMonthlyReport(month)]);
-    const exportRows = stats.items.map((i) => ({ Item: i.item, "Hand-outs": i.issues, Qty: i.qty, Workers: i.workers }));
-    const monthParams = new URLSearchParams({ view: "dashboard" });
-    if (sp.from) monthParams.set("from", from);
-    if (sp.to) monthParams.set("to", to);
-    return (
-      <div className="space-y-3">
-        <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
-        <PrintHeader title="Consumables — dashboard" subtitle={`${periodLabel} · monthly review ${monthLong(month)}`} date={formatDate(factoryDayISO(new Date()))} />
-        <MaterialSections current="consumables" />
-        <PageHead
-          title="Consumables" sub={`Dashboard · ${periodLabel}`} views={viewSwitch}
-          actions={<ExportMenu excel={[
-            { label: "Items summary", rows: exportRows, filename: `consumables-summary-${period}.xlsx`, sheetName: "Items" },
-            { label: "Monthly review", rows: monthlyExportRows(report), filename: `consumables-monthly-${month}.xlsx`, sheetName: month },
-          ]} print />}
-        />
-        {slicer}
-        {/* the limits first: an alarm is what the page is opened for */}
-        <ConsumableAlarms d={limits} periodLabel={periodLabel} period={period} />
-        <ConsumablesDashboard s={stats} periodLabel={periodLabel} period={period} />
-        <section id="monthly" className="space-y-3 scroll-mt-24 pt-2">
-          <h2 className="font-bold text-lg">Monthly review · {monthLong(month)}</h2>
-          <ConsumablesMonthly report={report} monthHref={`/consumables?${monthParams.toString()}&month=`} />
-        </section>
       </div>
     );
   }
@@ -210,7 +169,7 @@ export default async function ConsumablesPage({
     }));
     return (
       <div className="space-y-3">
-        <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
+        <RememberLastVisit storageKey="consumables:views" view={view} carry={["from", "to"]} />
         <MaterialSections current="consumables" />
         <PageHead
           title="Consumables" sub={`Edits · ${periodLabel}`} views={viewSwitch}
@@ -242,7 +201,7 @@ export default async function ConsumablesPage({
 
   return (
     <div className="space-y-3">
-      <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
+      <RememberLastVisit storageKey="consumables:views" view={view} carry={["from", "to"]} />
       <MaterialSections current="consumables" />
       <PageHead
         title="Consumables" sub={`Log · ${periodLabel}`} views={viewSwitch}
@@ -260,25 +219,3 @@ export default async function ConsumablesPage({
 }
 
 /** The monthly review as a spreadsheet: a row per item, then a row per limit under it. */
-function monthlyExportRows(report: Awaited<ReturnType<typeof getMonthlyReport>>) {
-  return report.rows.flatMap((r) => [
-    {
-      Level: "Item", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: "", "Limit": "", "Monthly limit": r.allowance ?? "",
-      Used: r.used, Left: r.allowance === null ? "" : Math.round((r.allowance - r.covered) * 1000) / 1000, "Outside the limits": r.outside, "Of the limit": r.ratio === null ? "" : `${Math.round(r.ratio * 100)}%`,
-      Status: MONTH_STATUS_LABEL[r.status], [`Used ${report.prevMonth}`]: r.prevUsed,
-      "Counted over": "",
-      ...Object.fromEntries(r.trend.map((t) => [t.month, t.used])),
-    },
-    ...r.limits.map((l) => ({
-      Level: "Limit", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: l.departmentsLabel,
-      "Limit": l.perWorker
-        ? `${l.perWorker.qty} per worker × ${Math.max(1, l.perWorker.workers)} ${PERIOD_LABEL[l.period]}`
-        : `${l.qty} ${PERIOD_LABEL[l.period]} (${BASIS_EXPORT[l.basis]})`,
-      "Monthly limit": l.allowance,
-      Used: l.used, Left: l.left, "Outside the limits": "", "Of the limit": `${Math.round(l.ratio * 100)}%`, Status: MONTH_STATUS_LABEL[l.status],
-      [`Used ${report.prevMonth}`]: l.prevUsed,
-      "Counted over": l.toDate ?? "",
-      ...Object.fromEntries(r.trend.map((t) => [t.month, ""])),
-    })),
-  ]);
-}

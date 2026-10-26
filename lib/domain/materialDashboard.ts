@@ -2,7 +2,7 @@ import { ITEMS, type Item } from "@/lib/domain/constants";
 import { ITEM_PRODUCT } from "@/lib/domain/odooMirror";
 import { sheetKg, type DayPoint, type ThicknessSlice } from "@/lib/domain/fabAnalytics";
 
-// 📊 The MATERIAL dashboard — everything the material sheet and the ODOO tab
+// 📊 The MATERIAL dashboard — everything the material sheet and the ODOO log
 // say about steel, in sheets and kilograms.
 //
 // Two sources, two clocks:
@@ -10,7 +10,7 @@ import { sheetKg, type DayPoint, type ThicknessSlice } from "@/lib/domain/fabAna
 //    MO and part, the sheets the BOM calls for, the sheets the nesting really
 //    took, one sheet's weight and the nesting's average utilization. It is
 //    read whole — an MO nested last month is just as nested today;
-//  - the ODOO tab says WHEN the material was eaten: an MO moved to Done books
+//  - the ODOO log says WHEN the material was eaten: an MO moved to Done books
 //    its closed quantity × the sheets one unit takes, on the day it closed.
 //    Only closings of the sheet's own MOs count.
 //

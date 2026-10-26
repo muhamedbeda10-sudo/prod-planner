@@ -66,7 +66,7 @@ export async function fillOdooMo(formData: FormData): Promise<{ ok: boolean; err
   if (!odooMo) return { ok: false, error: "Type the MO number." };
   const row = await prisma.odooEntry.findUnique({ where: { id }, select: { line: true, odooMo: true } });
   if (!row) return { ok: false, error: "That row no longer exists." };
-  if (!hasPerm(me, linePermKey(row.line, "odoo"))) return { ok: false, error: "You cannot record on this line's ODOO tab." };
+  if (!hasPerm(me, linePermKey(row.line, "odoo"))) return { ok: false, error: "You cannot record on this line's ODOO log." };
   if (row.odooMo.trim() !== "") return { ok: false, error: `Already has ${row.odooMo}.` };
   await prisma.odooEntry.update({ where: { id }, data: { odooMo, recordedBy: me.name } });
   revalidatePath("/odoo");
@@ -75,7 +75,7 @@ export async function fillOdooMo(formData: FormData): Promise<{ ok: boolean; err
 }
 
 /** The material popup for one row, from the alert popup on any page —
- *  viewing is free for every account, like the ODOO tab itself. */
+ *  viewing is free for every account, like the ODOO log itself. */
 export async function odooRowMaterial(id: number): Promise<{ ok: boolean; error?: string; data?: Awaited<ReturnType<typeof getOdooRowMaterial>> }> {
   const me = await getCurrentUser();
   if (!me) return { ok: false, error: "Sign in again." };

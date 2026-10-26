@@ -21,14 +21,14 @@ export function MachinePlanningToggle({ initialOn }: { initialOn: boolean }) {
       onText="Worklists and machine planning are on."
       offText="Worklists and machine planning are off."
       whileOn={[
-        "The Worklist tab is in the bar",
+        "The Floor tab (the worklists) is in the bar",
         "Admin Tools lists Machines & Lines and Times per Machine",
         "The Fabrication, Welding and Painting worklists show the machine board",
         "Every line carries a Machine picker and the on-machine / to-place filter",
         "The printable machine sheets are available",
       ]}
       whileOff={[
-        "The Worklist tab is gone, and so are Machines & Lines and Times per Machine",
+        "The Floor tab (the worklists) is gone, and so are Machines & Lines and Times per Machine",
         "The dashboard drops machine downtime",
         "Assignments already made stay saved and come back when you turn it on",
       ]}

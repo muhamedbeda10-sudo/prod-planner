@@ -445,7 +445,7 @@ export function automationContext(o: {
  *  every change waits for them. */
 export function reviewQuestion(name: string, language: "Arabic" | "English"): string {
   return [
-    `Morning review for ${name}. Start from get_kpis — the Cockpit's decisions, the weekly plan's lines behind, each work centre's efficiency, the load ahead, welding's coverage and what stopped the floor — then look at the plant as it stands now, from ${name}'s side — what they work on and may change: orders late or about to be late, work blocked or on hold, machines overloaded or idle, figures that look wrong or missing.`,
+    `Morning review for ${name}. Start from get_kpis — the Planning dashboard's decisions, the weekly plan's lines behind, each work centre's efficiency, the load ahead, welding's coverage and what stopped the floor — then look at the plant as it stands now, from ${name}'s side — what they work on and may change: orders late or about to be late, work blocked or on hold, machines overloaded or idle, figures that look wrong or missing.`,
     "1. Lead with the two or three things that matter most today, each in a line with its figures.",
     `2. For each concrete fix you can make with your tools, prepare it — it waits for ${name}'s approval. At most five, the most important first; nothing speculative.`,
     "3. End with what they should look at themselves, outside your tools, if anything.",

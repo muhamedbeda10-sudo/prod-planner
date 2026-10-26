@@ -14,7 +14,7 @@ import { LOSS_DAYS } from "@/lib/domain/losses";
 import { formatDate } from "@/lib/domain/format";
 import { WORK_CENTRES, WORK_CENTRE_LABEL } from "@/lib/domain/shifts";
 
-// "Where did the hours go?" — the Cockpit's answer to why: a centre's (or
+// "Where did the hours go?" — the Production dashboard's answer to why: a centre's (or
 // the floor's) rostered man-hours walked down to the standard hours earned,
 // and which loss moved the efficiency against the days before.
 

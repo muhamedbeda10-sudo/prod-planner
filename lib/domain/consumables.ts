@@ -3,6 +3,9 @@
 // workers a department offers); the database side is lib/server/consumables.ts.
 
 import { WORKER_SECTIONS, isWorkerSection, sectionLabel, type WorkerSection } from "./tanks";
+import { addDaysISO, clampISO } from "./dateSlicer";
+import { parseISODate } from "./dates";
+import { formatDate } from "./format";
 
 export const CONSUMABLE_LIMITS = {
   item: 120,
@@ -443,4 +446,20 @@ export function summarizeHandouts(rows: HandoutLike[]): HandoutSummary {
       .map((d) => ({ department: d.department, handouts: d.handouts, items: d.items.size }))
       .sort((a, b) => b.handouts - a.handouts || a.department.localeCompare(b.department)),
   };
+}
+
+/** How far back the consumables' slicer reaches — a year of hand-outs. */
+export const CONSUMABLES_HISTORY_DAYS = 365;
+
+/** The period the log and the dashboard read from ?from=&to= — today when
+ *  none is given, the right way round, held to the last year and today —
+ *  with the words and the file-name stamp for it. */
+export function consumablesPeriod(sp: { from?: unknown; to?: unknown }, todayISO: string): { from: string; to: string; min: string; label: string; stamp: string } {
+  const min = addDaysISO(todayISO, -CONSUMABLES_HISTORY_DAYS);
+  const valid = (s: unknown) => (typeof s === "string" && parseISODate(s) ? clampISO(s, min, todayISO) : null);
+  let from = valid(sp.from) ?? todayISO;
+  let to = valid(sp.to) ?? todayISO;
+  if (from > to) [from, to] = [to, from];
+  const label = from === to ? (from === todayISO ? "today" : `on ${formatDate(from)}`) : `from ${formatDate(from)} to ${formatDate(to)}`;
+  return { from, to, min, label, stamp: from === to ? from : `${from}_to_${to}` };
 }
