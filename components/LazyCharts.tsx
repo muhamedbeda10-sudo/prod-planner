@@ -22,4 +22,5 @@ export const PartCompareChart = dynamic(() => import("./FabAnalyticsCharts").the
 export const BreakdownChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.BreakdownChart), { ssr: false, loading: () => <Placeholder h={300} /> });
 export const OverrunChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.OverrunChart), { ssr: false, loading: () => <Placeholder h={300} /> });
 export const OdooDashboard = dynamic(() => import("./OdooDashboard").then((m) => m.OdooDashboard), { ssr: false, loading: () => <Placeholder h={520} /> });
-export const ConsumablesDashboard = dynamic(() => import("./ConsumablesDashboard").then((m) => m.ConsumablesDashboard), { ssr: false, loading: () => <Placeholder h={520} /> });
+export const ConsumablesTrend = dynamic(() => import("./ConsumablesDashboard").then((m) => m.ConsumablesTrend), { ssr: false, loading: () => <Placeholder h={380} /> });
+export const ConsumablesBreakdown = dynamic(() => import("./ConsumablesDashboard").then((m) => m.ConsumablesBreakdown), { ssr: false, loading: () => <Placeholder h={420} /> });

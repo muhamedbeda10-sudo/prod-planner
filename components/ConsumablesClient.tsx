@@ -12,6 +12,7 @@ import { Modal } from "@/components/Modal";
 import { TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
 import { SearchBox } from "@/components/FilterControls";
 import { BarChart3 } from "lucide-react";
+import Link from "next/link";
 
 // The CONSUMABLES tab: the store's log of what it hands out — to a
 // department (the limits count it there), naming who asked for it or
@@ -575,23 +576,31 @@ export function ConsumablesClient({
   canRecord,
   isAdmin,
   periodLabel,
+  onlyIds = null,
+  periodParams = [],
 }: {
   data: ConsumablesPageData;
   canRecord: boolean;
   isAdmin: boolean;
   periodLabel: string;
+  /** ?ids= — the hand-outs a link opens the log on (a dashboard row's). */
+  onlyIds?: number[] | null;
+  /** The period in the address — kept by "Show the whole log". */
+  periodParams?: [string, string][];
 }) {
   const [q, setQ] = useState("");
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return data.entries;
-    return data.entries.filter((e) =>
+    const picked = onlyIds ? new Set(onlyIds) : null;
+    const rows = picked ? data.entries.filter((e) => picked.has(e.id)) : data.entries;
+    if (!needle) return rows;
+    return rows.filter((e) =>
       [
         e.item, e.departmentLabel, e.worker?.name ?? "", e.worker?.empId ?? "", e.group?.label ?? "",
         ...(e.group?.workers.flatMap((w) => [w.name, w.empId]) ?? []), e.notes ?? "", e.recordedBy,
       ].some((v) => v.toLowerCase().includes(needle))
     );
-  }, [data.entries, q]);
+  }, [data.entries, q, onlyIds]);
   // the actions column is there for an admin, or for a recorder with a row of his own on screen
   const showActions = isAdmin || data.entries.some((e) => e.canEdit);
   const colSpan = showActions ? 8 : 7;
@@ -609,6 +618,12 @@ export function ConsumablesClient({
         </span>
         <HandoutSummaryButton rows={shown} periodLabel={periodLabel} />
       </div>
+      {onlyIds && (
+        <p className="text-sm text-muted no-print">
+          Showing the {onlyIds.length} hand-out{onlyIds.length === 1 ? "" : "s"} opened from the dashboard.{" "}
+          <Link className="text-brand-ink font-semibold hover:underline" href={`/consumables?${new URLSearchParams(periodParams)}`}>Show the whole log</Link>
+        </p>
+      )}
       {!canRecord && <p className="text-xs text-muted">You can view the log. Recording hand-outs needs the “Consumables — record” permission — ask the admin.</p>}
 
       <section className="bg-surface border rounded-xl overflow-hidden">

@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { hasPerm } from "@/lib/server/auth";
 import { getCatalogue, getCurrentStandings } from "@/lib/server/consumableLimits";
 import { getMonthlyReport } from "@/lib/server/consumableMonthly";
-import { getConsumableEdits, getConsumablesDashboard, getConsumablesData } from "@/lib/server/consumables";
+import { getConsumableEdits, getConsumablesDashboard, getConsumablesData, getConsumablesDecisions } from "@/lib/server/consumables";
 import { getDowntimeDay } from "@/lib/server/downtime";
 import { getRecentHandover } from "@/lib/server/handover";
 import { ledgerItemWhere, withLine } from "@/lib/server/line";
@@ -23,7 +23,7 @@ import { getSoiLookup } from "@/lib/server/soi";
 import { getTrace } from "@/lib/server/trace";
 import { getWeeklyPlanTracker } from "@/lib/server/weeklyPlanTracker";
 import {
-  consumableEditRows, consumableLimitRows, consumablesLogRows, consumablesMonthlyRows, consumablesSummaryRows, dailyLogRows, downtimeRows,
+  consumableEditRows, consumableLimitRows, consumablesDecisionRows, consumablesLogRows, consumablesMonthlyRows, consumablesSummaryRows, dailyLogRows, downtimeRows,
   lvTraceRows, lvTrackerRows, masterTrackerRows, materialDashboardRows, materialRows, odooDailyRows, odooLogRows, physicalRows, powderRows, registryRows, rosterRows,
   traceRows, type SheetRow,
 } from "@/lib/server/sheets";
@@ -31,6 +31,7 @@ import { blockedTableIn, blockedTablesFor } from "@/lib/domain/ai";
 import { AI_FILE_LIMITS } from "@/lib/domain/aiFiles";
 import { pastMonthOf } from "@/lib/domain/consumableMonthly";
 import { consumablesPeriod } from "@/lib/domain/consumables";
+import { readDecisionFilters } from "@/lib/domain/consumablesDecisions";
 import { filterLogRows, logRowsOf } from "@/lib/domain/dailyLogView";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { factoryToday } from "@/lib/domain/dates";
@@ -84,6 +85,7 @@ const SHEETS = {
   consumables_limits: { tab: "consumables", params: [], about: "the consumables catalogue, its limits and where each stands now" },
   consumables_edits: { tab: "consumables", admin: true, params: ["from", "to"], about: "every change made to a recorded hand-out (admins) — from/to" },
   consumables_summary: { tab: "consumables", params: ["from", "to"], about: "what went out over a period, item by item — from/to" },
+  consumables_dashboard: { tab: "consumables", params: ["address"], about: "the Consumables dashboard's detail table: a row per item and department against its limit at the period's end — address, the dashboard's address query as on the screen (from, to, dept, item, link, status)" },
   consumables_monthly: { tab: "consumables", params: ["month"], about: "the consumables monthly review: a row per item and per limit, with the trend — month" },
   powder_scrap: { tab: "consumables", params: ["month"], about: "a month of powder scrap: the sections' totals, then each weighing — month" },
   shift_attendance: { tab: "shifts", params: ["day", "section"], about: "a day's attendance as saved: a row per worker — day, section" },
@@ -116,6 +118,7 @@ interface Input extends MaterialScopeInput {
   day?: string;
   section?: string;
   basis?: "closed" | "logged";
+  address?: string;
   sql?: string;
 }
 
@@ -162,6 +165,7 @@ export const makeSheetTool: ReadTool<Input> = {
       day: { ...DAY, description: "shift_attendance, machine_stops: the day; defaults to today." },
       section: str(40, "shift_attendance, machine_stops: line:TR, line:LV or a roster section, as the Shifts screen's filter."),
       basis: { type: "string", enum: ["closed", "logged"], description: "odoo_daily: count by the day closed (default) or the day logged." },
+      address: { type: "string", maxLength: 600, description: "consumables_dashboard: the dashboard's address query, exactly as on the screen — e.g. \"from=2026-10-01&to=2026-10-26&dept=WeldingTX&status=over\" (dept, item c<id> or t:<typed name>, link linked|unlinked, status over|near|within|none); empty for today with no filter." },
       sql: str(20000, "query: one SELECT statement — no semicolons, no writes."),
     },
   },
@@ -347,6 +351,13 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       const p = consumablesPeriod({ from: i.from, to: i.to }, today);
       const stats = await getConsumablesDashboard(p.from, p.to);
       return { rows: consumablesSummaryRows(stats.items), name: `consumables-summary-${p.stamp}`, sheet: "Items", scope: `Consumables by item ${p.label}` };
+    }
+    case "consumables_dashboard": {
+      // the screen's own address, read by the screen's own rules
+      const sp = Object.fromEntries(new URLSearchParams(i.address ?? ""));
+      const p = consumablesPeriod({ from: sp.from, to: sp.to }, today);
+      const d = await getConsumablesDecisions(p.from, p.to, today, readDecisionFilters(sp));
+      return { rows: consumablesDecisionRows(d.rows), name: `consumables-dashboard-${p.stamp}`, sheet: "By item and department", scope: `Consumables by item and department ${p.label}` };
     }
     case "consumables_monthly": {
       const month = monthOf(i, ctx);

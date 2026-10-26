@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-consumables-decisions",
+    dateISO: "2026-10-26",
+    title: "The Consumables dashboard answers what went out, to whom, and whether it is over the limits",
+    where: "Dashboards → Consumables",
+    href: "/dashboards/consumables",
+    body: "The Consumables dashboard is rebuilt around the decision at the store. Filter by department, item, in or not in the catalogue, and limit status — the filters stay in the address and set every card, chart and the table. A strip under the bar says what the figures stand on: the hand-outs on the log, how many are not in the catalogue (no limit counts those), and whether a past window was recomputed with today's limits. Six cards: hand-outs (against the same days before, only when the log covers both — N/A otherwise), items (or the quantity, when you pick one item), departments, limits over now, hand-outs no limit counts, and the share in the catalogue — click one for its rows. The Decisions button at the end of the bar opens what needs someone: the limits over now, the coverage gaps, the months that closed over, the hand-outs recorded over a limit with their reason, and the powder scrap weighed. The new table has a row per item and department: its limit, window, used, left, over, the recorded reason, the catalogue link — a typed name is only suggested a catalogue item for you to review — and the last hand-out; open a row for its hand-outs and the log. The monthly review below is titled with its month and follows the period's last month unless you pick another. The donut, treemap, 80/20 and scatter charts are gone. For an Excel of the table, ask the assistant.",
+  },
+  {
     id: "2026-10-26-material-dashboard-coverage",
     dateISO: "2026-10-26",
     title: "The Material dashboard: BOM need, nesting and calculated consumption — with how much the data covers",

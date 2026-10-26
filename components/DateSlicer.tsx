@@ -143,7 +143,7 @@ export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks,
             <CalendarRange size={15} />
           </button>
         </span>
-        {end && <span className="order-1 sm:order-none shrink-0 inline-flex flex-wrap items-center gap-2">{end}</span>}
+        {end && <span className="order-1 sm:order-none shrink-0 max-w-full inline-flex flex-wrap items-center gap-2">{end}</span>}
       </div>
 
       {timelineOpen && (

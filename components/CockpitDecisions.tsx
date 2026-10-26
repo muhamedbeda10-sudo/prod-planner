@@ -59,19 +59,37 @@ const KIND = {
 } as const;
 
 /** The list as the paper carries it — the popup's content, printed. */
-export function PrintDecisions({ actions, kind = "decision", nothing }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind; nothing?: string }) {
+export function PrintDecisions({ actions, kind = "decision", nothing, copy, notes = [] }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind; nothing?: string; copy?: DecisionCopy; notes?: readonly string[] }) {
+  const k = copy ?? KIND[kind];
   return (
-    <section className="print-only" aria-label={KIND[kind].title}>
-      <h2>{KIND[kind].title}</h2>
-      <DecisionList actions={actions} nothing={nothing ?? KIND[kind].nothing} />
+    <section className="print-only" aria-label={k.title}>
+      <h2>{k.title}</h2>
+      <DecisionList actions={actions} nothing={nothing ?? k.nothing} />
+      <Notes notes={notes} />
     </section>
+  );
+}
+
+/** Lines under the list that need no one — not counted on the button. */
+function Notes({ notes }: { notes: readonly string[] }) {
+  if (notes.length === 0) return null;
+  return (
+    <ul className="mt-3 pt-3 border-t space-y-1 text-sm text-muted">
+      {notes.map((n) => <li key={n} className="flex items-start gap-2"><Info size={14} className="mt-0.5 shrink-0" aria-hidden />{n}</li>)}
+    </ul>
   );
 }
 
 /** A list's own wording, where neither preset fits (a dashboard's data checks). */
 export interface DecisionCopy { noun: string; title: string; button: string; nothing: string; when?: string }
 
-export function CockpitDecisions({ actions, kind = "decision", copy }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind; copy?: DecisionCopy }) {
+export function CockpitDecisions({ actions, kind = "decision", copy, notes = [] }: {
+  actions: readonly (CockpitAction & { line?: string })[];
+  kind?: DecisionKind;
+  copy?: DecisionCopy;
+  /** Lines under the list that need no one (not counted). */
+  notes?: readonly string[];
+}) {
   const [open, setOpen] = useState(false);
   const ai = useAiPanel();
   const k = copy ?? KIND[kind];
@@ -92,6 +110,7 @@ export function CockpitDecisions({ actions, kind = "decision", copy }: { actions
       {open && (
         <Modal title={k.title} sub="Worst first — open one to act on it, or ask the assistant." onClose={() => setOpen(false)} width="max-w-3xl" focusField={false}>
           <DecisionList actions={actions} onOpen={() => setOpen(false)} nothing={k.nothing} />
+          <Notes notes={notes} />
           {ai && (
             <div className="flex justify-end mt-4 pt-3 border-t">
               <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setOpen(false); ai.open(); }} title="Ask the assistant about these figures — it reads the same cockpit">

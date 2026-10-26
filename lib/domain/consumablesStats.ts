@@ -7,6 +7,7 @@
 // and pairs of gloves, and a grand total across items would mean nothing.
 
 import { addDaysISO } from "./dateSlicer";
+import { round3 } from "./consumableLimits";
 
 export interface StatsRow {
   item: string;
@@ -126,7 +127,19 @@ export function pctChange(now: number, before: number): number | null {
   return Math.round(((now - before) / before) * 100);
 }
 
-const round3 = (n: number) => Math.round(n * 1000) / 1000;
+/** The commonest way a name was written — the first, alphabetically, on a tie. */
+export function commonestSpelling(names: Iterable<string>): string {
+  const n = new Map<string, number>();
+  for (const x of names) n.set(x.trim(), (n.get(x.trim()) ?? 0) + 1);
+  return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? "";
+}
+
+/** The hours a single day's chart spans: the working day (07–17) at least,
+ *  widened to any hour something happened in. */
+export function hourSpan(used: readonly number[]): { first: number; last: number } {
+  return { first: Math.min(7, ...used), last: Math.max(17, ...used) };
+}
+export const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
 
 export function consumablesStats(
   rows: readonly StatsRow[],
@@ -140,20 +153,20 @@ export function consumablesStats(
   const topWorkers = opts.topWorkers ?? 10;
 
   // ---- items: grouped by the folded name, shown in the commonest spelling
-  const spellings = new Map<string, Map<string, number>>();
+  const spellings = new Map<string, string[]>();
   const itemAgg = new Map<string, { issues: number; qty: number; workers: Set<number> }>();
   for (const r of rows) {
     const k = fold(r.item);
-    const sp = spellings.get(k) ?? new Map<string, number>();
-    sp.set(r.item.trim(), (sp.get(r.item.trim()) ?? 0) + 1);
-    spellings.set(k, sp);
+    const sp = spellings.get(k);
+    if (sp) sp.push(r.item);
+    else spellings.set(k, [r.item]);
     const a = itemAgg.get(k) ?? { issues: 0, qty: 0, workers: new Set<number>() };
     a.issues += 1;
     a.qty += r.qty;
     a.workers.add(r.workerId);
     itemAgg.set(k, a);
   }
-  const nameOf = (k: string) => [...(spellings.get(k) ?? new Map()).entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? k;
+  const nameOf = (k: string) => commonestSpelling(spellings.get(k) ?? []) || k;
   const items: ItemStat[] = [...itemAgg.entries()]
     .map(([k, a]) => ({ item: nameOf(k), issues: a.issues, qty: round3(a.qty), workers: a.workers.size }))
     .sort((a, b) => b.issues - a.issues || b.qty - a.qty || a.item.localeCompare(b.item));
@@ -193,12 +206,9 @@ export function consumablesStats(
   if (fromISO === toISO) {
     const perHour = new Array<number>(24).fill(0);
     for (const r of rows) perHour[r.hour] += 1;
-    const used = perHour.map((n, h) => (n > 0 ? h : -1)).filter((h) => h >= 0);
-    // the working day at least, widened to any hand-out outside it
-    const first = Math.min(7, ...used);
-    const last = Math.max(17, ...used);
+    const { first, last } = hourSpan(perHour.map((n, h) => (n > 0 ? h : -1)).filter((h) => h >= 0));
     const buckets: TimeBucket[] = [];
-    for (let h = first; h <= last; h++) buckets.push({ key: String(h), label: `${String(h).padStart(2, "0")}:00`, issues: perHour[h] });
+    for (let h = first; h <= last; h++) buckets.push({ key: String(h), label: hourLabel(h), issues: perHour[h] });
     timeline = { unit: "hour", buckets };
   } else {
     const perDay = new Map<string, number>();

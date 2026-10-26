@@ -61,6 +61,12 @@ export function formatDayShort(day: string | Date | null | undefined, now: Date 
 
 // ---- numbers ----
 
+/** A figure as the dashboards write it: whole numbers as they are, others
+ *  to at most `digits` decimals — "1,284", "12.5". */
+export const formatFigure = (n: number, digits = 3) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { maximumFractionDigits: digits }));
+/** A share 0..1 as a percentage: "58%". */
+export const formatShare = (f: number, digits = 0) => `${(f * 100).toFixed(digits)}%`;
+
 /** How many decimals each kind of figure is written with — fixed per field,
  *  so a column's figures line up on the decimal point. */
 export const FIELD_DP = {
