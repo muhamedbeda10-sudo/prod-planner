@@ -8,11 +8,12 @@ import { slicerPresets, type PresetKey, type SlicerPreset } from "@/lib/domain/d
 // The date slicer for a page that keeps its period in the URL. Each page has
 // always written its dates its own way; `encoding` says which:
 //   fromTo   ?from=&to=            (the dashboards; `defaultRange` clears them)
+//   fromToAll  the same, and "All" writes ?all=1 (the Material dashboard)
 //   odooDay  ?day=D | A..B | all   (the ODOO log)
 //   odooDash ?range=preset | custom&from=&to=   (the ODOO dashboard)
 //   day      ?day=D                (one day: the shift log)
 
-type Encoding = "fromTo" | "odooDay" | "odooDash" | "day";
+type Encoding = "fromTo" | "fromToAll" | "odooDay" | "odooDash" | "day";
 
 const ODOO_DASH_CODE: Partial<Record<string, string>> = { today: "today", yesterday: "yesterday", last7: "7d", last30: "30d", last90: "90d", thisMonth: "month" };
 
@@ -55,6 +56,12 @@ export function UrlDateSlicer({
       case "fromTo":
         p.delete("w");
         if (f && t && !isDefault) { p.set("from", f); p.set("to", t); } else { p.delete("from"); p.delete("to"); }
+        break;
+      case "fromToAll":
+        p.delete("all");
+        p.delete("days"); // an older link's window, superseded by the pick
+        if (f && t && !isDefault) { p.set("from", f); p.set("to", t); } else { p.delete("from"); p.delete("to"); }
+        if (!f || !t) p.set("all", "1");
         break;
       case "odooDay":
         p.set("day", !f || !t ? "all" : f === t ? f : `${f}..${t}`);

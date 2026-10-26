@@ -24,6 +24,7 @@ import type { LvTraceResult } from "./lvTrace";
 import type { LvTrackerRow } from "./lvTracker";
 import type { MasterTrackerRow } from "./masterTracker";
 import type { MaterialPageData } from "./material";
+import { RATE_SOURCE_LABEL, WEIGHT_SOURCE_LABEL, type DetailRow } from "@/lib/domain/materialDashboard";
 import type { OdooDashboardView, OdooPageData } from "./odoo";
 import type { PhysicalStockData } from "./physicalStock";
 import type { PowderView } from "./powderScrap";
@@ -364,6 +365,20 @@ export function rosterRows(data: ShiftRosterData): SheetRow[] {
       Note: d.note,
     };
   });
+}
+
+/** The Material dashboard's detail table: a row per MO × part × sheet spec,
+ *  blank where a figure is unknown (never a zero). Closed qty is the MO's,
+ *  on each of its lines. */
+export function materialDashboardRows(rows: readonly DetailRow[]): SheetRow[] {
+  const blank = (v: number | null) => (v === null ? "" : v);
+  return rows.map((r) => ({
+    MO: r.mo, SOI: r.soi, BOM: r.bom, "Part code": r.partCode, "Part name": r.partName, Material: r.material, "Thickness mm": r.thicknessMm, "Sheet size": r.sheetSize,
+    "Sheet copy": r.month || "Living sheet", Units: r.units, "BOM sheets": r.bomSheets, "Actual sheets": blank(r.actualSheets), "Delta sheets": blank(r.deltaSheets),
+    "Sheet kg": blank(r.sheetKg), "Weight source": WEIGHT_SOURCE_LABEL[r.weightSource], Utilization: r.utilization === null ? "" : Math.round(r.utilization * 1000) / 1000,
+    "Closed qty (MO)": r.closedQty, "Consumed sheets": r.consumedSheets, "Consumed kg": blank(r.consumedKg), "Est. scrap kg": blank(r.scrapKg),
+    "Rate source": RATE_SOURCE_LABEL[r.rateSource], "Sheets per unit": r.ratePerUnit,
+  }));
 }
 
 /** The ODOO dashboard's days: a row per day with something logged or closed,

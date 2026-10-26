@@ -52,10 +52,11 @@ export function DecisionList({ actions, onOpen, nothing = NOTHING }: { actions: 
 
 /** What a list is: a decision (the Planning dashboard) or an intervention
  *  (the Production dashboard) — the button, the popup and the paper name it. */
-export type DecisionKind = "decision" | "intervention";
+export type DecisionKind = "decision" | "intervention" | "attention";
 const KIND = {
   decision: { noun: "a decision", title: "Needs a decision today", button: "Decisions", nothing: NOTHING },
   intervention: { noun: "an intervention", title: "Needs intervention in production", button: "Interventions", nothing: "Nothing pressing on the floor." },
+  attention: { noun: "a look", title: "Needs a look in the data", button: "Needs a look", nothing: "Nothing — every closing linked, every line weighed, rated and nested." },
 } as const;
 
 /** The list as the paper carries it — the popup's content, printed. */
