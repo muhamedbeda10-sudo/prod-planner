@@ -484,6 +484,16 @@ mobile drawer still lists every view flat, since it has the vertical room.
      tick, at most once a minute for the whole plant.
    - **Inbox and push** (`/inbox`): reports, messages and suggestions, with Web Push to phones (VAPID keys made on first use,
      the private half encrypted; only the real push services are posted to). The count rides on the chat's poll.
+   - **Tasks** (the inbox's Tasks tab, `lib/domain/tasks.ts`, `lib/server/tasks.ts`, `app/tasks/actions.ts`): given by
+     someone with "Tasks — assign" (by hand, through the assistant, an automation or a repeating task), reported on by the
+     people it was given to, approved or returned by the giver. Views: List, Board (to do / in progress / to review / done),
+     Calendar (by due day) and Team (each person's open, late, due this week and to review, and over 30 days the approved,
+     the share on time and the days taken; the owner sees everyone's), all under one filter bar (words, due day, person,
+     urgent). A task may carry a checklist its giver and people tick (written over the checklist as it was read); a task
+     can be kept as a template (`TaskTemplate`) or repeat by itself (`TaskRepeat`: each working day, on weekdays or a day of
+     the month, a day off moving to the next working day, due so many working days later) — given by the minute tick as
+     its giver while they may give tasks. The tick also reminds a task's people on its due day, once after it is late, and
+     sends a task late for two days or more to the app's owner, once.
    - **Morning review** (`lib/server/automations/review.ts`): for the people ticked "AI — daily review and suggestions", every
      working morning from 07:30 — suggestions only; every change waits.
    - **Playbook** (`/ai/playbook`): how this plant works, told to the assistant with every question; admins keep it there or

@@ -1,13 +1,18 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
-import { getCurrentUser, requirePerm } from "@/lib/server/auth";
+import { getCurrentUser, hasPerm, requirePerm } from "@/lib/server/auth";
 import { currentActor } from "@/lib/server/actor";
 import { filesOf, storeUploads } from "@/lib/server/uploads";
 import { emitEvent } from "@/lib/server/events";
-import { ASSIGN_KEY, markTaskNewsRead, roleOf, selfOnlyOf, sendTaskNews, taskDetail, tasksData, type TaskDetail, type TasksData } from "@/lib/server/tasks";
-import { MOVE_NEEDS_TEXT, TASK_LIMITS, TASK_MOVE_LABEL, cleanDueDate, isTaskMove, isTaskStatus, moveTask } from "@/lib/domain/tasks";
+import { offDays } from "@/lib/server/automations/store";
+import {
+  ASSIGN_KEY, canGive, giveTask, markTaskNewsRead, participantsOf, roleOf, ruleOf, selfOnlyOf, sendTaskNews, taskDetail, tasksData, type TaskDetail, type TasksData,
+} from "@/lib/server/tasks";
+import { factoryDayISO } from "@/lib/domain/dates";
+import {
+  MOVE_NEEDS_TEXT, REPEAT_LIMITS, TASK_LIMITS, TASK_MOVE_LABEL, checklistOf, cleanChecklist, cleanDueDate, cleanRepeat, isClosed, isTaskMove, isTaskStatus, moveTask, nextRepeatDay, tickItem, workingDaysAfter,
+} from "@/lib/domain/tasks";
 
 // Tasks: given by a person with the key for it — by hand or through the
 // assistant — and reported on by the people they were given to, until the
@@ -27,16 +32,27 @@ export interface TaskActionResult {
 
 const idOk = (n: number) => Number.isInteger(n) && n > 0;
 
-/** Everyone on a task — the only people its events may reach. */
-const participantsOf = (t: { createdById: number | null; assignees: { userId: number }[] }) =>
-  [...new Set([...(t.createdById ? [t.createdById] : []), ...t.assignees.map((a) => a.userId)])];
+/** A form field holding JSON — parsed, or the raw text when it is not JSON (a checklist typed as lines). */
+function jsonOr(v: FormDataEntryValue | null): unknown {
+  if (v === null || v === "") return null;
+  try {
+    return JSON.parse(String(v));
+  } catch {
+    return String(v);
+  }
+}
+
+const TEMPLATE_NAME_MAX = 60;
+const TEMPLATES_PER_OWNER = 50;
 
 /** Where it came from: a click, or the assistant acting for the person. */
 const viaNow = () => (currentActor() ? "ai" : "app");
 
 /** Give a task to one or more people. Several people get one task each
- *  (made together), or — shared — one task they all report on. */
-export async function createTask(fd: FormData): Promise<TaskActionResult & { ids?: number[] }> {
+ *  (made together), or — shared — one task they all report on. With
+ *  `repeat`, it is also kept to be given again by itself (the first one is
+ *  given now); with `templateName`, kept as a template to give again by hand. */
+export async function createTask(fd: FormData): Promise<TaskActionResult & { ids?: number[]; repeatId?: number }> {
   const guard = await requirePerm(ASSIGN_KEY);
   if (guard.error) return { ok: false, error: guard.error };
   const me = guard.user!;
@@ -49,17 +65,20 @@ export async function createTask(fd: FormData): Promise<TaskActionResult & { ids
   const dueRaw = String(fd.get("due") ?? "").trim();
   const moRaw = String(fd.get("mo") ?? "").trim();
   const files = filesOf(fd);
+  const checklist = cleanChecklist(jsonOr(fd.get("checklist")));
+  const repeatRaw = jsonOr(fd.get("repeat"));
+  const templateName = String(fd.get("templateName") ?? "").replace(/\s+/g, " ").trim();
 
   if (!title || title.length > TASK_LIMITS.title) return { ok: false, error: `Give the task a title (at most ${TASK_LIMITS.title} characters).` };
   if (details.length > TASK_LIMITS.details) return { ok: false, error: `The details are too long (at most ${TASK_LIMITS.details} characters).` };
   if (people.length === 0 || people.length > TASK_LIMITS.people) return { ok: false, error: `Give it to 1 to ${TASK_LIMITS.people} people.` };
   if (files.length > TASK_LIMITS.files) return { ok: false, error: `At most ${TASK_LIMITS.files} photos or files.` };
+  if ("error" in checklist) return { ok: false, error: checklist.error };
+  const repeat = repeatRaw ? cleanRepeat(repeatRaw) : null;
+  if (repeat && "error" in repeat) return { ok: false, error: repeat.error };
+  if (templateName.length > TEMPLATE_NAME_MAX) return { ok: false, error: `A template's name is at most ${TEMPLATE_NAME_MAX} characters.` };
   const due = dueRaw ? cleanDueDate(dueRaw) : null;
   if (dueRaw && !due) return { ok: false, error: "The due day is not a date." };
-
-  const found = await prisma.user.findMany({ where: { id: { in: people }, active: true }, select: { id: true, name: true } });
-  if (found.length !== people.length) return { ok: false, error: "One of them is not an active user." };
-  const nameOf = new Map(found.map((u) => [u.id, u.name]));
 
   let mo: string | null = null;
   if (moRaw) {
@@ -67,34 +86,60 @@ export async function createTask(fd: FormData): Promise<TaskActionResult & { ids
     if (!order) return { ok: false, error: `MO "${moRaw}" is not on the Orders Registry.` };
     mo = order.mo;
   }
-
-  const count = shared ? 1 : people.length;
-  const lastHour = await prisma.task.count({ where: { createdById: me.id, createdAt: { gte: new Date(Date.now() - 3_600_000) } } });
-  if (lastHour + count > TASK_LIMITS.perHour) return { ok: false, error: `That is more than ${TASK_LIMITS.perHour} tasks in an hour — wait a while.` };
+  if (repeat && (await prisma.taskRepeat.count({ where: { ownerId: me.id } })) >= REPEAT_LIMITS.perOwner) {
+    return { ok: false, error: `You keep ${REPEAT_LIMITS.perOwner} repeating tasks already — delete one first.` };
+  }
+  if (templateName && (await prisma.taskTemplate.count({ where: { ownerId: me.id } })) >= TEMPLATES_PER_OWNER) {
+    return { ok: false, error: `You keep ${TEMPLATES_PER_OWNER} templates already — delete one first.` };
+  }
+  // who it goes to and the hour's cap, before anything is stored
+  const via = viaNow();
+  const can = await canGive(me, people, shared, via);
+  if (!can.ok) return { ok: false, error: can.error };
 
   const stored = await storeUploads(files, "tasks");
   if (!stored.ok) return { ok: false, error: stored.error };
 
-  const via = viaNow();
-  const base = {
-    title, details, priority, mo, attachments: stored.files as unknown as object, createdById: me.id, createdByName: me.name, via,
-    dueDate: due ? new Date(`${due}T00:00:00Z`) : null,
-  };
-  const groups = shared ? [people] : people.map((p) => [p]);
-  const batchId = !shared && people.length > 1 ? randomUUID() : null;
-  const made = await prisma.$transaction(
-    groups.map((ids) =>
-      prisma.task.create({
-        data: { ...base, shared: shared && ids.length > 1, batchId, assignees: { create: ids.map((userId) => ({ userId })) } },
-        include: { assignees: { select: { userId: true } } },
-      }),
-    ),
-  );
-  for (const t of made) {
-    await sendTaskNews(t, "create", me.name, "", me.id);
-    await emitEvent({ type: "task.given", subject: `Task #${t.id}`, summary: `Gave “${t.title}” to ${t.assignees.map((a) => nameOf.get(a.userId) ?? `#${a.userId}`).join(", ")}`, participants: participantsOf(t), data: { taskId: t.id } });
+  // a repeating one: kept first, the first one given now and the next booked after today
+  let repeatId: number | null = null;
+  let firstDue = due;
+  if (repeat) {
+    const now = new Date();
+    const today = factoryDayISO(now);
+    const offDay = await offDays(now);
+    // the first one is due as the next ones will be, unless a day was given
+    firstDue = due ?? workingDaysAfter(today, repeat.dueDays, offDay);
+    const next = nextRepeatDay(repeat, new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10), offDay);
+    const r = await prisma.taskRepeat.create({
+      data: {
+        ownerId: me.id, title, details, checklist: checklist as unknown as object, priority, people, shared: shared && people.length > 1, mo,
+        every: repeat.every, weekdays: repeat.weekdays, monthDay: repeat.monthDay, dueDays: repeat.dueDays,
+        nextOn: next ? new Date(`${next}T00:00:00Z`) : null, lastGivenOn: new Date(`${today}T00:00:00Z`),
+      },
+    });
+    repeatId = r.id;
   }
-  return { ok: true, ids: made.map((t) => t.id) };
+  // a repeating one that did not give its first task is taken back — it never starts on its own
+  const undoRepeat = async () => {
+    if (repeatId) await prisma.taskRepeat.deleteMany({ where: { id: repeatId, ownerId: me.id } });
+  };
+  let given: Awaited<ReturnType<typeof giveTask>>;
+  try {
+    given = await giveTask(me, { title, details, people, shared, priority, dueISO: firstDue, mo, checklist, attachments: stored.files, repeatId }, via);
+  } catch (e) {
+    await undoRepeat();
+    throw e;
+  }
+  if (!given.ok) {
+    await undoRepeat();
+    return { ok: false, error: given.error };
+  }
+  if (templateName) {
+    await prisma.taskTemplate.create({
+      data: { ownerId: me.id, name: templateName, title, details, checklist: checklist.map((x) => x.text) as unknown as object, priority, people, shared: shared && people.length > 1 },
+    });
+  }
+  return { ok: true, ids: given.ids, ...(repeatId ? { repeatId } : {}) };
 }
 
 /** A note on a task, or a move — start, mark done, approve, return, cancel,
@@ -217,4 +262,95 @@ export async function loadAssignable(): Promise<Loaded<{ people: { id: number; n
   if (guard.error) return { ok: false, error: guard.error };
   const people = await prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } });
   return { ok: true, people };
+}
+
+/** Tick or untick a step of a task's checklist — its giver or its people,
+ *  while it is open. Written only over the checklist as it was read, so two
+ *  people ticking at once never lose each other's tick. */
+export async function tickTaskStep(fd: FormData): Promise<TaskActionResult> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: NOT_LOGGED_IN };
+  const id = Number(fd.get("id"));
+  const itemId = String(fd.get("item") ?? "");
+  const done = fd.get("done") === "true";
+  if (!idOk(id) || !itemId) return { ok: false, error: "Invalid step." };
+  const t = await prisma.task.findUnique({ where: { id }, include: { assignees: { select: { userId: true } } } });
+  if (!t) return { ok: false, error: "That task is not there any more." };
+  const role = roleOf(me, t);
+  if (!role.giver && !role.doer) return { ok: false, error: "This task is not yours." };
+  if (!isTaskStatus(t.status) || isClosed(t.status)) return { ok: false, error: "The task is closed — reopen it to change its steps." };
+  const items = checklistOf(t.checklist);
+  const next = tickItem(items, itemId, done, me.name, new Date().toISOString());
+  if ("error" in next) return { ok: false, error: next.error };
+  const r = await prisma.task.updateMany({ where: { id, updatedAt: t.updatedAt }, data: { checklist: next as unknown as object, activityAt: new Date() } });
+  if (r.count !== 1) return { ok: false, error: "Someone changed the task meanwhile — it is shown again as it is now." };
+  // the others hear when the last step is ticked; each tick stays on the task
+  if (done && next.every((x) => x.done)) {
+    const step = items.find((x) => x.id === itemId)!.text;
+    await sendTaskNews(t, "tick", me.name, `Ticked “${step}” — every step is ticked.`, me.id);
+  }
+  return { ok: true };
+}
+
+/** The giver changes a task's checklist — the steps already ticked stay ticked. */
+export async function setTaskChecklist(fd: FormData): Promise<TaskActionResult> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: NOT_LOGGED_IN };
+  const id = Number(fd.get("id"));
+  if (!idOk(id)) return { ok: false, error: "Invalid task." };
+  const t = await prisma.task.findUnique({ where: { id }, include: { assignees: { select: { userId: true } } } });
+  if (!t) return { ok: false, error: "That task is not there any more." };
+  if (!roleOf(me, t).giver) return { ok: false, error: "Only the one who gave the task changes its steps." };
+  if (!isTaskStatus(t.status) || isClosed(t.status)) return { ok: false, error: "The task is closed — reopen it to change its steps." };
+  const had = checklistOf(t.checklist);
+  // a new step never takes the id — and so the tick — of one that was removed
+  const cleaned = cleanChecklist(jsonOr(fd.get("checklist")), { taken: had.map((x) => x.id) });
+  if ("error" in cleaned) return { ok: false, error: cleaned.error };
+  const was = new Map(had.map((x) => [x.id, x]));
+  const next = cleaned.map((x) => (was.has(x.id) ? { ...x, done: was.get(x.id)!.done, by: was.get(x.id)!.by ?? null, at: was.get(x.id)!.at ?? null } : { ...x, done: false, by: null, at: null }));
+  const r = await prisma.task.updateMany({ where: { id, updatedAt: t.updatedAt }, data: { checklist: next as unknown as object, activityAt: new Date() } });
+  if (r.count !== 1) return { ok: false, error: "The task changed meanwhile — try again." };
+  return { ok: true };
+}
+
+/** Delete one of the person's own task templates. */
+export async function deleteTaskTemplate(fd: FormData): Promise<TaskActionResult> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: NOT_LOGGED_IN };
+  const id = Number(fd.get("id"));
+  if (!idOk(id)) return { ok: false, error: "Invalid template." };
+  const r = await prisma.taskTemplate.deleteMany({ where: { id, ownerId: me.id } });
+  return r.count === 1 ? { ok: true } : { ok: false, error: "That template is not yours, or it is gone." };
+}
+
+/** Pause a repeating task, or turn it back on (it gives next on its next day from today). */
+export async function setTaskRepeatEnabled(fd: FormData): Promise<TaskActionResult> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: NOT_LOGGED_IN };
+  const id = Number(fd.get("id"));
+  const enabled = fd.get("enabled") === "true";
+  if (!idOk(id)) return { ok: false, error: "Invalid repeating task." };
+  const r = await prisma.taskRepeat.findFirst({ where: { id, ownerId: me.id } });
+  if (!r) return { ok: false, error: "That repeating task is not yours, or it is gone." };
+  if (!enabled) {
+    await prisma.taskRepeat.update({ where: { id }, data: { enabled: false } });
+    return { ok: true };
+  }
+  if (!hasPerm(me, ASSIGN_KEY)) return { ok: false, error: "You may no longer give tasks." };
+  const now = new Date();
+  const today = factoryDayISO(now);
+  const from = r.lastGivenOn && r.lastGivenOn.toISOString().slice(0, 10) === today ? new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10) : today;
+  const next = nextRepeatDay(ruleOf(r), from, await offDays(now));
+  await prisma.taskRepeat.update({ where: { id }, data: { enabled: true, lastError: null, nextOn: next ? new Date(`${next}T00:00:00Z`) : null } });
+  return { ok: true };
+}
+
+/** Stop a repeating task for good — the tasks it gave stay. */
+export async function deleteTaskRepeat(fd: FormData): Promise<TaskActionResult> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: NOT_LOGGED_IN };
+  const id = Number(fd.get("id"));
+  if (!idOk(id)) return { ok: false, error: "Invalid repeating task." };
+  const r = await prisma.taskRepeat.deleteMany({ where: { id, ownerId: me.id } });
+  return r.count === 1 ? { ok: true } : { ok: false, error: "That repeating task is not yours, or it is gone." };
 }

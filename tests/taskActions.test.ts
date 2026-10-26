@@ -10,6 +10,8 @@ const h = vi.hoisted(() => ({
     user: { findMany: vi.fn() },
     masterOrder: { findUnique: vi.fn() },
     task: { count: vi.fn(), create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
+    taskRepeat: { count: vi.fn(), create: vi.fn(), delete: vi.fn(), deleteMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
+    taskTemplate: { count: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
     taskUpdate: { count: vi.fn(), create: vi.fn() },
     aiInboxItem: { updateMany: vi.fn() },
     $transaction: vi.fn(),
@@ -31,13 +33,14 @@ vi.mock("@/lib/server/auth", () => ({
 vi.mock("@/lib/server/actor", () => ({ currentActor: () => undefined }));
 vi.mock("@/lib/server/inbox", () => ({ deliverToInbox: h.deliver }));
 vi.mock("@/lib/server/events", () => ({ emitEvent: h.emit }));
+vi.mock("@/lib/server/automations/store", () => ({ offDays: async () => (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay() === 5 }));
 vi.mock("@/lib/server/uploads", () => ({
   filesOf: (fd: FormData) => fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0),
   storeUploads: h.store,
   storedFilesOf: () => [],
 }));
 
-import { createTask, postTaskUpdate } from "@/app/tasks/actions";
+import { createTask, deleteTaskRepeat, postTaskUpdate, setTaskChecklist, setTaskRepeatEnabled, tickTaskStep } from "@/app/tasks/actions";
 
 const form = (o: Record<string, string>) => {
   const fd = new FormData();
@@ -70,6 +73,11 @@ beforeEach(() => {
   h.prisma.$transaction.mockImplementation(async (arg: unknown) => (typeof arg === "function" ? (arg as (tx: unknown) => Promise<unknown>)(h.prisma) : Promise.all(arg as Promise<unknown>[])));
   h.store.mockResolvedValue({ ok: true, files: [] });
   h.deliver.mockResolvedValue([]);
+  h.prisma.taskRepeat.count.mockResolvedValue(0);
+  h.prisma.taskRepeat.create.mockResolvedValue({ id: 77 });
+  h.prisma.taskTemplate.create.mockResolvedValue({ id: 5 });
+  h.prisma.taskTemplate.count.mockResolvedValue(0);
+  h.prisma.taskRepeat.deleteMany.mockResolvedValue({ count: 1 });
 });
 
 describe("createTask", () => {
@@ -162,5 +170,118 @@ describe("postTaskUpdate", () => {
   it("lets the owner stand in for a giver whose account is gone", async () => {
     h.prisma.task.findUnique.mockResolvedValue(task({ status: "submitted", createdById: null }));
     expect(await postTaskUpdate(form({ id: "5", move: "approve" }))).toEqual({ ok: true, status: "done" });
+  });
+});
+
+describe("Tasks 2.0 — giving with steps, repeating, kept as a template", () => {
+  const give = { title: "Clean bay 2", people: "9" };
+  beforeEach(() => {
+    h.prisma.user.findMany.mockResolvedValue([{ id: SARA.id, name: "Sara" }]);
+    h.prisma.taskRepeat.delete.mockResolvedValue({});
+  });
+
+  it("gives the checklist's steps, unticked", async () => {
+    await createTask(form({ ...give, checklist: JSON.stringify(["Sweep", " ", "Photo of the result"]) }));
+    expect(h.prisma.task.create.mock.calls[0][0].data.checklist).toEqual([
+      { id: "s1", text: "Sweep", done: false, by: null, at: null },
+      { id: "s2", text: "Photo of the result", done: false, by: null, at: null },
+    ]);
+  });
+
+  it("keeps a repeating one, gives the first now and books the next working day", async () => {
+    const r = await createTask(form({ ...give, repeat: JSON.stringify({ every: "week", weekdays: [0], dueDays: 1 }) }));
+    expect(r).toMatchObject({ ok: true, repeatId: 77 });
+    const kept = h.prisma.taskRepeat.create.mock.calls[0][0].data;
+    expect(kept).toMatchObject({ ownerId: OWNER.id, title: "Clean bay 2", every: "week", weekdays: [0], dueDays: 1, people: [9] });
+    expect(new Date(kept.nextOn).getUTCDay()).toBe(0);
+    expect(h.prisma.task.create.mock.calls[0][0].data.repeatId).toBe(77);
+  });
+
+  it("refuses a repeat it cannot read, and too many repeating ones", async () => {
+    expect(await createTask(form({ ...give, repeat: JSON.stringify({ every: "week", weekdays: [] }) }))).toMatchObject({ ok: false, error: "Choose the days of the week it comes on." });
+    h.prisma.taskRepeat.count.mockResolvedValue(30);
+    expect(await createTask(form({ ...give, repeat: JSON.stringify({ every: "day" }) }))).toMatchObject({ ok: false, error: expect.stringContaining("30 repeating") });
+    expect(h.prisma.task.create).not.toHaveBeenCalled();
+  });
+
+  it("checks its people before keeping anything, and takes the repeating one back when giving fails", async () => {
+    h.prisma.user.findMany.mockResolvedValue([]);
+    expect(await createTask(form({ ...give, repeat: JSON.stringify({ every: "day" }), templateName: "Daily" }))).toMatchObject({ ok: false, error: "One of them is not an active user." });
+    expect(h.prisma.taskRepeat.create).not.toHaveBeenCalled();
+    expect(h.prisma.taskTemplate.create).not.toHaveBeenCalled();
+    expect(h.store).not.toHaveBeenCalled();
+
+    h.prisma.user.findMany.mockResolvedValue([{ id: SARA.id, name: "Sara" }]);
+    h.prisma.task.create.mockRejectedValueOnce(new Error("database gone"));
+    await expect(createTask(form({ ...give, repeat: JSON.stringify({ every: "day" }), templateName: "Daily" }))).rejects.toThrow("database gone");
+    expect(h.prisma.taskRepeat.deleteMany).toHaveBeenCalledWith({ where: { id: 77, ownerId: OWNER.id } });
+    expect(h.prisma.taskTemplate.create).not.toHaveBeenCalled();
+  });
+
+  it("keeps it as a template when named", async () => {
+    await createTask(form({ ...give, checklist: "Sweep\nMop", templateName: "Bay clean" }));
+    expect(h.prisma.taskTemplate.create.mock.calls[0][0].data).toMatchObject({ ownerId: OWNER.id, name: "Bay clean", title: "Clean bay 2", checklist: ["Sweep", "Mop"], people: [9] });
+  });
+});
+
+describe("ticking a task's steps", () => {
+  const withSteps = (o: Partial<{ status: string; done: boolean[] }> = {}) => ({
+    ...task({ status: o.status ?? "in_progress" }), updatedAt: new Date("2026-10-26T08:00:00Z"),
+    checklist: ["Sweep", "Photo"].map((text, i) => ({ id: `s${i + 1}`, text, done: o.done?.[i] ?? false })),
+  });
+
+  it("lets its doer tick a step — over the checklist as it was read", async () => {
+    h.me = SARA;
+    h.prisma.task.findUnique.mockResolvedValue(withSteps());
+    expect(await tickTaskStep(form({ id: "5", item: "s1", done: "true" }))).toEqual({ ok: true });
+    const call = h.prisma.task.updateMany.mock.calls[0][0];
+    expect(call.where).toEqual({ id: 5, updatedAt: new Date("2026-10-26T08:00:00Z") });
+    expect(call.data.checklist[0]).toMatchObject({ id: "s1", done: true, by: "Sara" });
+    expect(h.deliver).not.toHaveBeenCalled();
+  });
+
+  it("tells the giver when the last step is ticked", async () => {
+    h.me = SARA;
+    h.prisma.task.findUnique.mockResolvedValue(withSteps({ done: [true, false] }));
+    await tickTaskStep(form({ id: "5", item: "s2", done: "true" }));
+    expect(h.deliver.mock.calls[0][0]).toEqual([expect.objectContaining({ userId: OWNER.id, body: "Ticked “Photo” — every step is ticked." })]);
+  });
+
+  it("refuses someone not on it, a closed task, and a tick that lost to another", async () => {
+    h.me = ALI;
+    h.prisma.task.findUnique.mockResolvedValue(withSteps());
+    expect(await tickTaskStep(form({ id: "5", item: "s1", done: "true" }))).toMatchObject({ ok: false, error: "This task is not yours." });
+    h.me = SARA;
+    h.prisma.task.findUnique.mockResolvedValue(withSteps({ status: "done" }));
+    expect(await tickTaskStep(form({ id: "5", item: "s1", done: "true" }))).toMatchObject({ ok: false, error: expect.stringContaining("closed") });
+    h.prisma.task.findUnique.mockResolvedValue(withSteps());
+    h.prisma.task.updateMany.mockResolvedValue({ count: 0 });
+    expect(await tickTaskStep(form({ id: "5", item: "s1", done: "true" }))).toMatchObject({ ok: false, error: expect.stringContaining("meanwhile") });
+  });
+
+  it("lets only the giver change the steps — ticked ones stay ticked", async () => {
+    h.prisma.task.findUnique.mockResolvedValue(withSteps({ done: [true, false] }));
+    h.me = SARA;
+    expect(await setTaskChecklist(form({ id: "5", checklist: JSON.stringify([{ id: "s1", text: "Sweep" }]) }))).toMatchObject({ ok: false });
+    h.me = OWNER;
+    expect(await setTaskChecklist(form({ id: "5", checklist: JSON.stringify([{ id: "s1", text: "Sweep" }, { text: "Mop" }]) }))).toEqual({ ok: true });
+    const next = h.prisma.task.updateMany.mock.calls[0][0].data.checklist;
+    expect(next.map((x: { text: string; done: boolean }) => [x.text, x.done])).toEqual([["Sweep", true], ["Mop", false]]);
+  });
+});
+
+describe("a repeating task's switches", () => {
+  it("are its giver's only", async () => {
+    h.prisma.taskRepeat.findFirst.mockResolvedValue(null);
+    expect(await setTaskRepeatEnabled(form({ id: "77", enabled: "false" }))).toMatchObject({ ok: false });
+    h.prisma.taskRepeat.deleteMany.mockResolvedValue({ count: 0 });
+    expect(await deleteTaskRepeat(form({ id: "77" }))).toMatchObject({ ok: false });
+    expect(h.prisma.taskRepeat.deleteMany).toHaveBeenCalledWith({ where: { id: 77, ownerId: OWNER.id } });
+  });
+
+  it("turned back on, books its next day from today", async () => {
+    h.prisma.taskRepeat.findFirst.mockResolvedValue({ id: 77, ownerId: OWNER.id, every: "day", weekdays: [], monthDay: null, dueDays: 0, lastGivenOn: null });
+    expect(await setTaskRepeatEnabled(form({ id: "77", enabled: "true" }))).toEqual({ ok: true });
+    expect(h.prisma.taskRepeat.update.mock.calls[0][0].data).toMatchObject({ enabled: true, lastError: null, nextOn: expect.any(Date) });
   });
 });

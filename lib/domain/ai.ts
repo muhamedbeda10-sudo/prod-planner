@@ -164,7 +164,7 @@ export const AI_PRIVATE_TABLES = [
   "Session", "LoginFailure", "UserPref", "ChatMessage", "ChatGroup", "ChatGroupMember", "ChatMessageHide", "ChatReaction",
   "AiSettings", "AiAccess", "AiConversation", "AiMessage", "AiUsage", "AiAction",
   "AiPlaybookEntry", "AiPlaybookRevision", "AiInboxItem", "PushSubscription", "PushKeys", "Automation", "AutomationRun", "AiFile",
-  "Task", "TaskAssignee", "TaskUpdate", "AppEvent", "AiFeedback", "AiMemory", "AiCheck",
+  "Task", "TaskAssignee", "TaskUpdate", "TaskTemplate", "TaskRepeat", "AppEvent", "AiFeedback", "AiMemory", "AiCheck",
 ] as const;
 export const AI_USER_COLUMNS = ["id", "name", "active"] as const;
 
