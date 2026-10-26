@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-cockpit-decisions-button",
+    dateISO: "2026-10-26",
+    title: "The cockpit's decisions open from a button",
+    where: "Plan Tracker → Cockpit → Decisions (top right)",
+    href: "/",
+    body: "Needs a decision today is now the Decisions button at the top of the cockpit, beside Print. Its icon shows the most urgent item and its number how many there are. Click it to see the list, open any item, or ask the assistant. The printout still includes the list.",
+  },
+  {
     id: "2026-10-26-database-backup-removed",
     dateISO: "2026-10-26",
     title: "Database backup is removed from Settings",

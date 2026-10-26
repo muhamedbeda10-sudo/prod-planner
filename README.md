@@ -505,9 +505,9 @@ mobile drawer still lists every view flat, since it has the vertical room.
 13. **Planning cockpit** (`/`, the home page, a view of the Plan Tracker tab; the transformers only — on the
    LV line the home page is the panels' own dashboard) — the planner's one page, every figure in **standard hours**
    (what the work is worth, from the hours a piece per work centre — typed, else the estimate), so Fabrication's
-   ten projects a day add up and departments compare. On top, what needs a decision today (lines behind, a centre
+   ten projects a day add up and departments compare. The **Decisions** button in its head (icon: the worst news; badge: how many) opens what needs a decision today (lines behind, a centre
    short at the end of the horizon or falling behind in it and when it catches up, thin or heavy welding coverage, a slow centre, the
-   biggest loss, an unrecorded day), then five questions: **1** the newest weekly plan — each stage's pieces due by
+   biggest loss, an unrecorded day) in a popup, the printout carrying the list; then five questions: **1** the newest weekly plan — each stage's pieces due by
    today (the oven date less the Settings lead days) against done, by delivery day, and the lines behind with the
    stage they are stuck at (the card shows the oldest 20; its Excel export carries them all); **2** each work centre's earned std-hours against the man-hours the shift log booked
    there — efficiency on the last recorded day and over the recent ones, people a day, machine availability, the
