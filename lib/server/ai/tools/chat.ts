@@ -5,6 +5,7 @@ import { chatFile, uploadOf } from "@/lib/server/ai/files";
 import { addChatGroupMembers, createChatGroup, sendChatMessage } from "@/app/chat/actions";
 import { peopleNamed } from "./automations";
 import { formOf, type ToolCtx, type WriteTool } from "./types";
+import { CHAT_MESSAGE_MAX } from "@/lib/domain/chatTopic";
 
 // The team chat for the assistant — writing in it, never reading it (the
 // chat is the people's own; the assistant cannot see it). A message goes
@@ -69,7 +70,7 @@ export const sendChatMessageTool: WriteTool<SendInput> = {
     properties: {
       to: { type: "string", minLength: 1, maxLength: 80, description: "The colleague's name, or the group's name." },
       kind: { type: "string", enum: ["person", "group"], description: "Only when a colleague and a group share the name." },
-      text: { type: "string", maxLength: 2000 },
+      text: { type: "string", maxLength: CHAT_MESSAGE_MAX },
       mo: { type: "string", maxLength: 60, description: "An order to attach as a chip (its MO)." },
       files: { type: "array", items: { type: "integer", minimum: 1 }, maxItems: MAX_FILES, description: "Files attached in this chat, by file number." },
     },

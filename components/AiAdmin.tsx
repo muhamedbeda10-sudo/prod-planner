@@ -8,7 +8,7 @@ import {
 import { AI_CALLS_RANGE, AI_EFFORTS, AI_EFFORT_LABEL, AI_MODELS, aiModel, usdText, type AiEffort } from "@/lib/domain/ai";
 import { WEEKDAY_NAMES, describeWindow } from "@/lib/domain/automations";
 import { AI_PERM_GROUPS, permDef } from "@/lib/domain/permissions";
-import { formatDateTime } from "@/lib/domain/format";
+import { durationText, formatDateTime } from "@/lib/domain/format";
 import {
   removeAiKey, removeAutomationClock, saveAiKey, setAiEnabled, setAiLimits, setAiModel, setAiPause, setAiUserAccess, setAiUserRights,
   setAutomationHours, setupAutomationClock, testAi, type AiActionResult,
@@ -71,7 +71,7 @@ export interface AiAdminData {
   updatedBy: string | null;
   users: AiAdminUser[];
   changes: { id: number; at: string; who: string; title: string; summary: string; status: string; risk: string; auto: boolean; automationId: number | null; error: string | null }[];
-  recent: { id: number; at: string; who: string; question: string; model: string; queries: number; tokens: number; costUsd: number; error: string | null; running: boolean }[];
+  recent: { id: number; at: string; who: string; question: string; model: string; queries: number; tokens: number; costUsd: number; error: string | null; running: boolean; totalMs: number | null; firstTokenMs: number | null }[];
   quality: AiQualityData;
   /** The owner looking — the automations theirs to edit. */
   meId: number;
@@ -854,7 +854,7 @@ function ChangesCard({ data }: { data: AiAdminData }) {
 
 function RecentCard({ data }: { data: AiAdminData }) {
   return (
-    <SectionCard icon={Activity} title="Latest questions" description="What people asked it, and what each answer cost." padded={false}>
+    <SectionCard icon={Activity} title="Latest questions" description="What people asked it, what each answer cost, and how long it took." padded={false}>
       {data.recent.length === 0 ? (
         <EmptyState compact icon={MessageSquare} title="No questions yet" />
       ) : (
@@ -866,6 +866,7 @@ function RecentCard({ data }: { data: AiAdminData }) {
                 <div className="text-[11px] text-muted tabnum">
                   {r.who} · {when(r.at)} · {aiModel(r.model).label}
                   {r.queries > 0 && ` · ${r.queries} look-up${r.queries === 1 ? "" : "s"}`}
+                  {r.totalMs !== null && <span title={r.firstTokenMs !== null ? `First word after ${durationText(r.firstTokenMs)}` : "No answer text was written"}> · {durationText(r.totalMs)}{r.firstTokenMs !== null && ` (first word ${durationText(r.firstTokenMs)})`}</span>}
                   {r.running && <span className="text-warn-fg"> · running</span>}
                   {r.error && <span className="text-bad-fg"> · {r.error}</span>}
                 </div>

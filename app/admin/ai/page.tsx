@@ -120,6 +120,8 @@ export default async function AiAdminPage() {
           costUsd: r.costUsd,
           error: r.error,
           running: !r.finishedAt,
+          totalMs: r.totalMs,
+          firstTokenMs: r.firstTokenMs,
         })),
         watchdog: {
           enabled: watch.enabled, at: watch.at, dropPct: watch.dropPct, absencePct: watch.absencePct, chronicDays: watch.chronicDays, chronicOf: watch.chronicOf,

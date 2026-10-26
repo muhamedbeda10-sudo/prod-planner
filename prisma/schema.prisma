@@ -181,6 +181,12 @@ model MasterOrder {
   holdNote         String?
   holdBy           String?
   closedAt         DateTime?
+  // reopened by hand after it closed by itself: it no longer closes by itself
+  // — until someone closes it again
+  autoCloseOff     Boolean   @default(false)
+  // when it closed by itself (finished and all closed in Odoo); null when a
+  // person or an import closed it
+  autoClosedAt     DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -1548,6 +1554,8 @@ model AiConversation {
   user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
   model     String
+  // kept at the top of the person's list
+  pinned    Boolean     @default(false)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   messages  AiMessage[]
@@ -1616,6 +1624,10 @@ model AiUsage {
   cacheWriteTokens Int       @default(0)
   costUsd          Float     @default(0)
   error            String?
+  // How long the question took: until the first word of the answer reached
+  // the person (null: none did), and in all — what AI settings shows.
+  firstTokenMs     Int?
+  totalMs          Int?
   // Null while the question is being answered: one at a time per person,
   // so a burst of questions cannot run past the caps before they are counted.
   finishedAt       DateTime?

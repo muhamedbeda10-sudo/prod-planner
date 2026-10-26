@@ -24,6 +24,22 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The Shifts tab's page is now called Shifts, and the Admin menu's “Orders & plan imports” is now Orders Registry, the same name as the page it opens (the monthly and weekly imports are still its two views). Settings lays its switches side by side on a wide screen, and Automations spans the full width like the rest of the app.",
   },
   {
+    id: "2026-10-26-assistant-answers-2",
+    dateISO: "2026-10-26",
+    title: "The assistant answers like a colleague: the verdict first, its working shown, the next questions ready",
+    where: "AI assistant — every answer, and the box under it",
+    href: "/ai",
+    body: "Every answer now opens with the answer itself, then the detail, then — when you asked why or what to do — the cause and up to three concrete actions, and closes with a strip saying which line, period and moment the figures cover. Warnings, confirmations and problems stand out as coloured callouts. Under the answer: the next questions it offers as chips you tap, and a bar naming the model and how long it took, with Copy, Print, Share (kept in your own inbox as a report, posted in the team chat, or — with the automations key — sent to colleagues' inboxes as it reads, charts and all) and 👍 / 👎. While it works you see each look-up as a step with its time and its rows (folded once the answer is in), a seconds counter, and a Stop button — Esc stops too; Try again re-asks after a failure, and ↑ in the empty box brings the last question back. Tables fold past 15 rows, group their thousands and export to Excel. Beside the box, pick how hard to work the next question: Quick (a figure, a list), Standard, or Deep (thinking hard with more look-ups — analysis, plans, what-ifs). An empty chat suggests questions for the screen you are on. Chats can be pinned to the top and renamed; a long chat folds its old look-ups, so it goes on longer. Several look-ups in one go now run together, so answers come sooner.",
+  },
+  {
+    id: "2026-10-26-orders-close-when-odoo-closes",
+    dateISO: "2026-10-26",
+    title: "An order closes by itself once Odoo has closed it all",
+    where: "Plan Tracker · ODOO log",
+    href: "/tracker",
+    body: "No more closing a finished order by hand: once an order reads finished on the Plan Tracker and every component it needs has its full plan quantity closed in Odoo (the Odoo column reads full; outsourced pieces counted), it closes by itself — the moment the last Odoo row is marked Done, or at the next hourly check otherwise. It leaves the daily screens as a manual close does. An order on hold, or with a new plan qty waiting for you, stays open. If you reopen an order that closed by itself, it stays open until you close it again. The Close button is still there for anything Odoo does not cover.",
+  },
+  {
     id: "2026-10-26-dashboards-tab",
     dateISO: "2026-10-26",
     title: "Every dashboard in one tab: Dashboards — ODOO moves into Plan Tracker, and Worklist is now Floor",

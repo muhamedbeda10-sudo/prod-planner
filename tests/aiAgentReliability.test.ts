@@ -15,7 +15,7 @@ vi.mock("@anthropic-ai/sdk", () => {
   return { default: Anthropic };
 });
 import type { User } from "@prisma/client";
-import { ask, questionMessages } from "@/lib/server/ai/agent";
+import { ask, questionMessages, rowsOf } from "@/lib/server/ai/agent";
 import { displayTurns } from "@/lib/domain/ai";
 import type { AiTool } from "@/lib/server/ai/tools/types";
 
@@ -70,6 +70,44 @@ describe("AI reads and writes", () => {
     expect(JSON.stringify(result.added)).toContain("#ai-source-source_1");
     expect(JSON.stringify(result.added)).not.toContain("#ai-source-source_2");
   });
+  it("runs the reads of one turn at the same time, and a write only after them", async () => {
+    const order: string[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    read.mockImplementation(async (input: { n?: number }) => {
+      order.push(`start ${input.n}`);
+      if (input.n === 1) await gate;
+      order.push(`end ${input.n}`);
+      return { ok: true, text: `Facts ${input.n}` };
+    });
+    h.write.mockImplementation(async () => { order.push("write"); return { text: "Prepared", isError: false }; });
+    const useN = (id: string, n: number) => ({ type: "tool_use", id, name: "read_test", input: { n } });
+    h.stream.mockReturnValueOnce(reply([useN("a", 1), useN("b", 2), use("c", "write_test")], "tool_use")).mockReturnValueOnce(done());
+    const pending = run({ tools: [{ ...tools[0], schema: { type: "object", properties: { n: { type: "integer" } }, additionalProperties: false } }, tools[1]] });
+    // the second read starts, and ends, while the first still waits
+    await vi.waitFor(() => expect(order).toContain("end 2"));
+    expect(order).toEqual(["start 1", "start 2", "end 2"]);
+    release();
+    const result = await pending;
+    expect(order).toEqual(["start 1", "start 2", "end 2", "end 1", "write"]);
+    expect((result.added[3].content as { tool_use_id: string; content: string }[]).map((b) => [b.tool_use_id, b.content])).toEqual([["a", "Facts 1"], ["b", "Facts 2"], ["c", "Prepared"]]);
+  });
+  it("tells the chat each step with its timing and rows, and how long the answer took", async () => {
+    const step = vi.fn();
+    read.mockResolvedValueOnce({ ok: true, text: '{"columns":["mo"],"rowCount":3,"rows":[[1],[2],[3]]}' }).mockResolvedValueOnce({ ok: false, text: "Unavailable" });
+    h.stream.mockReturnValueOnce(reply([use("a"), use("b", "write_test")], "tool_use")).mockReturnValueOnce(reply([use("c")], "tool_use")).mockReturnValueOnce(done());
+    const result = await run({ events: { status: vi.fn(), text: vi.fn(), step } });
+    expect(step.mock.calls.map(([s]) => s)).toEqual([
+      { id: "a", kind: "read", text: "Read", state: "start" },
+      { id: "a", kind: "read", text: "Read", state: "done", ms: expect.any(Number), rows: 3 },
+      { id: "b", kind: "write", text: "Write", state: "start" },
+      { id: "b", kind: "write", text: "Write", state: "done", ms: expect.any(Number) },
+      { id: "c", kind: "read", text: "Read", state: "start" },
+      { id: "c", kind: "read", text: "Read", state: "error", ms: expect.any(Number) },
+    ]);
+    expect(result.totalMs).toBeGreaterThanOrEqual(0);
+    expect(result.firstTokenMs).toBeNull();
+  });
   it("reads again after a write, and never deduplicates writes", async () => {
     h.stream.mockReturnValueOnce(reply([use("a"), use("b", "write_test"), use("c"), use("d", "write_test")], "tool_use")).mockReturnValueOnce(done());
     await run();
@@ -90,6 +128,39 @@ describe("AI reads and writes", () => {
     h.stream.mockReturnValueOnce(reply([use("a"), use("b")], "tool_use")).mockReturnValueOnce(done());
     await run({ tools: [{ ...tools[0], liveOnly: true }] });
     expect(read).toHaveBeenCalledTimes(2);
+  });
+  it("shares one retry between duplicates of a failed read, and keeps a read that threw as a result", async () => {
+    read.mockResolvedValueOnce({ ok: false, text: "Timed out" }).mockResolvedValueOnce({ ok: true, text: "Facts" });
+    h.stream.mockReturnValueOnce(reply([use("a"), use("b"), use("c")], "tool_use")).mockReturnValueOnce(done());
+    const result = await run();
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(result.queries).toBe(2);
+    expect((result.added[3].content as { tool_use_id: string; content: string; is_error?: boolean }[]).map((b) => [b.tool_use_id, b.content, !!b.is_error])).toEqual([["a", "Timed out", true], ["b", "Facts", false], ["c", "Facts", false]]);
+    read.mockClear().mockRejectedValueOnce(new Error("Connection reset"));
+    h.stream.mockReturnValueOnce(reply([use("a")], "tool_use")).mockReturnValueOnce(done());
+    expect((await run()).added[3].content).toEqual([expect.objectContaining({ tool_use_id: "a", is_error: true, content: expect.stringContaining("Connection reset") })]);
+  });
+  it("measures the first word of the answer, and hands the text back without the follow-up block", async () => {
+    const written = "Answer\n\n```followups\n[\"Why?\"]\n```";
+    h.stream.mockReturnValueOnce(reply([{ type: "text", text: written }], "end_turn", written));
+    const result = await run();
+    expect(result.text).toBe("Answer");
+    expect(result.firstTokenMs).toEqual(expect.any(Number));
+    expect(result.totalMs).toBeGreaterThanOrEqual(result.firstTokenMs!);
+  });
+  it("keeps what was streamed when the person stops the answer, after the complete tool rounds", async () => {
+    const controller = new AbortController();
+    const text = vi.fn();
+    h.stream.mockReturnValueOnce(reply([use("a")], "tool_use"))
+      .mockReturnValueOnce({
+        on: (event: string, fn: (t: string) => void) => { if (event === "text") { fn("Ten late so far"); controller.abort(); } },
+        finalMessage: () => Promise.reject(new Error("aborted")),
+      });
+    const result = await run({ signal: controller.signal, events: { status: vi.fn(), text } });
+    expect(result.error).toContain("stopped");
+    expect(result.added.map((m) => m.role)).toEqual(["user", "system", "assistant", "user", "assistant"]);
+    const last = result.added.at(-1)!.content as { type: string; text: string }[];
+    expect(last.map((b) => b.text)).toEqual(["Ten late so far", expect.stringContaining("did not finish")]);
   });
   it("does not start a write after the signal was cancelled", async () => {
     const controller = new AbortController();
@@ -118,6 +189,18 @@ describe("AI reads and writes", () => {
       { type: "tool_result", tool_use_id: "first", content: "Prepared" },
       expect.objectContaining({ tool_use_id: "second", is_error: true, content: expect.stringContaining("Not run") }),
     ]);
+  });
+});
+
+describe("rows in a result", () => {
+  it("counts a query's rows, a list, and nothing for a sentence", () => {
+    expect(rowsOf('{"columns":["a"],"rowCount":7,"rows":[]}')).toBe(7);
+    expect(rowsOf('{"rows":[1,2]}')).toBe(2);
+    expect(rowsOf("[1,2,3]")).toBe(3);
+    expect(rowsOf("Nothing is late.")).toBeNull();
+    expect(rowsOf("{not json")).toBeNull();
+    expect(rowsOf({ rowCount: 4 })).toBe(4);
+    expect(rowsOf([1])).toBe(1);
   });
 });
 

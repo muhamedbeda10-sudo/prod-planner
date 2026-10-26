@@ -2,6 +2,7 @@ import { ITEMS, isItem, type Item } from "./constants";
 import { isDoneStatus, odooRowBom } from "./odoo";
 import { ITEM_PRODUCT, sameProduct } from "./odooMirror";
 import { parseISODate, toISODate } from "./dates";
+import { isFullyDelivered } from "./groupSpread";
 
 /** Closed quantities exceeding the matching plans stay visible as unallocated. */
 export interface OdooUnallocatedQuantity { key: string; item: Item; qty: number; mos: string[] }
@@ -142,4 +143,30 @@ export function trackerOdooTotal(rows: readonly { mo: string; odooPlanMonth?: st
     else if (!row.odooPlanMonth) unallocated += value;
   }
   return { qty, unallocated };
+}
+
+/** What the auto-close reads off a Plan Tracker row. */
+export interface TrackerCloseRow {
+  status: string;
+  required: number;
+  complete: number;
+  hold: { onHold: boolean };
+  pendingQty: unknown;
+  items: Record<Item, { osp: number; eligible: boolean; excluded: boolean; odooClosed?: number }>;
+}
+
+/** Finished on the tracker, and every needed component closed in Odoo for
+ *  its whole plan quantity — whatever its status. Odoo's closings judged as
+ *  "Close N delivered" judges deliveries: outsourced pieces never pass the
+ *  paint shop, so no Odoo row is born for them and they are not owed; an
+ *  order wholly outsourced is never "closed in Odoo" by that alone. */
+export function finishedAndClosedInOdoo(r: TrackerCloseRow): boolean {
+  if (r.complete < r.required) return false;
+  return isFullyDelivered(r.required, ITEMS.map((it) => ({ counts: r.items[it].eligible && !r.items[it].excluded, delivered: r.items[it].odooClosed ?? 0, osp: r.items[it].osp })));
+}
+
+/** An open order that closes by itself now: finished and closed in full in
+ *  Odoo, and nobody still deciding about it (on hold, a plan qty waiting). */
+export function closesByItself(r: TrackerCloseRow): boolean {
+  return r.status === "open" && !r.hold.onHold && r.pendingQty == null && finishedAndClosedInOdoo(r);
 }

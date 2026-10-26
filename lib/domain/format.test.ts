@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, formatDateTime, formatDayShort, formatNumber, formatField, formatQty } from "./format";
+import { durationText, formatDate, formatDateTime, formatDayShort, formatNumber, formatField, formatQty } from "./format";
 
 const now = new Date("2026-10-06T09:00:00Z");
 
@@ -55,5 +55,18 @@ describe("numbers", () => {
     expect(formatQty(12)).toBe("12");
     expect(formatQty(0.5)).toBe("0.5");
     expect(formatQty(1.2345)).toBe("1.235");
+  });
+});
+
+describe("durationText", () => {
+  it("reads tenths under ten seconds, seconds under a minute, then minutes", () => {
+    expect(durationText(820)).toBe("0.8s");
+    expect(durationText(12_400)).toBe("12s");
+    expect(durationText(125_000)).toBe("2m 05s");
+    expect(durationText(-5)).toBe("0.0s");
+    // the rounding carries into the next unit
+    expect(durationText(59_600)).toBe("1m 00s");
+    expect(durationText(119_600)).toBe("2m 00s");
+    expect(durationText(9_960)).toBe("10s");
   });
 });

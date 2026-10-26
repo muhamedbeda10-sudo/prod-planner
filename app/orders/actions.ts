@@ -30,12 +30,16 @@ export async function setOrderStatus(formData: FormData): Promise<{ ok: boolean;
     const guard = await requirePerm(linePermKey(line, "status"));
     if (guard.error) return { ok: false, error: guard.error };
   }
-  await prisma.masterOrder.updateMany({
-    where: { mo: { in: orders.map((o) => o.mo) } },
-    data: { status, closedAt: status === "closed" ? new Date() : null },
-  });
-  for (const p of ["/tracker", "/orders", "/worklist/cut", "/trace"]) revalidatePath(p);
   const done = orders.map((o) => o.mo);
+  const data = { status, closedAt: status === "closed" ? new Date() : null, autoCloseOff: false, autoClosedAt: null };
+  await prisma.$transaction([
+    prisma.masterOrder.updateMany({ where: { mo: { in: done }, ...(status === "open" ? { autoClosedAt: null } : {}) }, data }),
+    // reopened by hand after it closed by itself, it stays open until someone
+    // closes it again (any other reopen still closes by itself once Odoo has
+    // closed it all) — the orders the write above left, autoClosedAt still set
+    ...(status === "open" ? [prisma.masterOrder.updateMany({ where: { mo: { in: done }, autoClosedAt: { not: null } }, data: { ...data, autoCloseOff: true } })] : []),
+  ]);
+  for (const p of ["/tracker", "/orders", "/worklist/cut", "/trace"]) revalidatePath(p);
   await emitEvent({
     type: status === "closed" ? "order.closed" : "order.reopened",
     subject: listed(done),
@@ -524,7 +528,7 @@ export async function closeDeliveredOrders(): Promise<{ ok: boolean; error?: str
   const mos = done.map((o) => o.mo);
   await prisma.masterOrder.updateMany({
     where: { mo: { in: mos } },
-    data: { status: "closed", closedAt: at },
+    data: { status: "closed", closedAt: at, autoCloseOff: false, autoClosedAt: null },
   });
   for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/trace", "/"]) revalidatePath(p);
   // the same event a close on the tracker records, so "order closed" automations hear of these too

@@ -24,7 +24,7 @@ export function readEvidence(id: string, title: string, text: string, links: AiE
   const content = JSON.stringify({ data, source });
   const snapshot = typeof data === "string" ? data : JSON.stringify(data, null, 2);
   const evidence: AiEvidence = { id: source.id, title: source.title, recordedAt: source.recordedAt, links: source.links, snapshot: snapshot.slice(0, MAX_SNAPSHOT), truncated: snapshot.length > MAX_SNAPSHOT };
-  return { content, evidence };
+  return { content, evidence, data };
 }
 
 /** Restores the same source cards after reopening a kept conversation. */

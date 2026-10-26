@@ -10,6 +10,7 @@ import {
 import { unreadInboxCount } from "@/lib/server/inbox";
 import { broadcast } from "@/lib/server/realtimeBroadcast";
 import { chatTopic } from "@/lib/domain/chatTopic";
+import { CHAT_MESSAGE_MAX } from "@/lib/domain/chatTopic";
 import { filesOf, storeUploads } from "@/lib/server/uploads";
 
 // Chat needs no permission key — every active account can message every other
@@ -18,7 +19,7 @@ import { filesOf, storeUploads } from "@/lib/server/uploads";
 // a thread they aren't part of.
 
 const NOT_LOGGED_IN = "You are not logged in — refresh the page.";
-const MAX_BODY = 2000;
+const MAX_BODY = CHAT_MESSAGE_MAX;
 const MAX_FILES = 6;
 const MAX_GROUP_NAME = 60;
 

@@ -50,17 +50,18 @@ export interface AiConversationItem {
   id: number;
   title: string;
   updatedAt: string;
+  pinned: boolean;
 }
 
-/** A person's latest conversations, newest first. */
+/** A person's latest conversations, the pinned ones first, then newest first. */
 export async function conversationsOf(userId: number): Promise<AiConversationItem[]> {
   const rows = await prisma.aiConversation.findMany({
     where: { userId },
-    orderBy: { updatedAt: "desc" },
-    take: 60,
-    select: { id: true, title: true, updatedAt: true },
+    orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
+    take: 80,
+    select: { id: true, title: true, updatedAt: true, pinned: true },
   });
-  return rows.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt.toISOString() }));
+  return rows.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt.toISOString(), pinned: c.pinned }));
 }
 
 export interface InboxItemView {
