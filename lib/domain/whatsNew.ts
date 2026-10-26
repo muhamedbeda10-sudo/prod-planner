@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-assistant-time-budget",
+    dateISO: "2026-10-26",
+    title: "Deep questions get the time they need, and always end in an answer",
+    where: "AI assistant",
+    href: "/ai",
+    body: "A question in the chat may now take up to twelve minutes instead of four, so a Deep question with a dozen look-ups no longer ends in “took too long”. And whatever the depth, once most of the time is spent the assistant stops looking things up and answers with what it has, saying what it could not check.",
+  },
+  {
     id: "2026-10-26-line-on-each-page",
     dateISO: "2026-10-26",
     title: "No more TR / LV switch in the top bar — each page shows its own Transformers | LV Panels switch",

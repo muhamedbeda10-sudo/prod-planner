@@ -498,7 +498,10 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
      (`AI_PAGE_SUGGESTIONS`). Chats can be pinned and renamed. Before a long chat is sent back to the model, the big
      results of every question but the last two are folded to a note that keeps their source (`compactHistory`), so the
      chat goes on to 200 messages and the prompt cache keeps hitting on the folded prefix. Stop closes the connection, which
-     stops the model too: what was written is kept in the chat with a note, and the question's turn is freed. `AiUsage`
+     stops the model too: what was written is kept in the chat with a note, and the question's turn is freed. A chat
+     question has up to 740 s (the route's `maxDuration` 800 under Vercel's Fluid compute, less a minute to save;
+     `AI_ASK_TIMEOUT_MAX`), an automation's or a check's four minutes; past three quarters of its time the next model call
+     must answer with what it has (`tool_choice: none`, with a note) rather than time out with nothing. `AiUsage`
      keeps how long each question (a chat's, an automation's, a check's) took and when its first word came (shown on AI
      settings → Latest questions).
    - **It learns and is measured** (`lib/domain/aiLearn.ts`, `lib/server/ai/memory.ts`, `lib/server/ai/checks.ts`,

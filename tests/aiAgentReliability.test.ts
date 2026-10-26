@@ -245,6 +245,18 @@ describe("failed and limited model calls", () => {
     expect((await run({ timeoutMs: 20 })).error).toContain("took too long");
     expect(h.stream).toHaveBeenCalledTimes(1);
   });
+  it("answers with what it has once most of the time is spent, instead of running out", async () => {
+    read.mockImplementation(async () => { await new Promise((r) => setTimeout(r, 120)); return { ok: true, text: "Facts" }; });
+    h.stream.mockReturnValueOnce(reply([use("a")], "tool_use")).mockReturnValueOnce(done());
+    const result = await run({ timeoutMs: 150 });
+    expect(result.error).toBeUndefined();
+    expect(h.stream).toHaveBeenCalledTimes(2);
+    // the second call may only answer, and is told why
+    expect(h.stream.mock.calls[1][0].tool_choice).toEqual({ type: "none" });
+    const sent = h.stream.mock.calls[1][0].messages;
+    expect(JSON.stringify(sent.at(-1).content)).toContain("nearly up");
+    expect(JSON.stringify(result.added)).toContain("nearly up");
+  });
   it("never runs a late write when the final call should only answer", async () => {
     h.stream.mockReturnValueOnce(reply([use("a")], "tool_use")).mockReturnValueOnce(reply([use("b", "write_test")], "tool_use"));
     expect((await run({ maxCalls: 2 })).error).toContain("work limit");
