@@ -284,7 +284,7 @@ export function OrdersTable({ rows, line = "TR" }: { rows: OrderRow[]; line?: Pr
                 </td>
                 <td className="p-2 font-bold whitespace-nowrap text-xs">{r.mo}</td>
                 <td className="p-2 font-bold whitespace-nowrap">
-                  <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-brand-ink hover:underline">{r.bom}</Link>
+                  <Link href={`/trace?bom=${encodeURIComponent(r.bom)}&line=${line}`} className="text-brand-ink hover:underline">{r.bom}</Link>
                 </td>
                 <td className="p-2 text-xs whitespace-nowrap">{r.soi ?? "—"}</td>
                 <td className="p-2 text-xs whitespace-nowrap">{r.customer ?? <span className="text-muted">—</span>}</td>

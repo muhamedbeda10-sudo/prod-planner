@@ -19,9 +19,9 @@ import { InboxBell } from "@/components/InboxBell";
 import { useAiPanel } from "@/components/AiPanel";
 import { useInboxPanel } from "@/components/InboxPanel";
 import { useOdooAlerts } from "@/components/OdooAlerts";
-import { LineTabs } from "@/components/LineTabs";
+import { useActiveLine } from "@/components/LineContext";
 import { Avatar, UserMenu } from "@/components/UserMenu";
-import type { ProductLine } from "@/lib/domain/lines";
+import { LINE_LABEL, PRODUCT_LINES, hrefWithLine, type ProductLine } from "@/lib/domain/lines";
 import { signOut } from "@/lib/signOut";
 import { trapTab } from "@/components/Modal";
 
@@ -34,23 +34,26 @@ type Item = {
   also?: string[];
 };
 
-// The department worklists live under ONE "Floor" tab — clicking it
-// expands them inline in the bar; picking one navigates and collapses again.
-// Leak test sits where it does on the shop floor: between welding and painting.
-const WORKLIST_DEPTS = [
-  { href: "/worklist/cut", label: "Fabrication", icon: LaserCutterIcon, perm: "cut.edit" },
-  { href: "/worklist/welding", label: "Welding", icon: WeldingIcon, perm: "welding.edit" },
-  { href: "/worklist/leak-test", label: "Leak Test", icon: Droplets, perm: "leaktest.edit" },
-  { href: "/worklist/painting", label: "Painting", icon: PowderCoatIcon, perm: "painting.edit" },
-] as const;
-// The LV panels' four stages, in the order a panel passes them. Punching and
-// bending are the panel's fabrication; each opens on the panels' own key.
-const LV_WORKLIST_DEPTS = [
-  { href: "/worklist/punching", label: "Punching", icon: LaserCutterIcon, perm: "lv.punching" },
-  { href: "/worklist/bending", label: "Bending", icon: LaserCutterIcon, perm: "lv.bending" },
-  { href: "/worklist/welding", label: "Welding", icon: WeldingIcon, perm: "lv.welding" },
-  { href: "/worklist/painting", label: "Painting", icon: PowderCoatIcon, perm: "lv.painting" },
-] as const;
+// The department worklists live under ONE "Floor" tab — clicking it opens
+// them in a panel below it; picking one navigates and closes it again. Both
+// lines' departments are listed: the transformers' (leak test where it sits on
+// the shop floor, between welding and painting), then the LV panels' four
+// stages in the order a panel passes them. Welding and painting are one route
+// each for both lines — the address's line says whose queue it shows — so
+// every entry names its line in its link.
+type FloorDept = { path: string; label: string; drawerLabel: string; icon: Item["icon"]; perm: string; line: ProductLine };
+const FLOOR_DEPTS: readonly FloorDept[] = [
+  { path: "/worklist/cut", label: "Fabrication", drawerLabel: "Fabrication Worklist", icon: LaserCutterIcon, perm: "cut.edit", line: "TR" },
+  { path: "/worklist/welding", label: "Welding", drawerLabel: "Welding Worklist", icon: WeldingIcon, perm: "welding.edit", line: "TR" },
+  { path: "/worklist/leak-test", label: "Leak Test", drawerLabel: "Leak Test", icon: Droplets, perm: "leaktest.edit", line: "TR" },
+  { path: "/worklist/painting", label: "Painting", drawerLabel: "Painting Worklist", icon: PowderCoatIcon, perm: "painting.edit", line: "TR" },
+  { path: "/worklist/punching", label: "Punching", drawerLabel: "LV Punching", icon: LaserCutterIcon, perm: "lv.punching", line: "LV" },
+  { path: "/worklist/bending", label: "Bending", drawerLabel: "LV Bending", icon: LaserCutterIcon, perm: "lv.bending", line: "LV" },
+  { path: "/worklist/welding", label: "Welding", drawerLabel: "LV Welding", icon: WeldingIcon, perm: "lv.welding", line: "LV" },
+  { path: "/worklist/painting", label: "Painting", drawerLabel: "LV Painting", icon: PowderCoatIcon, perm: "lv.painting", line: "LV" },
+];
+const deptHref = (d: FloorDept) => hrefWithLine(d.path, d.line);
+const LINE_GROUPS = PRODUCT_LINES.map((line) => ({ line, label: LINE_LABEL[line] }));
 
 // The Dashboards tab's places beyond the home page (Planning).
 const DASHBOARD_PATHS = ["/dashboards/production", "/dashboards/material", "/dashboards/consumables", "/dashboards/odoo"] as const;
@@ -81,14 +84,6 @@ const REST: Item[] = [
   { href: "/barcode", label: "Tank Barcodes", icon: QrCode, match: "/barcode" },
 ];
 
-// The mobile drawer has vertical room — it lists the three worklists directly.
-const DRAWER: Item[] = [
-  { href: "/worklist/cut", label: "Fabrication Worklist", icon: LaserCutterIcon },
-  { href: "/worklist/welding", label: "Welding Worklist", icon: WeldingIcon },
-  { href: "/worklist/leak-test", label: "Leak Test", icon: Droplets },
-  { href: "/worklist/painting", label: "Painting Worklist", icon: PowderCoatIcon },
-  ...REST,
-];
 
 // The drawer has room for the views that ride inside a tab on desktop, so a
 // phone reaches them in one tap instead of two.
@@ -137,10 +132,6 @@ const MACHINE_ONLY = new Set(["/admin/machines", "/admin/machine-times"]);
 // The two tabs that only exist while per-piece tank tracking is on.
 const TANK_ONLY = new Set(["/worklist/leak-test", "/barcode"]);
 
-// The views that are the transformers' alone: the what-if simulator (it
-// models the transformers' plan) and the Production dashboard (the floor's figures).
-const TR_VIEWS = new Set(["/simulate", "/dashboards/production"]);
-
 /** One entry of the tools menu: its name, with what it holds as the tooltip. */
 function ToolLink({ href, label, title, icon: Icon, active }: { href: string; label: string; title?: string; icon: Item["icon"]; active: boolean }) {
   return (
@@ -179,7 +170,6 @@ export function AppNav({
   tankTracking = false,
   machinePlanning = false,
   odooAlerts = { enabled: false, count: 0 },
-  line = "TR",
   whatsNewSeen = null,
   ai = false,
   inbox = { unread: 0, any: false },
@@ -193,8 +183,6 @@ export function AppNav({
   machinePlanning?: boolean;
   /** The subscribed person's "ready to close in Odoo" alert: its count on the Plan Tracker tab (which holds the ODOO log), and the popup. */
   odooAlerts?: { enabled: boolean; count: number };
-  /** The product line every tab is showing — transformers or LV panels. */
-  line?: ProductLine;
   /** The newest "What's new" entry this person has seen. */
   whatsNewSeen?: string | null;
   /** The AI assistant is open to this person (lib/server/ai/access). */
@@ -227,35 +215,30 @@ export function AppNav({
   );
 
   // A user who can edit exactly ONE department jumps straight to it from the
-  // Floor tab; everyone else (admins, multi-dept, view-only) expands the
-  // tab into the three departments inline.
-  // the leak test and the barcodes are the tanks' — with tracking off, or the
-  // panels on screen, they are not part of the app
-  const tankTabs = tankTracking && line !== "LV";
-  // the simulator and the Production dashboard are the transformers' only: on the panels no tab holds them
-  const ofLine = (items: Item[]): Item[] =>
-    line !== "LV" ? items : items.map((l) => (l.also ? { ...l, also: l.also.filter((h) => !TR_VIEWS.has(h)) } : l));
+  // Floor tab; everyone else (admins, multi-dept, view-only) opens the tab
+  // onto its departments.
+  // the leak test and the barcodes are the tanks' — with tracking off they are not part of the app
+  const tankTabs = tankTracking;
+  // the line on screen — which of welding's or painting's two queues is lit
+  const line = useActiveLine();
   // the screens the owner switched off for this account leave the menus too
   const canSee = useCanSee();
-  const worklistDepts = (line === "LV" ? LV_WORKLIST_DEPTS : WORKLIST_DEPTS).filter((d) => (tankTabs || !TANK_ONLY.has(d.href)) && canSee(d.href));
+  const worklistDepts = FLOOR_DEPTS.filter((d) => (tankTabs || !TANK_ONLY.has(d.path)) && canSee(d.path));
+  const deptOn = (d: FloorDept) => on(d.path) && line === d.line;
   const shown = (l: { href: string }) => (tankTabs || !TANK_ONLY.has(l.href)) && (machinePlanning || !MACHINE_ONLY.has(l.href)) && canSee(l.href);
   // a tab whose own screen is off but one of its views is on opens on that view
   const reachable = (l: Item): Item | null => {
     const to = [l.href, ...(l.also ?? [])].find(canSee);
     return to ? (to === l.href ? l : { ...l, href: to, match: l.match ?? l.href }) : null;
   };
-  const restTabs = ofLine(REST).filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && (machinePlanning || !MACHINE_ONLY.has(l.href)))
+  const restTabs = REST.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && (machinePlanning || !MACHINE_ONLY.has(l.href)))
     .map(reachable).filter((l): l is Item => l !== null);
-  const drawerTabs = ofLine(!machinePlanning
-    ? DRAWER.filter((l) => !l.href.startsWith("/worklist/"))
-    : line === "LV"
-    ? [...LV_WORKLIST_DEPTS.map((d): Item => ({ href: d.href, label: `${d.label} Worklist`, icon: d.icon })), ...DRAWER.filter((l) => !l.href.startsWith("/worklist/"))]
-    : DRAWER
-  ).filter(shown);
-  // the simulator is the transformers' — the panels' home page is their own dashboard
-  const drawerViews = DRAWER_VIEWS.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && !(line === "LV" && TR_VIEWS.has(l.href)) && canSee(l.href));
+  // the mobile drawer has vertical room — it lists the worklists directly
+  const drawerDepts = machinePlanning ? worklistDepts : [];
+  const drawerTabs = REST.filter(shown);
+  const drawerViews = DRAWER_VIEWS.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && canSee(l.href));
   const deptEdits = worklistDepts.filter((d) => user.perms.includes(d.perm));
-  const singleDeptHref = worklistDepts.length === 1 ? worklistDepts[0].href : !user.isAdmin && deptEdits.length === 1 ? deptEdits[0].href : null;
+  const singleDept = worklistDepts.length === 1 ? worklistDepts[0] : !user.isAdmin && deptEdits.length === 1 ? deptEdits[0] : null;
 
   const [open, setOpen] = useState(false); // desktop admin dropdown
   const [worklistOpen, setWorklistOpen] = useState(false); // inline worklist dept expansion
@@ -380,8 +363,8 @@ export function AppNav({
                   than closed. */}
               {machinePlanning && worklistDepts.length > 0 && (
               <li ref={wlRef} className="relative flex items-center">
-                {singleDeptHref ? (
-                  <Link href={singleDeptHref} className={`nav-tab ${isActive("/worklist") ? "nav-tab-active" : ""}`}>
+                {singleDept ? (
+                  <Link href={deptHref(singleDept)} className={`nav-tab ${isActive("/worklist") ? "nav-tab-active" : ""}`}>
                     <ListChecks size={15} className="shrink-0" />
                     Floor
                   </Link>
@@ -411,19 +394,28 @@ export function AppNav({
                         style={{ top: wlPos.top, left: wlPos.left }}
                         className="nav-drop nav-drop-left fixed w-60 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
                       >
-                        {worklistDepts.map((d) => (
-                          <Link
-                            key={d.href}
-                            href={d.href}
-                            role="menuitem"
-                            className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-bold whitespace-nowrap transition-colors ${
-                              isActive(d.href) ? "bg-brand-light text-brand-ink" : "hover:bg-surface-2"
-                            }`}
-                          >
-                            <d.icon size={16} className={`shrink-0 ${isActive(d.href) ? "text-brand-ink" : "text-muted"}`} />
-                            {d.label}
-                          </Link>
-                        ))}
+                        {LINE_GROUPS.map((g) => {
+                          const depts = worklistDepts.filter((d) => d.line === g.line);
+                          if (depts.length === 0) return null;
+                          return (
+                            <div key={g.line} role="group" aria-label={g.label}>
+                              <p className="nav-drop-label" aria-hidden>{g.label}</p>
+                              {depts.map((d) => (
+                                <Link
+                                  key={deptHref(d)}
+                                  href={deptHref(d)}
+                                  role="menuitem"
+                                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-bold whitespace-nowrap transition-colors ${
+                                    deptOn(d) ? "bg-brand-light text-brand-ink" : "hover:bg-surface-2"
+                                  }`}
+                                >
+                                  <d.icon size={16} className={`shrink-0 ${deptOn(d) ? "text-brand-ink" : "text-muted"}`} />
+                                  {d.label}
+                                </Link>
+                              ))}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </>
@@ -444,8 +436,6 @@ export function AppNav({
 
           {/* right cluster */}
           <div className="ml-auto flex items-center gap-1 md:gap-2 shrink-0">
-            {/* the plant's two products: one switch, inside every tab at once */}
-            <LineTabs line={line} />
             {/* the AI assistant has no button here: its round button sits in
                 the corner of every page (components/AiPanel) */}
             {/* the inbox — alerts, reports and tasks — for everyone: anyone
@@ -550,6 +540,17 @@ export function AppNav({
 
             {/* links */}
             <nav className="flex-1 overflow-y-auto py-1">
+              {LINE_GROUPS.map((g) => {
+                const depts = drawerDepts.filter((d) => d.line === g.line);
+                return depts.length > 0 && (
+                  <div key={g.line} role="group" aria-label={`Floor — ${g.label}`}>
+                    <p className="drawer-label">Floor · {g.label}</p>
+                    {depts.map((d) => (
+                      <DrawerLink key={deptHref(d)} href={deptHref(d)} label={d.drawerLabel} icon={d.icon} active={deptOn(d)} />
+                    ))}
+                  </div>
+                );
+              })}
               <p className="drawer-label">Production</p>
               {drawerTabs.map((l) => (
                 <DrawerLink key={l.href} href={l.href} label={l.label} icon={l.icon} active={isActive(l.href, l.match)} badge={null} />

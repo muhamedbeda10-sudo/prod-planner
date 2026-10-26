@@ -1648,6 +1648,8 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 
 /* ---- the phone's navigation drawer ---- */
 .drawer-label { padding: 14px 16px 4px; font-size: var(--fs-label); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+/* a group's name inside a nav panel — the Floor tab's two lines */
+.nav-drop-label { padding: 8px 12px 2px; font-size: var(--fs-label); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .drawer-link { display: flex; align-items: center; gap: 12px; width: calc(100% - 16px); margin: 0 8px; padding: 10px 12px; border-radius: var(--r-md); font-size: 15px; font-weight: 600; text-align: start; color: var(--foreground); transition: background-color 0.12s ease, color 0.12s ease; }
 .drawer-link:hover { background: var(--surface-2); }
 .drawer-link > svg { flex-shrink: 0; color: var(--muted); }

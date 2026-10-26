@@ -97,9 +97,9 @@ export const PERM_CATEGORIES: PermCategory[] = [
       { key: "lv.tracker.delivered", label: "LV Delivered — record", desc: "Record how many panels the customer has received — capped at the painted quantity" },
       { key: "shifts.lv", label: "Shift log — LV panels", desc: "Record who worked on the panels each day (laser, punching, bending, welding, painting), their shift and overtime" },
       { key: "lv.status", label: "LV orders — close / reopen / hold", desc: "Close finished panel orders, reopen them, and put panel orders on hold or release them" },
-      { key: "lv.import", label: "LV plans — import", desc: "Import the panels' monthly plan (with the LV toggle on)" },
-      { key: "lv.odoo", label: "LV Odoo close-out log — record", desc: "Add and edit the ODOO log's rows while the LV toggle is on" },
-      { key: "lv.material", label: "LV material — record", desc: "Add and edit the MATERIAL tab's lines while the LV toggle is on" },
+      { key: "lv.import", label: "LV plans — import", desc: "Import the panels' monthly plan (the Orders Registry on LV Panels)" },
+      { key: "lv.odoo", label: "LV Odoo close-out log — record", desc: "Add and edit the ODOO log's LV panel rows" },
+      { key: "lv.material", label: "LV material — record", desc: "Add and edit the MATERIAL tab's lines on LV Panels" },
     ],
   },
   {

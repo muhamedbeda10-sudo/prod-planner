@@ -106,7 +106,7 @@ export function LvWorklist({ data, canEdit, todayISO }: { data: LvWorklistData; 
                 <td className="p-2 text-xs whitespace-nowrap">{r.customer ?? "—"}</td>
                 <td className="p-2 text-center"><span className="pill pill-muted">{r.product ?? "—"}</span></td>
                 <td className="p-2 font-semibold whitespace-nowrap text-xs">
-                  <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-brand-ink hover:underline">{r.bom}</Link>
+                  <Link href={`/trace?bom=${encodeURIComponent(r.bom)}&line=LV`} className="text-brand-ink hover:underline">{r.bom}</Link>
                 </td>
                 <td className="p-2 text-center tabnum">{r.state.required}</td>
                 <td className="p-2 text-center tabnum">{prev ? lvStageOf(r.state, prev) : r.state.required}</td>

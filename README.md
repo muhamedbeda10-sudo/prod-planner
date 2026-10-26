@@ -29,7 +29,7 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 Tabs, one per QUESTION rather than per screen — Floor (the worklists) · Dashboards · Material · Shifts · Plan
 Tracker. **Dashboards** holds every dashboard of the app, one place each, behind a strip at the top of
 its pages (`components/DashboardSections.tsx`): **Planning** (`/`, the home page — the planner's one page
-across departments, feature 13; on the LV line the panels' own dashboard), **Production**
+across departments, feature 13; on LV Panels the panels' own dashboard), **Production**
 (`/dashboards/production`, the floor's efficiency, productivity, output, stops and where the hours went;
 transformers only), **Material** (`/dashboards/material`, feature 5), **Consumables**
 (`/dashboards/consumables`) and **ODOO** (`/dashboards/odoo`). Each is seen with the screen it reads (its
@@ -37,11 +37,24 @@ tab id: the Production dashboard with Shifts), and no dashboard is anywhere else
 (`/analytics`, `?view=dashboard`) land on them. **Material** holds the nesting sheets, Physical Material
 and Consumables behind the same kind of strip; **Plan Tracker** carries the tracker, the **Daily log** it
 adds up, the **What-if Simulator** the plan is tried out on (`/simulate`, transformers only) and the
-**ODOO** close-out log (`/odoo`, whose alerts' badge rides on the Plan Tracker tab). Two things left the strip entirely: **chat** is the icon in the nav's
+**ODOO log** (`/odoo`, whose alerts' badge rides on the Plan Tracker tab), behind the same strip
+(`components/TrackerSections.tsx`). The rule: the strip at the top moves between a tab's PLACES; the
+switch in a page head moves between VIEWS of one place's rows (`components/ViewTabs.tsx`). Two things left the strip entirely: **chat** is the icon in the nav's
 right cluster, opening a panel over whatever page you are on (a glance, not a destination — its
 bundle is fetched only on first open), and the **barcode sheet** is a button on the painting
 worklist, where the tanks it prints for finish. In Admin the two plan imports share one page. The
 mobile drawer still lists every view flat, since it has the vertical room.
+
+**Product lines (Transformers / LV Panels).** There is no line switch in the top bar. A screen whose rows
+depend on the line (Planning, the Material dashboard, the Plan Tracker, the Daily log, Material, the Orders
+Registry, the welding and painting worklists) carries a **Transformers | LV Panels** switch in its page head
+(`components/LineSwitch.tsx`), and the line is part of the address (`?line=LV`): the proxy copies it into a
+request header that `getActiveLine` (`lib/server/line.ts`) reads, so the page's loaders and every server
+action posted from the page agree on it. With no line in the address a screen opens on the person's own line
+(`defaultLineOf`, `lib/domain/lines.ts`): LV Panels for someone who records only on the panels, Transformers for
+everyone else. A screen that belongs to one line always shows it (`pinLine`): the Simulator, the weekly import,
+the Production dashboard and Fabrication are the transformers', Punching and Bending the panels'. The Floor tab
+lists both lines' departments; the ODOO log shows both lines at once; a trace opens on its order's own line.
 
 ## Features
 1. **Weekly plan import** (`/import`) — grid parser from row 6, merged-BOM carry-down, `ParseBalance`
@@ -267,7 +280,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    standard hours they earned, or by pieces when nothing that day is priced — so AR and MB get a figure too).
    Click it to take it as the figure. Only a ✓ on a machine card carries the machine, so the page says what
    share of the recorded output can be measured at all. The machines are one physical floor: the measured
-   figures are priced against the transformer registry whichever line the nav toggle shows, and a record whose
+   figures are priced against the transformer registry whichever line is on screen, and a record whose
    MO is not on the master list is priced by its project's class.
    **Shift hours** (Shifts → Shift hours, admin): what the day shift, the night shift and each shift's overtime are
    worth. Every man-hour the app counts is measured with them — the shift log's day, a machine's crew, the
@@ -546,7 +559,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
      through the assistant.
 
 13. **Planning cockpit** (`/`, the home page — the Planning place of the Dashboards tab; the transformers only — on
-   the LV line the home page is the panels' own dashboard) — the planner's one page, every figure in **standard hours**
+   LV Panels (`/?line=LV`) the home page is the panels' own dashboard) — the planner's one page, every figure in **standard hours**
    (what the work is worth, from the hours a piece per work centre — typed, else the estimate), so Fabrication's
    ten projects a day add up and departments compare. The **Decisions** button in its head (icon: the worst news; badge: how many) opens what needs a decision today (lines behind, a centre
    short at the end of the horizon or falling behind in it and when it catches up, thin or heavy welding coverage, a slow centre, the

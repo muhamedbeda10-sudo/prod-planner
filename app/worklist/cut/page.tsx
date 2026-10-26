@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { PageHead } from "@/components/ui";
 import { formatDate } from "@/lib/domain/format";
 import { getSettings } from "@/lib/server/data";
@@ -12,7 +11,7 @@ import { PrintHeader } from "@/components/PrintHeader";
 import { getCurrentUser, canEditDept, hasPerm, guardTab } from "@/lib/server/auth";
 import { getMachineBoard } from "@/lib/server/machineBoard";
 import { getWeeklyPlanTracker } from "@/lib/server/weeklyPlanTracker";
-import { getActiveLine } from "@/lib/server/line";
+import { pinLine } from "@/lib/server/line";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +23,10 @@ export const dynamic = "force-dynamic";
 // are recorded. The PrintHeader appears only on the printed/PDF sheet.
 export default async function CutWorklistPage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
   await guardTab("/worklist/cut");
-  // a panel is not cut on the lasers — its fabrication is punching, then bending
-  if ((await getActiveLine()) === "LV") redirect("/worklist/punching");
   const sp = await searchParams;
+  // a panel is not cut on the lasers — its fabrication is punching, then
+  // bending: this worklist is the transformers' alone
+  await pinLine("TR", "/worklist/cut", sp);
   const dayISO = factoryDayISO(new Date());
   // an unknown ?plan= falls back to the newest plan inside the loader
   const [returns, settings, user, week, extras, notes, soi] = await Promise.all([

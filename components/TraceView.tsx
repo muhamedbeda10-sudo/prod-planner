@@ -478,7 +478,7 @@ function Records({ t, exportRows, exportFilename }: { t: TraceResult; exportRows
                   <td className="px-4 py-1.5 whitespace-nowrap tabnum text-muted">{formatDate(l.dateISO)}</td>
                   {byOrder && (
                     <td className="px-3 py-1.5 text-xs whitespace-nowrap ltr">
-                      {l.mo ? <Link href={`/trace?mo=${encodeURIComponent(l.mo)}`} className="text-brand-ink hover:underline">{l.mo}</Link> : <span className="text-muted">—</span>}
+                      {l.mo ? <Link href={`/trace?mo=${encodeURIComponent(l.mo)}&line=TR`} className="text-brand-ink hover:underline">{l.mo}</Link> : <span className="text-muted">—</span>}
                     </td>
                   )}
                   <td className="px-3 py-1.5">{deptLabel(l.dept)}</td>

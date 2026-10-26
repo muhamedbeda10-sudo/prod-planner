@@ -1,9 +1,16 @@
+import { PERM_CATEGORIES, linePermKey } from "./permissions";
+
 // The plant builds two things that never mix: distribution TRANSFORMERS — the
 // tanks, covers, core frames and cable boxes every screen was built around —
 // and LV PANELS, the low-voltage substations (LSS / USS) planned from their
 // own monthly sheet. They share the app's tabs but not its rows: an order
-// belongs to one line, a screen shows one line at a time, and the toggle in
-// the nav is what switches between them.
+// belongs to one line, and a screen whose rows depend on it shows one line at
+// a time, with a switch of its own in its page head.
+//
+// The line on screen is part of the page's ADDRESS (`?line=LV`), never a
+// setting hidden somewhere else: a link, a bookmark or a server action sent
+// from the page all carry it. With none in the address, the screen opens on
+// the person's own line (defaultLineOf).
 //
 // The line is a fact about the ORDER, stamped when its plan is imported. It
 // is never inferred from the order's shape, so an LV order with a BOM that
@@ -29,15 +36,62 @@ export function isProductLine(x: unknown): x is ProductLine {
   return typeof x === "string" && (PRODUCT_LINES as readonly string[]).includes(x);
 }
 
-/** Read a line off whatever a cookie, a form or a URL carried — anything
- *  that is not a known line is the default, never an error: the toggle has
- *  to land somewhere. */
+/** Read a line off whatever a form or a URL carried — anything that is not a
+ *  known line is the default, never an error: a screen has to land somewhere. */
 export function resolveLine(raw: unknown): ProductLine {
   const v = typeof raw === "string" ? raw.trim().toUpperCase() : "";
   return isProductLine(v) ? v : DEFAULT_LINE;
 }
 
-/** The other line — what the toggle switches to. */
+/** The other line. */
 export function otherLine(line: ProductLine): ProductLine {
   return line === "TR" ? "LV" : "TR";
+}
+
+/** The address parameter that names the line on screen. */
+export const LINE_PARAM = "line";
+/** The request header the proxy copies that parameter into, so a loader deep
+ *  inside a page or a server action can read it (lib/server/line.ts). */
+export const LINE_HEADER = "x-atc-line";
+
+/** The line an address names, or null when it names none (or nonsense). */
+export function lineParam(raw: unknown): ProductLine | null {
+  const v = typeof raw === "string" ? raw.trim().toUpperCase() : "";
+  return isProductLine(v) ? v : null;
+}
+
+/** `href` showing `line`: the address with its line parameter set, the rest
+ *  of its query and its #fragment kept. */
+export function hrefWithLine(href: string, line: ProductLine): string {
+  const hash = href.indexOf("#");
+  const frag = hash >= 0 ? href.slice(hash) : "";
+  const base = hash >= 0 ? href.slice(0, hash) : href;
+  const q = base.indexOf("?");
+  const path = q >= 0 ? base.slice(0, q) : base;
+  const params = new URLSearchParams(q >= 0 ? base.slice(q + 1) : "");
+  params.set(LINE_PARAM, line);
+  return `${path}?${params}${frag}`;
+}
+
+// The keys that make someone a worker of one line: the LV Panels group's
+// for the panels; the departments', the Plan Tracker's and the transformer
+// side of every per-line job for the transformers.
+const LV_KEYS = new Set(PERM_CATEGORIES.filter((c) => c.name === "LV Panels").flatMap((c) => c.perms.map((p) => p.key)));
+const TR_KEYS = new Set([
+  ...PERM_CATEGORIES.filter((c) => c.name === "Departments" || c.name === "Plan Tracker").flatMap((c) => c.perms.map((p) => p.key)),
+  ...(["status", "import", "odoo", "material"] as const).map((job) => linePermKey("TR", job)),
+]);
+
+/** The line a screen opens on for this person when its address names none:
+ *  the panels for someone who records only on the panels, the transformers
+ *  for everyone else — admins included. Only where a screen OPENS; what the
+ *  person may see or change is untouched. */
+export function defaultLineOf(perms: Iterable<string>, isAdmin: boolean): ProductLine {
+  if (isAdmin) return DEFAULT_LINE;
+  let lv = false;
+  for (const k of perms) {
+    if (TR_KEYS.has(k)) return DEFAULT_LINE;
+    if (LV_KEYS.has(k)) lv = true;
+  }
+  return lv ? "LV" : DEFAULT_LINE;
 }

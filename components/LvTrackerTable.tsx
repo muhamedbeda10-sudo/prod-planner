@@ -313,7 +313,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
           { sep: true }
         );
       }
-      e.push({ key: "trace", icon: "🔍", label: "Open trace for this code", href: `/trace?bom=${encodeURIComponent(t.bom)}` });
+      e.push({ key: "trace", icon: "🔍", label: "Open trace for this code", href: `/trace?bom=${encodeURIComponent(t.bom)}&line=LV` });
       return e;
     }
     const r = t.row;
@@ -328,7 +328,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
         : { key: "close", icon: "✓", label: "Close order", hint: "It leaves the open screens; the log is untouched", onSelect: () => void changeStatus(r, "closed") });
       e.push({ sep: true });
     }
-    e.push({ key: "trace", icon: "🔍", label: "Open trace", href: `/trace?mo=${encodeURIComponent(r.mo)}` });
+    e.push({ key: "trace", icon: "🔍", label: "Open trace", href: `/trace?mo=${encodeURIComponent(r.mo)}&line=LV` });
     return e;
   }
 
@@ -343,8 +343,8 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
         {held && <span className="pill pill-warn cursor-help max-w-full" title={holdLabel(r.hold)}><Pause size={10} className="shrink-0" aria-hidden /><span className="truncate">HOLD{r.hold.holdNote ? ` · ${r.hold.holdNote}` : ""}</span></span>}
       </>
     );
-    const moLink = <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-brand-ink hover:underline whitespace-nowrap">{r.mo}</Link>;
-    const bomLink = <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-brand-ink hover:underline whitespace-nowrap">{r.bom}</Link>;
+    const moLink = <Link href={`/trace?mo=${encodeURIComponent(r.mo)}&line=LV`} className="text-brand-ink hover:underline whitespace-nowrap">{r.mo}</Link>;
+    const bomLink = <Link href={`/trace?bom=${encodeURIComponent(r.bom)}&line=LV`} className="text-brand-ink hover:underline whitespace-nowrap">{r.bom}</Link>;
     return (
       <tr
         key={r.mo}
@@ -512,7 +512,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
                 </>
               );
               const caret = <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? "rotate-90" : ""}`} aria-hidden />;
-              const bomLink = <Link href={`/trace?bom=${encodeURIComponent(bom)}`} onClick={(e) => e.stopPropagation()} className="text-brand-ink hover:underline whitespace-nowrap">{bom}</Link>;
+              const bomLink = <Link href={`/trace?bom=${encodeURIComponent(bom)}&line=LV`} onClick={(e) => e.stopPropagation()} className="text-brand-ink hover:underline whitespace-nowrap">{bom}</Link>;
               return (
                 <Fragment key={`g|${bom}`}>
                   <tr

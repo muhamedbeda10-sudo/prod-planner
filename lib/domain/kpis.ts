@@ -455,7 +455,7 @@ export function cockpitActions(i: ActionInputs): CockpitAction[] {
   const out: CockpitAction[] = [];
   if (i.late.length > 0) {
     const first = i.late[0];
-    out.push({ tone: "bad", href: "/tracker?view=weekly", text: `${i.lateCount ?? i.late.length} plan line(s) are behind — the oldest, ${first.bom} ${first.item} due ${i.ddmm(first.dayISO)}, is ${first.short} pc short at ${STAGE_LABEL[first.stage]}.` });
+    out.push({ tone: "bad", href: "/tracker?view=weekly&line=TR", text: `${i.lateCount ?? i.late.length} plan line(s) are behind — the oldest, ${first.bom} ${first.item} due ${i.ddmm(first.dayISO)}, is ${first.short} pc short at ${STAGE_LABEL[first.stage]}.` });
   }
   for (const l of i.load) {
     // short at the end of the horizon: the plan does not fit as it stands
@@ -471,7 +471,7 @@ export function cockpitActions(i: ActionInputs): CockpitAction[] {
     const top = i.coverage.byItem[0];
     out.push({ tone: "bad", href: "/worklist/cut", text: `Welding has only ${i.coverage.days} day(s) of cut parts in front of it${top ? ` — cut ${top.item} next` : ""}.` });
   } else if (i.coverage.band === "heavy") {
-    out.push({ tone: "warn", href: "/worklist/welding", text: `${i.coverage.days} days of cut parts are waiting for welding — Fabrication is far ahead; welding is the constraint.` });
+    out.push({ tone: "warn", href: "/worklist/welding?line=TR", text: `${i.coverage.days} days of cut parts are waiting for welding — Fabrication is far ahead; welding is the constraint.` });
   }
   // people short of the month's plan: one line for all of them, the shortest named
   const short = (i.manpower ?? []).filter((m) => m.tone === "bad").sort((a, b) => (a.gap ?? 0) - (b.gap ?? 0));

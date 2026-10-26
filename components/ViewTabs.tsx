@@ -1,10 +1,10 @@
 import { ViewTabsNav } from "@/components/ViewTabsNav";
 
-// One tab in the strip can hold several screens: the pages stay separate
-// routes (each is big, and each deep-links), and this switcher reads them as
-// one place with views. The Plan Tracker tab holds the tracker, the daily log,
-// the simulator and the ODOO log. (A tab holding several places — Material, Dashboards —
-// moves between them with components/SectionStrip.tsx.)
+// One place can show its rows several ways — Consumables' log, powder scrap
+// and limits; the Orders Registry's monthly and weekly imports. This switch,
+// in the page head, moves between those views. (A tab holding several
+// PLACES — Dashboards, Material, Plan Tracker — moves between them with the
+// strip at the top, components/SectionStrip.tsx.)
 
 export interface View {
   href: string;
@@ -19,23 +19,6 @@ export interface View {
  *  hidden screens are known. */
 export function ViewTabs(props: { views: View[]; current: string; label: string }) {
   return <ViewTabsNav {...props} />;
-}
-
-/** The Plan Tracker tab's screens: the tracker, the raw ledger the tracker
- *  adds up, the what-if simulator the plan is tried out on, and the ODOO
- *  close-out log. The plan's dashboard is in the Dashboards tab (Planning,
- *  the home page). */
-export const TRACKER_VIEWS: View[] = [
-  { href: "/tracker", label: "Plan Tracker", title: "One row per order, every stage" },
-  { href: "/handover", label: "Daily log", title: "The raw entries the tracker adds up — edit and correct them here" },
-  { href: "/simulate", label: "Simulator", title: "What-if: move the dates and the capacity and see what lands" },
-  { href: "/odoo", label: "ODOO", title: "The daily close-out log on Odoo, both lines" },
-];
-
-/** The same, for the product line on screen: on the panels there is no
- *  simulator, which models the transformers' plan only. */
-export function trackerViews(line: string): View[] {
-  return line !== "LV" ? TRACKER_VIEWS : TRACKER_VIEWS.filter((v) => v.href !== "/simulate");
 }
 
 /** The two plan imports, which lived on two separate Admin pages: the monthly

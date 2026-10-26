@@ -1,0 +1,101 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// ---- The product line on screen is the page's address, else the person's own ----
+// There is no switch in the top bar any more: a page shows the line its
+// address names (?line=LV, copied by the proxy into a header), and with none
+// the person's own line — the panels for someone who records only on the
+// panels. A screen that belongs to one line reopens on it, address kept.
+
+const h = vi.hoisted(() => ({ header: vi.fn(), user: vi.fn(), redirect: vi.fn() }));
+vi.mock("server-only", () => ({}));
+vi.mock("next/headers", () => ({ headers: async () => ({ get: h.header }) }));
+vi.mock("next/navigation", () => ({ redirect: h.redirect }));
+vi.mock("@/lib/server/auth", () => ({
+  getCurrentUser: h.user,
+  userPerms: (u: { perms: string }) => new Set(u.perms.split(",").filter(Boolean)),
+}));
+
+import { getActiveLine, pinLine, withLine } from "@/lib/server/line";
+import { proxy } from "@/proxy";
+import { NextRequest } from "next/server";
+
+const person = (perms: string, isAdmin = false) => ({ perms, isAdmin });
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  h.header.mockReturnValue(null);
+  h.user.mockResolvedValue(person("welding.edit"));
+});
+
+describe("getActiveLine", () => {
+  it("reads the line the address names", async () => {
+    h.header.mockReturnValue("LV");
+    expect(await getActiveLine()).toBe("LV");
+    expect(h.user).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the person's own line", async () => {
+    h.user.mockResolvedValue(person("lv.punching,lv.bending"));
+    expect(await getActiveLine()).toBe("LV");
+    h.user.mockResolvedValue(person("lv.punching,welding.edit"));
+    expect(await getActiveLine()).toBe("TR");
+    h.user.mockResolvedValue(person("lv.punching", true));
+    expect(await getActiveLine()).toBe("TR");
+  });
+
+  it("ignores nonsense in the header", async () => {
+    h.header.mockReturnValue("panels");
+    h.user.mockResolvedValue(person("lv.welding"));
+    expect(await getActiveLine()).toBe("LV");
+  });
+
+  it("is the transformers' with nobody signed in", async () => {
+    h.user.mockResolvedValue(null);
+    expect(await getActiveLine()).toBe("TR");
+  });
+
+  it("lets withLine override the address for the span of one call", async () => {
+    h.header.mockReturnValue("TR");
+    expect(await withLine("LV", () => getActiveLine())).toBe("LV");
+    expect(await getActiveLine()).toBe("TR");
+  });
+});
+
+describe("pinLine", () => {
+  it("does nothing on its own line", async () => {
+    h.header.mockReturnValue("TR");
+    await pinLine("TR", "/simulate");
+    expect(h.redirect).not.toHaveBeenCalled();
+  });
+
+  it("reopens the page on its line, the rest of the address kept", async () => {
+    h.header.mockReturnValue("LV");
+    await pinLine("TR", "/dashboards/production", { from: "2026-10-01", dept: "Welding", line: "LV", list: ["a", "b"] });
+    expect(h.redirect).toHaveBeenCalledWith("/dashboards/production?from=2026-10-01&dept=Welding&line=TR");
+  });
+
+  it("reopens a panels-only page for someone whose own line is the transformers'", async () => {
+    await pinLine("LV", "/worklist/punching");
+    expect(h.redirect).toHaveBeenCalledWith("/worklist/punching?line=LV");
+  });
+});
+
+describe("the proxy hands the address's line to the page", () => {
+  const req = (url: string, headers: Record<string, string> = {}) =>
+    new NextRequest(new URL(url, "http://plant.test"), { headers: { cookie: "atc_session=x", ...headers } });
+  const forwarded = (res: Response) => res.headers.get("x-middleware-request-x-atc-line");
+
+  it("copies ?line= into the request header", () => {
+    expect(forwarded(proxy(req("/tracker?line=lv")))).toBe("LV");
+  });
+
+  it("never passes on a header the browser sent itself", () => {
+    const res = proxy(req("/tracker", { "x-atc-line": "LV" }));
+    expect(forwarded(res)).toBeNull();
+  });
+
+  it("still sends a visitor with no session to the login page", () => {
+    const res = proxy(new NextRequest(new URL("/tracker?line=LV", "http://plant.test")));
+    expect(res.headers.get("location")).toBe("http://plant.test/login");
+  });
+});

@@ -24,12 +24,13 @@ import { MachineBoard } from "@/components/MachineBoard";
 export const dynamic = "force-dynamic";
 import { getActiveLine } from "@/lib/server/line";
 import { LvWorklistPage } from "@/components/LvWorklistPage";
+import { LineSwitch } from "@/components/LineSwitch";
 
 // No page header on screen — every pixel goes to the queue (title lives in the
 // nav tab). The PrintHeader appears only on the printed/PDF sheet.
 export default async function WeldWorklistPage() {
   await guardTab("/worklist/welding");
-  // the panels have their own welding worklist — same route, the line decides
+  // the panels have their own welding worklist — same route, the line on screen decides
   if ((await getActiveLine()) === "LV") return <LvWorklistPage stage="Welding" />;
   // the factory's day (Cairo), not the server's UTC date: the night shift
   // records after midnight, and its rows belong to the day it works
@@ -63,7 +64,7 @@ export default async function WeldWorklistPage() {
   return (
     <>
       <PrintHeader title="Welding Worklist" date={formatDate(today)} />
-      <PageHead title="Welding Worklist" sub={`Transformers · ${formatDate(today)}`} />
+      <PageHead title="Welding Worklist" sub={formatDate(today)}><LineSwitch /></PageHead>
       <WeldingQueueTable
         soi={soi}
         rows={queue}

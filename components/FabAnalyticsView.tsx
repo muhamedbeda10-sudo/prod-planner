@@ -125,7 +125,7 @@ export function FabAnalyticsView({ a }: { a: MaterialDashboardData }) {
           icon={Layers}
           title="The material sheet is empty"
           hint="Upload it on the Material tab and the dashboard fills in."
-          action={<Link href="/material" className="btn btn-secondary btn-sm">Open Material</Link>}
+          action={<Link href="/material?line=TR" className="btn btn-secondary btn-sm">Open Material</Link>}
         />
       </div>
     );

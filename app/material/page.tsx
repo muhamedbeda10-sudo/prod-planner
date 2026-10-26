@@ -5,9 +5,9 @@ import { getMaterialData } from "@/lib/server/material";
 import { ExportMenu } from "@/components/ExportMenu";
 import { PageHead } from "@/components/ui";
 import { MaterialSections } from "@/components/MaterialSections";
+import { LineSwitch } from "@/components/LineSwitch";
 import { MaterialClient } from "@/components/MaterialClient";
 import { getActiveLine } from "@/lib/server/line";
-import { LINE_LABEL } from "@/lib/domain/lines";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 
 export const metadata = { title: "Material — ATC" };
@@ -78,9 +78,11 @@ export default async function MaterialPage({
       <MaterialSections current="material" />
       <PageHead
         title="Material"
-        sub={`Nesting sheet · ${LINE_LABEL[line]} · one living table, matched on the MO`}
+        sub="Nesting sheet · one living table, matched on the MO"
         actions={<ExportMenu excel={[{ rows: exportRows, filename: "material-sheet.xlsx", sheetName: "Sheet1" }]} />}
-      />
+      >
+        <LineSwitch />
+      </PageHead>
       <MaterialClient
         lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))}
         product={line} lvOrders={lvOrders} lvTemplates={lvTemplates} odooByMo={odooByMo}

@@ -118,6 +118,23 @@ describe("importMonthlyAction", () => {
     await importMonthlyAction(importForm(true));
     expect(h.emitEvent).not.toHaveBeenCalled();
   });
+
+  it("refuses a sheet the form sent under the other line than the page's address", async () => {
+    h.getActiveLine.mockResolvedValue("TR");
+    const fd = importForm();
+    fd.set("line", "LV");
+    expect(await importMonthlyAction(fd)).toEqual({ ok: false, error: "This form was for LV Panels, but the page is now on Transformers. Reload the page and import again." });
+    expect(h.importMonthlyPlan).not.toHaveBeenCalled();
+  });
+
+  it("imports when the form's line is the page's", async () => {
+    h.getActiveLine.mockResolvedValue("TR");
+    h.importMonthlyPlan.mockResolvedValue({ ok: true, added: 1, updatedMos: 0, preview: true, removed: [] });
+    const fd = importForm(true);
+    fd.set("line", "TR");
+    expect(await importMonthlyAction(fd)).toMatchObject({ ok: true });
+    expect(h.importMonthlyPlan).toHaveBeenCalled();
+  });
 });
 
 describe("updateOrder", () => {

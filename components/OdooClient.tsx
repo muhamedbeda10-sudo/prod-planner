@@ -227,7 +227,7 @@ function dayRange(rows: OdooEntryView[]): string {
 }
 
 /** The row's BOM, and a quiet mark when it is less than certain. */
-function BomValue({ bom }: { bom: OdooEntryView["bom"] }) {
+function BomValue({ bom, line }: { bom: OdooEntryView["bom"]; line: string }) {
   if (bom.boms.length === 0) return <span className="text-muted">—</span>;
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
@@ -235,7 +235,7 @@ function BomValue({ bom }: { bom: OdooEntryView["bom"] }) {
       {bom.boms.map((b, i) => (
         <Fragment key={b}>
           {i > 0 && " / "}
-          <Link href={`/trace?bom=${encodeURIComponent(b)}`} onClick={(ev) => ev.stopPropagation()} className="text-brand-ink hover:underline" title="Open the order's details">{b}</Link>
+          <Link href={`/trace?bom=${encodeURIComponent(b)}&line=${line === "LV" ? "LV" : "TR"}`} onClick={(ev) => ev.stopPropagation()} className="text-brand-ink hover:underline" title="Open the order's details">{b}</Link>
         </Fragment>
       ))}
       {bom.boms.length > 1 && <span className="pill pill-warn text-[10px]" title="The SOI has several BOMs — the row does not say which">{bom.boms.length} BOMs</span>}
@@ -533,7 +533,7 @@ function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: 
         </td>
         <td className={cell} onClick={open} title={rowTitle}><Soi soi={e.soi} /></td>
         <td className={`${cell} ltr text-xs font-semibold`} onClick={open} title={bomTitle(e)}>
-          <BomValue bom={e.bom} />
+          <BomValue bom={e.bom} line={e.line} />
         </td>
         <td className={cell} onClick={open} title={rowTitle}>{e.product}</td>
         <td className={`${cell} ltr text-xs font-bold`} onClick={!e.odooMo && canEdit ? undefined : open} title={flag ? flag.text : e.odooMo ? rowTitle : "Odoo's MO is not known here — type it once the MO is printed from Odoo"}>
@@ -688,7 +688,7 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
         <td className={cell} onClick={details} title={rowTitle}><Soi soi={head.soi} /></td>
         <td className={`${cell} ltr text-xs font-semibold`} onClick={details}>
           <span className="inline-flex flex-col" title={bomTitle(head)}>
-            <BomValue bom={head.bom} />
+            <BomValue bom={head.bom} line={head.line} />
           </span>
         </td>
         <td className={cell} onClick={details} title={rowTitle}>{head.product}</td>
@@ -948,7 +948,7 @@ export function OdooClient({
   needCtx: NeedContext;
   /** Both lines share the tab; a row is editable with its own line's Odoo right. */
   canEditLine: Record<string, boolean>;
-  /** The line a new row or a sheet goes to unless another is picked — the nav's toggle. */
+  /** The line a new row or a sheet goes to unless another is picked — the line on screen. */
   defaultLine: string;
   /** The whole log behind this day — see ElsewhereBanner. */
   totalRows: number;

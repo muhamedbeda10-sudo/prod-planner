@@ -5,7 +5,7 @@ import { ImportForm } from "@/components/ImportForm";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { getPlanNos } from "@/lib/server/data";
 import { ViewTabs, PLANS_VIEWS } from "@/components/ViewTabs";
-import { getActiveLine } from "@/lib/server/line";
+import { pinLine } from "@/lib/server/line";
 
 export const dynamic = "force-dynamic";
 
@@ -15,12 +15,12 @@ export default async function ImportPage() {
   const me = await getCurrentUser();
   if (!me?.isAdmin) redirect("/");
   // the weekly delivery schedule is the transformers' — the panels plan monthly
-  if ((await getActiveLine()) === "LV") redirect("/orders");
+  await pinLine("TR", "/import");
 
   const plans = await getPlanNos();
   return (
     <ReadingColumn width="3xl" className="space-y-5">
-      <PageHead title="Orders Registry" sub="Weekly plan · the delivery schedule" views={<ViewTabs views={PLANS_VIEWS} current="/import" label="Plans view" />} />
+      <PageHead title="Orders Registry" sub="Weekly plan · Transformers · the delivery schedule" views={<ViewTabs views={PLANS_VIEWS} current="/import" label="Plans view" />} />
       <p className="text-sm text-muted">
         <b>Delivery schedule only.</b> Dates per MO come from here; order quantities live in the monthly registry
         beside it, and progress in the daily logs.

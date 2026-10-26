@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-line-on-each-page",
+    dateISO: "2026-10-26",
+    title: "No more TR / LV switch in the top bar — each page shows its own Transformers | LV Panels switch",
+    where: "Planning · Plan Tracker · Daily log · Material · Orders Registry · Welding · Painting · Floor",
+    href: "/tracker",
+    body: "The TR / LV switch is gone from the top bar. Every page whose rows depend on the line — Planning, the Material dashboard, the Plan Tracker, the Daily log, Material, the Orders Registry and the welding and painting worklists — has a Transformers | LV Panels switch beside its title, so you always see which line you are looking at. The line is part of the page's address: a bookmark or a link you send opens the same line, and the strip at the top of a tab keeps it as you move between its places. A page opens on your own line: LV Panels if you record only on the panels, Transformers for everyone else. The Floor tab lists both lines' departments together. The Plan Tracker tab now moves between the tracker, the Daily log, the Simulator and the ODOO log with a strip at the top, like Dashboards and Material. The Simulator, the weekly plan import, the Production dashboard and Fabrication always show the transformers; Punching and Bending always show the panels. A trace link opens on its order's own line.",
+  },
+  {
     id: "2026-10-26-titles-and-settings",
     dateISO: "2026-10-26",
     title: "Pages are named after their tabs, and Settings uses the whole screen",

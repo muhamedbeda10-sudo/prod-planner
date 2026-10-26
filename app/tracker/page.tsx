@@ -11,7 +11,8 @@ import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants";
 import { trackerPermKey } from "@/lib/domain/permissions";
 import { factoryDayISO } from "@/lib/domain/dates";
-import { ViewTabs, TRACKER_VIEWS, trackerViews } from "@/components/ViewTabs";
+import { TrackerSections } from "@/components/TrackerSections";
+import { LineSwitch } from "@/components/LineSwitch";
 import { PageHead } from "@/components/ui";
 import { LvTrackerTable } from "@/components/LvTrackerTable";
 import { getActiveLine } from "@/lib/server/line";
@@ -58,7 +59,10 @@ export default async function TrackerPage({
           editableStages={user ? LV_CHAIN.filter((s) => hasPerm(user, lvPermKey(s))) : []}
           canStatus={!!user && hasPerm(user, "lv.status")}
           prefs={lvPrefs}
-          head={<PageHead title="Plan Tracker" sub="LV Panels · one row per panel or meter box order, every stage" views={<ViewTabs views={trackerViews("LV")} current="/tracker" label="Tracker view" />} />}
+          head={<>
+            <TrackerSections current="tracker" />
+            <PageHead title="Plan Tracker" sub="One row per panel or meter box order, every stage"><LineSwitch /></PageHead>
+          </>}
         />
       </>
     );
@@ -75,7 +79,8 @@ export default async function TrackerPage({
           subtitle={data.planNo === null ? undefined : `Weekly plan ${data.planNo}`}
           date={issued}
         />
-        <PageHead title="Plan Tracker" sub={`Transformers · weekly plan${data.planNo === null ? "" : ` ${data.planNo}`}, day by day`} views={<ViewTabs views={TRACKER_VIEWS} current="/tracker" label="Tracker view" />} />
+        <TrackerSections current="tracker" />
+        <PageHead title="Plan Tracker" sub={`Weekly plan${data.planNo === null ? "" : ` ${data.planNo}`}, day by day`}><LineSwitch /></PageHead>
         <WeeklyPlanTrackerTable
           data={data}
           capacityCard={<PlanCapacityCard check={capacity} />}
@@ -94,7 +99,7 @@ export default async function TrackerPage({
     <>
       <PrintHeader title="Plan Tracker — Monthly" date={issued} />
       <MasterTrackerTable
-        viewTabs={<ViewTabs views={TRACKER_VIEWS} current="/tracker" label="Tracker view" />}
+        sections={<TrackerSections current="tracker" />}
         rows={rows}
         odooTrackingFrom={settings?.odooTrackingFrom ?? null}
         etas={Object.fromEntries(byMo)}

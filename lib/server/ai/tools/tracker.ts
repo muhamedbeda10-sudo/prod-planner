@@ -374,7 +374,7 @@ export const decidePendingQtyTool: WriteTool<PendingInput> = {
     const done: string[] = [];
     const failed: string[] = [];
     for (const [line, mos] of byLine) {
-      // the action reads the line it may import for from the screens' toggle
+      // the action reads the line it may import for from the line on screen
       const r: ActionAnswer = await withLine(line === "LV" ? "LV" : "TR", () => decidePlanQty(formOf({ decision: i.decision, mos: mos.join(",") })));
       if (r.ok) done.push(...mos);
       else failed.push(`${mos.join(", ")}: ${r.error}`);

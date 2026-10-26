@@ -481,7 +481,9 @@ export function AiChat({
     aborter.current = controller;
     started.current = false;
     try {
-      const res = await fetch("/api/ai/chat", {
+      // the line on screen rides in the address, like a page's, so the
+      // assistant's answers and the changes it prepares start from it
+      const res = await fetch(`/api/ai/chat?line=${line}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,

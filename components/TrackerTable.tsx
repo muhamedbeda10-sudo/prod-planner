@@ -92,7 +92,7 @@ export function TrackerTable({ rows, planNo }: { rows: TrackerRow[]; planNo: num
             {filtered.map((r, i) => (
               <tr key={r.bom} className={i % 2 ? "bg-zebra" : ""}>
                 <td className="p-2 font-bold whitespace-nowrap">
-                  <Link href={`/trace?plan=${planNo}&bom=${encodeURIComponent(r.bom)}`} className="text-brand-ink hover:underline">
+                  <Link href={`/trace?plan=${planNo}&bom=${encodeURIComponent(r.bom)}&line=TR`} className="text-brand-ink hover:underline">
                     {r.bom}
                   </Link>
                 </td>

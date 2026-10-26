@@ -8,7 +8,8 @@ import { DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE } from "@/lib/domain/constants"
 import { ledgerPermKey, trackerPermKey } from "@/lib/domain/permissions";
 import { getActiveLine } from "@/lib/server/line";
 import { LV_CHAIN, LV_ITEM } from "@/lib/domain/lv";
-import { ViewTabs, trackerViews } from "@/components/ViewTabs";
+import { TrackerSections } from "@/components/TrackerSections";
+import { LineSwitch } from "@/components/LineSwitch";
 import { PageHead } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +60,8 @@ export default async function HandoverPage() {
 
   return (
     <>
-      <PageHead title="Daily log" sub={`${line === "LV" ? "LV Panels" : "Transformers"} · every entry the tracker adds up`} views={<ViewTabs views={trackerViews(line)} current="/handover" label="Tracker view" />} />
+      <TrackerSections current="handover" />
+      <PageHead title="Daily log" sub="Every entry the tracker adds up"><LineSwitch /></PageHead>
       <HandoverLog rows={rows} line={line} editableDepts={editableDepts} soi={soi} />
     </>
   );

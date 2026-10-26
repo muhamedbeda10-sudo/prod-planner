@@ -2,6 +2,8 @@ import Link from "next/link";
 import { guardTab } from "@/lib/server/auth";
 import { getTrace } from "@/lib/server/trace";
 import { getActiveLine, withLine } from "@/lib/server/line";
+import { prisma } from "@/lib/db";
+import { hrefWithLine, lineParam, type ProductLine } from "@/lib/domain/lines";
 import { getLvTrace } from "@/lib/server/lvTrace";
 import { LvTraceView } from "@/components/LvTraceView";
 import { PageHeader } from "@/components/ui";
@@ -23,7 +25,11 @@ export default async function TracePage({
   const planNo = Number(sp.plan) || 0;
   const mo = (sp.mo ?? "").trim();
   const bom = (sp.bom ?? "").trim();
-  const line = sp.line === "TR" || sp.line === "LV" ? sp.line : await getActiveLine();
+  // the line the link named; else an order's own line — an MO belongs to one,
+  // so a trace link from any screen opens on the right side; else the line on screen
+  const line: ProductLine = lineParam(sp.line)
+    ?? (mo ? lineParam((await prisma.masterOrder.findUnique({ where: { mo }, select: { line: true } }))?.line) : null)
+    ?? await getActiveLine();
   // which tracker view the visitor came from — `plan` alone can't say, and the
   // tracker opens MONTHLY unless the URL asks for weekly, so a reader who
   // arrived from the weekly plan would be sent back to the wrong table
@@ -51,11 +57,14 @@ export default async function TracePage({
       return (
         <div className="space-y-6">
           <PageHeader title={`Trace — ${lt.key}`} sub="No LV panel order or log row carries this code.">
-            <Link href="/tracker" className="text-brand-ink text-sm font-semibold">→ Back to tracker</Link>
+            <Link href="/tracker?line=LV" className="text-brand-ink text-sm font-semibold">→ Back to tracker</Link>
           </PageHeader>
           <div className="rounded-2xl bg-surface border border-border/60 shadow-sm p-10 flex flex-col items-center gap-3 text-center">
             <div className="text-4xl">🤷</div>
-            <p className="text-sm text-muted">Nothing found for <b>{lt.key}</b> on the panels — try another code or order, or switch the line at the top.</p>
+            <p className="text-sm text-muted">
+              Nothing found for <b>{lt.key}</b> on the panels — try another code or order, or{" "}
+              <Link href={hrefWithLine(`/trace?${lt.scope}=${encodeURIComponent(lt.key)}`, "TR")} className="text-brand-ink font-semibold hover:underline">look for it on the transformers</Link>.
+            </p>
             <TraceSearch initial={lt.key} initialMode={lt.scope} />
           </div>
         </div>

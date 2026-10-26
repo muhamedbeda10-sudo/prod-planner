@@ -23,7 +23,7 @@ export function LvTraceView({ t }: { t: LvTraceResult }) {
     <div className="space-y-6">
       <PageHeader label={t.key}>
         <TraceSearch initial={t.key} initialMode={t.scope} />
-        <Link href="/tracker" className="text-brand-ink text-sm font-semibold">→ Back to tracker</Link>
+        <Link href="/tracker?line=LV" className="text-brand-ink text-sm font-semibold">→ Back to tracker</Link>
       </PageHeader>
 
       {/* what the scope is */}
@@ -84,7 +84,7 @@ export function LvTraceView({ t }: { t: LvTraceResult }) {
             {t.members.map((m) => (
               <tr key={m.mo} className={`border-t ${m.status === "closed" ? "opacity-60" : ""}`}>
                 <td className="p-2 font-bold whitespace-nowrap text-xs">
-                  <Link href={`/trace?mo=${encodeURIComponent(m.mo)}`} className="text-brand-ink hover:underline">{m.mo}</Link>
+                  <Link href={`/trace?mo=${encodeURIComponent(m.mo)}&line=LV`} className="text-brand-ink hover:underline">{m.mo}</Link>
                   {m.urgent && <span className="pill pill-bad ms-1">URGENT</span>}
                 </td>
                 <td className="p-2 whitespace-nowrap"><Soi soi={m.soi} /></td>

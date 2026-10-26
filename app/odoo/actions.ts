@@ -35,7 +35,7 @@ function revalidateOdoo() {
 
 // The tab shows both product lines at once: a write is guarded by the Odoo
 // permission of the line(s) it touches — the rows' own, or, for a new row
-// or a sheet, the line picked with it (the nav's toggle when none is).
+// or a sheet, the line picked with it (the line on screen when none is).
 
 async function lineOf(formData: FormData): Promise<ProductLine> {
   const v = String(formData.get("line") ?? "");

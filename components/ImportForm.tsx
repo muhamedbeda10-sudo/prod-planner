@@ -68,7 +68,7 @@ export function ImportForm({ defaultDate }: { defaultDate: string }) {
               </ul>
             </div>
           )}
-          <a href={`/tracker?plan=${res.planNo}`} className="text-brand-ink font-semibold text-sm">→ View tracker for plan {res.planNo}</a>
+          <a href={`/tracker?plan=${res.planNo}&line=TR`} className="text-brand-ink font-semibold text-sm">→ View tracker for plan {res.planNo}</a>
         </div>
       )}
     </div>
