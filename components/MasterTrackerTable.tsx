@@ -26,7 +26,7 @@ import type { UserPrefs } from "@/lib/domain/userPrefs";
 import { AchCell, ColumnMenu, FoldButton, meterStyle, stageState, stickAt, useAccountSet, useColumns, type Columns } from "@/components/TrackerColumns";
 import { itemFinishShare, rowBottleneck } from "@/lib/domain/trackerView";
 
-import { filterMasterTracker, trackerItemStats } from "@/lib/domain/trackerSummary";
+import { filterMasterTracker, trackerItemStats, trackerStagesOf } from "@/lib/domain/trackerSummary";
 import { trackerOdooTotal } from "@/lib/domain/trackerOdoo";
 
 /** The order's spec columns. Every one of them is the planner's own — the
@@ -395,10 +395,7 @@ export function MasterTrackerTable({
   // the summary cards report the furthest picked stage — the wide table
   // becomes readable per department. Stored as a comma-separated list.
   const [stage, setStage] = useSavedFilter("tracker.deptStage"); // e.g. "" | "Cut" | "Cut,Welding"
-  const stages = useMemo(() => {
-    const sel = new Set(stage.split(",").filter(Boolean));
-    return STAGE_OPTS.map((o) => o.value).filter((v) => sel.has(v)); // pipeline order, whatever the click order was
-  }, [stage]);
+  const stages = useMemo(() => trackerStagesOf(stage), [stage]); // pipeline order, whatever the click order was
   const scoped = stages.length > 0;
   const toggleStage = (v: string) => {
     const sel = new Set(stage.split(",").filter(Boolean));

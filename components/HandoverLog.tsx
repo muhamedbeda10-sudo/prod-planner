@@ -7,13 +7,17 @@ import { useRouter } from "next/navigation";
 import { updateHandover, deleteHandover, bulkDeleteHandover, bulkSetHandoverDate } from "@/app/handover/actions";
 import { factoryDayISO, toISODate } from "@/lib/domain/dates";
 import type { SoiLookup } from "@/lib/server/soi";
-import { SAVE_UNCONFIRMED, Soi, soiOf } from "@/components/ui";
+import { SAVE_UNCONFIRMED, Soi } from "@/components/ui";
+import { soiOf } from "@/lib/domain/soi";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { DateSlicer } from "@/components/DateSlicer";
 import { addDaysISO, slicerPresets } from "@/lib/domain/dateSlicer";
 import { ITEMS, DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE, deptLabel } from "@/lib/domain/constants";
 import { LV_CHAIN, LV_ITEM } from "@/lib/domain/lv";
 import type { ProductLine } from "@/lib/domain/lines";
+import { filterLogRows, type LogRow } from "@/lib/domain/dailyLogView";
+
+export type { LogRow };
 
 // every ledger stage the log can carry — production depts + tracker-only stages
 const LOG_DEPTS = [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE];
@@ -24,20 +28,6 @@ const LOG_DEPTS = [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE];
 // shift's records after midnight are today's.
 function dayISO(offset: number): string {
   return addDaysISO(factoryDayISO(new Date()), offset);
-}
-
-export interface LogRow {
-  id: number;
-  date: string; // ISO
-  dept: string;
-  bom: string;
-  bomRaw: string | null;
-  mo: string | null;
-  item: string;
-  qty: number;
-  source: string;
-  createdBy: string | null; // who recorded the change (worklist / tracker / manual)
-  flags?: string[] | null; // data-guard warnings — the row LOOKS wrong, check it
 }
 
 export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }: {
@@ -85,17 +75,10 @@ export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }
   const pickRange = (f: string | null, t: string | null) => { setFrom(f ?? ""); setTo(t ?? ""); setPeriod(""); };
   const loggedDays = useMemo(() => [...new Set(rows.map((r) => r.date))].sort(), [rows]);
 
-  const filtered = useMemo(() => {
-    const needle = q.trim().toUpperCase();
-    return rows.filter((r) => {
-      if (flaggedOnly && !r.flags?.length) return false;
-      if (needle && !r.bom.toUpperCase().includes(needle)) return false;
-      if (dept && r.dept !== dept) return false;
-      if (item && r.item !== item) return false;
-      if (r.date < range.from || r.date > range.to) return false;
-      return true;
-    });
-  }, [rows, q, dept, item, range, flaggedOnly]);
+  const filtered = useMemo(
+    () => filterLogRows(rows, { q, dept, item, flaggedOnly: !!flaggedOnly, from: range.from, to: range.to }),
+    [rows, q, dept, item, range, flaggedOnly]
+  );
 
   // the flag count ignores the flagged-only toggle itself (else clicking it
   // could change its own label) but respects every other filter

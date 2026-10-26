@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
 import type { AiFile, User } from "@prisma/client";
 import type Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
-import { AI_FILE_LIMITS, aiFileKind, cleanFileName, fileRefId, fileSizeText, filesToSend, isSeenKind, questionSeenProblem, type AiFileKind, type AttachedFile, type SeenImageType } from "@/lib/domain/aiFiles";
+import { AI_FILE_LIMITS, aiFileKind, cleanFileName, madeFileName, sheetNamesOf, fileRefId, fileSizeText, filesToSend, isSeenKind, questionSeenProblem, type AiFileKind, type AttachedFile, type SeenImageType } from "@/lib/domain/aiFiles";
 import type { ToolCtx } from "./tools/types";
 
 // The files people attach in the assistant's chat (lib/domain/aiFiles.ts has
@@ -32,7 +32,7 @@ function workbookOf(data: Uint8Array): XLSX.WorkBook | null {
 /** Why one more file of `bytes` cannot be kept for the person now — how
  *  many they kept this hour, or the plant's room — or null. What is past its
  *  days goes first, so the room left is the real one. */
-async function roomProblem(userId: number, bytes: number, now: Date): Promise<string | null> {
+export async function roomProblem(userId: number, bytes: number, now: Date): Promise<string | null> {
   await pruneAiFiles(now);
   const [lastHour, kept] = await Promise.all([
     prisma.aiFile.count({ where: { userId, createdAt: { gte: new Date(now.getTime() - 3_600_000) } } }),
@@ -41,6 +41,15 @@ async function roomProblem(userId: number, bytes: number, now: Date): Promise<st
   if (lastHour >= AI_FILE_LIMITS.perHour) return `That is ${AI_FILE_LIMITS.perHour} files in an hour — wait a while.`;
   if ((kept._sum.size ?? 0) + bytes > AI_FILE_LIMITS.plantBytes) return `The assistant's file store is full — files are cleared ${AI_FILE_LIMITS.keepDays} days after they were kept. Try again later.`;
   return null;
+}
+
+/** Write a kept file's row — the person's own, its bytes fingerprinted. */
+async function insertAiFile(f: { userId: number; conversationId?: number; name: string; kind: AiFileKind; type: string; tokens: number | null; data: Uint8Array<ArrayBuffer> }): Promise<{ id: number; name: string; kind: AiFileKind; size: number }> {
+  const row = await prisma.aiFile.create({
+    data: { ...f, size: f.data.length, sha256: createHash("sha256").update(f.data).digest("hex") },
+    select: { id: true },
+  });
+  return { id: row.id, name: f.name, kind: f.kind, size: f.data.length };
 }
 
 /** Keep a file the person attached, once it is checked: its kind by its
@@ -67,52 +76,30 @@ export async function storeAiFile(user: User, file: File, now = new Date(), meas
 
   const full = await roomProblem(user.id, data.length, now);
   if (full) return { ok: false, error: full };
-  const row = await prisma.aiFile.create({
-    data: { userId: user.id, name, kind: kind.kind, type: kind.type, size: data.length, tokens, sha256: createHash("sha256").update(data).digest("hex"), data },
-    select: { id: true },
-  });
-  return { ok: true, file: { id: row.id, name, kind: kind.kind, size: data.length } };
+  return { ok: true, file: await insertAiFile({ userId: user.id, name, kind: kind.kind, type: kind.type, tokens, data }) };
 }
 
 /** A workbook the assistant made for the person — written here, kept as
- *  their own file in their chat, under the same limits as the files they
- *  attach (its size, how many an hour, the room left), cleared on the same
- *  day. Never sent to the model again: only a question's own attachments are. */
+ *  their own file in their chat, under the same size limit as the files they
+ *  attach, cleared on the same day. The caller checks the room first
+ *  (roomProblem), before it reads what goes on the sheets. Never sent to the
+ *  model again: only a question's own attachments are. */
 export async function storeMadeWorkbook(
   ctx: Pick<ToolCtx, "user" | "conversationId">,
   name: string,
-  sheets: readonly { name: string; rows: readonly Record<string, unknown>[] }[],
-  now = new Date(),
+  sheets: readonly { name: string; rows: Record<string, unknown>[] }[],
 ): Promise<StoreResult> {
   if (ctx.conversationId === null) return { ok: false, error: "A file is made only in a chat the person is in." };
-  // the room is checked before the work: a sheet of 50,000 rows is not built to be refused
-  // (a file allowed in may take the plant's store past its cap by one file's size at most)
-  const full = await roomProblem(ctx.user.id, 0, now);
-  if (full) return { ok: false, error: full };
   const wb = XLSX.utils.book_new();
-  const used = new Set<string>();
-  for (const s of sheets) {
-    // Excel's own rules for a sheet's name: 31 characters, none of []:*?/\, unique
-    const base = s.name.replace(/[[\]:*?/\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31) || "Sheet";
-    let n = base;
-    for (let i = 2; used.has(n.toLowerCase()); i++) n = `${base.slice(0, 31 - ` ${i}`.length)} ${i}`;
-    used.add(n.toLowerCase());
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([...s.rows]), n);
-  }
+  const names = sheetNamesOf(sheets.map((s) => s.name));
+  sheets.forEach((s, i) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s.rows), names[i]));
   const data = new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx", compression: true }) as ArrayBuffer);
-  // letters, digits and a few marks only — the name travels in a download header and onto any disk
-  const base = cleanFileName(name.replace(/\.(xlsx|xls|csv)$/i, "").replace(/[^\p{L}\p{N}._ -]+/gu, "-")).replace(/-{2,}/g, "-").replace(/^[-. ]+|[-. ]+$/g, "");
-  const file = `${base.slice(0, AI_FILE_LIMITS.name - 5) || "sheet"}.xlsx`;
   if (data.length > AI_FILE_LIMITS.maxBytes) return { ok: false, error: `That sheet comes to ${fileSizeText(data.length)} — at most ${fileSizeText(AI_FILE_LIMITS.maxBytes)} a file. Narrow it (a shorter period, fewer orders) or split it in two.` };
-  const row = await prisma.aiFile.create({
-    data: {
-      userId: ctx.user.id, conversationId: ctx.conversationId, name: file, kind: "excel",
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", size: data.length, tokens: null,
-      sha256: createHash("sha256").update(data).digest("hex"), data,
-    },
-    select: { id: true },
+  const file = await insertAiFile({
+    userId: ctx.user.id, conversationId: ctx.conversationId, name: madeFileName(name), kind: "excel",
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", tokens: null, data,
   });
-  return { ok: true, file: { id: row.id, name: file, kind: "excel", size: data.length } };
+  return { ok: true, file };
 }
 
 /** A workbook's sheets with their size — "Plan (230 rows × 25 columns)". */
@@ -200,12 +187,11 @@ export function readSheet(f: Pick<AiFile, "data" | "kind">, o: { sheet?: string;
   if (!wb) return { error: "The file cannot be read as a sheet." };
   const sheet = o.sheet === undefined ? wb.SheetNames[0] : wb.SheetNames.find((n) => n.trim().toLowerCase() === o.sheet!.trim().toLowerCase());
   if (!sheet) return { error: `No sheet "${o.sheet}" — the workbook has: ${wb.SheetNames.join(", ")}.` };
-  const ws = wb.Sheets[sheet];
-  const grid = ws?.["!ref"] ? XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: "", blankrows: true }) : [];
+  const grid = textGrid(wb.Sheets[sheet], { blankrows: true });
   const from = Math.max(1, o.fromRow ?? 1);
   const count = Math.min(Math.max(1, o.rows ?? 60), 200);
   const rows = grid.slice(from - 1, from - 1 + count).map((r) => {
-    const cells = (r as unknown[]).map((c) => String(c ?? "").slice(0, CELL_MAX));
+    const cells = r.map((c) => c.slice(0, CELL_MAX));
     // trailing empty cells say nothing
     while (cells.length > 0 && cells[cells.length - 1] === "") cells.pop();
     return cells;
@@ -219,18 +205,26 @@ export function readSheet(f: Pick<AiFile, "data" | "kind">, o: { sheet?: string;
 export async function printableSheet(userId: number, id: number, limit: number): Promise<{ name: string; sheet: string; header: string[]; rows: string[][]; total: number; createdAt: Date } | null> {
   const f = await prisma.aiFile.findFirst({ where: { id, userId }, select: { name: true, kind: true, data: true, createdAt: true } });
   if (!f || isSeenKind(f.kind)) return null;
-  const wb = workbookOf(f.data);
-  const sheet = wb?.SheetNames[0];
-  const ws = sheet ? wb!.Sheets[sheet] : undefined;
-  if (!sheet || !ws) return null;
-  if (!ws["!ref"]) return { name: f.name, sheet, header: [], rows: [], total: 0, createdAt: f.createdAt };
-  // only the rows printed are read; the count comes from the sheet's own range
-  const range = XLSX.utils.decode_range(ws["!ref"]);
-  const total = range.e.r - range.s.r;
-  const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: "", range: { s: range.s, e: { r: Math.min(range.e.r, range.s.r + limit), c: range.e.c } } });
-  const text = (r: unknown[]) => r.map((c) => String(c ?? ""));
-  const [head = [], ...body] = grid;
-  return { name: f.name, sheet, header: text(head), rows: body.map(text), total, createdAt: f.createdAt };
+  // the first sheet alone, and only the rows printed — the count comes from the sheet's own range
+  let wb: XLSX.WorkBook;
+  try {
+    wb = XLSX.read(f.data, { type: "array", dense: true, sheets: 0, sheetRows: limit + 1 });
+  } catch {
+    return null;
+  }
+  const sheet = wb.SheetNames[0];
+  const ws = sheet ? wb.Sheets[sheet] : undefined;
+  if (!ws) return null;
+  const full = ws["!fullref"] ?? ws["!ref"];
+  const total = full ? Math.max(0, XLSX.utils.decode_range(full).e.r - XLSX.utils.decode_range(full).s.r) : 0;
+  const [header = [], ...rows] = textGrid(ws);
+  return { name: f.name, sheet, header, rows, total, createdAt: f.createdAt };
+}
+
+/** A sheet as text, cell by cell, as it shows them (formatted values, dates as dates). */
+function textGrid(ws: XLSX.WorkSheet | undefined, o: { blankrows?: boolean } = {}): string[][] {
+  if (!ws?.["!ref"]) return [];
+  return XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: "", blankrows: o.blankrows ?? false }).map((r) => r.map((c) => String(c ?? "")));
 }
 
 /** Clear the files kept past their days. */

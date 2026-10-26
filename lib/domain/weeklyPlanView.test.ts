@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterWeeklyDays, owedOf, weeklyCoverage, weeklyMetricOf, weeklyStagesOf } from "./weeklyPlanView";
-import type { WeeklyPlanCell, WeeklyPlanDay, WeeklyPlanRow } from "@/lib/server/weeklyPlanTracker";
+import { filterWeeklyDays, owedOf, weeklyCoverage, weeklyMetricOf, weeklyPlanRows, weeklyStagesOf, type WeeklyPlanCell, type WeeklyPlanDay, type WeeklyPlanRow } from "./weeklyPlanView";
 
 const cell = (o: Partial<WeeklyPlanCell> = {}): WeeklyPlanCell => ({ req: 10, na: 0, osp: 0, over: 0, cut: 10, weld: 6, finish: 4, delivered: 0, mos: ["A"], ...o });
 const row = (bom: string, items: WeeklyPlanRow["items"], o: Partial<WeeklyPlanRow> = {}): WeeklyPlanRow => ({ bom, soi: null, description: null, urgent: false, req: 0, items, ...o });
@@ -38,7 +37,16 @@ describe("filterWeeklyDays", () => {
     const shown = filterWeeklyDays(days, { hideDone: true }, "finish");
     expect(shown).toHaveLength(1);
     expect(shown[0]).toMatchObject({ req: 10, covered: 4 });
-    // measured at fabrication, nothing is left to hide — every row is cut
+    // measured at fabrication every row is finished, so none is left
     expect(filterWeeklyDays(days, { hideDone: true }, "cut")).toHaveLength(0);
+  });
+});
+
+describe("weeklyPlanRows", () => {
+  const day = (rows: WeeklyPlanDay["rows"]): WeeklyPlanDay => ({ iso: "2026-10-27", label: "Tue 27/10", isToday: false, isPast: false, req: 0, covered: 0, items: ["TN"], rows });
+  const cell = { req: 5, na: 1, osp: 0, over: 0, cut: 4, weld: 3, finish: 2, delivered: 0, mos: ["A"] };
+  it("is a row per day, project and component, with a column per stage in view", () => {
+    const rows = weeklyPlanRows([day([{ bom: "B1", soi: null, description: null, urgent: false, req: 4, items: { TN: cell } }])], ["cut", "finish"]);
+    expect(rows).toEqual([{ "Delivery date": "2026-10-27", Project: "B1", SOI: "", Component: "TN", Required: 5, "N/A (not manufactured)": 1, "Already promised earlier": 0, OSP: 0, Fab: 4, Paint: 2 }]);
   });
 });

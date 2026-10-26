@@ -32,7 +32,7 @@ export function PageHeader({
  * the title and the line under it are read to a screen reader only (the
  * page's one <h1>). What shows is ONE toolbar row, and only when there is
  * something for it: anything that belongs at its start (a picker, the line
- * switch), then on the right the page's actions (Print …) and — always last,
+ * switch), then on the right the page's actions (a decisions button …) and — always last,
  * in the same place on every view of a tab — the switch to the tab's OTHER
  * views. A screen with a filter bar puts these in that bar instead. Off the
  * paper: the printed sheets carry their own masthead.
@@ -48,7 +48,7 @@ export function PageHead({
   sub?: ReactNode;
   /** The tab's view switch (<ViewTabs>), pinned to the right end. */
   views?: ReactNode;
-  /** The page's actions (an <ExportMenu>, a back link), right-aligned before the views. */
+  /** The page's actions (a decisions button, a download), right-aligned before the views. */
   actions?: ReactNode;
   /** Anything that belongs beside the title (a window picker, a badge). */
   children?: ReactNode;
@@ -156,8 +156,6 @@ export function Soi({
     </details>
   );
 }
-
-export { soiOf } from "@/lib/domain/soi";
 
 /**
  * What a save form shows when the server action threw before answering (the

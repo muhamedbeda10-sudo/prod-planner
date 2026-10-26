@@ -412,7 +412,6 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
   const closedBasis = d.basis === "closed";
   const word = closedBasis ? "closed" : "logged";
 
-
   if (d.kpi.rows === 0) {
     const other = closedBasis
       ? d.kpi.loggedRows > 0 ? ` ${d.kpi.loggedRows} row(s) were logged in it — switch to "Logged day" to see them.` : ""

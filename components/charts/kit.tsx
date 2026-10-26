@@ -4,7 +4,6 @@ import { Table2 } from "lucide-react";
 import { EmptyState } from "@/components/primitives";
 
 import { useState } from "react";
-import { ExportButton } from "@/components/ExportButton";
 
 // The dashboards' shared parts, so every dashboard reads the same way:
 //
@@ -60,10 +59,9 @@ export function ChartCard({
   title: string;
   sub?: React.ReactNode;
   right?: React.ReactNode;
-  /** The chart's numbers as a table — a Chart | Table switch; with a
-   *  filename, an export too (the assistant's own charts — the dashboards'
-   *  sheets come from the assistant). */
-  table?: { rows: TableRow[]; filename?: string; sheet?: string };
+  /** The chart's numbers as a table — a Chart | Table switch. (A sheet of
+   *  them comes from the assistant; its own charts carry an export in `right`.) */
+  table?: { rows: TableRow[] };
   className?: string;
   children: React.ReactNode;
 }) {
@@ -83,7 +81,6 @@ export function ChartCard({
                 <button type="button" className={asTable ? "" : "on"} onClick={() => setAsTable(false)}>Chart</button>
                 <button type="button" className={asTable ? "on" : ""} onClick={() => setAsTable(true)}>Table</button>
               </nav>
-              {asTable && table.filename && <ExportButton rows={table.rows} filename={table.filename} sheetName={table.sheet ?? "Sheet1"} label="Export" />}
             </>
           )}
         </div>

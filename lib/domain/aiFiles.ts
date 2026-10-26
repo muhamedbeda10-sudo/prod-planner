@@ -215,3 +215,29 @@ export function fileLinkKind(href: string): "download" | "print" | null {
   if (/^\/ai\/print\/[1-9]\d{0,9}$/.test(href)) return "print";
   return null;
 }
+
+/** The name a file the assistant made is kept under: letters, digits and a
+ *  few marks only — it travels in a download header and onto any disk —
+ *  ending in .xlsx. */
+export function madeFileName(name: string): string {
+  const base = name
+    .replace(/\.(xlsx|xls|csv)$/i, "")
+    .replace(/[^\p{L}\p{N}._ -]+/gu, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^[-. ]+|[-. ]+$/g, "")
+    .slice(0, AI_FILE_LIMITS.name - 5);
+  return `${base || "sheet"}.xlsx`;
+}
+
+/** Sheet names as Excel takes them: at most 31 characters, none of []:*?/\,
+ *  each one different ("Plan", "Plan 2", "Plan 3"). */
+export function sheetNamesOf(names: readonly string[]): string[] {
+  const used = new Set<string>();
+  return names.map((raw) => {
+    const base = raw.replace(/[[\]:*?/\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31) || "Sheet";
+    let n = base;
+    for (let i = 2; used.has(n.toLowerCase()); i++) n = `${base.slice(0, 31 - ` ${i}`.length)} ${i}`;
+    used.add(n.toLowerCase());
+    return n;
+  });
+}

@@ -1,18 +1,20 @@
-import { describe, expect, it } from "vitest";
-import { ITEMS } from "./constants";
-import {
-  dailyLogRows, downtimeRows, lvTraceRows, masterTrackerRows, odooDailyRows, odooLogRows, registryRows, rosterRows, weeklyPlanRows,
-  type DailyLogEntry, type RegistryOrder,
-} from "./sheets";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
+
+import { ITEMS } from "@/lib/domain/constants";
+import type { LogRow } from "@/lib/domain/dailyLogView";
+import { orderRowOf, type RegistryOrder } from "@/lib/domain/registryView";
+import { dailyLogRows, downtimeRows, lvTraceRows, masterTrackerRows, odooDailyRows, odooLogRows, registryRows, rosterRows } from "@/lib/server/sheets";
 import type { DowntimeDay } from "@/lib/server/downtime";
 import type { LvTraceResult } from "@/lib/server/lvTrace";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import type { OdooDashboardView, OdooPageData } from "@/lib/server/odoo";
 import type { ShiftRosterData } from "@/lib/server/shifts";
-import type { WeeklyPlanDay } from "@/lib/server/weeklyPlanTracker";
 
 // The sheets the assistant hands out in place of the screens' Export
-// buttons: the screen's own columns and headers, read off its data.
+// buttons (lib/server/sheets.ts): the screen's own columns and headers, read
+// off its data.
 
 const tracker = (mo: string, extra: Partial<MasterTrackerRow> = {}): MasterTrackerRow => ({
   mo, bom: `BOM-${mo}`, soi: "SOI-1", customer: "ACME", urgent: false, kva: "1000", rating: null,
@@ -46,17 +48,8 @@ describe("masterTrackerRows", () => {
   });
 });
 
-describe("weeklyPlanRows", () => {
-  const day = (rows: WeeklyPlanDay["rows"]): WeeklyPlanDay => ({ iso: "2026-10-27", label: "Tue 27/10", isToday: false, isPast: false, req: 0, covered: 0, items: ["TN"], rows });
-  const cell = { req: 5, na: 1, osp: 0, over: 0, cut: 4, weld: 3, finish: 2, delivered: 0, mos: ["A"] };
-  it("is a row per day, project and component, with a column per stage in view", () => {
-    const rows = weeklyPlanRows([day([{ bom: "B1", soi: null, description: null, urgent: false, req: 4, items: { TN: cell } }])], ["cut", "finish"]);
-    expect(rows).toEqual([{ "Delivery date": "2026-10-27", Project: "B1", SOI: "", Component: "TN", Required: 5, "N/A (not manufactured)": 1, "Already promised earlier": 0, OSP: 0, Fab: 4, Paint: 2 }]);
-  });
-});
-
 describe("dailyLogRows", () => {
-  const entry = (o: Partial<DailyLogEntry> = {}): DailyLogEntry => ({ date: "2026-10-26", dept: "Welding", bom: "B1", bomRaw: null, mo: "MO/1", item: "TN", qty: 3, source: "worklist", createdBy: "Sara", flags: null, ...o });
+  const entry = (o: Partial<LogRow> = {}): LogRow => ({ id: 1, date: "2026-10-26", dept: "Welding", bom: "B1", bomRaw: null, mo: "MO/1", item: "TN", qty: 3, source: "worklist", createdBy: "Sara", flags: null, ...o });
   it("finds the SOI from the MO, else the BOM, and says what was corrected and flagged", () => {
     const soi = { byMo: { "MO/1": "S-1" }, byBom: { B2: "S-2" } };
     const [a, b] = dailyLogRows([entry(), entry({ mo: null, bom: "B2", bomRaw: "b 2", flags: ["far above usual", "late entry"] })], soi);
@@ -67,12 +60,12 @@ describe("dailyLogRows", () => {
 
 describe("registryRows", () => {
   const order: RegistryOrder = {
-    mo: "MO/1", soi: null, urgent: true, customer: "ACME", product: "USS", fgCode: "FG", bom: "B1", secItem: "SEC", kva: "1000", rating: "11kV",
+    id: 1, updatedAt: new Date("2026-10-02T08:00:00Z"), mo: "MO/1", soi: null, urgent: true, customer: "ACME", product: "USS", fgCode: "FG", bom: "B1", secItem: "SEC", kva: "1000", rating: "11kV",
     planQty: 4, ospEncloser: 1, colorRal: "7035", remarks: null, materialsRemarks: "steel", source: "Oct plan", createdAt: new Date("2026-10-01T08:00:00Z"),
   };
   it("lists the panels' columns for LV and the transformers' for TR", () => {
-    expect(registryRows([order], "LV")[0]).toEqual({ MO: "MO/1", SOI: "", Urgent: "Yes", Customer: "ACME", Product: "USS", "FG Code": "FG", BoM: "B1", "SEC Item": "SEC", "Planned Qty": 4, "OSP Encloser": 1, Remarks: "", "Materials Remarks": "steel", Source: "Oct plan", Added: "2026-10-01" });
-    expect(registryRows([order], "TR")[0]).toEqual({ MO: "MO/1", SOI: "", Urgent: "Yes", Customer: "ACME", "FG Code": "FG", BOM: "B1", KVA: "1000", Rating: "11kV", "Plan Qty": 4, "Color RAL": "7035", Remarks: "", Source: "Oct plan", Added: "2026-10-01" });
+    expect(registryRows([orderRowOf(order)], "LV")[0]).toEqual({ MO: "MO/1", SOI: "", Urgent: "Yes", Customer: "ACME", Product: "USS", "FG Code": "FG", BoM: "B1", "SEC Item": "SEC", "Planned Qty": 4, "OSP Encloser": 1, Remarks: "", "Materials Remarks": "steel", Source: "Oct plan", Added: "2026-10-01" });
+    expect(registryRows([orderRowOf(order)], "TR")[0]).toEqual({ MO: "MO/1", SOI: "", Urgent: "Yes", Customer: "ACME", "FG Code": "FG", BOM: "B1", KVA: "1000", Rating: "11kV", "Plan Qty": 4, "Color RAL": "7035", Remarks: "", Source: "Oct plan", Added: "2026-10-01" });
   });
 });
 

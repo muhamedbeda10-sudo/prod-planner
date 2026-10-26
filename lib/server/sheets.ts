@@ -1,39 +1,43 @@
+import "server-only";
 import { ITEMS, deptLabel, isPaintExempt, type Item } from "@/lib/domain/constants";
 import { BASIS_EXPORT, PERIOD_LABEL } from "@/lib/domain/consumableLimits";
 import { MONTH_STATUS_LABEL } from "@/lib/domain/consumableMonthly";
 import type { ConsumablesStats } from "@/lib/domain/consumablesStats";
+import type { LogRow } from "@/lib/domain/dailyLogView";
 import { downtimeLabel, stopDurationLabel } from "@/lib/domain/downtime";
-import { downtimeHoursInRange, elapsedStopHours } from "@/lib/domain/downtimePeriods";
+import { liveStopHours } from "@/lib/domain/downtimePeriods";
 import { holdLabel } from "@/lib/domain/hold";
 import type { ProductLine } from "@/lib/domain/lines";
+import { round3 } from "@/lib/domain/material";
 import { STATUS_LABEL } from "@/lib/domain/physicalStock";
-import { ATTENDANCE_LABEL, ATTENDANCE_TIME, DEFAULT_SHIFT_HOURS, WORK_CENTRE_LABEL, attendanceOf, isRosterDept, lineHours } from "@/lib/domain/shifts";
+import type { OrderRow } from "@/lib/domain/registryView";
+import { ATTENDANCE_LABEL, ATTENDANCE_TIME, DEFAULT_SHIFT_HOURS, WORK_CENTRE_LABEL, rosterDeptName, rosterLineReading } from "@/lib/domain/shifts";
 import { soiOf } from "@/lib/domain/soi";
 import { WORKER_DEPT_LABEL } from "@/lib/domain/tanks";
 import { trackerOdooTotal } from "@/lib/domain/trackerOdoo";
 import { TRACKER_STAGE_ORDER } from "@/lib/domain/trackerSummary";
-import { WEEKLY_STAGES, type WeeklyStage } from "@/lib/domain/weeklyPlanView";
-import type { CatalogueItemDTO, LimitStandingView } from "@/lib/server/consumableLimits";
-import type { MonthlyReportView } from "@/lib/server/consumableMonthly";
-import type { ConsumableEditView, ConsumablesPageData } from "@/lib/server/consumables";
-import type { DowntimeDay } from "@/lib/server/downtime";
-import type { LvTraceResult } from "@/lib/server/lvTrace";
-import type { LvTrackerRow } from "@/lib/server/lvTracker";
-import type { MasterTrackerRow } from "@/lib/server/masterTracker";
-import type { MaterialPageData } from "@/lib/server/material";
-import type { OdooDashboardView, OdooPageData } from "@/lib/server/odoo";
-import type { PhysicalStockData } from "@/lib/server/physicalStock";
-import type { PowderView } from "@/lib/server/powderScrap";
-import type { ShiftRosterData } from "@/lib/server/shifts";
-import type { SoiLookup } from "@/lib/server/soi";
-import type { TraceResult } from "@/lib/server/trace";
-import type { WeeklyPlanDay } from "@/lib/server/weeklyPlanTracker";
+import type { CatalogueItemDTO, LimitStandingView } from "./consumableLimits";
+import type { MonthlyReportView } from "./consumableMonthly";
+import type { ConsumableEditView, ConsumablesPageData } from "./consumables";
+import type { DowntimeDay } from "./downtime";
+import type { LvTraceResult } from "./lvTrace";
+import type { LvTrackerRow } from "./lvTracker";
+import type { MasterTrackerRow } from "./masterTracker";
+import type { MaterialPageData } from "./material";
+import type { OdooDashboardView, OdooPageData } from "./odoo";
+import type { PhysicalStockData } from "./physicalStock";
+import type { PowderView } from "./powderScrap";
+import type { ShiftRosterData } from "./shifts";
+import type { SoiLookup } from "./soi";
+import type { TraceResult } from "./trace";
 
 // The spreadsheets the app hands out, one per screen that used to carry an
 // Export button — the same columns, in the same order, with the screen's own
 // headers, so a file still drops straight back into the workbook the office
 // keeps. The assistant builds them now (lib/server/ai/tools/sheets.ts); each
-// function here turns a screen's loaded data into the sheet's rows.
+// function here turns a screen's loaded data into the sheet's rows. (The
+// weekly plan's, which the Floor still exports itself, is in
+// lib/domain/weeklyPlanView.ts.)
 
 export type SheetRow = Record<string, string | number>;
 
@@ -147,7 +151,7 @@ export function consumableLimitRows(items: readonly CatalogueItemDTO[], standing
       // an each-department or per-worker limit: every department's number added up
       "Limit now": s ? s.limit : "",
       "Used now": s ? s.used : "",
-      "Left now": s ? Math.round((s.limit - s.used) * 1000) / 1000 : "",
+      "Left now": s ? round3(s.limit - s.used) : "",
       "Departments over": s && s.departments.length ? s.departments.filter((d) => d.used > d.limit + 1e-9).map((d) => `${d.label} ${d.used}/${d.limit}`).join(" · ") : "",
       Remark: i.remark ?? "",
     };
@@ -199,7 +203,7 @@ export function consumablesMonthlyRows(report: MonthlyReportView): SheetRow[] {
   return report.rows.flatMap((r) => [
     {
       Level: "Item", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: "", Limit: "", "Monthly limit": r.allowance ?? "",
-      Used: r.used, Left: r.allowance === null ? "" : Math.round((r.allowance - r.covered) * 1000) / 1000, "Outside the limits": r.outside, "Of the limit": r.ratio === null ? "" : `${Math.round(r.ratio * 100)}%`,
+      Used: r.used, Left: r.allowance === null ? "" : round3(r.allowance - r.covered), "Outside the limits": r.outside, "Of the limit": r.ratio === null ? "" : `${Math.round(r.ratio * 100)}%`,
       Status: MONTH_STATUS_LABEL[r.status], [`Used ${report.prevMonth}`]: r.prevUsed,
       "Counted over": "",
       ...Object.fromEntries(r.trend.map((t) => [t.month, t.used])),
@@ -216,25 +220,6 @@ export function consumablesMonthlyRows(report: MonthlyReportView): SheetRow[] {
       ...Object.fromEntries(r.trend.map((t) => [t.month, ""])),
     })),
   ]);
-}
-
-/** A weekly plan as the screen lists it: a row per delivery day, project and
- *  component, with a column per stage in view. */
-export function weeklyPlanRows(days: readonly WeeklyPlanDay[], stages: readonly WeeklyStage[]): SheetRow[] {
-  return days.flatMap((d) =>
-    d.rows.flatMap((r) =>
-      (Object.keys(r.items) as Item[]).map((it) => ({
-        "Delivery date": d.iso, Project: r.bom, SOI: r.soi ?? "", Component: it,
-        Required: r.items[it]!.req,
-        // pcs scheduled but NOT to be manufactured (order marked N/A) and
-        // pcs covered by outsourcing — the sheet must read like the screen
-        "N/A (not manufactured)": r.items[it]!.na,
-        "Already promised earlier": r.items[it]!.over,
-        OSP: r.items[it]!.osp,
-        ...Object.fromEntries(stages.map((s) => [WEEKLY_STAGES.find((o) => o.value === s)!.short, r.items[it]![s]])),
-      })),
-    ),
-  );
 }
 
 /** The monthly Plan Tracker (transformers): a row per order. The columns
@@ -296,22 +281,8 @@ export function lvTrackerRows(rows: readonly LvTrackerRow[]): SheetRow[] {
   }));
 }
 
-/** A Daily log entry as the sheet reads it — the data guard's flags included. */
-export interface DailyLogEntry {
-  date: string;
-  dept: string;
-  bom: string;
-  bomRaw: string | null;
-  mo: string | null;
-  item: string;
-  qty: number;
-  source: string;
-  createdBy: string | null;
-  flags: string[] | null;
-}
-
 /** The Daily log: a row per entry, its SOI found from the MO or the BOM. */
-export function dailyLogRows(entries: readonly DailyLogEntry[], soi: SoiLookup): SheetRow[] {
+export function dailyLogRows(entries: readonly LogRow[], soi: SoiLookup): SheetRow[] {
   return entries.map((r) => ({
     Date: r.date,
     DEPT: deptLabel(r.dept),
@@ -342,55 +313,31 @@ export function lvTraceRows(t: LvTraceResult): SheetRow[] {
   }));
 }
 
-/** An order of the Orders Registry as the sheet reads it. */
-export interface RegistryOrder {
-  mo: string;
-  soi: string | null;
-  urgent: boolean;
-  customer: string | null;
-  product: string | null;
-  fgCode: string | null;
-  bom: string;
-  secItem: string | null;
-  kva: string | null;
-  rating: string | null;
-  planQty: number;
-  ospEncloser: number;
-  colorRal: string | null;
-  remarks: string | null;
-  materialsRemarks: string | null;
-  source: string | null;
-  createdAt: Date;
-}
-
 /** The Orders Registry: the panels' columns or the transformers'. */
-export function registryRows(orders: readonly RegistryOrder[], line: ProductLine): SheetRow[] {
+export function registryRows(orders: readonly OrderRow[], line: ProductLine): SheetRow[] {
   return orders.map((r): SheetRow => (line === "LV"
     ? {
       MO: r.mo, SOI: r.soi ?? "", Urgent: r.urgent ? "Yes" : "", Customer: r.customer ?? "",
       Product: r.product ?? "", "FG Code": r.fgCode ?? "", BoM: r.bom, "SEC Item": r.secItem ?? "",
       "Planned Qty": r.planQty, "OSP Encloser": r.ospEncloser, Remarks: r.remarks ?? "", "Materials Remarks": r.materialsRemarks ?? "",
-      Source: r.source ?? "", Added: r.createdAt.toISOString().slice(0, 10),
+      Source: r.source ?? "", Added: r.createdAt.slice(0, 10),
     }
     : {
       MO: r.mo, SOI: r.soi ?? "", Urgent: r.urgent ? "Yes" : "", Customer: r.customer ?? "",
       "FG Code": r.fgCode ?? "", BOM: r.bom, KVA: r.kva ?? "", Rating: r.rating ?? "",
       "Plan Qty": r.planQty, "Color RAL": r.colorRal ?? "", Remarks: r.remarks ?? "",
-      Source: r.source ?? "", Added: r.createdAt.toISOString().slice(0, 10),
+      Source: r.source ?? "", Added: r.createdAt.slice(0, 10),
     }));
 }
-
-const deptName = (d: string) => (isRosterDept(d) ? WORKER_DEPT_LABEL[d] : d);
 
 /** A day's machine stops, an open one counted up to `now`. */
 export function downtimeRows(data: DowntimeDay, now: Date): SheetRow[] {
   return data.rows.map((r) => {
-    const p = { date: r.dateISO ?? data.dateISO, hours: r.storedHours ?? r.hours, startTime: r.startTime, endTime: r.endTime, endsNextDay: r.endsNextDay, isOpen: r.isOpen, endDate: r.endDateISO };
-    const hours = elapsedStopHours(p, now);
+    const { hours, dayHours } = liveStopHours(r, data.dateISO, now);
     return {
       Date: r.dateISO ?? data.dateISO, Status: r.isOpen ? "Open" : "Resolved", "As of": now.toISOString(),
-      "Hours on selected day": downtimeHoursInRange(p, data.dateISO, data.dateISO, now), "End date": r.endDateISO ?? "",
-      Machine: r.machineCode, Name: r.machineName, Department: deptName(r.dept), Centre: r.centre ? WORK_CENTRE_LABEL[r.centre] : deptName(r.dept),
+      "Hours on selected day": dayHours, "End date": r.endDateISO ?? "",
+      Machine: r.machineCode, Name: r.machineName, Department: rosterDeptName(r.dept), Centre: r.centre ? WORK_CENTRE_LABEL[r.centre] : rosterDeptName(r.dept),
       From: r.startTime ?? "", To: r.endTime ?? "", "End next day": r.endsNextDay ? "Yes" : "", Duration: stopDurationLabel(hours), Hours: hours,
       Why: downtimeLabel(r.reasonCode, r.reason), Note: r.reasonCode ? r.reason ?? "" : "", By: r.recordedBy ?? "",
     };
@@ -401,7 +348,7 @@ export function downtimeRows(data: DowntimeDay, now: Date): SheetRow[] {
 export function rosterRows(data: ShiftRosterData): SheetRow[] {
   const hrs = data.shiftHours ?? DEFAULT_SHIFT_HOURS;
   return data.lines.map((d) => {
-    const a = attendanceOf(d);
+    const l = rosterLineReading(d, hrs);
     return {
       Date: data.dateISO,
       Badge: d.empId,
@@ -409,11 +356,11 @@ export function rosterRows(data: ShiftRosterData): SheetRow[] {
       "Job title": d.jobTitle ?? "",
       Department: WORKER_DEPT_LABEL[d.dept],
       Section: d.sectionLabels.join(", "),
-      "Work centre": d.dept === "Cut" && d.center ? WORK_CENTRE_LABEL[d.center] : "",
-      Attendance: a === "unset" ? "Not set" : ATTENDANCE_LABEL[a],
-      Time: a === "day" || a === "night" ? ATTENDANCE_TIME[a] : "",
-      "Overtime h": (a === "day" || a === "night" ? d.overtimeH : 0) || "",
-      Hours: a === "unset" ? "" : lineHours(d, hrs),
+      "Work centre": l.centre ?? "",
+      Attendance: l.attendance === "unset" ? "Not set" : ATTENDANCE_LABEL[l.attendance],
+      Time: l.attendance === "day" || l.attendance === "night" ? ATTENDANCE_TIME[l.attendance] : "",
+      "Overtime h": l.overtimeH || "",
+      Hours: l.attendance === "unset" ? "" : l.hours,
       Note: d.note,
     };
   });

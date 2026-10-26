@@ -3,7 +3,8 @@
 import type { PriorityLineDTO } from "@/lib/server/worklistExtras";
 import type { SoiLookup } from "@/lib/server/soi";
 import { Frac } from "@/components/Frac";
-import { Soi, soiOf } from "@/components/ui";
+import { Soi } from "@/components/ui";
+import { soiOf } from "@/lib/domain/soi";
 
 /** ⭐ The admin's priority orders — a dedicated table on top of every dept
  *  worklist. Informational focus list: output is recorded on the normal

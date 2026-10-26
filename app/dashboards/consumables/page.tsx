@@ -3,7 +3,7 @@ import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { getConsumablesDashboard } from "@/lib/server/consumables";
 import { getLimitDashboard } from "@/lib/server/consumableLimits";
 import { getMonthlyReport } from "@/lib/server/consumableMonthly";
-import { isMonthKey, monthLong } from "@/lib/domain/consumableMonthly";
+import { monthLong, pastMonthOf } from "@/lib/domain/consumableMonthly";
 import { consumablesPeriod } from "@/lib/domain/consumables";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { formatDate } from "@/lib/domain/format";
@@ -31,7 +31,7 @@ export default async function ConsumablesDashboardPage({ searchParams }: { searc
   const today = factoryDayISO(new Date());
   const { from, to, min, label: periodLabel } = consumablesPeriod(sp, today);
   // the monthly review at the bottom goes by calendar month, not the slicer
-  const month = sp.month && isMonthKey(sp.month) && sp.month <= today.slice(0, 7) ? sp.month : today.slice(0, 7);
+  const month = pastMonthOf(sp.month, today) ?? today.slice(0, 7);
   const [stats, limits, report] = await Promise.all([getConsumablesDashboard(from, to), getLimitDashboard(from, to, today), getMonthlyReport(month)]);
   const monthParams = new URLSearchParams();
   if (sp.from) monthParams.set("from", from);

@@ -8,31 +8,9 @@ import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components
 import { deleteOrders, previewOrderDelete, updateOrder } from "@/app/orders/actions";
 import type { OrderDeletePreview } from "@/lib/server/orderDelete";
 import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
+import { filterOrderRows, type OrderRow } from "@/lib/domain/registryView";
 
-export interface OrderRow {
-  id: number;
-  mo: string;
-  soi: string | null;
-  urgent: boolean;
-  customer: string | null;
-  fgCode: string | null;
-  bom: string;
-  kva: string | null;
-  rating: string | null;
-  planQty: number;
-  colorRal: string | null;
-  remarks: string | null;
-  source: string | null;
-  createdAt: string; // ISO
-  /** When the row was last written (ISO) — the edit form posts it back, so a
-   *  save from a row someone else changed meanwhile is refused, not written. */
-  updatedAt: string;
-  /** The LV panels' own columns — empty on a transformer. */
-  product: string | null;
-  secItem: string | null;
-  ospEncloser: number;
-  materialsRemarks: string | null;
-}
+export type { OrderRow };
 
 /** The registry of ONE product line. A transformer reads by its KVA, rating
  *  and colour; an LV panel by its type (LSS / USS), its SEC item, the
@@ -77,20 +55,10 @@ export function OrdersTable({ rows, line = "TR", lineSwitch }: {
 
   const sources = useMemo(() => [...new Set(rows.map((r) => r.source ?? ""))].filter(Boolean).sort(), [rows]);
 
-  const filtered = useMemo(() => {
-    const needle = q.trim().toUpperCase();
-    return rows.filter((r) => {
-      if (needle && !(`${r.mo} ${r.bom} ${r.soi ?? ""} ${r.fgCode ?? ""} ${r.kva ?? ""} ${r.product ?? ""} ${r.secItem ?? ""}`.toUpperCase().includes(needle))) return false;
-      if (urgent === "yes" && !r.urgent) return false;
-      if (urgent === "no" && r.urgent) return false;
-      if (source && r.source !== source) return false;
-      return true;
-    });
-  }, [rows, q, urgent, source]);
+  const filtered = useMemo(() => filterOrderRows(rows, { q, urgent, source }), [rows, q, urgent, source]);
 
   const hasActive = !!(q || urgent || source);
   const totalQty = filtered.reduce((s, r) => s + r.planQty, 0);
-
 
   const shown = filtered.map((r) => r.mo);
   const allShownPicked = shown.length > 0 && shown.every((mo) => picked.has(mo));

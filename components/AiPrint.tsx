@@ -39,6 +39,15 @@ export function AiPrintButton({ title, subtitle, date, text, className = "" }: {
   );
 }
 
+/** Once what is about to print is drawn — its images (the logo) loaded and
+ *  laid out — so the print dialog never freezes a half-drawn page. */
+export async function drawn(root: ParentNode | null): Promise<void> {
+  const imgs = [...(root?.querySelectorAll("img") ?? [])];
+  await Promise.all(imgs.map((img) => (img.complete ? null : new Promise((r) => { img.addEventListener("load", r, { once: true }); img.addEventListener("error", r, { once: true }); }))));
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  await new Promise((r) => setTimeout(r, 200));
+}
+
 function PrintSheet({ title, subtitle, date, text, onDone }: { title: string; subtitle?: string; date: string; text: string; onDone: () => void }) {
   const sheet = useRef<HTMLDivElement>(null);
   const done = useRef(onDone);
@@ -69,11 +78,7 @@ function PrintSheet({ title, subtitle, date, text, onDone }: { title: string; su
     window.addEventListener("keydown", onTouch);
 
     (async () => {
-      // the logo and the charts are drawn before the dialog opens
-      const imgs = [...(sheet.current?.querySelectorAll("img") ?? [])];
-      await Promise.all(imgs.map((img) => (img.complete ? null : new Promise((r) => { img.addEventListener("load", r, { once: true }); img.addEventListener("error", r, { once: true }); }))));
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      await new Promise((r) => setTimeout(r, 200));
+      await drawn(sheet.current);
       if (cancelled) return;
       printed = true;
       window.print();

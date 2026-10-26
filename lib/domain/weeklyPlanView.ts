@@ -1,9 +1,52 @@
-import { FINISHING_LABEL } from "@/lib/domain/constants";
-import type { WeeklyPlanCell, WeeklyPlanDay, WeeklyPlanRow } from "@/lib/server/weeklyPlanTracker";
+import { FINISHING_LABEL, type Item } from "@/lib/domain/constants";
 
 // How the weekly plan's screen reads a plan — the stages it can show, the
 // stage a day's achievement is measured at, and the filters — shared with
-// the assistant's sheet of the same plan, so the two never disagree.
+// the assistant's sheet of the same plan, so the two never disagree. The
+// plan's shapes are here too; lib/server/weeklyPlanTracker.ts fills them.
+
+export interface WeeklyPlanCell {
+  req: number; // pcs this delivery day asks for (as scheduled — N/A pcs included)
+  // pcs of `req` marked N/A on the order (excludedItems) — the plan asked for
+  // them but they will NOT be manufactured. Shown, never counted as work owed.
+  na: number;
+  osp: number; // pcs of this day's promise covered by outsourcing (made outside)
+  // pcs of `req` the sheet had ALREADY promised earlier this plan — the order
+  // does not need them twice. Shown struck through, never counted as work owed.
+  over: number;
+  cut: number; // every figure below is capped at `req - na`
+  weld: number;
+  finish: number; // Painting, or SHOT BLAST for the core — plus outsourced qty
+  delivered: number;
+  // the orders that owe this component TODAY and can actually receive output
+  // (N/A ones left out) — recording a quantity on the cell distributes over them
+  mos: string[];
+}
+export interface WeeklyPlanRow {
+  bom: string;
+  soi: string | null;
+  description: string | null;
+  urgent: boolean; // any of the day's orders for this project is flagged urgent
+  req: number; // the day's promise to MANUFACTURE across every component (N/A excluded)
+  items: Partial<Record<Item, WeeklyPlanCell>>; // ONLY what the day asks for
+}
+export interface WeeklyPlanDay {
+  iso: string;
+  label: string; // "Sat 11/07"
+  isToday: boolean;
+  isPast: boolean; // the delivery date has passed — it should be finished
+  req: number;
+  covered: number; // pcs of `req` whose final stage is done
+  items: Item[]; // the components THIS day asks for, in pipeline order
+  rows: WeeklyPlanRow[];
+}
+export interface WeeklyPlanTracker {
+  planNo: number | null; // null = there are no weekly plans yet
+  planNos: number[]; // newest first — what the picker offers
+  days: WeeklyPlanDay[];
+  req: number;
+  covered: number;
+}
 
 export const WEEKLY_STAGES = [
   { value: "cut", label: "Fabrication", short: "Fab" },
@@ -72,4 +115,28 @@ export function filterWeeklyDays(days: readonly WeeklyPlanDay[], f: WeeklyFilter
       return { ...d, rows, req, covered, items: d.items.filter((it) => rows.some((r) => r.items[it])) };
     })
     .filter((d) => d.rows.length > 0);
+}
+
+const STAGE_SHORT = Object.fromEntries(WEEKLY_STAGES.map((o) => [o.value, o.short])) as Record<WeeklyStage, string>;
+
+/** A weekly plan as a sheet, as the screen lists it: a row per delivery day,
+ *  project and component, with a column per stage in view. */
+export function weeklyPlanRows(days: readonly WeeklyPlanDay[], stages: readonly WeeklyStage[]): Record<string, string | number>[] {
+  return days.flatMap((d) =>
+    d.rows.flatMap((r) =>
+      (Object.keys(r.items) as Item[]).map((it) => {
+        const c = r.items[it]!;
+        return {
+          "Delivery date": d.iso, Project: r.bom, SOI: r.soi ?? "", Component: it,
+          Required: c.req,
+          // pcs scheduled but NOT to be manufactured (order marked N/A) and
+          // pcs covered by outsourcing — the sheet must read like the screen
+          "N/A (not manufactured)": c.na,
+          "Already promised earlier": c.over,
+          OSP: c.osp,
+          ...Object.fromEntries(stages.map((s) => [STAGE_SHORT[s], c[s]])),
+        };
+      }),
+    ),
+  );
 }

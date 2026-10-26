@@ -9,9 +9,9 @@ import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControl
 import { PlanViewToggle, WeekPlanPicker } from "@/components/PlanViewToggle";
 import { PrintScope } from "@/components/PrintHeader";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
-import { ExportMenu } from "@/components/ExportMenu";
-import { weeklyPlanRows } from "@/lib/domain/sheets";
-import { WEEKLY_STAGES, filterWeeklyDays, owedOf, weeklyCoverage as coverage, weeklyMetricOf as metricOf, weeklyStagesOf, type WeeklyStage } from "@/lib/domain/weeklyPlanView";
+import { ExportButton } from "@/components/ExportButton";
+import { PrintButton } from "@/components/PrintButton";
+import { WEEKLY_STAGES, filterWeeklyDays, owedOf, weeklyCoverage, weeklyMetricOf, weeklyPlanRows, weeklyStagesOf, type WeeklyStage } from "@/lib/domain/weeklyPlanView";
 import { itemColor } from "@/lib/domain/productColors";
 import { ITEMS, ITEM_NAME, isPaintExempt, type Item } from "@/lib/domain/constants";
 import { traceHref } from "@/lib/domain/links";
@@ -21,16 +21,13 @@ import type { WeeklyPlanTracker, WeeklyPlanDay } from "@/lib/server/weeklyPlanTr
    so it never breaks the grid, and every day repeats its own column headers —
    each day asks for different components, so each day gets its own columns. */
 
-const STAGE_OPTS = WEEKLY_STAGES;
-type Stage = WeeklyStage;
-
-const TINT: Record<Stage, string> = {
+const TINT: Record<WeeklyStage, string> = {
   cut: "var(--cut-tint)", weld: "var(--weld-tint)", finish: "var(--paint-tint)", delivered: "var(--dlvd-tint)",
 };
 
 /** What the measured stage DID to a component — the core is shot blasted, not
  *  painted, so its finishing card has to say so. */
-const doneWord = (metric: Stage, it: Item): string =>
+const doneWord = (metric: WeeklyStage, it: Item): string =>
   metric === "cut" ? "fabricated"
   : metric === "weld" ? "welded"
   : metric === "delivered" ? "delivered"
@@ -38,7 +35,7 @@ const doneWord = (metric: Stage, it: Item): string =>
 
 /** Which ledger department a visible stage column writes to. The core's
  *  finishing column IS its shot blast — it is never painted. */
-const deptOfStage = (s: Stage, it: Item): string =>
+const deptOfStage = (s: WeeklyStage, it: Item): string =>
   s === "cut" ? "Cut" : s === "weld" ? "Welding" : s === "delivered" ? "Delivered" : isPaintExempt(it) ? "ShotBlast" : "Painting";
 
 /** Recording straight onto the weekly sheet, wired once in the table and used
@@ -57,7 +54,6 @@ interface RecCtl {
   cancel: () => void;
   save: (a: { dept: string; bom: string; item: Item; mos: string[]; dayISO: string }) => void;
 }
-
 
 export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, fabrication = false, lineSwitch }: {
   data: WeeklyPlanTracker;
@@ -120,14 +116,14 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
   const [stage, setStage] = useSavedFilter(`${filterKey}.stage`);
   const [hideDone, setHideDone] = useSavedFilter(`${filterKey}.hideDone`);
 
-  const stages = useMemo((): Stage[] => (fabrication ? ["cut"] : weeklyStagesOf(stage)), [stage, fabrication]);
-  const toggleStage = (v: Stage) => {
+  const stages = useMemo((): WeeklyStage[] => (fabrication ? ["cut"] : weeklyStagesOf(stage)), [stage, fabrication]);
+  const toggleStage = (v: WeeklyStage) => {
     const sel = new Set(stage.split(",").filter(Boolean));
     if (sel.has(v)) sel.delete(v); else sel.add(v);
-    setStage(STAGE_OPTS.map((o) => o.value).filter((x) => sel.has(x)).join(","));
+    setStage(WEEKLY_STAGES.map((o) => o.value).filter((x) => sel.has(x)).join(","));
   };
 
-  const metric = fabrication ? "cut" : metricOf(stages, !!stage);
+  const metric = fabrication ? "cut" : weeklyMetricOf(stages, !!stage);
 
   // the rail totals follow the SAME stage and the SAME rows as the table, so
   // the day header can never disagree with the rows under it
@@ -158,7 +154,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
   // from the assistant (lib/server/ai/tools/sheets.ts), built the same way
   const exportRows = useMemo(() => (fabrication ? weeklyPlanRows(days, stages) : []), [fabrication, days, stages]);
 
-  const metricLabel = STAGE_OPTS.find((o) => o.value === metric)!.label;
+  const metricLabel = WEEKLY_STAGES.find((o) => o.value === metric)!.label;
 
   return (
     // the cards and filters stay put and ONLY the table scrolls — the page
@@ -170,7 +166,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
       <PrintScope
         parts={[
           `Measured at: ${metricLabel}`,
-          !!stage && `Departments: ${STAGE_OPTS.filter((o) => stages.includes(o.value)).map((o) => o.short).join(", ")}`,
+          !!stage && `Departments: ${WEEKLY_STAGES.filter((o) => stages.includes(o.value)).map((o) => o.short).join(", ")}`,
           !!q && `Search: "${q}"`,
           hideDone === "1" && "Finished rows hidden",
           `${shown} of ${total} rows`,
@@ -200,7 +196,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
         {!fabrication && <div className="col-span-2 flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
           <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Dept</span>
           <div className="flex flex-wrap gap-1">
-            {STAGE_OPTS.map((o) => {
+            {WEEKLY_STAGES.map((o) => {
               const on = stage.split(",").includes(o.value);
               return (
                 <button
@@ -222,7 +218,8 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
         </label>
         {fabrication && (
           <div className="col-span-2 flex items-center gap-2 sm:col-span-1">
-            <ExportMenu excel={[{ label: "CSV", rows: exportRows, filename: `fabrication-weekly-plan-${data.planNo ?? "none"}.csv` }]} print />
+            <ExportButton rows={exportRows} filename={`fabrication-weekly-plan-${data.planNo ?? "none"}.csv`} label="Export CSV" />
+            <PrintButton />
           </div>
         )}
       </FilterBar>
@@ -247,8 +244,8 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
 /** One delivery day: its date as a vertical rail down the left, its own header
  *  row, then a row per project. Each day is its own <tbody> so the rail can
  *  span exactly that day's rows. */
-function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; stages: readonly Stage[]; metric: Stage; planNo: number; rec: RecCtl }) {
-  const metricLabel = STAGE_OPTS.find((o) => o.value === metric)!;
+function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; stages: readonly WeeklyStage[]; metric: WeeklyStage; planNo: number; rec: RecCtl }) {
+  const metricLabel = WEEKLY_STAGES.find((o) => o.value === metric)!;
   const pct = day.req > 0 ? day.covered / day.req : null;
   const late = day.isPast && (pct ?? 1) < 1; // the delivery date passed unfinished
 
@@ -287,7 +284,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
             {stages.map((s) => (
               <th key={s} className="px-1 py-0.5 font-medium">
                 {/* the core's finishing column reads as SHB — it is never painted */}
-                {s === "finish" && isPaintExempt(it) ? "SHB" : STAGE_OPTS.find((o) => o.value === s)!.short}
+                {s === "finish" && isPaintExempt(it) ? "SHB" : WEEKLY_STAGES.find((o) => o.value === s)!.short}
               </th>
             ))}
           </Fragment>
@@ -295,7 +292,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
       </tr>
 
       {day.rows.map((r) => {
-        const cov = coverage(r, metric);
+        const cov = weeklyCoverage(r, metric);
         return (
           <tr key={r.bom} className="text-center border-t hover:bg-brand-light/20 transition-colors">
             <td className="px-2 py-1 text-left whitespace-nowrap font-bold">
@@ -377,7 +374,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
                     // an all-outsourced promise has no order to record against
                     const editable = rec.can && c.mos.length > 0;
                     const add = editing ? Number(rec.val) : 0;
-                    const stageWord = STAGE_OPTS.find((o) => o.value === s)!.label;
+                    const stageWord = WEEKLY_STAGES.find((o) => o.value === s)!.label;
                     return (
                       <td
                         key={s}

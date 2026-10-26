@@ -3,7 +3,8 @@ import { Download } from "lucide-react";
 import { getCurrentUser } from "@/lib/server/auth";
 import { printableSheet } from "@/lib/server/ai/files";
 import { chatStatusFor } from "@/lib/server/ai/panel";
-import { formatDateTime } from "@/lib/domain/format";
+import { formatDateTime, formatNumber } from "@/lib/domain/format";
+import { aiFileHref } from "@/lib/domain/links";
 import { AutoPrint } from "@/components/AutoPrint";
 import { TableFrame, Th } from "@/components/DataTable";
 import { PrintButton } from "@/components/PrintButton";
@@ -24,33 +25,35 @@ const isNumber = (s: string) => /^-?\d[\d,]*(\.\d+)?%?$/.test(s.trim());
 export default async function AiPrintPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
-  if (!(await chatStatusFor(me)).visible) redirect("/");
   const id = Number((await params).id);
   if (!Number.isInteger(id) || id <= 0) notFound();
-  const s = await printableSheet(me.id, id, PRINT_ROWS);
+  const [chat, s] = await Promise.all([chatStatusFor(me), printableSheet(me.id, id, PRINT_ROWS)]);
+  if (!chat.visible) redirect("/");
   if (!s) notFound();
   const title = s.name.replace(/\.xlsx$/i, "");
+  const total = formatNumber(s.total);
   const numeric = s.header.map((_, c) => s.rows.length > 0 && s.rows.every((r) => !r[c] || isNumber(r[c])));
 
   return (
     <div className="space-y-3">
       <AutoPrint />
-      <PrintHeader title={title} subtitle={`${s.sheet} · ${s.total.toLocaleString("en-US")} rows`} date={formatDateTime(s.createdAt)} />
+      <PrintHeader title={title} subtitle={`${s.sheet} · ${total} rows`} date={formatDateTime(s.createdAt)} />
       <PageHead
         title={title}
-        sub={`${s.total.toLocaleString("en-US")} rows`}
+        sub={`${total} rows`}
         actions={<>
-          <a href={`/api/ai/files/${id}`} className="btn btn-secondary btn-sm"><Download size={14} aria-hidden /> Download Excel</a>
+          <a href={aiFileHref(id)} className="btn btn-secondary btn-sm"><Download size={14} aria-hidden /> Download Excel</a>
           <PrintButton />
         </>}
       >
         <span className="font-semibold">{title}</span>
-        <span className="text-muted text-sm tabnum">{s.total.toLocaleString("en-US")} rows · made {formatDateTime(s.createdAt)}</span>
+        <span className="text-muted text-sm tabnum">{total} rows · made {formatDateTime(s.createdAt)}</span>
       </PageHead>
       {s.total > s.rows.length && (
-        <p className="text-sm font-semibold text-warn-fg" role="status">This printout carries the first {s.rows.length.toLocaleString("en-US")} of {s.total.toLocaleString("en-US")} rows. Download the Excel file for all of them.</p>
+        <p className="text-sm font-semibold text-warn-fg" role="status">This printout carries the first {formatNumber(s.rows.length)} of {total} rows. Download the Excel file for all of them.</p>
       )}
-      <TableFrame className="print-flow">
+      {/* a wide sheet takes the tracker's tighter paper steps */}
+      <TableFrame className={`print-flow print-fit ${s.header.length > 12 ? "print-tight" : ""}`}>
         <table className="w-full text-sm">
           <thead>
             <tr>{s.header.map((h, c) => <Th key={c} label={h} num={numeric[c]} />)}</tr>

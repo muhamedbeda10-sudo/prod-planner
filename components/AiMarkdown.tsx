@@ -200,19 +200,13 @@ function components(streaming: boolean, ownFiles: boolean): Components {
     h3: ({ children }) => <h4 dir="auto" className="mt-4 mb-1 text-sm font-bold">{children}</h4>,
     h4: ({ children }) => <h4 dir="auto" className="mt-3 mb-1 text-sm font-semibold">{children}</h4>,
     // a link into the app is a link; anything outside is shown, not followed —
-    // a row of data could tell the model to put figures in an address
-    // a file the assistant made is a button in the chat it was made in —
-    // download it, or print it in a tab of its own; shared onward (the inbox,
-    // a task) it stays the asker's, so it reads as plain text
-    a: ({ children, href }) =>
-      href && fileLinkKind(href) ? (
-        !ownFiles ? <span>{children}</span>
-        : fileLinkKind(href) === "download" ? (
-          <a href={href} download className="no-print btn btn-secondary btn-sm my-0.5 no-underline"><FileSpreadsheet size={14} className="text-ok-fg" aria-hidden />{children}</a>
-        ) : (
-          <a href={href} target="_blank" rel="noopener" className="no-print btn btn-secondary btn-sm my-0.5 no-underline"><Printer size={14} aria-hidden />{children}</a>
-        )
-      ) : href && (safeHref(href) || isEvidenceAnchor(href)) ? (
+    // a row of data could tell the model to put figures in an address. A file
+    // the assistant made is a button in the chat it was made in; shared onward
+    // (the inbox, a task) it stays the asker's, so it reads as plain text
+    a: ({ children, href }) => {
+      const file = href ? fileLinkKind(href) : null;
+      if (file) return ownFiles ? <FileLink kind={file} href={href!}>{children}</FileLink> : <span>{children}</span>;
+      return href && (safeHref(href) || isEvidenceAnchor(href)) ? (
         <a href={href} className="text-brand-ink underline underline-offset-2" onClick={isEvidenceAnchor(href) ? (event) => {
           const source = document.getElementById(href.slice(1));
           if (source instanceof HTMLDetailsElement) {
@@ -221,7 +215,8 @@ function components(streaming: boolean, ownFiles: boolean): Components {
         } : undefined}>{children}</a>
       ) : (
         <span>{children}{href ? <span className="text-muted text-xs ltr"> ({href})</span> : null}</span>
-      ),
+      );
+    },
     // nothing in an answer loads from anywhere
     img: () => null,
     blockquote: ({ children, node }) => {
@@ -280,14 +275,24 @@ function trimStart(nodes: ReactNode[]): ReactNode[] {
   return nodes;
 }
 
+/** A file the assistant made: download it, or open it laid out to print in a tab of its own. */
+function FileLink({ kind, href, children }: { kind: "download" | "print"; href: string; children: ReactNode }) {
+  const Icon = kind === "download" ? FileSpreadsheet : Printer;
+  return (
+    <a href={href} {...(kind === "download" ? { download: true } : { target: "_blank", rel: "noopener" })} className="no-print btn btn-secondary btn-sm my-0.5 no-underline">
+      <Icon size={14} className={kind === "download" ? "text-ok-fg" : undefined} aria-hidden />{children}
+    </a>
+  );
+}
+
 const LIVE = components(true, true);
 const DONE = components(false, true);
 const SHARED = components(false, false);
 
 /** Parsed again only when its text changes — not on every streamed token
- *  of the answer after it. */
-/** `shared`: an answer read away from its chat (the inbox, a task) — the
- *  files it links to are the asker's, so they are not offered there. */
+ *  of the answer after it. `shared`: an answer read away from its chat (the
+ *  inbox, a task) — the files it links to are the asker's, so they are not
+ *  offered there. */
 export const AiMarkdown = memo(function AiMarkdown({ text, streaming = false, shared = false, className = "" }: { text: string; streaming?: boolean; shared?: boolean; className?: string }) {
   return (
     <div className={`ai-md min-w-0 ${className}`} dir={textDirection(text)}>

@@ -4,13 +4,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MasterTrackerTable } from "@/components/MasterTrackerTable";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { ITEMS } from "@/lib/domain/constants";
-import { masterTrackerRows } from "@/lib/domain/sheets";
+import { masterTrackerRows } from "@/lib/server/sheets";
 import { filterMasterTracker } from "@/lib/domain/trackerSummary";
 
 const { filters } = vi.hoisted(() => ({
   filters: {} as Record<string, string>,
 }));
 
+vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), useSearchParams: () => new URLSearchParams(), usePathname: () => "/tracker" }));
 vi.mock("@/app/orders/actions", () => ({
   closeDeliveredOrders: vi.fn(), setOrderHold: vi.fn(), setOrderStatus: vi.fn(),

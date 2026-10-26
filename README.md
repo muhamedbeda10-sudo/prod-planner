@@ -521,7 +521,7 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    - **Owner's reach**: the app's owner lists everyone's automations and pauses, retimes
      (`set_automation_timing`) or deletes any, as AI assistant settings lets them; what one does stays its owner's to
      change.
-   - **Excel files and printing** (`lib/server/ai/tools/sheets.ts`, `lib/domain/sheets.ts`): the screens carry no
+   - **Excel files and printing** (`lib/server/ai/tools/sheets.ts`, `lib/server/sheets.ts`): the screens carry no
      Export or Print button — the Floor's worklists (and the tank barcodes) aside. Asked for "an Excel of …", the
      assistant's `make_excel` builds the sheet the screen's button used to make — the same loader, filters, columns and
      headers (the Plan Tracker TR/LV, a weekly plan, the Daily log, the Orders Registry, a trace, the ODOO log and its

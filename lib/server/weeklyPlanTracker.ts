@@ -4,6 +4,7 @@ import { loadMasterOrders } from "./loads";
 import { ITEMS, isPaintExempt, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
 import { dayNumber, factoryToday, toISODate } from "@/lib/domain/dates";
 import { owedAcrossDays, promiseCeiling } from "@/lib/domain/planPromises";
+import type { WeeklyPlanDay, WeeklyPlanRow, WeeklyPlanTracker } from "@/lib/domain/weeklyPlanView";
 
 // Plan Tracker on a WEEKLY plan, grouped BY DELIVERY DAY.
 //
@@ -45,48 +46,8 @@ import { owedAcrossDays, promiseCeiling } from "@/lib/domain/planPromises";
 //     project+component and fill whatever the order-tagged figures left short,
 //     earliest promise first — each ledger row is read once, never twice.
 
-export interface WeeklyPlanCell {
-  req: number; // pcs this delivery day asks for (as scheduled — N/A pcs included)
-  // pcs of `req` marked N/A on the order (excludedItems) — the plan asked for
-  // them but they will NOT be manufactured. Shown, never counted as work owed.
-  na: number;
-  osp: number; // pcs of this day's promise covered by outsourcing (made outside)
-  // pcs of `req` the sheet had ALREADY promised earlier this plan — the order
-  // does not need them twice. Shown struck through, never counted as work owed.
-  over: number;
-  cut: number; // every figure below is capped at `req - na`
-  weld: number;
-  finish: number; // Painting, or SHOT BLAST for the core — plus outsourced qty
-  delivered: number;
-  // the orders that owe this component TODAY and can actually receive output
-  // (N/A ones left out) — recording a quantity on the cell distributes over them
-  mos: string[];
-}
-export interface WeeklyPlanRow {
-  bom: string;
-  soi: string | null;
-  description: string | null;
-  urgent: boolean; // any of the day's orders for this project is flagged urgent
-  req: number; // the day's promise to MANUFACTURE across every component (N/A excluded)
-  items: Partial<Record<Item, WeeklyPlanCell>>; // ONLY what the day asks for
-}
-export interface WeeklyPlanDay {
-  iso: string;
-  label: string; // "Sat 11/07"
-  isToday: boolean;
-  isPast: boolean; // the delivery date has passed — it should be finished
-  req: number;
-  covered: number; // pcs of `req` whose final stage is done
-  items: Item[]; // the components THIS day asks for, in pipeline order
-  rows: WeeklyPlanRow[];
-}
-export interface WeeklyPlanTracker {
-  planNo: number | null; // null = there are no weekly plans yet
-  planNos: number[]; // newest first — what the picker offers
-  days: WeeklyPlanDay[];
-  req: number;
-  covered: number;
-}
+// the shapes live with the screen's reading of them (lib/domain/weeklyPlanView.ts)
+export type { WeeklyPlanCell, WeeklyPlanRow, WeeklyPlanDay, WeeklyPlanTracker } from "@/lib/domain/weeklyPlanView";
 
 const WEEKDAY = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
 

@@ -14,7 +14,7 @@ const h = vi.hoisted(() => {
       masterOrder: { findMany: fn(), findUnique: fn() },
     },
     perms: new Set<string>(),
-    master: fn(), lv: fn(), weekly: fn(), trace: fn(), lvTrace: fn(), soi: fn(), rows: fn(), roster: fn(), stops: fn(), odooLog: fn(), odooDays: fn(),
+    recent: fn(), master: fn(), lv: fn(), weekly: fn(), trace: fn(), lvTrace: fn(), soi: fn(), rows: fn(), roster: fn(), stops: fn(), odooLog: fn(), odooDays: fn(),
     lines: [] as string[],
   };
 });
@@ -26,6 +26,7 @@ vi.mock("@/lib/server/line", () => ({
   withLine: (line: string, f: () => unknown) => { h.lines.push(line); return f(); },
   ledgerItemWhere: (line: string) => (line === "LV" ? { item: "LV" } : { item: { not: "LV" } }),
 }));
+vi.mock("@/lib/server/handover", () => ({ getRecentHandover: h.recent }));
 vi.mock("@/lib/server/masterTracker", () => ({ getMasterTracker: h.master }));
 vi.mock("@/lib/server/lvTracker", () => ({ getLvTracker: h.lv }));
 vi.mock("@/lib/server/weeklyPlanTracker", () => ({ getWeeklyPlanTracker: h.weekly }));
@@ -77,6 +78,7 @@ beforeEach(() => {
   h.prisma.aiFile.deleteMany.mockResolvedValue({ count: 0 });
   h.prisma.aiFile.create.mockResolvedValue({ id: 42 });
   h.master.mockResolvedValue([tracker("A", ["October 2026"]), tracker("B", ["September 2026"])]);
+  h.recent.mockResolvedValue([]);
 });
 
 describe("make_excel", () => {
@@ -115,10 +117,12 @@ describe("make_excel", () => {
     expect(h.prisma.aiFile.create).not.toHaveBeenCalled();
   });
 
-  it("is made only in a chat the person is in, and within the files an hour", async () => {
+  it("is made only in a chat the person is in, and checks the files an hour before it reads anything", async () => {
     expect(await makeSheetTool.run({ sheet: "plan_tracker" }, ctxOf({ conversationId: null }))).toEqual({ ok: false, text: expect.stringContaining("only in a chat") });
     h.prisma.aiFile.count.mockResolvedValue(30);
+    h.master.mockClear();
     expect(await makeSheetTool.run({ sheet: "plan_tracker" }, ctxOf())).toEqual({ ok: false, text: expect.stringContaining("in an hour") });
+    expect(h.master).not.toHaveBeenCalled();
   });
 
   it("reads the Daily log of the period on the line, with the data guard's checks and the filters", async () => {
@@ -130,6 +134,9 @@ describe("make_excel", () => {
     ]);
     const r = await makeSheetTool.run({ sheet: "daily_log", line: "LV", dept: "Welding" }, ctxOf());
     expect(h.prisma.handoverEntry.findMany.mock.calls[0][0].where).toEqual({ item: "LV", date: { gte: at("2026-10-24"), lte: at("2026-10-26") } });
+    // the data guard reads the history the screen loads, on the same line
+    expect(h.recent).toHaveBeenCalledWith(2000);
+    expect(h.lines).toEqual(["LV"]);
     expect(JSON.parse(r.text)).toMatchObject({ file: "daily-log-lv-2026-10-24_to_2026-10-26.xlsx", rows: 1 });
     expect(keptSheet().rows[0]).toMatchObject({ BOM: "B1", SOI: "S-1", QTY: 2 });
   });
@@ -138,7 +145,7 @@ describe("make_excel", () => {
     h.prisma.masterOrder.findUnique.mockResolvedValue({ line: "LV" });
     h.lvTrace.mockResolvedValue({ exists: true, key: "MO/9", timeline: [{ dateISO: "2026-10-26", mo: "MO/9", stage: "Punch", qty: 4, by: null, source: "worklist", note: null }] });
     const r = await makeSheetTool.run({ sheet: "trace", mo: "MO/9" }, ctxOf({ line: "TR" }));
-    expect(JSON.parse(r.text)).toMatchObject({ file: "trace-MO_9.xlsx", rows: 1 });
+    expect(JSON.parse(r.text)).toMatchObject({ file: "trace-MO-9.xlsx", rows: 1 });
     expect(h.trace).not.toHaveBeenCalled();
     h.lvTrace.mockResolvedValue({ exists: false, key: "MO/9", timeline: [] });
     expect(await makeSheetTool.run({ sheet: "trace", mo: "MO/9" }, ctxOf())).toEqual({ ok: false, text: expect.stringContaining("No LV panel order") });
@@ -168,7 +175,10 @@ describe("make_excel", () => {
     expect(checkToolInput(makeSheetTool, { sheet: "query" })).toEqual({ ok: false, error: expect.stringContaining("SELECT") });
     expect(checkToolInput(makeSheetTool, { sheet: "trace" })).toEqual({ ok: false, error: expect.stringContaining("MO") });
     expect(checkToolInput(makeSheetTool, { sheet: "daily_log", from: "2026-10-26", to: "2026-10-20" })).toEqual({ ok: false, error: expect.stringContaining("after") });
-    expect(checkToolInput(makeSheetTool, { sheet: "daily_log", from: "2026-02-30" })).toEqual({ ok: false, error: expect.stringContaining("calendar day") });
+    expect(checkToolInput(makeSheetTool, { sheet: "daily_log", from: "2026-02-30" })).toEqual({ ok: false, error: expect.stringContaining("YYYY-MM-DD") });
+    // an input the sheet does not take is refused, never quietly dropped
+    expect(checkToolInput(makeSheetTool, { sheet: "plan_tracker", q: "BOM-A" })).toEqual({ ok: false, error: expect.stringContaining("plan_tracker does not take q") });
+    expect(checkToolInput(makeSheetTool, { sheet: "physical_stock", from: "2026-10-01" })).toEqual({ ok: false, error: expect.stringContaining("nothing but its name") });
     expect(checkToolInput(makeSheetTool, { sheet: "weekly_plan", stages: "cut,paint" })).toEqual({ ok: false, error: expect.stringContaining("Stages") });
     expect(checkToolInput(makeSheetTool, { sheet: "nothing" })).toMatchObject({ ok: false });
     expect(checkToolInput(makeSheetTool, { sheet: "plan_tracker", line: "LV" })).toMatchObject({ ok: true });
@@ -194,21 +204,20 @@ describe("make_excel", () => {
     h.odooDays.mockResolvedValue({ basis: "closed", series: [], days: [] });
     await makeSheetTool.run({ sheet: "odoo_daily", from: "2026-09-01" }, ctxOf());
     expect(h.odooDays.mock.calls[0][0]).toMatchObject({ fromISO: "2026-09-01", toISO: expect.any(String) });
+    // the period alone — no comparison is read for the sheet
+    expect(h.odooDays.mock.calls[0].slice(2)).toEqual([null, "none"]);
     expect(checkToolInput(makeSheetTool, { sheet: "odoo_log", to: "2026-10-20" })).toEqual({ ok: false, error: expect.stringContaining("first day") });
     expect(await makeSheetTool.run({ sheet: "consumables_log", from: "2026-11-02" }, ctxOf())).toEqual({ ok: false, text: expect.stringContaining("not started") });
   });
 });
 
 describe("the workbook kept, and its printout", () => {
-  it("checks the room before it builds, and names repeated sheets apart", async () => {
-    h.prisma.aiFile.count.mockResolvedValue(30);
-    expect(await storeMadeWorkbook({ user: user(), conversationId: 3 }, "x", [{ name: "Plan", rows: [{ a: 1 }] }])).toEqual({ ok: false, error: expect.stringContaining("in an hour") });
-    expect(h.prisma.aiFile.create).not.toHaveBeenCalled();
-    h.prisma.aiFile.count.mockResolvedValue(0);
+  it("names repeated sheets apart, and keeps the file on the person's chat", async () => {
     const plan = { name: "Plan", rows: [{ a: 1 }] };
-    expect(await storeMadeWorkbook({ user: user(), conversationId: 3 }, "x", [plan, plan, plan, { name: "a/b:c", rows: [{ a: 1 }] }])).toMatchObject({ ok: true });
+    expect(await storeMadeWorkbook({ user: user(), conversationId: 3 }, "x", [plan, plan, plan, { name: "a/b:c", rows: [{ a: 1 }] }])).toMatchObject({ ok: true, file: { name: "x.xlsx" } });
     const wb = XLSX.read(h.prisma.aiFile.create.mock.calls[0][0].data.data, { type: "array" });
     expect(wb.SheetNames).toEqual(["Plan", "Plan 2", "Plan 3", "a b c"]);
+    expect(h.prisma.aiFile.create.mock.calls[0][0].data).toMatchObject({ userId: 7, conversationId: 3, kind: "excel", size: expect.any(Number), sha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
   });
 
   it("prints the header and the first rows of the person's own sheet, counting the rest", async () => {

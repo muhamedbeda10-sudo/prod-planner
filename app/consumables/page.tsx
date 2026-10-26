@@ -9,7 +9,7 @@ import { ConsumableLimits } from "@/components/ConsumableLimits";
 import { PowderScrap } from "@/components/PowderScrap";
 import { getPowderReport } from "@/lib/server/powderScrap";
 import { SCRAP_LIMITS } from "@/lib/domain/powderScrap";
-import { isMonthKey, monthLong } from "@/lib/domain/consumableMonthly";
+import { monthLong, pastMonthOf } from "@/lib/domain/consumableMonthly";
 import { PrintHeader } from "@/components/PrintHeader";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
@@ -22,7 +22,6 @@ import { RememberLastVisit } from "@/components/RememberLastVisit";
 
 export const metadata = { title: "Consumables — ATC" };
 export const dynamic = "force-dynamic";
-
 
 export default async function ConsumablesPage({
   searchParams,
@@ -74,7 +73,7 @@ export default async function ConsumablesPage({
   );
   // the period strip carries the view switch on its own row — the page has no
   // head row of its own
-  const slicer = () => (
+  const slicer = (
     <UrlDateSlicer
       encoding="fromTo" from={from} to={to} min={min} max={today} today={today}
       presets={["yesterday", "last7", "thisMonth", "lastMonth", "last30", "last90"]}
@@ -85,7 +84,7 @@ export default async function ConsumablesPage({
 
   if (view === "powder") {
     // month by month, like the monthly review
-    const month = sp.month && isMonthKey(sp.month) && sp.month <= today.slice(0, 7) ? sp.month : today.slice(0, 7);
+    const month = pastMonthOf(sp.month, today) ?? today.slice(0, 7);
     const r = await getPowderReport(month, { id: me.id, isAdmin: me.isAdmin, canRecord: hasPerm(me, "consumables.edit") });
     return (
       <div className="space-y-3">
@@ -123,7 +122,7 @@ export default async function ConsumablesPage({
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:views" view={view} carry={["from", "to"]} />
         <PageHead title="Consumables" sub={`Edits · ${periodLabel}`} />
-        {slicer()}
+        {slicer}
         <ConsumableEdits edits={edits} periodLabel={periodLabel} />
       </div>
     );
@@ -131,12 +130,11 @@ export default async function ConsumablesPage({
 
   const data = await getConsumablesData(from, to, { id: me.id, isAdmin: me.isAdmin, canRecord: hasPerm(me, "consumables.edit") });
 
-
   return (
     <div className="space-y-3">
       <RememberLastVisit storageKey="consumables:views" view={view} carry={["from", "to"]} />
       <PageHead title="Consumables" sub={`Log · ${periodLabel}`} />
-      {slicer()}
+      {slicer}
       <ConsumablesClient
         data={data}
         canRecord={hasPerm(me, "consumables.edit")}

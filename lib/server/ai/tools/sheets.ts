@@ -5,6 +5,7 @@ import { getCatalogue, getCurrentStandings } from "@/lib/server/consumableLimits
 import { getMonthlyReport } from "@/lib/server/consumableMonthly";
 import { getConsumableEdits, getConsumablesDashboard, getConsumablesData } from "@/lib/server/consumables";
 import { getDowntimeDay } from "@/lib/server/downtime";
+import { getRecentHandover } from "@/lib/server/handover";
 import { ledgerItemWhere, withLine } from "@/lib/server/line";
 import { getLvTrace } from "@/lib/server/lvTrace";
 import { getLvTracker } from "@/lib/server/lvTracker";
@@ -17,58 +18,72 @@ import { getShiftRoster } from "@/lib/server/shifts";
 import { getSoiLookup } from "@/lib/server/soi";
 import { getTrace } from "@/lib/server/trace";
 import { getWeeklyPlanTracker } from "@/lib/server/weeklyPlanTracker";
-import { blockedTableIn, blockedTablesFor, jsonSafe } from "@/lib/domain/ai";
-import { isMonthKey } from "@/lib/domain/consumableMonthly";
-import { consumablesPeriod } from "@/lib/domain/consumables";
-import { addDaysISO } from "@/lib/domain/dateSlicer";
-import { factoryToday, parseISODate, toISODate } from "@/lib/domain/dates";
-import { guardLedger } from "@/lib/domain/ledgerGuard";
-import type { ProductLine } from "@/lib/domain/lines";
-import { parseOdooScope } from "@/lib/domain/odoo";
-import { resolvePeriod } from "@/lib/domain/odooStats";
-import { parseRosterFilter, rosterDepts, rosterLineMatches } from "@/lib/domain/roster";
 import {
   consumableEditRows, consumableLimitRows, consumablesLogRows, consumablesMonthlyRows, consumablesSummaryRows, dailyLogRows, downtimeRows,
   lvTraceRows, lvTrackerRows, masterTrackerRows, materialRows, odooDailyRows, odooLogRows, physicalRows, powderRows, registryRows, rosterRows,
-  traceRows, weeklyPlanRows, type SheetRow,
-} from "@/lib/domain/sheets";
-import { TRACKER_STAGE_ORDER, filterLvTracker, filterMasterTracker, type TrackerFilters } from "@/lib/domain/trackerSummary";
-import { filterWeeklyDays, weeklyMetricOf, weeklyStagesOf } from "@/lib/domain/weeklyPlanView";
+  traceRows, type SheetRow,
+} from "@/lib/server/sheets";
+import { blockedTableIn, blockedTablesFor } from "@/lib/domain/ai";
+import { AI_FILE_LIMITS } from "@/lib/domain/aiFiles";
+import { pastMonthOf } from "@/lib/domain/consumableMonthly";
+import { consumablesPeriod } from "@/lib/domain/consumables";
+import { filterLogRows, logRowsOf } from "@/lib/domain/dailyLogView";
+import { addDaysISO } from "@/lib/domain/dateSlicer";
+import { factoryToday } from "@/lib/domain/dates";
+import type { ProductLine } from "@/lib/domain/lines";
+import { aiFileHref, aiPrintHref } from "@/lib/domain/links";
+import { parseOdooScope } from "@/lib/domain/odoo";
+import { resolvePeriod } from "@/lib/domain/odooStats";
+import { filterOrderRows, orderRowOf } from "@/lib/domain/registryView";
+import { parseRosterFilter, rosterDepts, rosterLineMatches, type RosterFilter } from "@/lib/domain/roster";
+import { filterLvTracker, filterMasterTracker, trackerStagesOf, type TrackerFilters } from "@/lib/domain/trackerSummary";
+import { WEEKLY_STAGES, filterWeeklyDays, weeklyMetricOf, weeklyPlanRows, weeklyStagesOf } from "@/lib/domain/weeklyPlanView";
 import { runAiRows } from "../reader";
-import { storeMadeWorkbook } from "../files";
+import { roomProblem, storeMadeWorkbook } from "../files";
 import { TRACKER_FILTER_SCHEMA, trackerFiltersFor } from "./planning";
 import type { ReadResult, ReadTool, ToolCtx } from "./types";
 
 // The assistant's spreadsheets. The screens no longer carry an Export button
 // (the Floor's worklists aside): the person asks, and the assistant builds
-// the same sheet the button did — from the screen's own loader, through the
-// same row builder (lib/domain/sheets.ts), with the screen's own headers —
-// or, for anything no screen lists, from one SELECT. The workbook is kept as
-// the person's file in their chat, to download or print.
+// the same sheet the button did — from the screen's own loader and filters,
+// through the same row builder (lib/server/sheets.ts), with the screen's own
+// headers — or, for anything no screen lists, from one SELECT. The workbook
+// is kept as the person's file in their chat, to download or print.
 
 /** The most rows one sheet carries — far more than any screen lists. */
 export const MAX_SHEET_ROWS = 50_000;
+const MAX_ROWS_TEXT = MAX_SHEET_ROWS.toLocaleString("en-US");
 
+/** The daily log's own history the data guard judges an entry against, as
+ *  the screen loads it (app/handover/page.tsx). */
+const GUARD_HISTORY = 2000;
+
+const STAGE_VALUES = WEEKLY_STAGES.map((o) => o.value);
+
+type Param = Exclude<keyof Input, "sheet" | "name">;
+
+/** Each sheet: the screen it comes from (its tab), whether it is the admin's,
+ *  what it is, and the inputs it takes — any other is refused, never ignored. */
 const SHEETS = {
-  plan_tracker: { tab: "tracker", about: "the monthly Plan Tracker (TR or LV), one row per order — filters as on the screen; deptStage narrows the TR columns" },
-  weekly_plan: { tab: "tracker", about: "a weekly delivery plan (transformers): a row per delivery day, project and component — plan number, search, hideDone, stages" },
-  daily_log: { tab: "handover", about: "the Daily log (the ledger the tracker adds up): a row per entry with the data guard's checks — from/to (default the last 3 days), search on BOM, dept, item, flaggedOnly" },
-  orders_registry: { tab: "orders", admin: true, about: "the Orders Registry (admins): a row per order of a line — search, urgent, source" },
-  trace: { tab: "tracker", about: "one order's (mo) or one code's (bom) trace: every ledger row behind it" },
-  odoo_log: { tab: "odoo", about: "the ODOO close-out log, with the office sheet's headers — from/to, or every day" },
-  odoo_daily: { tab: "odoo", about: "the ODOO dashboard by day: closed (or logged) quantity per product series — from/to (default the last 30 days), basis" },
-  material: { tab: "material", about: "the Material (nesting) sheet of a line, with the workbook's own columns" },
-  physical_stock: { tab: "physical", about: "Physical Material: the store's count against Odoo's stock, code by code" },
-  consumables_log: { tab: "consumables", about: "the consumables hand-out log — from/to (default today)" },
-  consumables_limits: { tab: "consumables", about: "the consumables catalogue, its limits and where each stands now" },
-  consumables_edits: { tab: "consumables", admin: true, about: "every change made to a recorded hand-out (admins) — from/to" },
-  consumables_summary: { tab: "consumables", about: "what went out over a period, item by item — from/to" },
-  consumables_monthly: { tab: "consumables", about: "the consumables monthly review: a row per item and per limit, with the trend — month" },
-  powder_scrap: { tab: "consumables", about: "a month of powder scrap: the sections' totals, then each weighing — month" },
-  shift_attendance: { tab: "shifts", about: "a day's attendance as saved: a row per worker — day, section" },
-  machine_stops: { tab: "shifts", about: "a day's machine stops (an open one counted up to now) — day, section" },
-  query: { tab: null, about: "anything else: the rows of ONE read-only SELECT (sql), as query_database reads them" },
-} as const satisfies Record<string, { tab: string | null; admin?: true; about: string }>;
+  plan_tracker: { tab: "tracker", params: ["line", "filters"], about: "the monthly Plan Tracker (TR or LV), one row per order — filters as on the screen; deptStage narrows the TR columns" },
+  weekly_plan: { tab: "tracker", params: ["plan", "q", "hideDone", "stages"], about: "a weekly delivery plan (transformers): a row per delivery day, project and component — plan number, search, hideDone, stages" },
+  daily_log: { tab: "handover", params: ["line", "from", "to", "q", "dept", "item", "flaggedOnly"], about: "the Daily log (the ledger the tracker adds up): a row per entry with the data guard's checks — from/to (default the last 3 days), search on BOM, dept, item, flaggedOnly" },
+  orders_registry: { tab: "orders", admin: true, params: ["line", "q", "urgent", "source"], about: "the Orders Registry (admins): a row per order of a line — search, urgent, source" },
+  trace: { tab: "tracker", params: ["line", "mo", "bom"], about: "one order's (mo) or one code's (bom) trace: every ledger row behind it" },
+  odoo_log: { tab: "odoo", params: ["from", "to"], about: "the ODOO close-out log, with the office sheet's headers — from/to, or every day" },
+  odoo_daily: { tab: "odoo", params: ["from", "to", "basis"], about: "the ODOO dashboard by day: closed (or logged) quantity per product series — from/to (default the last 30 days), basis" },
+  material: { tab: "material", params: ["line"], about: "the Material (nesting) sheet of a line, with the workbook's own columns" },
+  physical_stock: { tab: "physical", params: [], about: "Physical Material: the store's count against Odoo's stock, code by code" },
+  consumables_log: { tab: "consumables", params: ["from", "to"], about: "the consumables hand-out log — from/to (default today)" },
+  consumables_limits: { tab: "consumables", params: [], about: "the consumables catalogue, its limits and where each stands now" },
+  consumables_edits: { tab: "consumables", admin: true, params: ["from", "to"], about: "every change made to a recorded hand-out (admins) — from/to" },
+  consumables_summary: { tab: "consumables", params: ["from", "to"], about: "what went out over a period, item by item — from/to" },
+  consumables_monthly: { tab: "consumables", params: ["month"], about: "the consumables monthly review: a row per item and per limit, with the trend — month" },
+  powder_scrap: { tab: "consumables", params: ["month"], about: "a month of powder scrap: the sections' totals, then each weighing — month" },
+  shift_attendance: { tab: "shifts", params: ["day", "section"], about: "a day's attendance as saved: a row per worker — day, section" },
+  machine_stops: { tab: "shifts", params: ["day", "section"], about: "a day's machine stops (an open one counted up to now) — day, section" },
+  query: { tab: null, params: ["sql"], about: "anything else: the rows of ONE read-only SELECT (sql), as query_database reads them" },
+} as const satisfies Record<string, { tab: string | null; admin?: true; params: readonly Param[]; about: string }>;
 type SheetKind = keyof typeof SHEETS;
 
 interface Input {
@@ -100,7 +115,7 @@ interface Input {
 type Made = { rows: SheetRow[]; name: string; sheet: string; scope: string } | { error: string };
 
 const str = (maxLength: number, description: string) => ({ type: "string" as const, minLength: 1, maxLength, description });
-const DAY = { type: "string" as const, pattern: "^\\d{4}-\\d{2}-\\d{2}$" };
+const DAY = { type: "string" as const, format: "date" as const };
 
 export const makeSheetTool: ReadTool<Input> = {
   kind: "read",
@@ -108,9 +123,9 @@ export const makeSheetTool: ReadTool<Input> = {
   title: "Making the Excel file",
   liveOnly: true,
   description:
-    "Make an Excel file (.xlsx) for the person to download or print — the screens have no Export button any more, so this is how anyone gets a sheet of the app's data. Call it whenever they ask for an Excel, a sheet, an export, a download, a file, or a printout of a list. Each `sheet` builds EXACTLY the sheet the screen's old Export button made — its loader, its filters, its columns and headers, so the file drops back into the office's workbooks: " +
+    "Make an Excel file (.xlsx) for the person to download or print — the screens have no Export button any more, so this is how anyone gets a sheet of the app's data. Call it whenever they ask for an Excel, a sheet, an export, a download, a file, or a printout of a list. Each `sheet` builds EXACTLY the sheet the screen's old Export button made — its loader, its filters, its columns and headers, so the file drops back into the office's workbooks — and takes only its own inputs: " +
     Object.entries(SHEETS).map(([k, v]) => `${k}: ${v.about}`).join("; ") +
-    ". Use `query` only when no screen sheet fits (any columns, joins, totals): one SELECT, double-quoted names, the same read-only rules as query_database, up to " + MAX_SHEET_ROWS.toLocaleString("en-US") + " rows. The result gives the file's download and print links: ALWAYS put both in your answer as Markdown links, e.g. [Download plan-tracker.xlsx](/api/ai/files/12) · [Print](/ai/print/12), and say in one line what it holds (rows, scope). Never paste the rows into the answer — the file carries them.",
+    `. Use \`query\` only when no screen sheet fits (any columns, joins, totals): one SELECT, double-quoted names, the same read-only rules as query_database, up to ${MAX_ROWS_TEXT} rows. The result gives the file's download and print links: ALWAYS put both in your answer as Markdown links, e.g. [Download plan-tracker.xlsx](${aiFileHref(12)}) · [Print](${aiPrintHref(12)}), and say in one line what it holds (rows, scope). Never paste the rows into the answer — the file carries them.`,
   schema: {
     type: "object",
     additionalProperties: false,
@@ -121,10 +136,10 @@ export const makeSheetTool: ReadTool<Input> = {
       line: { type: "string", enum: ["TR", "LV"], description: "The product line, for plan_tracker, daily_log, orders_registry, trace (a code's) and material. Defaults to the chat's line." },
       filters: TRACKER_FILTER_SCHEMA,
       plan: { type: "integer", minimum: 1, description: "weekly_plan: the plan number; defaults to the newest." },
-      q: str(160, "A search: weekly_plan (project, SOI, description), daily_log (BOM), orders_registry (MO, BOM, SOI, FG code, KVA, product)."),
+      q: str(160, "A search: weekly_plan (project, SOI, description), daily_log (BOM), orders_registry (MO, BOM, SOI, FG code, KVA, product). The plan tracker's search is filters.q."),
       hideDone: { type: "boolean", description: "weekly_plan: leave out the rows the measured stage has finished." },
-      stages: str(60, "weekly_plan: the stage columns, comma-separated from cut,weld,finish,delivered; all of them by default."),
-      from: { ...DAY, description: "The first day (YYYY-MM-DD) of daily_log, odoo_log, odoo_daily, consumables_log, consumables_edits, consumables_summary." },
+      stages: str(60, `weekly_plan: the stage columns, comma-separated from ${STAGE_VALUES.join(",")}; all of them by default.`),
+      from: { ...DAY, description: "The first day (YYYY-MM-DD) of daily_log, odoo_log, odoo_daily, consumables_log, consumables_edits, consumables_summary; a period given by its first day alone runs to today." },
       to: { ...DAY, description: "The last day (YYYY-MM-DD), the same sheets." },
       dept: str(40, "daily_log: one department, as the ledger names it (Cut, Welding, Painting, ShotBlast, Delivered, or an LV stage)."),
       item: str(40, "daily_log: one component (TN, TC, CF, CB, …)."),
@@ -142,22 +157,24 @@ export const makeSheetTool: ReadTool<Input> = {
   },
   parse(raw) {
     const i = raw as unknown as Input;
+    const takes: readonly string[] = SHEETS[i.sheet].params;
+    const foreign = Object.keys(i).filter((k) => k !== "sheet" && k !== "name" && !takes.includes(k));
+    if (foreign.length > 0) return `${i.sheet} does not take ${foreign.join(", ")} — it takes ${takes.length ? takes.join(", ") : "nothing but its name"}.`;
     if (i.sheet === "query" && !i.sql) return "A query sheet needs its SELECT (sql).";
     if (i.sheet === "trace" && !i.mo && !i.bom) return "A trace needs the order's MO or the code (bom).";
     if (i.from && i.to && i.from > i.to) return "from must not be after to.";
     if (i.to && !i.from && (i.sheet === "odoo_log" || i.sheet === "odoo_daily")) return "Give the first day (from) too — a period with no start is every day.";
-    for (const d of [i.from, i.to, i.day]) {
-      const at = d ? parseISODate(d) : null;
-      if (d && (!at || toISODate(at) !== d)) return `${d} is not a calendar day.`;
-    }
-    if (i.stages?.split(",").some((s) => !["cut", "weld", "finish", "delivered"].includes(s.trim()))) return "Stages are cut, weld, finish and delivered.";
+    if (i.stages?.split(",").some((s) => !(STAGE_VALUES as readonly string[]).includes(s.trim()))) return `Stages are ${STAGE_VALUES.join(", ")}.`;
     return i;
   },
   status: (i) => `Making the Excel file — ${i.sheet.replace(/_/g, " ")}`,
   async run(i, ctx) {
-    const spec = SHEETS[i.sheet];
+    const spec: { tab: string | null; admin?: true } = SHEETS[i.sheet];
     if (spec.tab && ctx.hidden.has(spec.tab)) return { ok: false, text: "That screen is not opened for this person, so its sheet cannot be made for them." };
-    if ("admin" in spec && spec.admin && !ctx.user.isAdmin) return { ok: false, text: "That sheet is the admin's alone." };
+    if (spec.admin && !ctx.user.isAdmin) return { ok: false, text: "That sheet is the admin's alone." };
+    // the room first: a sheet is not read to be refused
+    const full = await roomProblem(ctx.user.id, 0, ctx.now);
+    if (full) return { ok: false, text: full };
     const made = await rowsOf(i, ctx);
     if ("error" in made) return { ok: false, text: made.error };
     return keep(i, made, ctx);
@@ -166,17 +183,16 @@ export const makeSheetTool: ReadTool<Input> = {
 
 async function keep(i: Input, made: Exclude<Made, { error: string }>, ctx: ToolCtx): Promise<ReadResult> {
   if (made.rows.length === 0) return { ok: true, text: JSON.stringify({ rows: 0, scope: made.scope, note: "Nothing matches, so no file was made — say so, and offer a wider scope." }) };
-  if (made.rows.length > MAX_SHEET_ROWS) return { ok: false, text: `That is ${made.rows.length.toLocaleString("en-US")} rows — at most ${MAX_SHEET_ROWS.toLocaleString("en-US")} in one file. Narrow it (a shorter period, a filter) or make it in parts.` };
+  if (made.rows.length > MAX_SHEET_ROWS) return { ok: false, text: `That is ${made.rows.length.toLocaleString("en-US")} rows — at most ${MAX_ROWS_TEXT} in one file. Narrow it (a shorter period, a filter) or make it in parts.` };
   const stored = await storeMadeWorkbook(ctx, i.name ?? made.name, [{ name: made.sheet, rows: made.rows }]);
   if (!stored.ok) return { ok: false, text: stored.error };
-  const download = `/api/ai/files/${stored.file.id}`;
-  const print = `/ai/print/${stored.file.id}`;
-  const columns = Object.keys(made.rows[0]);
+  const download = aiFileHref(stored.file.id);
+  const print = aiPrintHref(stored.file.id);
   return {
     ok: true,
     text: JSON.stringify({
-      file: stored.file.name, scope: made.scope, rows: made.rows.length, columns, preview: made.rows.slice(0, 3), download, print,
-      note: `Put both links in your answer: [Download ${stored.file.name}](${download}) · [Print](${print}). The file is kept for the person for 14 days.`,
+      file: stored.file.name, scope: made.scope, rows: made.rows.length, columns: Object.keys(made.rows[0]), preview: made.rows.slice(0, 3), download, print,
+      note: `Put both links in your answer: [Download ${stored.file.name}](${download}) · [Print](${print}). The file is kept for the person for ${AI_FILE_LIMITS.keepDays} days.`,
     }),
     links: [{ label: `Download ${stored.file.name}`, href: download }, { label: "Print it", href: print }],
   };
@@ -188,10 +204,16 @@ function viewerOf(ctx: ToolCtx) {
 
 /** The month asked for — this one by default, never one still to come. */
 function monthOf(i: Input, ctx: ToolCtx): string | { error: string } {
-  const now = ctx.todayISO.slice(0, 7);
-  const month = i.month ?? now;
-  if (!isMonthKey(month)) return { error: `${month} is not a month.` };
-  return month > now ? { error: "That month has not started." } : month;
+  if (i.month === undefined) return ctx.todayISO.slice(0, 7);
+  return pastMonthOf(i.month, ctx.todayISO) ?? { error: `${i.month} is not a month already begun.` };
+}
+
+/** The Shifts screen's day and section — today and every section by default. */
+function shiftScope(i: Input, today: string): { day: string; filter: RosterFilter } | { error: string } {
+  const day = i.day ?? today;
+  if (day > today) return { error: "That day has not come yet." };
+  const filter = parseRosterFilter(i.section);
+  return i.section && !filter ? { error: `${i.section} is not a section of the Shifts screen.` } : { day, filter };
 }
 
 const stamp = (from: string, to: string) => (from === to ? from : `${from}_to_${to}`);
@@ -208,9 +230,7 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
         const rows = filterLvTracker(await withLine("LV", () => getLvTracker()), f);
         return { rows: lvTrackerRows(rows), name: "lv-plan-tracker", sheet: "Plan Tracker", scope: `LV Plan Tracker, ${rows.length} orders` };
       }
-      // the picked departments in pipeline order, whatever order they were named in
-      const picked = (f.deptStage ?? "").split(",");
-      const stages = TRACKER_STAGE_ORDER.filter((s) => picked.includes(s));
+      const stages = trackerStagesOf(f.deptStage);
       const rows = filterMasterTracker(await withLine("TR", () => getMasterTracker()), f);
       return { rows: masterTrackerRows(rows, stages, f.month ?? ""), name: `plan-tracker${stages.length ? `-${stages.join("-").toLowerCase()}` : ""}`, sheet: "Plan Tracker", scope: `Transformer Plan Tracker, ${rows.length} orders` };
     }
@@ -225,35 +245,28 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
     case "daily_log": {
       const to = i.to ?? today;
       const from = i.from ?? addDaysISO(to, -2);
-      const [entries, soi] = await Promise.all([
+      const [entries, recent, soi] = await Promise.all([
         prisma.handoverEntry.findMany({
           where: { ...ledgerItemWhere(line), date: { gte: new Date(`${from}T00:00:00.000Z`), lte: new Date(`${to}T00:00:00.000Z`) } },
           orderBy: [{ date: "desc" }, { id: "desc" }],
           take: MAX_SHEET_ROWS + 1,
         }),
+        withLine(line, () => getRecentHandover(GUARD_HISTORY)),
         getSoiLookup(),
       ]);
-      // the whole period or nothing: the filters below and the data guard both
-      // need every entry of it, so a period past the limit is refused, not cut
-      if (entries.length > MAX_SHEET_ROWS) return { error: `The Daily log holds more than ${MAX_SHEET_ROWS.toLocaleString("en-US")} entries from ${from} to ${to} — take a shorter period.` };
-      // the data guard judges each entry against the rest of the period, as
-      // the screen judges it against what it loaded
-      const flags = guardLedger(entries.map((r) => ({ id: r.id, dateISO: toISODate(r.date), dept: r.dept, bom: r.bom, mo: r.mo, item: r.item, qty: r.qty, createdISO: r.createdAt.toISOString() })));
-      const needle = (i.q ?? "").trim().toUpperCase();
-      const rows = entries
-        .map((r) => ({ date: toISODate(r.date), dept: r.dept, bom: r.bom, bomRaw: r.bomRaw, mo: r.mo, item: r.item, qty: r.qty, source: r.source, createdBy: r.createdBy, flags: flags.get(r.id)?.map((f) => f.detail) ?? null }))
-        .filter((r) => (!i.flaggedOnly || !!r.flags?.length) && (!needle || r.bom.toUpperCase().includes(needle)) && (!i.dept || r.dept === i.dept) && (!i.item || r.item === i.item));
+      // the whole period or nothing: the filters below need every entry of it,
+      // so a period past the limit is refused, not cut
+      if (entries.length > MAX_SHEET_ROWS) return { error: `The Daily log holds more than ${MAX_ROWS_TEXT} entries from ${from} to ${to} — take a shorter period.` };
+      // the data guard judges each entry against the history the screen loads,
+      // and the rest of the period
+      const seen = new Set(entries.map((e) => e.id));
+      const guarded = logRowsOf([...entries, ...recent.filter((e) => !seen.has(e.id))]);
+      const rows = filterLogRows(guarded, { q: i.q, dept: i.dept, item: i.item, flaggedOnly: i.flaggedOnly, from, to });
       return { rows: dailyLogRows(rows, soi), name: `daily-log-${line === "LV" ? "lv-" : ""}${stamp(from, to)}`, sheet: "Daily log", scope: `${line === "LV" ? "LV" : "Transformer"} Daily log ${from} – ${to}` };
     }
     case "orders_registry": {
       const orders = await prisma.masterOrder.findMany({ where: { line }, orderBy: [{ createdAt: "desc" }, { mo: "asc" }] });
-      const needle = (i.q ?? "").trim().toUpperCase();
-      const rows = orders.filter((r) => {
-        if (needle && !`${r.mo} ${r.bom} ${r.soi ?? ""} ${r.fgCode ?? ""} ${r.kva ?? ""} ${r.product ?? ""} ${r.secItem ?? ""}`.toUpperCase().includes(needle)) return false;
-        if (i.urgent === "yes" && !r.urgent) return false;
-        if (i.urgent === "no" && r.urgent) return false;
-        return !i.source || r.source === i.source;
-      });
+      const rows = filterOrderRows(orders.map(orderRowOf), { q: i.q, urgent: i.urgent, source: i.source });
       return { rows: registryRows(rows, line), name: `orders-${line.toLowerCase()}`, sheet: "Orders", scope: `${line} Orders Registry, ${rows.length} orders` };
     }
     case "trace": {
@@ -261,15 +274,15 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       const own = i.mo ? (await prisma.masterOrder.findUnique({ where: { mo: i.mo }, select: { line: true } }))?.line : null;
       const at: ProductLine = own === "LV" || own === "TR" ? own : line;
       const key = (i.mo ?? i.bom)!;
-      const name = `trace-${key.replace(/[^A-Za-z0-9-]+/g, "_")}`;
+      const scope = { mo: i.mo, bom: i.mo ? undefined : i.bom };
       if (at === "LV") {
-        const t = await withLine("LV", () => getLvTrace({ mo: i.mo, bom: i.mo ? undefined : i.bom }));
+        const t = await withLine("LV", () => getLvTrace(scope));
         if (!t.exists) return { error: `No LV panel order or log row carries ${key}.` };
-        return { rows: lvTraceRows(t), name, sheet: "Trace", scope: `Trace of ${t.key}` };
+        return { rows: lvTraceRows(t), name: `trace-${key}`, sheet: "Trace", scope: `Trace of ${t.key}` };
       }
-      const t = await withLine("TR", () => getTrace({ mo: i.mo, bom: i.mo ? undefined : i.bom }));
+      const t = await withLine("TR", () => getTrace(scope));
       if (!t.exists) return { error: `No order or log row carries ${key}.` };
-      return { rows: traceRows(t), name, sheet: "Trace", scope: `Trace of ${t.key}` };
+      return { rows: traceRows(t), name: `trace-${key}`, sheet: "Trace", scope: `Trace of ${t.key}` };
     }
     case "odoo_log": {
       // from a day on its own runs to today, as the other sheets read it
@@ -280,7 +293,8 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
     case "odoo_daily": {
       const period = resolvePeriod(i.from ? { range: "custom", from: i.from, to: i.to ?? today } : {}, factoryToday(ctx.now));
       const basis = i.basis ?? "closed";
-      const d = await getOdooDashboard(period, basis);
+      // no comparison: the sheet carries the period's own days
+      const d = await getOdooDashboard(period, basis, null, "none");
       return { rows: odooDailyRows(d), name: `odoo-by-day-${period.fromISO ?? "all"}-${period.toISO}`, sheet: "By day", scope: `ODOO by ${basis} day, ${period.fromISO ?? "the start"} – ${period.toISO}` };
     }
     case "material": {
@@ -293,7 +307,9 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
     }
     case "consumables_log": {
       const p = consumablesPeriod({ from: i.from, to: i.to }, today);
-      const data = await getConsumablesData(p.from, p.to, viewerOf(ctx));
+      // the log's rows are the same for every viewer; only an admin's screen
+      // also reads each hand-out's edit history, which the sheet never shows
+      const data = await getConsumablesData(p.from, p.to, { ...viewerOf(ctx), isAdmin: false });
       return { rows: consumablesLogRows(data.entries), name: `consumables-${p.stamp}`, sheet: "Consumables", scope: `Consumables log ${p.label}` };
     }
     case "consumables_limits": {
@@ -320,36 +336,36 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       return { rows: powderRows(await getPowderReport(month, viewerOf(ctx)), month), name: `powder-scrap-${month}`, sheet: month, scope: `Powder scrap ${month}` };
     }
     case "shift_attendance": {
-      const day = i.day ?? today;
-      if (day > today) return { error: "That day has not come yet." };
-      const filter = parseRosterFilter(i.section);
-      if (i.section && !filter) return { error: `${i.section} is not a section of the Shifts screen.` };
-      const data = await getShiftRoster(day);
-      return { rows: rosterRows({ ...data, lines: data.lines.filter((l) => rosterLineMatches(l, filter)) }), name: `attendance-${day}`, sheet: "Attendance", scope: `Attendance ${day}` };
+      const at = shiftScope(i, today);
+      if ("error" in at) return at;
+      const data = await getShiftRoster(at.day);
+      return { rows: rosterRows({ ...data, lines: data.lines.filter((l) => rosterLineMatches(l, at.filter)) }), name: `attendance-${at.day}`, sheet: "Attendance", scope: `Attendance ${at.day}` };
     }
     case "machine_stops": {
-      const day = i.day ?? today;
-      const filter = parseRosterFilter(i.section);
-      if (i.section && !filter) return { error: `${i.section} is not a section of the Shifts screen.` };
-      const depts: readonly string[] = rosterDepts(filter);
-      const data = await getDowntimeDay(day);
-      return { rows: downtimeRows({ ...data, rows: data.rows.filter((r) => depts.includes(r.dept)) }, ctx.now), name: `machine-stops-${day}`, sheet: "Stops", scope: `Machine stops ${day}` };
+      const at = shiftScope(i, today);
+      if ("error" in at) return at;
+      const depts: readonly string[] = rosterDepts(at.filter);
+      const data = await getDowntimeDay(at.day);
+      return { rows: downtimeRows({ ...data, rows: data.rows.filter((r) => depts.includes(r.dept)) }, ctx.now), name: `machine-stops-${at.day}`, sheet: "Stops", scope: `Machine stops ${at.day}` };
     }
     case "query": {
       const closed = blockedTableIn(i.sql!, blockedTablesFor(ctx.hidden));
       if (closed) return { error: `"${closed}" belongs to a screen that is not opened for this person, so it cannot be read for them.` };
       const r = await runAiRows(i.sql!, MAX_SHEET_ROWS);
       if (!r.ok) return { error: r.error };
-      if (r.truncated) return { error: `The query returns more than ${MAX_SHEET_ROWS.toLocaleString("en-US")} rows — narrow it.` };
+      if (r.truncated) return { error: `The query returns more than ${MAX_ROWS_TEXT} rows — narrow it.` };
       return { rows: r.rows.map(cellsOf), name: "query", sheet: "Sheet1", scope: `${r.rows.length} rows of a query` };
     }
   }
 }
 
-/** A database row as sheet cells: a number stays a number, anything else is text. */
+/** A row as the reader hands it (already JSON-safe) as sheet cells: a number
+ *  stays a number, a yes/no reads so, anything else is text. */
 function cellsOf(row: Record<string, unknown>): SheetRow {
-  return Object.fromEntries(Object.entries(row).map(([k, v]) => {
-    const safe = jsonSafe(v);
-    return [k, typeof safe === "number" ? safe : safe === null || safe === undefined ? "" : typeof safe === "string" ? safe : typeof safe === "boolean" ? (safe ? "yes" : "no") : JSON.stringify(safe)];
-  }));
+  const cell = (v: unknown): string | number => {
+    if (typeof v === "number" || typeof v === "string") return v;
+    if (typeof v === "boolean") return v ? "yes" : "no";
+    return v === null ? "" : JSON.stringify(v);
+  };
+  return Object.fromEntries(Object.entries(row).map(([k, v]) => [k, cell(v)]));
 }

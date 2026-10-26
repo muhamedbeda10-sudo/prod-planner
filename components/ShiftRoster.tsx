@@ -6,7 +6,7 @@ import { formatDate } from "@/lib/domain/format";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
-  ATTENDANCES, ATTENDANCE_LABEL, ATTENDANCE_TIME, DEFAULT_SHIFT_HOURS, DEPT_CENTRES, OVERTIME_TIME, NIGHT_OVERTIME_TIME, overtimeHoursFor, overtimeTime, UNSET_LINE, WORK_CENTRE_LABEL, attendanceLine, attendanceOf, centreOf, lineHours, round1, shiftSplit,
+  ATTENDANCES, ATTENDANCE_LABEL, ATTENDANCE_TIME, DEFAULT_SHIFT_HOURS, DEPT_CENTRES, OVERTIME_TIME, NIGHT_OVERTIME_TIME, overtimeHoursFor, overtimeTime, UNSET_LINE, WORK_CENTRE_LABEL, attendanceLine, attendanceOf, centreOf, lineHours, rosterLineReading, round1, shiftSplit,
   type Attendance, type RosterDept, type WorkCentre,
 } from "@/lib/domain/shifts";
 import { WORKER_DEPT_LABEL, WORKER_GROUPS } from "@/lib/domain/tanks";
@@ -244,11 +244,9 @@ export function ShiftRoster({ data, editableDepts, filter }: {
   // section and search, every attendance
   const boardLines: BoardLine[] = searched.map((d) => {
     const w = byKey.get(keyOf(d))!;
-    const a = attendanceOf(d);
     return {
       key: keyOf(d), dept: d.dept, empId: w.empId, name: w.name, jobTitle: w.jobTitle, sectionLabels: w.sectionLabels, onVacation: w.onVacation,
-      attendance: a, overtimeH: a === "day" || a === "night" ? d.overtimeH : 0, hours: a === "unset" ? 0 : lineHours(d, hrs), note: d.note,
-      centre: d.dept === "Cut" && d.center ? WORK_CENTRE_LABEL[d.center] : null,
+      ...rosterLineReading(d, hrs), note: d.note,
     };
   });
 

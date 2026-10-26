@@ -6,7 +6,7 @@ import { MasterTrackerTable } from "@/components/MasterTrackerTable";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { ITEMS } from "@/lib/domain/constants";
 import type { LvTrackerRow } from "@/lib/server/lvTracker";
-import { lvTrackerRows } from "@/lib/domain/sheets";
+import { lvTrackerRows } from "@/lib/server/sheets";
 import { filterLvTracker } from "@/lib/domain/trackerSummary";
 
 const { filters, cards } = vi.hoisted(() => ({
@@ -14,6 +14,7 @@ const { filters, cards } = vi.hoisted(() => ({
   cards: vi.fn(),
 }));
 
+vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), useSearchParams: () => new URLSearchParams(), usePathname: () => "/tracker" }));
 vi.mock("@/app/lv/actions", () => ({ recordLvGroupTotal: vi.fn(), recordLvTotal: vi.fn() }));
 vi.mock("@/app/orders/actions", () => ({
@@ -29,7 +30,6 @@ vi.mock("@/components/FilterControls", async (original) => ({
   useSavedFilter: (key: string) => [filters[key] ?? "", vi.fn()],
 }));
 vi.mock("@/components/ProgressRing", () => ({ RING_GRID: "", RingCard: cards }));
-vi.mock("@/components/ExportMenu", () => ({ ExportMenu: () => null }));
 
 const row = (mo: string, required: number, paint: number, extra: Partial<LvTrackerRow> = {}): LvTrackerRow => ({
   mo, bom: `BOM-${mo}`, soi: null, urgent: false, customer: null, product: "USS", family: "",
