@@ -44,7 +44,6 @@ export function WeldingQueueTable({
   paintableTanks = {},
   tankTracking = false,
   before,
-  lineSwitch,
   after,
   soi,
   machines = [],
@@ -70,8 +69,6 @@ export function WeldingQueueTable({
    *  component — no serial, no welder box, no leak-test gate on painting. */
   tankTracking?: boolean;
   before?: React.ReactNode; // page sections rendered inside the scroll area, above the queue (priority / pushed)
-  /** The page's Transformers | LV Panels switch, first in the filter bar. */
-  lineSwitch?: React.ReactNode;
   after?: React.ReactNode; // page sections at the bottom of the scroll area (hidden-lines panel)
   /** PAINTING — the paint lines; with any, every row carries a Machine picker. */
   machines?: MachineDTO[];
@@ -699,7 +696,6 @@ export function WeldingQueueTable({
     // queue's header row pinned — same pattern as the Plan Tracker.
     <div className="md:flex md:flex-col md:h-[calc(100vh-7.75rem)]">
       <FilterBar count={filtered.length} total={rows.length} showCount={false} onReset={() => { setQ(""); setItem(""); setPlace(""); }} hasActive={!!q || !!item || !!place}>
-        {lineSwitch}
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM…" />
         {/* per-component workload — tap a card to filter the queue to it */}
         <div className="col-span-2 flex flex-wrap items-center gap-1.5">

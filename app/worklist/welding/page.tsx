@@ -24,7 +24,6 @@ import { MachineBoard } from "@/components/MachineBoard";
 export const dynamic = "force-dynamic";
 import { getActiveLine } from "@/lib/server/line";
 import { LvWorklistPage } from "@/components/LvWorklistPage";
-import { LineSwitch } from "@/components/LineSwitch";
 
 // No page header on screen — every pixel goes to the queue (title lives in the
 // nav tab). The PrintHeader appears only on the printed/PDF sheet.
@@ -66,7 +65,6 @@ export default async function WeldWorklistPage() {
       <PrintHeader title="Welding Worklist" date={formatDate(today)} />
       <PageHead title="Welding Worklist" sub={formatDate(today)} />
       <WeldingQueueTable
-        lineSwitch={<LineSwitch />}
         soi={soi}
         rows={queue}
         day={dayISO}

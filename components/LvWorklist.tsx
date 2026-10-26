@@ -17,11 +17,7 @@ import { HeldOrdersStrip } from "@/components/HeldOrdersStrip";
 // against the ledger — no weekly promise per panel, so no dates: urgent
 // first, then the plan's order, and the planner sequences by eye.
 
-export function LvWorklist({ data, canEdit, todayISO, lineSwitch }: {
-  data: LvWorklistData; canEdit: boolean; todayISO: string;
-  /** The page's Transformers | LV Panels switch, first in the filter bar. */
-  lineSwitch?: React.ReactNode;
-}) {
+export function LvWorklist({ data, canEdit, todayISO }: { data: LvWorklistData; canEdit: boolean; todayISO: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [q, setQ] = useSavedFilter(`lvwl.${data.stage}.q`);
@@ -69,7 +65,6 @@ export function LvWorklist({ data, canEdit, todayISO, lineSwitch }: {
     <div className="space-y-4">
       <HeldOrdersStrip rows={data.held.map((r) => ({ mo: r.mo, bom: r.bom, description: [r.product, r.customer].filter(Boolean).join(" · "), hold: r.hold }))} />
       <FilterBar count={filtered.length} total={data.rows.length} onReset={() => setQ("")} hasActive={!!q}>
-        {lineSwitch}
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / customer…" />
         <span className="text-xs text-muted">Panels waiting for {data.stage.toLowerCase()}: <b className="text-foreground tabnum">{waiting}</b></span>
         <ExportButton rows={exportRows} filename={`lv-${data.stage.toLowerCase()}-worklist.xlsx`} sheetName={data.stage} />
