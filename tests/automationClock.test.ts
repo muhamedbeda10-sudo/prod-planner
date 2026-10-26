@@ -26,10 +26,13 @@ vi.mock("next/server", () => ({ after: (f: () => Promise<void>) => h.after.push(
 vi.mock("@/lib/server/automations/runner", () => ({ runDueAutomations: h.runDue }));
 vi.mock("@/lib/server/automations/review", () => ({ REVIEW_KEY: "ai.suggestions" }));
 
-import { removeScheduler, setupScheduler, sha256, tickSecretOk, tickUrlFor } from "@/lib/server/automations/scheduler";
+import { everyMinuteAt, removeScheduler, schedulerStatus, setupScheduler, sha256, tickSecretOk, tickUrlFor } from "@/lib/server/automations/scheduler";
+import { factoryClockHHMM } from "@/lib/domain/dates";
 import { POST } from "@/app/api/automations/tick/route";
 
 const SECRET = "A".repeat(43);
+/** The names the one unschedule statement is bound to. */
+const unscheduledNames = () => h.prisma.$executeRawUnsafe.mock.calls.filter((c) => String(c[0]).includes("cron.unschedule")).flatMap((c) => c.slice(1));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -68,7 +71,7 @@ describe("the tick's address", () => {
 });
 
 describe("setting the scheduler up", () => {
-  it("enables the extensions, keeps the secret in Vault, schedules the job every minute, and keeps only the secret's hash", async () => {
+  it("enables the extensions, keeps the secret in Vault, schedules the ticks through the day and the night and the run log's clearing, and keeps only the secret's hash", async () => {
     expect(await setupScheduler("https://prod-planner.vercel.app/api/automations/tick")).toEqual({ ok: true });
     const statements = h.prisma.$executeRawUnsafe.mock.calls.map((c) => String(c[0]));
     expect(statements[0]).toBe("CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog");
@@ -76,12 +79,22 @@ describe("setting the scheduler up", () => {
     const vault = h.prisma.$executeRawUnsafe.mock.calls.filter((c) => String(c[0]).includes("vault.create_secret"));
     expect(vault.map((c) => c[2])).toEqual(["atc_automations_tick_secret", "atc_automations_tick_url"]);
     const secret = vault[0][1] as string;
-    const schedule = h.prisma.$executeRawUnsafe.mock.calls.find((c) => String(c[0]).includes("cron.schedule"))!;
-    expect(schedule.slice(1, 2)).toEqual(["atc-automations-tick"]);
-    expect(schedule[0]).toContain("'* * * * *'");
-    // the job reads the secret from Vault — it is not written into the job
-    expect(schedule[2]).toContain("vault.decrypted_secrets");
-    expect(schedule[2]).not.toContain(secret);
+    const schedules = h.prisma.$executeRawUnsafe.mock.calls.filter((c) => String(c[0]).includes("cron.schedule"));
+    expect(schedules.map((c) => c[1])).toEqual(["atc-automations-tick", "atc-automations-tick-night", "atc-cron-cleanup"]);
+    // every minute through the plant's day (UTC), a quarter hour at night, the run log cleared nightly
+    expect(schedules[0][0]).toContain("'* 2-21 * * *'");
+    expect(schedules[1][0]).toContain("'*/15 0,1,22,23 * * *'");
+    expect(schedules[2][0]).toContain("'30 2 * * *'");
+    expect(schedules[2][2]).toBe("DELETE FROM cron.job_run_details WHERE end_time < now() - interval '7 days'");
+    // the tick jobs read the secret from Vault — it is not written into the job
+    for (const tick of schedules.slice(0, 2)) {
+      expect(tick[2]).toContain("vault.decrypted_secrets");
+      expect(tick[2]).not.toContain(secret);
+    }
+    // stale jobs of every name go first, so a second set-up never doubles the clock
+    const unscheduled = unscheduledNames();
+    expect(unscheduled).toEqual(["atc-automations-tick", "atc-automations-tick-night", "atc-cron-cleanup"]);
+    expect(statements.findLastIndex((s) => s.includes("cron.unschedule"))).toBeLessThan(statements.findIndex((s) => s.includes("cron.schedule")));
     expect(h.prisma.aiSettings.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { tickSecretHash: sha256(secret) } });
   });
 
@@ -95,6 +108,56 @@ describe("setting the scheduler up", () => {
     h.prisma.$executeRawUnsafe.mockRejectedValueOnce(new Error("ERROR: permission denied to create extension \"pg_cron\""));
     expect(await setupScheduler("https://x.vercel.app/api/automations/tick")).toEqual({ ok: false, error: "Failed while enabling pg_cron: permission denied to create extension \"pg_cron\"" });
     expect(h.prisma.aiSettings.update).not.toHaveBeenCalled();
+  });
+
+  it("removing it takes every job away and stops the secret at once", async () => {
+    expect(await removeScheduler()).toEqual({ ok: true });
+    const unscheduled = unscheduledNames();
+    expect(unscheduled).toEqual(["atc-automations-tick", "atc-automations-tick-night", "atc-cron-cleanup"]);
+    expect(h.prisma.aiSettings.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { tickSecretHash: "" } });
+  });
+
+  const live = (rows: { jobname: string; schedule: string }[], runs: unknown[] = []) =>
+    h.prisma.$queryRawUnsafe.mockReset().mockResolvedValueOnce(rows).mockResolvedValueOnce(runs);
+  const allThree = [
+    { jobname: "atc-cron-cleanup", schedule: "30 2 * * *" },
+    { jobname: "atc-automations-tick-night", schedule: "*/15 0,1,22,23 * * *" },
+    { jobname: "atc-automations-tick", schedule: "* 2-21 * * *" },
+  ];
+
+  it("reports the clock on with the day job and the secret, with the tick jobs' last runs", async () => {
+    h.prisma.aiSettings.findUnique.mockResolvedValue({ tickSecretHash: sha256(SECRET), lastTickAt: new Date("2026-10-26T06:00:00Z") });
+    live(allThree, [{ at: new Date("2026-10-26T06:00:00Z"), status: "succeeded", message: null }]);
+    const s = await schedulerStatus();
+    expect(s).toMatchObject({ scheduled: true, outdated: false, lastTickAt: "2026-10-26T06:00:00.000Z", error: null });
+    expect(s.lastJobRuns).toEqual([{ at: "2026-10-26T06:00:00.000Z", status: "succeeded", message: null }]);
+    expect(h.prisma.$queryRawUnsafe.mock.calls[0].slice(1)).toEqual(["atc-automations-tick", "atc-automations-tick-night", "atc-cron-cleanup"]);
+    expect(h.prisma.$queryRawUnsafe.mock.calls[1].slice(1)).toEqual(["atc-automations-tick", "atc-automations-tick-night"]);
+  });
+
+  it("calls the clock out of date when an earlier version set it up — one job, every minute — or a schedule differs", async () => {
+    live([{ jobname: "atc-automations-tick", schedule: "* * * * *" }]);
+    expect(await schedulerStatus()).toMatchObject({ scheduled: true, outdated: true });
+    live(allThree.map((j) => (j.jobname === "atc-cron-cleanup" ? { ...j, schedule: "0 3 * * *" } : j)));
+    expect(await schedulerStatus()).toMatchObject({ scheduled: true, outdated: true });
+  });
+
+  it("does not take the night job alone for a clock", async () => {
+    live([{ jobname: "atc-automations-tick-night", schedule: "*/15 0,1,22,23 * * *" }]);
+    expect(await schedulerStatus()).toMatchObject({ scheduled: false, outdated: false });
+  });
+
+  it("ticks every minute through the plant's day on the factory clock, winter and summer alike", () => {
+    // every minute of two days (Cairo is UTC+2 in January, UTC+3 in July): the
+    // plant's day, 05:00-23:59 on the factory clock, is always on the minute clock
+    for (const day of ["2026-01-14", "2026-07-15"]) {
+      for (let m = 0; m < 24 * 60; m++) {
+        const at = new Date(`${day}T00:00:00Z`);
+        at.setUTCMinutes(m);
+        const hhmm = factoryClockHHMM(at);
+        if (hhmm >= "05:00" && hhmm <= "23:59") expect(everyMinuteAt(at), `${day} ${hhmm} (${at.toISOString()})`).toBe(true);
+      }
+    }
   });
 
   it("removing it stops the secret at once, even with no pg_cron at all", async () => {

@@ -486,8 +486,10 @@ mobile drawer still lists every view flat, since it has the vertical room.
      the next runs, the rows a condition finds now, or what an event would have caught in the last 7 days, or from ten
      ready-made recipes (`AUTOMATION_RECIPES`). They run as their owner, count against the month's caps, stop after five
      failures in a row. The clock: Supabase pg_cron + pg_net call `/api/automations/tick`
-     every minute with a secret kept in Supabase Vault — set up in one click on AI assistant settings; until then open pages
-     tick, at most once a minute for the whole plant.
+     every minute through the plant's day (UTC 02:00-21:59: 04:00-23:59 Cairo in winter, 05:00-00:59 in summer) and
+     every quarter hour at night, with a secret kept in Supabase Vault — set up in one click on AI assistant settings,
+     which also schedules the nightly clearing of pg_cron's own run log (a week is kept); until then open pages tick,
+     at most once a minute for the whole plant.
    - **Inbox and push** (`/inbox`): reports, messages and suggestions, with Web Push to phones (VAPID keys made on first use,
      the private half encrypted; only the real push services are posted to). The count rides on the chat's poll.
    - **Tasks** (the inbox's Tasks tab, `lib/domain/tasks.ts`, `lib/server/tasks.ts`, `app/tasks/actions.ts`): given by

@@ -6,7 +6,8 @@ import { runDueAutomations } from "@/lib/server/automations/runner";
 import { REVIEW_KEY } from "@/lib/server/automations/review";
 
 // The automations' clock ticks here (lib/server/automations/scheduler.ts):
-// every minute from the database's own scheduler, with its secret — or, when
+// every minute through the day and every quarter hour at night from the
+// database's own scheduler, with its secret — or, when
 // that is not set up, from a page open in the app (a signed-in person), at
 // most once a minute for the whole plant. It answers at once and runs what is
 // due after the answer, within the route's time limit; what does not fit

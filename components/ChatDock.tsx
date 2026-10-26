@@ -13,6 +13,7 @@ import type { ChatContact, ChatInboxItem, ThreadKind } from "@/lib/server/chat";
 import { factoryClockHHMM } from "@/lib/domain/dates";
 import { armChime, chimeOn, playChime, setChimeOn } from "@/lib/chime";
 import { appInBackground, askNotify, notifyPerm, onNotifyClick, prepareNotify, systemNotify, type NotifyPerm } from "@/lib/sysNotify";
+import { startPoll } from "@/lib/poll";
 
 // 💬 Chat as a corner icon, not a tab.
 //
@@ -37,8 +38,14 @@ import { appInBackground, askNotify, notifyPerm, onNotifyClick, prepareNotify, s
 // also raises a system notification with the OS sound — that one needs no
 // click on the page, only a one-time "Allow", which a small card offers once
 // and the bell in the panel header offers any time.
+//
+// Every open page polls, and each poll is a server call and a database
+// round trip for the whole plant's worth of tabs — so a page in front asks
+// every half minute, and one out of sight only every two minutes, enough to
+// raise the system notification (browsers slow a hidden tab's timers to about
+// that anyway). Coming back to the front asks at once.
 
-const POLL_MS = 15000;
+const PACE = { visibleMs: 30_000, hiddenMs: 120_000 };
 const MAX_CARDS = 4;
 const seenKey = (userId: number) => `chat.popup.seen.${userId}`;
 const ASKED_KEY = "notify.asked";
@@ -158,17 +165,7 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
     }
   }, [me.id]);
 
-  useEffect(() => {
-    const first = setTimeout(() => void poll(), 1200);
-    const t = setInterval(() => void poll(), POLL_MS);
-    const onVis = () => document.visibilityState === "visible" && void poll();
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      clearTimeout(first);
-      clearInterval(t);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [poll]);
+  useEffect(() => startPoll(poll, PACE, 1200), [poll]);
 
   // closing the panel refreshes the badge — reading there changed it
   const wasOpen = useRef(false);
