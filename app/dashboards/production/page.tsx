@@ -11,7 +11,6 @@ import { factoryDayISO } from "@/lib/domain/dates";
 import { formatDate } from "@/lib/domain/format";
 import { DASH_SCOPE_NAME, resolveDashScope } from "@/lib/domain/dashboardScope";
 import type { CockpitAction } from "@/lib/domain/kpis";
-import { DashboardSections } from "@/components/DashboardSections";
 import { FloorPerformance } from "@/components/FloorPerformance";
 import { LvFloorPerformance } from "@/components/LvFloorPerformance";
 import { PlantProduction } from "@/components/PlantProduction";
@@ -61,7 +60,6 @@ export default async function ProductionDashboardPage({ searchParams }: { search
     <div className="space-y-3">
       <RememberLastVisit storageKey="dashboards:production" />
       <PrintHeader title={o.printTitle} subtitle="How the floor worked" date={formatDate(todayISO)} />
-      <DashboardSections current="production" />
       <PageHead title="Production" sub={o.sub} actions={<><CockpitDecisions actions={o.actions} kind="intervention" /><PrintButton /></>}>
         <LineScopeTabs scope={scope} />
       </PageHead>

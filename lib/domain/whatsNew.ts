@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-tab-menus-no-titles",
+    dateISO: "2026-10-26",
+    title: "More room on every page: a tab's places open from the top bar, and pages drop their names",
+    where: "Top bar → Dashboards · Material · Plan Tracker · Floor",
+    href: "/tracker",
+    body: "Rest the pointer on Dashboards, Material, Plan Tracker or Floor in the top bar and a menu of its places opens — Planning, Production, Daily log, Simulator, Physical Material and the rest — pick one to go there. The row of tabs that used to sit at the top of those pages is gone, and so is each page's name: the lit tab in the top bar already says where you are. Each page keeps its controls in one bar — the Transformers | LV Panels switch first among the filters, the page's buttons at the end — so the table starts higher up.",
+  },
+  {
     id: "2026-10-26-dashboards-all-tr-lv",
     dateISO: "2026-10-26",
     title: "Planning and Production for both lines: All | TR | LV, the panels' own dashboards, and the plant in one view",

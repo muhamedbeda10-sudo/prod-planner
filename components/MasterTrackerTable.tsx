@@ -9,7 +9,6 @@ import { decidePlanQty, setOrderStatus, setExcludedItems, setOrderQty, setOrderS
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { Num, PageHead, Soi } from "@/components/ui";
 import { LineSwitch } from "@/components/LineSwitch";
-import { TrackerSections } from "@/components/TrackerSections";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
 import { TrackerScope, type TrackerFilter } from "@/components/TrackerScope";
 import { ExportMenu } from "@/components/ExportMenu";
@@ -786,8 +785,6 @@ export function MasterTrackerTable({
     // `print-flow` hands the height back to the paper: a fixed-height scroller
     // would print one page and clip everything under it.
     <div className="tracker-view print-flow md:flex md:flex-col md:h-[calc(100vh-5rem)]">
-      {/* the tab's places — inside the sheet, which is sized to fill the screen */}
-      <TrackerSections current="tracker" />
       {/* a plan import brought a different qty for these orders — waiting on the planner */}
       <PendingQtyBanner rows={rows} />
       {/* what the sheet is showing — filters don't survive onto paper otherwise */}
@@ -803,7 +800,7 @@ export function MasterTrackerTable({
         ]}
       />
 
-      <PageHead title="Plan Tracker" sub="One row per order, every stage" actions={<ExportMenu excel={[{ rows: exportRows, filename: exportName, sheetName: "Tracker" }]} print />}><LineSwitch /></PageHead>
+      <PageHead title="Plan Tracker" sub="One row per order, every stage" />
 
       <TrackerScope count={filtered.length} total={rows.length} basis={scoped ? `${STAGE_OPTS.find((o) => o.value === cardStage)?.label} progress` : "Finishing progress"} filters={activeFilters} onReset={resetFilters} />
 
@@ -823,10 +820,12 @@ export function MasterTrackerTable({
         hasActive={hasActive}
         head={
           <>
+            <LineSwitch />
             <PlanViewToggle value="monthly" />
             <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / Customer / KVA…" wide />
           </>
         }
+        actions={<ExportMenu excel={[{ rows: exportRows, filename: exportName, sheetName: "Tracker" }]} print />}
       >
         <SelectFilter
           label="Plan month"

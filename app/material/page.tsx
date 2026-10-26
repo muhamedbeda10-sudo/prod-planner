@@ -4,7 +4,6 @@ import { linePermKey } from "@/lib/domain/permissions";
 import { getMaterialData } from "@/lib/server/material";
 import { ExportMenu } from "@/components/ExportMenu";
 import { PageHead } from "@/components/ui";
-import { MaterialSections } from "@/components/MaterialSections";
 import { LineSwitch } from "@/components/LineSwitch";
 import { MaterialClient } from "@/components/MaterialClient";
 import { getActiveLine } from "@/lib/server/line";
@@ -75,17 +74,12 @@ export default async function MaterialPage({
   return (
     <div>
       <RememberLastVisit storageKey="material:last" />
-      <MaterialSections current="material" />
-      <PageHead
-        title="Material"
-        sub="Nesting sheet · one living table, matched on the MO"
-        actions={<ExportMenu excel={[{ rows: exportRows, filename: "material-sheet.xlsx", sheetName: "Sheet1" }]} />}
-      >
-        <LineSwitch />
-      </PageHead>
+      <PageHead title="Material" sub="Nesting sheet · one living table, matched on the MO" />
       <MaterialClient
         lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))}
         product={line} lvOrders={lvOrders} lvTemplates={lvTemplates} odooByMo={odooByMo}
+        lineSwitch={<LineSwitch />}
+        exportButton={<ExportMenu excel={[{ rows: exportRows, filename: "material-sheet.xlsx", sheetName: "Sheet1" }]} />}
       />
     </div>
   );

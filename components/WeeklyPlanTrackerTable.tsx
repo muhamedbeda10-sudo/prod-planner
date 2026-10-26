@@ -81,9 +81,11 @@ const coverage = (r: WeeklyPlanRow, metric: Stage): number | null => {
   return owed > 0 ? cells.reduce((s, c) => s + c[metric], 0) / owed : null;
 };
 
-export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, fabrication = false }: {
+export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, fabrication = false, lineSwitch }: {
   data: WeeklyPlanTracker;
   capacityCard?: React.ReactNode;
+  /** The Plan Tracker's Transformers | LV Panels switch, first in the filter bar. */
+  lineSwitch?: React.ReactNode;
   /** The Plan Tracker: "weekly.record", one permission for the whole sheet.
    *  The fabrication page: the Cut worklist's own permission. */
   canRecord?: boolean;
@@ -254,6 +256,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
         hasActive={hasActive}
         onReset={() => { setQ(""); setStage(""); setHideDone(""); }}
       >
+        {lineSwitch}
         {!fabrication && <PlanViewToggle value="weekly" />}
         <WeekPlanPicker plans={data.planNos} value={data.planNo} basePath={fabrication ? "/worklist/cut" : undefined} />
         <SearchBox value={q} onChange={setQ} placeholder="Search project / SOI…" />

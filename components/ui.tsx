@@ -2,9 +2,10 @@ import type { ReactNode } from "react";
 
 /**
  * The older page header, kept as an adapter so every page wears the ONE head:
- * its title (an emoji in front is dropped — the title is words), its sub,
- * and whatever it held as actions on the right. `label` (a tank's serial, a
- * traced code) stands in as the title when there is none.
+ * its title (an emoji in front is dropped — the title is words, read to a
+ * screen reader only), its sub, and whatever it held as actions on the right.
+ * `label` (a tank's serial, a traced code) is the record on screen, not a
+ * page name: it stays in sight, first in the row.
  */
 export function PageHeader({
   title,
@@ -18,15 +19,23 @@ export function PageHeader({
   children?: ReactNode;
 }) {
   const clean = title ? title.replace(/^[^\p{L}\p{N}]+/u, "").trim() : "";
-  return <PageHead title={clean || label || ""} sub={sub} actions={children} />;
+  return (
+    <PageHead title={clean || label || ""} sub={sub} actions={children}>
+      {label && <span className="font-bold ltr">{label}</span>}
+    </PageHead>
+  );
 }
 
 /**
- * The head of a screen — ONE row, never taller than 52px on a desktop: its
- * name, a quiet line under it, anything that belongs beside the title (a
- * picker), then on the right the page's actions (Export, Print …) and — always
- * last, in the same place on every view of a tab — the switch to the tab's
- * OTHER views. Off the paper: the printed sheets carry their own masthead.
+ * The head of a screen. A screen shows no name of its own — the top bar's lit
+ * tab says where you are, and every row of the screen goes to its work — so
+ * the title and the line under it are read to a screen reader only (the
+ * page's one <h1>). What shows is ONE toolbar row, and only when there is
+ * something for it: anything that belongs at its start (a picker, the line
+ * switch), then on the right the page's actions (Print …) and — always last,
+ * in the same place on every view of a tab — the switch to the tab's OTHER
+ * views. A screen with a filter bar puts these in that bar instead. Off the
+ * paper: the printed sheets carry their own masthead.
  */
 export function PageHead({
   title,
@@ -45,17 +54,20 @@ export function PageHead({
   children?: ReactNode;
 }) {
   return (
-    <div className="page-head no-print">
-      <h1 className="page-title ltr">{title}</h1>
-      {sub && <span className="page-sub truncate min-w-0">{sub}</span>}
-      {children}
-      {(actions || views) && (
-        <span className="ms-auto flex flex-wrap items-center gap-2">
-          {actions}
-          {views}
-        </span>
+    <>
+      <h1 className="sr-only">{title}{sub ? <> — {sub}</> : null}</h1>
+      {(children || actions || views) && (
+        <div className="page-head no-print">
+          {children}
+          {(actions || views) && (
+            <span className="ms-auto flex flex-wrap items-center gap-2">
+              {actions}
+              {views}
+            </span>
+          )}
+        </div>
       )}
-    </div>
+    </>
   );
 }
 

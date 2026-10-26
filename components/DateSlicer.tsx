@@ -45,11 +45,16 @@ export interface DateSlicerProps {
   onChange: (from: string | null, to: string | null) => void;
   /** What the strip is filtering, when it is not obvious (e.g. "Due"). */
   label?: string;
+  /** The page's own controls, sharing the strip's row instead of one of
+   *  their own: at its start (the line switch) and at its end (the views,
+   *  Print …). */
+  start?: React.ReactNode;
+  end?: React.ReactNode;
 }
 
 const COMMIT_MS = 350;
 
-export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks, onChange, label }: DateSlicerProps) {
+export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks, onChange, label, start, end }: DateSlicerProps) {
   const span = Math.max(1, daysBetweenISO(min, max));
   const [timelineOpen, setTimelineOpen] = useTimelineOpen();
   const isAll = from === null || to === null;
@@ -109,6 +114,7 @@ export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks,
       {/* one row: what it filters, the quick picks, then the period itself
           with the steps either side and the timeline's own switch */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+        {start}
         {label && <span className="filter-label shrink-0">{label}</span>}
         <div className="order-2 sm:order-none w-full sm:w-auto sm:flex-1 flex gap-1 overflow-x-auto min-w-0 [scrollbar-width:none]" role="group" aria-label="Quick dates">
           {presets.map((p) => (
@@ -137,6 +143,7 @@ export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks,
             <CalendarRange size={15} />
           </button>
         </span>
+        {end && <span className="order-1 sm:order-none shrink-0 inline-flex flex-wrap items-center gap-2">{end}</span>}
       </div>
 
       {timelineOpen && (

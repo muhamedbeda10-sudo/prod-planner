@@ -11,7 +11,6 @@ import { formatDate } from "@/lib/domain/format";
 import { ConsumableAlarms } from "@/components/ConsumableAlarms";
 import { ConsumablesMonthly } from "@/components/ConsumablesMonthly";
 import { ConsumablesDashboard } from "@/components/LazyCharts";
-import { DashboardSections } from "@/components/DashboardSections";
 import { ExportMenu } from "@/components/ExportMenu";
 import { PageHead } from "@/components/ui";
 import { PrintHeader } from "@/components/PrintHeader";
@@ -46,18 +45,15 @@ export default async function ConsumablesDashboardPage({ searchParams }: { searc
     <div className="space-y-3">
       <RememberLastVisit storageKey="dashboards:consumables" />
       <PrintHeader title="Consumables — dashboard" subtitle={`${periodLabel} · monthly review ${monthLong(month)}`} date={formatDate(today)} />
-      <DashboardSections current="consumables" />
-      <PageHead
-        title="Consumables" sub={`Dashboard · ${periodLabel}`}
-        actions={<ExportMenu excel={[
-          { label: "Items summary", rows: exportRows, filename: `consumables-summary-${period}.xlsx`, sheetName: "Items" },
-          { label: "Monthly review", rows: monthlyExportRows(report), filename: `consumables-monthly-${month}.xlsx`, sheetName: month },
-        ]} print />}
-      />
+      <PageHead title="Consumables" sub={`Dashboard · ${periodLabel}`} />
       <UrlDateSlicer
         encoding="fromTo" from={from} to={to} min={min} max={today} today={today}
         presets={["yesterday", "last7", "thisMonth", "lastMonth", "last30", "last90"]}
         defaultRange={{ label: "Today", from: today, to: today }}
+        end={<ExportMenu excel={[
+          { label: "Items summary", rows: exportRows, filename: `consumables-summary-${period}.xlsx`, sheetName: "Items" },
+          { label: "Monthly review", rows: monthlyExportRows(report), filename: `consumables-monthly-${month}.xlsx`, sheetName: month },
+        ]} print />}
       />
       {/* the limits first: an alarm is what the page is opened for */}
       <ConsumableAlarms d={limits} periodLabel={periodLabel} period={period} />

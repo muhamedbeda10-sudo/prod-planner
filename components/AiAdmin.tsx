@@ -218,9 +218,9 @@ export function AiAdmin({ data, clock, automations }: { data: AiAdminData; clock
   return (
     <div className="space-y-4">
       <div className="page-head">
-        <h1 className="page-title flex items-center gap-2">
-          <Bot size={20} className="text-brand-ink" aria-hidden /> AI settings
-        </h1>
+        {/* no name on screen — the screen reader still hears it */}
+        <h1 className="sr-only">AI settings</h1>
+        <Bot size={18} className="text-brand-ink" aria-hidden />
         <span className={`pill ${data.enabled ? "pill-ok" : "pill-muted"}`}>{data.enabled ? "Open to the team" : "Only you"}</span>
         {data.updatedBy && <span className="text-xs text-muted ms-auto">Last change by {data.updatedBy}</span>}
       </div>

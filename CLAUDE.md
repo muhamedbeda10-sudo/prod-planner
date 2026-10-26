@@ -102,13 +102,25 @@
     `useConfirm`/`ConfirmDialog`، `useAsk`، `TableEmpty`، `ErrorState`
   - `components/Modal.tsx`، `components/Badge.tsx`، `components/Tooltip.tsx`،
     `components/ViewTabs.tsx`
-  - رأس الصفحة: `.page-head` / `.page-title` / `.page-sub`
+  - رأس الصفحة: `PageHead` (الاسم بيتقري لقارئ الشاشة بس، مش ظاهر — شوف تحت)
 - **الألوان والمسافات من الـ tokens اللي في `app/globals.css` بس:** `--sp-*`،
   `--fs-*`، `--r-*`، `--brand*`، `--surface*`، `--ok/warn/bad-*`، `--prod-*`،
   `--viz-*`. ممنوع hex مكتوب مباشرة في الـ components، وممنوع `style={{}}` لحاجة
   ليها token أو class.
 - **الثيم الفاتح والغامق (`html.dark`) الاتنين** لازم يبانوا صح. أي لون جديد يتعرف
   كـ token في الاتنين.
+- **التنقل وأسماء الصفحات (تعليمات صاحب التطبيق، ثابتة لأي تعديل جاي):**
+  - **ممنوع اسم الصفحة يظهر على الشاشة** في أي صفحة. `PageHead` بيحط الـ title
+    كـ `<h1 className="sr-only">` بس. متعملش `<h1>` ظاهر ولا `.page-title`.
+  - **ممنوع شريط تابات داخلي فوق الصفحات** (زي Planning / Production / Material).
+    الأماكن اللي جوه كل تابة بتظهر في **الشريط الأخضر اللي فوق**: لما تقف على التابة
+    بالماوس (أو تعمل لها focus) بتفتح قايمة بأيقونات صفحاتها (`places` في
+    `components/AppNav.tsx`). أي صفحة جديدة جوه تابة تتضاف هناك وفي `DRAWER_VIEWS`.
+  - **بار واحد للصفحة:** أي حاجة ممكن تبقى في نفس البار تبقى فيه. الـ switch بتاع
+    **Transformers | LV Panels** دايمًا أول حاجة في بار الفلاتر (`FilterBar` الـ
+    `head`، أو `start` في `UrlDateSlicer`، أو الـ toolbar بتاع الصفحة)، والأزرار
+    (Print وغيرها) وswitch الـ views في آخر نفس البار (`actions` / `end`). متعملش
+    صف لوحده للحاجات دي لو فيه بار تحته ممكن ياخدها.
 - **استغل مساحة الشاشة:**
   - الجداول والداشبوردات تاخد عرض الصفحة كله. متحطهاش في عمود ضيق في النص
     وفراغ على الجنبين في الشاشات العريضة.

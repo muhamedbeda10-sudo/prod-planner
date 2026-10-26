@@ -4,7 +4,7 @@ import { ViewTabsNav } from "@/components/ViewTabsNav";
 // and limits; the Orders Registry's monthly and weekly imports. This switch,
 // in the page head, moves between those views. (A tab holding several
 // PLACES — Dashboards, Material, Plan Tracker — moves between them with the
-// strip at the top, components/SectionStrip.tsx.)
+// panel of the top bar's tab, components/AppNav.tsx.)
 
 export interface View {
   href: string;

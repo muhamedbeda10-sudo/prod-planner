@@ -27,8 +27,11 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 
 ## Navigation
 Tabs, one per QUESTION rather than per screen — Floor (the worklists) · Dashboards · Material · Shifts · Plan
-Tracker. **Dashboards** holds every dashboard of the app, one place each, behind a strip at the top of
-its pages (`components/DashboardSections.tsx`): **Planning** (`/`, the home page — will we make the plan, where
+Tracker. A tab that holds several places opens a panel of their icons when the pointer rests on it (or it
+takes the keyboard's focus) — the places' `places` in `components/AppNav.tsx`; the pages carry no strip and
+show no name of their own (the lit tab says where you are; `PageHead` gives the screen reader its `<h1>`), and
+each page puts its controls in ONE bar: the line switch first in its filter bar, its actions and views at the
+end. **Dashboards** holds every dashboard of the app, one place each: **Planning** (`/`, the home page — will we make the plan, where
 is the next shortfall, what does it take; feature 13), **Production**
 (`/dashboards/production`, what was made, at what efficiency, where the time went, what needs intervention;
 feature 13), **Material** (`/dashboards/material`, feature 5), **Consumables**
@@ -39,11 +42,10 @@ plant** — an **All | TR | LV** switch in their head (`?line=`, `lib/domain/das
 the other screens' line switch writes, plus `all`); opened with none named, a dashboard shows the line the person's
 screens open on, and All is the dashboards' alone: the recording screens still work one line at a time. Links
 between the two dashboards, and the assistant's, always name the scope and carry the period. **Material** holds the nesting sheets, Physical Material
-and Consumables behind the same kind of strip; **Plan Tracker** carries the tracker, the **Daily log** it
+and Consumables; **Plan Tracker** carries the tracker, the **Daily log** it
 adds up, the **What-if Simulator** the plan is tried out on (`/simulate`, transformers only) and the
-**ODOO log** (`/odoo`, whose alerts' badge rides on the Plan Tracker tab), behind the same strip
-(`components/TrackerSections.tsx`). The rule: the strip at the top moves between a tab's PLACES; the
-switch in a page head moves between VIEWS of one place's rows (`components/ViewTabs.tsx`). Two things left the strip entirely: **chat** is the icon in the nav's
+**ODOO log** (`/odoo`, whose alerts' badge rides on the Plan Tracker tab). The rule: the tab's panel moves
+between its PLACES; the switch in a page's bar moves between VIEWS of one place's rows (`components/ViewTabs.tsx`). Two things are not tabs at all: **chat** is the icon in the nav's
 right cluster, opening a panel over whatever page you are on (a glance, not a destination — its
 bundle is fetched only on first open), and the **barcode sheet** is a button on the painting
 worklist, where the tanks it prints for finish. In Admin the two plan imports share one page. The
@@ -368,7 +370,7 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    for today's crew is not in the model) — puts the result on the knobs with each step's effect, and Undo puts the scenario before back. The AI
    assistant reads and puts scenarios on it (feature 12), and runs the same search (`plan_for_deadlines`). Viewing is free.
 11. **Consumables** (`/consumables`, a place of the **Material** tab beside the nesting sheets and Physical Material —
-   the strip at the top of the tab moves between the three, each keeping its own views; each is still switched on or
+   the Material tab's panel moves between the three, each keeping its own views; each is still switched on or
    off per account) — the store's log of what it hands out to the floor. A hand-out is recorded
    on **one line above the log** (after a save the department and the person stay and the item box is ready for the
    next paste); a correction opens in a popup. Item (typed

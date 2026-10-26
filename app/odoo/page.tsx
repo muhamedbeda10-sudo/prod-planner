@@ -10,7 +10,6 @@ import { PageHead } from "@/components/ui";
 import { ExportMenu } from "@/components/ExportMenu";
 import { OdooClient } from "@/components/OdooClient";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
-import { TrackerSections } from "@/components/TrackerSections";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 
 export const metadata = { title: "Odoo — ATC" };
@@ -68,15 +67,11 @@ export default async function OdooPage({
   return (
     <div className="space-y-3">
       <RememberLastVisit storageKey="odoo:log" forget={["day"]} />
-      <TrackerSections current="odoo" />
-      <PageHead
-        title="ODOO log"
-        sub="The daily close-out log on Odoo · both lines"
-        actions={<ExportMenu excel={[{ rows: exportRows, filename: `odoo-${day.replace("..", "_to_")}.xlsx`, sheetName: "Sheet1" }]} />}
-      />
+      <PageHead title="ODOO log" sub="The daily close-out log on Odoo · both lines" />
       <UrlDateSlicer
         encoding="odooDay" from={sel.from} to={sel.to} min={min} max={[today, days[0] ?? today].sort().reverse()[0]} today={today}
         presets={["today", "yesterday", "last3", "last7", "thisMonth", "lastMonth", "last30"]} allLabel="All days" marks={days}
+        end={<ExportMenu excel={[{ rows: exportRows, filename: `odoo-${day.replace("..", "_to_")}.xlsx`, sheetName: "Sheet1" }]} />}
       />
       <OdooClient
         entries={entries}
