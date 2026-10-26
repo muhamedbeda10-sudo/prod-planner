@@ -349,8 +349,7 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
     }
     case "consumables_summary": {
       const p = consumablesPeriod({ from: i.from, to: i.to }, today);
-      const stats = await getConsumablesDashboard(p.from, p.to);
-      return { rows: consumablesSummaryRows(stats.items), name: `consumables-summary-${p.stamp}`, sheet: "Items", scope: `Consumables by item ${p.label}` };
+      return { rows: consumablesSummaryRows(await getConsumablesDashboard(p.from, p.to)), name: `consumables-summary-${p.stamp}`, sheet: "Items", scope: `Consumables by item ${p.label}` };
     }
     case "consumables_dashboard": {
       // the screen's own address, read by the screen's own rules

@@ -10,22 +10,19 @@
 
 import { addDaysISO } from "./dateSlicer";
 import { round3 } from "./consumableLimits";
+import { cleanText } from "./consumables";
 
 export interface StatsRow {
   item: string;
   qty: number;
-  workerId: number;
+  department: string;
 }
 
+/** `workers`: the departments it went to — a hand-out is its department's,
+ *  so a group of a department counts once, not once per man. */
 export interface ItemStat { item: string; issues: number; qty: number; workers: number }
 
-export interface ConsumablesStats {
-  fromISO: string;
-  toISO: string;
-  items: ItemStat[];
-}
-
-const fold = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+const fold = (s: string) => cleanText(s).toLowerCase();
 
 /** Number of days from..to, both included. */
 export function spanDays(fromISO: string, toISO: string): number {
@@ -60,24 +57,20 @@ export function hourSpan(used: readonly number[]): { first: number; last: number
 }
 export const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
 
-export function consumablesStats(rows: readonly StatsRow[], fromISO: string, toISO: string): ConsumablesStats {
+/** The period's hand-outs item by item, the most handed out first. */
+export function consumablesStats(rows: readonly StatsRow[]): ItemStat[] {
   // grouped by the folded name, shown in the commonest spelling
-  const spellings = new Map<string, string[]>();
-  const itemAgg = new Map<string, { issues: number; qty: number; workers: Set<number> }>();
+  const agg = new Map<string, { names: string[]; issues: number; qty: number; departments: Set<string> }>();
   for (const r of rows) {
     const k = fold(r.item);
-    const sp = spellings.get(k);
-    if (sp) sp.push(r.item);
-    else spellings.set(k, [r.item]);
-    const a = itemAgg.get(k) ?? { issues: 0, qty: 0, workers: new Set<number>() };
+    const a = agg.get(k) ?? { names: [], issues: 0, qty: 0, departments: new Set<string>() };
+    a.names.push(r.item);
     a.issues += 1;
     a.qty += r.qty;
-    a.workers.add(r.workerId);
-    itemAgg.set(k, a);
+    a.departments.add(r.department);
+    agg.set(k, a);
   }
-  const nameOf = (k: string) => commonestSpelling(spellings.get(k) ?? []) || k;
-  const items: ItemStat[] = [...itemAgg.entries()]
-    .map(([k, a]) => ({ item: nameOf(k), issues: a.issues, qty: round3(a.qty), workers: a.workers.size }))
+  return [...agg.values()]
+    .map((a) => ({ item: commonestSpelling(a.names), issues: a.issues, qty: round3(a.qty), workers: a.departments.size }))
     .sort((a, b) => b.issues - a.issues || b.qty - a.qty || a.item.localeCompare(b.item));
-  return { fromISO, toISO, items };
 }

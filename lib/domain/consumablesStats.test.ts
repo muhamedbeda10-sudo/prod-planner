@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { consumablesStats, hourLabel, hourSpan, pctChange, previousPeriod, spanDays, type StatsRow } from "./consumablesStats";
 
-const row = (over: Partial<StatsRow>): StatsRow => ({ item: "Gloves", qty: 1, workerId: 1, ...over });
+const row = (over: Partial<StatsRow>): StatsRow => ({ item: "Gloves", qty: 1, department: "WeldingTX", ...over });
 
 describe("consumables by item", () => {
   it("counts one item however it was typed, named the way it was typed most", () => {
-    const s = consumablesStats([
+    const items = consumablesStats([
       row({ item: "Welding wire", qty: 2 }),
-      row({ item: "welding  wire", qty: 1.5, workerId: 2 }),
+      row({ item: "welding  wire", qty: 1.5, department: "Maintenance" }),
       row({ item: "Welding wire", qty: 0.5 }),
       row({ item: "Gloves", qty: 3 }),
-    ], "2026-09-28", "2026-09-28");
-    expect(s.items[0]).toEqual({ item: "Welding wire", issues: 3, qty: 4, workers: 2 });
-    expect(s.items[1]).toEqual({ item: "Gloves", issues: 1, qty: 3, workers: 1 });
+    ]);
+    expect(items[0]).toEqual({ item: "Welding wire", issues: 3, qty: 4, workers: 2 });
+    expect(items[1]).toEqual({ item: "Gloves", issues: 1, qty: 3, workers: 1 });
   });
 
   it("compares with the period of the same length just before", () => {
