@@ -286,7 +286,7 @@ export async function importMaterialAction(formData: FormData): Promise<Material
  *  BOM and the planned qty come from the order itself. */
 export async function createLvOrderLines(formData: FormData): Promise<MaterialActionResult & { added?: number; skipped?: number }> {
   const line = await getActiveLine();
-  if (line !== "LV") return { ok: false, error: "Switch the line to LV panels first." };
+  if (line !== "LV") return { ok: false, error: "Open the Material tab on LV Panels first." };
   const guard = await requirePerm(linePermKey(line, "material"));
   if (guard.error) return { ok: false, error: guard.error };
   const month = ""; // the living table

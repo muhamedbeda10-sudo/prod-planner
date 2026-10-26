@@ -33,7 +33,7 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
 
   // every link out of here keeps the origin, so hopping BOM → sibling → MO and
   // then back still lands on the tracker table the reader started from
-  const trace = (target: { mo?: string | null; bom?: string | null }) => traceHref(target, planNo, view);
+  const trace = (target: { mo?: string | null; bom?: string | null }) => traceHref({ ...target, line: "TR" }, planNo, view);
 
   const remaining = Math.max(0, t.requiredSets - t.completeSets);
   const completion = t.requiredSets > 0 ? pctOf(t.completeSets, t.requiredSets) : null;
@@ -80,12 +80,12 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
             </div>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <TraceSearch initialMode={t.scope} />
+            <TraceSearch initialMode={t.scope} line="TR" />
             <button type="button" onClick={() => router.refresh()} className="btn btn-ghost btn-sm" title="Refresh the data">
               <RotateCw size={14} />
             </button>
             <ExportButton rows={exportLedger} filename={exportFilename} sheetName="Trace" />
-            <Link href={trackerHref(planNo, view)} className="btn btn-ghost btn-sm whitespace-nowrap">← Tracker</Link>
+            <Link href={trackerHref(planNo, view, "TR")} className="btn btn-ghost btn-sm whitespace-nowrap">← Tracker</Link>
             <button
               type="button"
               onClick={() => setSidebar((s) => !s)}
@@ -478,7 +478,7 @@ function Records({ t, exportRows, exportFilename }: { t: TraceResult; exportRows
                   <td className="px-4 py-1.5 whitespace-nowrap tabnum text-muted">{formatDate(l.dateISO)}</td>
                   {byOrder && (
                     <td className="px-3 py-1.5 text-xs whitespace-nowrap ltr">
-                      {l.mo ? <Link href={`/trace?mo=${encodeURIComponent(l.mo)}`} className="text-brand-ink hover:underline">{l.mo}</Link> : <span className="text-muted">—</span>}
+                      {l.mo ? <Link href={traceHref({ mo: l.mo, line: "TR" })} className="text-brand-ink hover:underline">{l.mo}</Link> : <span className="text-muted">—</span>}
                     </td>
                   )}
                   <td className="px-3 py-1.5">{deptLabel(l.dept)}</td>

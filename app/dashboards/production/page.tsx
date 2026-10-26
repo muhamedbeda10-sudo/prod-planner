@@ -41,8 +41,8 @@ const tryLoad = <T,>(what: string, p: Promise<T>) => p.catch((e: unknown) => { c
 // The Production dashboard, in the Dashboards tab: what did we make, at what
 // efficiency, where did we lose time, what needs intervention — over the
 // period and the department picked (?from=&to=&dept=), for one line or the
-// whole plant (?line=all|TR|LV; the nav's toggle decides when the address
-// says nothing). The shift log's figures: seen with the Shifts screen (the
+// whole plant (?line=all|TR|LV; with none named, the line the person's
+// screens open on). The shift log's figures: seen with the Shifts screen (the
 // "shifts" tab id). The transformers' side carries the machines and the
 // tanks' quality; the panels' side its own four departments; the plant's the
 // two lines' sums where they add, side by side where they do not.
@@ -51,8 +51,8 @@ export default async function ProductionDashboardPage({ searchParams }: { search
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   const sp = await searchParams;
-  const active = await getActiveLine();
-  const scope = resolveDashScope(sp.line, active);
+  // with no line named, the one the person's screens open on (the proxy's header)
+  const scope = resolveDashScope(sp.line, await getActiveLine());
   const todayISO = factoryDayISO(new Date());
   const req = floorRequest(sp, todayISO);
   const lvDept = lvFloorDeptOf(sp.dept);
@@ -62,7 +62,9 @@ export default async function ProductionDashboardPage({ searchParams }: { search
       <RememberLastVisit storageKey="dashboards:production" />
       <PrintHeader title={o.printTitle} subtitle="How the floor worked" date={formatDate(todayISO)} />
       <DashboardSections current="production" />
-      <PageHead title="Production" sub={o.sub} actions={<><LineScopeTabs scope={scope} active={active} /><CockpitDecisions actions={o.actions} kind="intervention" /><PrintButton /></>} />
+      <PageHead title="Production" sub={o.sub} actions={<><CockpitDecisions actions={o.actions} kind="intervention" /><PrintButton /></>}>
+        <LineScopeTabs scope={scope} />
+      </PageHead>
       {o.children}
     </div>
   );
@@ -88,7 +90,7 @@ export default async function ProductionDashboardPage({ searchParams }: { search
         <PlantProduction
           tr={{ fromISO: all.tr.fromISO, toISO: all.tr.toISO, clamped: all.tr.clamped, dates: all.tr.dates, summary: all.tr.summary, groups: all.tr.groups, output: all.tr.output, losses: all.tr.losses, pricedShare: all.tr.pricedShare }}
           lv={{ clamped: all.lv.clamped, dates: all.lv.dates, summary: all.lv.summary, groups: all.lv.groups, output: all.lv.output, moved: all.lv.moved, pricedShare: all.lv.pricedShare }}
-          todayISO={todayISO} defaultRange={defaultRange} active={active} actions={all.actions}
+          todayISO={todayISO} defaultRange={defaultRange} actions={all.actions}
         />
       ),
     });

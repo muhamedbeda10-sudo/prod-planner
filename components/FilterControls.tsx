@@ -22,7 +22,7 @@ const subscribeFilters = (cb: () => void) => {
  *  default, and the stored value applies right after hydration. */
 export function useSavedFilter(rawKey: string, initial = "") {
   // each product line keeps its own filters: "CF" or "Cut" means nothing on
-  // the panels, and a value carried over the toggle empties the screen with
+  // the panels, and a value carried to the other line empties the screen with
   // no control on it to explain why
   const key = useLineKey(rawKey);
   const value = useSyncExternalStore(

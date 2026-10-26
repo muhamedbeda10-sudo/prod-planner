@@ -7,8 +7,8 @@ import type { MonthlyImportResult, QtyProposal } from "@/lib/server/importMonthl
 import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
 import { LV_FAMILIES, LV_FAMILY_LABEL } from "@/lib/domain/lv";
 
-/** The plan import for the product line the toggle is on. The two lines'
- *  sheets differ (a transformer sheet carries KVA and rating, a panel sheet
+/** The plan import for the product line on screen (the page head's switch).
+ *  The two lines' sheets differ (a transformer sheet carries KVA and rating, a panel sheet
  *  its Product and OSP Encloser columns) but both are read by header name,
  *  so this one form serves either — it just has to say which it is. */
 export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
@@ -43,6 +43,8 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
         📥 Import monthly plan — <span className="text-brand-ink">{LINE_LABEL[line]}</span> <span className="text-xs text-muted font-normal">(add and update only: new MOs are added, existing MOs get the revision&apos;s changes, nothing is removed{line === "TR" ? " — progress quantities are never read" : ""})</span>
       </summary>
       <form onSubmit={submit} className="mt-3 flex flex-wrap items-center gap-3">
+        {/* the line this form shows — the action refuses a sheet sent under another */}
+        <input type="hidden" name="line" value={line} />
         <input ref={inputRef} name="file" type="file" accept=".xlsx,.xlsm,.xls" required
           className="border rounded-md px-2 py-2 bg-surface text-sm w-full max-w-full sm:w-auto" />
         <label className="inline-flex items-center gap-1.5 text-sm">
@@ -88,7 +90,7 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
           {pending ? "Importing…" : `Import ${LINE_LABEL[line]} orders`}
         </button>
         <span className="text-xs text-muted">
-          The sheet is filed under <b>{LINE_LABEL[line]}</b> — switch the toggle at the top of the page first if it is the other product&apos;s plan.
+          The sheet is filed under <b>{LINE_LABEL[line]}</b> — pick the other line at the top of the page first if it is the other product&apos;s plan.
           New MOs are added; re-importing the SAME month applies the revision: raised quantities, urgency, BOMs… are updated and every change is listed below. Orders of the month that the sheet does not list are left exactly as they are. A quantity that differs from the registry&apos;s is never changed by the import — it is flagged with the old and the new figure, and you choose which one stays. Columns are read by header name — any sheet layout month to month.{line === "LV" ? " The meter boxes' sheet has no BOM column: its FG Code stands in, and its OSP column is the quantity bought outside." : ""}
         </span>
       </form>

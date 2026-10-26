@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCanSee } from "@/components/TabAccess";
+import { useCarryLine } from "@/components/LineContext";
 import type { View } from "@/components/ViewTabs";
 
 /** The tab's OTHER views. The one on screen is not offered — the page's
@@ -10,6 +11,7 @@ export function ViewTabsNav({ views: all, current, label }: { views: View[]; cur
   // a view is "current" by its path — or, where a tab's views share one path
   // and differ by ?view=, by its whole href
   const canSee = useCanSee();
+  const carry = useCarryLine(); // the line on screen rides along to the next view
   const views = all.filter((v) => canSee(v.href)); // a view switched off for this account is not offered
   const exact = views.some((v) => v.href === current);
   const isCurrent = (v: View) => (exact ? v.href === current : v.href.split("?")[0] === current);
@@ -18,7 +20,7 @@ export function ViewTabsNav({ views: all, current, label }: { views: View[]; cur
   return (
     <nav className="seg" aria-label={label}>
       {others.map((v) => (
-        <Link key={v.href} href={v.href} title={v.title}>
+        <Link key={v.href} href={carry(v.href)} title={v.title}>
           {v.label}
         </Link>
       ))}

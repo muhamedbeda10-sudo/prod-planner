@@ -13,7 +13,7 @@ import { addDaysISO, slicerRangeLabel } from "@/lib/domain/dateSlicer";
 import { stopDurationLabel } from "@/lib/domain/downtime";
 import { FLOOR_HISTORY_DAYS } from "@/lib/domain/floorKpis";
 import { OUTPUT_GROUP_LABEL, type CockpitAction } from "@/lib/domain/kpis";
-import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
+import { LINE_LABEL } from "@/lib/domain/lines";
 import { LV_STAGES, LV_STAGE_SHORT } from "@/lib/domain/lv";
 import { linePart, plantDailyOutput, plantEfficiency } from "@/lib/domain/plantKpis";
 import type { FloorPeriod } from "@/lib/server/kpis";
@@ -29,8 +29,8 @@ export type PlantProductionLv = Pick<LvFloorPeriod, "clamped" | "dates" | "summa
 // machines' stops are recorded by department on shared machines, so they
 // are the plant's, counted once; pieces are shown per line and never added.
 
-export function PlantProduction({ tr, lv, todayISO, defaultRange, active, actions }: {
-  tr: PlantProductionTr; lv: PlantProductionLv; todayISO: string; defaultRange: { label: string; from: string; to: string }; active: ProductLine; actions: readonly CockpitAction[];
+export function PlantProduction({ tr, lv, todayISO, defaultRange, actions }: {
+  tr: PlantProductionTr; lv: PlantProductionLv; todayISO: string; defaultRange: { label: string; from: string; to: string }; actions: readonly CockpitAction[];
 }) {
   const plant = plantEfficiency([linePart("TR", tr), linePart("LV", lv)]);
   const range = slicerRangeLabel(tr.fromISO, tr.toISO);
@@ -99,9 +99,9 @@ export function PlantProduction({ tr, lv, todayISO, defaultRange, active, action
             </table>
           </TableFrame>
           <div className="flex flex-wrap gap-3 mt-3 text-sm">
-            <Link href={dashHref("/dashboards/production", "TR", active, { from: tr.fromISO, to: tr.toISO })} className="text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">Transformers&apos; floor <ArrowRight size={13} aria-hidden /></Link>
-            <Link href={dashHref("/dashboards/production", "LV", active, { from: tr.fromISO, to: tr.toISO })} className="text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">LV panels&apos; floor <ArrowRight size={13} aria-hidden /></Link>
-            <Link href={dashHref("/", "all", active)} className="text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">The plant&apos;s planning <ArrowRight size={13} aria-hidden /></Link>
+            <Link href={dashHref("/dashboards/production", "TR", { from: tr.fromISO, to: tr.toISO })} className="text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">Transformers&apos; floor <ArrowRight size={13} aria-hidden /></Link>
+            <Link href={dashHref("/dashboards/production", "LV", { from: tr.fromISO, to: tr.toISO })} className="text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">LV panels&apos; floor <ArrowRight size={13} aria-hidden /></Link>
+            <Link href={dashHref("/", "all")} className="text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">The plant&apos;s planning <ArrowRight size={13} aria-hidden /></Link>
           </div>
         </ChartCard>
         <ChartCard className="xl:col-span-5" title="Needs intervention in production" sub="Both lines' interventions in one list, worst first, each tagged with its line.">

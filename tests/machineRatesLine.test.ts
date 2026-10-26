@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ---- Admin → Times per machine prices one physical floor ----------------------
 // The machine records carry no product line, so the page must read the
-// transformer registry whatever the nav toggle says: with the toggle on LV
+// transformer registry whatever line is on screen: with the panels on screen
 // every machine row used to come out unpriced and the day's hours were split
 // by pieces instead of standard hours. A record whose order is not on the
 // master list yet is still priced by its project's class, as the cockpit does.
@@ -37,7 +37,7 @@ beforeEach(() => {
 });
 
 describe("getMeasuredRates", () => {
-  it("reads the transformer registry under either toggle, so the rates do not change with it", async () => {
+  it("reads the transformer registry on either line, so the rates do not change with it", async () => {
     const tr = await withLine("TR", () => getMeasuredRates());
     const lv = await withLine("LV", () => getMeasuredRates());
     expect(lv).toEqual(tr);

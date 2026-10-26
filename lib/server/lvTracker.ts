@@ -38,7 +38,7 @@ export interface LvTrackerRow {
 /** Request-cached: the panels' dashboards and their stage table read it in one request. */
 export const getLvTracker = cache(async (): Promise<LvTrackerRow[]> => {
   const [orders, sums] = await Promise.all([
-    loadMasterOrdersOf("LV"), // the panels, whatever the toggle says — the Floor draws both lines
+    loadMasterOrdersOf("LV"), // the panels, whatever line is on screen — the Floor draws both lines
     prisma.handoverEntry.groupBy({
       by: ["mo", "dept"],
       where: { mo: { not: null }, item: LV_ITEM },

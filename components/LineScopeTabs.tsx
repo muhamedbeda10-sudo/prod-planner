@@ -1,23 +1,30 @@
 "use client";
 
-import { useSetParam } from "@/components/useSetParam";
+import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { DASH_SCOPES, DASH_SCOPE_LABEL, DASH_SCOPE_TITLE, type DashScope } from "@/lib/domain/dashboardScope";
-import type { ProductLine } from "@/lib/domain/lines";
 
-// All | TR | LV — the line a dashboard shows. It is the dashboards' own
-// choice (?line=), apart from the nav's toggle: picking "All" here never
-// moves the recording screens, which work one line at a time. Picking the
-// toggle's own line clears the parameter, so the page follows the toggle
-// again.
+// All | TR | LV — the line a dashboard shows, in its page head where the
+// other screens carry their Transformers | LV Panels switch (LineSwitch).
+// Each is a link that keeps the page's filters and names the scope in the
+// address (?line=), so a bookmark or a link sent to a colleague opens the
+// same view. "All" is the dashboards' alone: the recording screens still
+// work one line at a time.
 
-export function LineScopeTabs({ scope, active }: { scope: DashScope; active: ProductLine }) {
-  const setParam = useSetParam();
+export function LineScopeTabs({ scope }: { scope: DashScope }) {
+  const path = usePathname();
+  const params = useSearchParams();
+  const href = (s: DashScope) => {
+    const p = new URLSearchParams(params.toString());
+    p.set("line", s);
+    return `${path}?${p}`;
+  };
   return (
-    <nav className="seg no-print" role="tablist" aria-label="Line shown">
+    <nav className="seg" aria-label="Line shown">
       {DASH_SCOPES.map((s) => (
-        <button key={s} type="button" role="tab" aria-selected={s === scope} title={DASH_SCOPE_TITLE[s]} className={s === scope ? "on" : ""} onClick={() => setParam("line", s === active ? "" : s)}>
+        <Link key={s} href={href(s)} aria-current={s === scope ? "page" : undefined} title={DASH_SCOPE_TITLE[s]} className={s === scope ? "on" : ""}>
           {DASH_SCOPE_LABEL[s]}
-        </button>
+        </Link>
       ))}
     </nav>
   );

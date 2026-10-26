@@ -361,7 +361,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
               {/* the code opens its full Trace — the same all-plan history the
                   monthly view opens, and the trip back returns to THIS week */}
               <Link
-                href={traceHref({ bom: r.bom }, planNo, "weekly")}
+                href={traceHref({ bom: r.bom, line: "TR" }, planNo, "weekly")}
                 className="text-brand-ink hover:underline"
                 title={`${r.soi ? r.soi + " · " : ""}Open the full trace for ${r.bom}`}
               >

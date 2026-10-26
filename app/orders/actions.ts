@@ -8,6 +8,7 @@ import { requirePerm, requireAdmin, getCurrentUser, hasPerm } from "@/lib/server
 import { applicableItems, ospOf, isDept, isPaintExempt, deptLabel, itemOverrides, isItem } from "@/lib/domain/constants";
 import { finsGroup, spreadOverGroup } from "@/lib/domain/groupSpread";
 import { getActiveLine } from "@/lib/server/line";
+import { LINE_LABEL, lineParam } from "@/lib/domain/lines";
 import { isLvFamily } from "@/lib/domain/lv";
 import { linePermKey } from "@/lib/domain/permissions";
 import { fullyDeliveredOpenOrders } from "@/lib/server/deliveredOrders";
@@ -389,8 +390,14 @@ export async function setExcludedItems(formData: FormData): Promise<{ ok: boolea
 }
 
 export async function importMonthlyAction(formData: FormData): Promise<MonthlyImportResult> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "import"));
+  // the line on screen — the page's address — says which product the sheet plans
+  const line = await getActiveLine();
+  const guard = await requirePerm(linePermKey(line, "import"));
   if (guard.error) return { ok: false, error: guard.error };
+  // the form names the line it showed; a page left open across a change of
+  // line must not file one product's plan under the other
+  const shown = lineParam(formData.get("line"));
+  if (shown && shown !== line) return { ok: false, error: `This form was for ${LINE_LABEL[shown]}, but the page is now on ${LINE_LABEL[line]}. Reload the page and import again.` };
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose an Excel file." };
   const label = monthLabel(String(formData.get("month") ?? ""));
@@ -398,8 +405,6 @@ export async function importMonthlyAction(formData: FormData): Promise<MonthlyIm
   try {
     const buffer = await file.arrayBuffer();
     const preview = formData.get("preview") === "on"; // dry-run: report only, write nothing
-    // the toggle at the top says which product the sheet plans
-    const line = await getActiveLine();
     // the LV line imports two plans — the panels' and the meter boxes'
     const family = line === "LV" ? String(formData.get("family") ?? "") : "";
     if (!isLvFamily(family)) return { ok: false, error: "Pick which plan the sheet is." };

@@ -1,10 +1,10 @@
 // Which line a DASHBOARD shows — the two dashboards of the Dashboards tab
 // (Planning and Production) can show the transformers, the LV panels, or the
-// whole plant at once. Every other screen records or runs ONE line, chosen
-// by the toggle in the nav (a cookie, lib/server/line.ts), so this scope is
-// a URL parameter of the dashboards alone (?line=all|TR|LV): a dashboard
-// opened without it shows the line the toggle is on, and picking "All" here
-// never moves the toggle.
+// whole plant at once. Every other screen records or runs ONE line, named in
+// its address (?line=TR|LV, lib/domain/lines.ts); the dashboards read the
+// same parameter and add `all`. A dashboard opened with none shows the line
+// the person's screens open on (getActiveLine), and picking "All" here is
+// the dashboards' alone: a recording screen still works one line at a time.
 
 import { isProductLine, type ProductLine } from "./lines";
 
@@ -22,7 +22,7 @@ export const DASH_SCOPE_NAME: Record<DashScope, string> = { all: "Whole plant", 
 
 
 /** The scope a dashboard's address asks for — `all`, a line, or (nothing or
- *  anything else) the line the toggle is on. Case does not matter. */
+ *  anything else) the line the screens are on. Case does not matter. */
 export function resolveDashScope(raw: unknown, active: ProductLine): DashScope {
   const v = Array.isArray(raw) ? raw[0] : raw;
   if (typeof v !== "string") return active;
@@ -32,15 +32,14 @@ export function resolveDashScope(raw: unknown, active: ProductLine): DashScope {
   return isProductLine(up) ? up : active;
 }
 
-/** A dashboard address with its scope and filters: `line` is written only
- *  when it is not the toggle's own line (so a bare address keeps following
- *  the toggle); empty values are left out. */
-export function dashHref(path: string, scope: DashScope, active: ProductLine, params: Record<string, string | null | undefined> = {}): string {
-  const q = new URLSearchParams();
-  if (scope !== active) q.set("line", scope);
+/** A dashboard address with its scope and filters: the scope is always
+ *  named (a link, a bookmark or an answer's link opens the same view for
+ *  everyone, whatever line their own screens open on); empty filter values
+ *  are left out. */
+export function dashHref(path: string, scope: DashScope, params: Record<string, string | null | undefined> = {}): string {
+  const q = new URLSearchParams({ line: scope });
   for (const [k, v] of Object.entries(params)) if (v) q.set(k, v);
-  const s = q.toString();
-  return s ? `${path}?${s}` : path;
+  return `${path}?${q}`;
 }
 
 /** Where an old link to the Planning page belongs now: the floor's figures
@@ -54,9 +53,10 @@ export function productionRedirectOf(sp: Record<string, string | string[] | unde
   const period = one("from") ?? one("to");
   if (!dept && !(period && scope !== "LV")) return null;
   const q = new URLSearchParams();
-  for (const k of ["from", "to", "dept", "line"]) {
+  for (const k of ["from", "to", "dept"]) {
     const v = one(k);
     if (v) q.set(k, v);
   }
+  q.set("line", scope);
   return `/dashboards/production?${q}`;
 }

@@ -6,7 +6,6 @@ import { ChartCard, StatTile, TONE_TEXT, fmt, pct, pctOrDash, signed } from "@/c
 import { DecisionList, PrintDecisions } from "@/components/CockpitDecisions";
 import { TableFrame, Th } from "@/components/DataTable";
 import { dashHref } from "@/lib/domain/dashboardScope";
-import type { ProductLine } from "@/lib/domain/lines";
 import type { CockpitAction } from "@/lib/domain/kpis";
 import { LV_FLOOR_DEPT_LABEL } from "@/lib/domain/lvKpis";
 import { WORK_CENTRE_LABEL } from "@/lib/domain/shifts";
@@ -24,7 +23,7 @@ export type PlantPlanningLv = Pick<LvPlanningData, "month" | "open" | "wip" | "u
 // so plan progress is shown per line and never as one percentage; people
 // add up (each line has its own departments), pieces never do.
 
-export function PlantPlanning({ tr, lv, floor, active, actions, summary }: { tr: PlantPlanningTr; lv: PlantPlanningLv; floor: boolean; active: ProductLine; actions: readonly CockpitAction[]; summary: PlantPlanningSummary }) {
+export function PlantPlanning({ tr, lv, floor, actions, summary }: { tr: PlantPlanningTr; lv: PlantPlanningLv; floor: boolean; actions: readonly CockpitAction[]; summary: PlantPlanningSummary }) {
   const finish = tr.week.adherence.find((a) => a.stage === "finish");
   // the people, both lines in one table and one export
   const peopleRows = [
@@ -77,9 +76,9 @@ export function PlantPlanning({ tr, lv, floor, active, actions, summary }: { tr:
             </table>
           </TableFrame>
           <div className="flex flex-wrap gap-3 mt-3 text-sm">
-            <Link href={dashHref("/", "TR", active)} className="text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">Transformers&apos; planning <ArrowRight size={13} aria-hidden /></Link>
-            <Link href={dashHref("/", "LV", active)} className="text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">LV panels&apos; planning <ArrowRight size={13} aria-hidden /></Link>
-            <Link href={dashHref("/dashboards/production", "all", active)} className="text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">The plant&apos;s production <ArrowRight size={13} aria-hidden /></Link>
+            <Link href={dashHref("/", "TR")} className="text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">Transformers&apos; planning <ArrowRight size={13} aria-hidden /></Link>
+            <Link href={dashHref("/", "LV")} className="text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">LV panels&apos; planning <ArrowRight size={13} aria-hidden /></Link>
+            <Link href={dashHref("/dashboards/production", "all")} className="text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">The plant&apos;s production <ArrowRight size={13} aria-hidden /></Link>
           </div>
         </ChartCard>
         <ChartCard className="xl:col-span-5" title="Needs a decision today" sub="Both lines' decisions in one list, worst first, each tagged with its line.">

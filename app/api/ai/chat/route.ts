@@ -39,8 +39,10 @@ import { memoriesOf } from "@/lib/server/ai/memory";
 // it ends.
 
 export const dynamic = "force-dynamic";
-// a question with several look-ups can take a minute or two
-export const maxDuration = 300;
+// a question with several look-ups can take minutes — a Deep one longer;
+// Vercel's Fluid compute allows this much, and the agent keeps a minute in
+// hand to save the answer (AI_ASK_TIMEOUT_MAX)
+export const maxDuration = 800;
 
 /** The largest request read, in bytes and in characters — a question, its
  *  files' numbers and the Simulator's scenario fit well inside. */
@@ -162,6 +164,7 @@ export async function POST(request: Request) {
           // the person's Stop (the connection closed) stops the model too;
           // what was written is kept, and the question's turn is freed
           signal: request.signal,
+          timeoutMs: (maxDuration - 60) * 1000,
           effort,
           maxCalls,
           history,

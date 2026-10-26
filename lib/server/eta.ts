@@ -130,7 +130,7 @@ export interface EtaBase {
   todayISO: string;
 }
 
-// Engineering standard times and this flow model are TR-specific, regardless of the page toggle.
+// Engineering standard times and this flow model are TR-specific, regardless of the line on screen.
 export const getEtaBase = cache(async (): Promise<EtaBase> => withLine("TR", async () => {
   const [tracker, std, { rates, sigma, windowDays }, schedules, holidayRows, masters] = await Promise.all([
     getMasterTracker(),

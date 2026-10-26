@@ -27,15 +27,15 @@ const dayOf = (v: string | string[] | undefined) => (typeof v === "string" ? par
 
 // The home page is the Planning dashboard, the first place of the Dashboards
 // tab: will we make the plan, where is the next shortfall, what does it take?
-// It shows one line or the whole plant (?line=all|TR|LV; the nav's toggle
-// decides when the address says nothing): the transformers' cockpit, the
+// It shows one line or the whole plant (?line=all|TR|LV; with none named,
+// the line the person's screens open on): the transformers' cockpit, the
 // panels' month on the chain, or the plant's summary with the two side by
 // side. How the floor worked is the Production dashboard
 // (/dashboards/production), which takes the same scope.
 export default async function Home({ searchParams }: { searchParams: Promise<Search> }) {
   const sp = await searchParams;
-  const active = await getActiveLine();
-  const scope = resolveDashScope(sp.line, active);
+  // with no line named, the one the person's screens open on (the proxy's header)
+  const scope = resolveDashScope(sp.line, await getActiveLine());
   // the floor's figures moved to the Production dashboard: an old link to them here lands there
   const moved = productionRedirectOf(sp, scope);
   if (moved) redirect(moved);
@@ -46,7 +46,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   // the panels' stage table reads a period of its own
   const period = { from: dayOf(sp.from), to: dayOf(sp.to) };
   const head = (sub: string, decisions: readonly CockpitAction[]) => (
-    <PageHead title="Planning" sub={sub} actions={<><LineScopeTabs scope={scope} active={active} /><CockpitDecisions actions={decisions} /><PrintButton /></>} />
+    <PageHead title="Planning" sub={sub} actions={<><CockpitDecisions actions={decisions} /><PrintButton /></>}>
+      <LineScopeTabs scope={scope} />
+    </PageHead>
   );
 
   if (scope === "LV") {
@@ -78,7 +80,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
         <PlantPlanning
           tr={{ todayISO: tr.todayISO, week: tr.week, manpower: tr.manpower, wip: tr.wip }}
           lv={{ month: lv.month, open: lv.open, wip: lv.wip, urgentStuck: lv.urgentStuck, manpower: lv.manpower }}
-          floor={floor} active={active} actions={all.actions} summary={all.summary}
+          floor={floor} actions={all.actions} summary={all.summary}
         />
       </div>
     );

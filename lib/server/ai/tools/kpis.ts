@@ -29,8 +29,6 @@ const r1 = (n: number | null | undefined) => (n === null || n === undefined ? nu
 /** The scope a call asks for: its own `line`, else the line the app is on. */
 const scopeOf = (line: unknown, ctx: ToolCtx): DashScope => resolveDashScope(line, ctx.line ?? DEFAULT_LINE);
 const lineParam = { type: "string" as const, enum: [...DASH_SCOPES], description: "TR (the transformers), LV (the panels) or all (the whole plant — each line in its own terms, the plant's figures only where they add). Left out: the line the app is showing." };
-/** A dashboard's address for a scope — the page's own grammar (dashHref): `line` only when it is not the toggle's. */
-const linkTo = (path: string, scope: DashScope, ctx: ToolCtx, params: Record<string, string | null | undefined> = {}) => dashHref(path, scope, ctx.line ?? DEFAULT_LINE, params);
 const scopeWord = (s: DashScope) => (s === "all" ? DASH_SCOPE_NAME.all.toLowerCase() : s);
 
 /** The plant's rules, said once in every combined answer. */
@@ -164,7 +162,7 @@ export const getKpisTool: ReadTool<{ line?: DashScope }> = {
     const scope = scopeOf(input.line, ctx);
     // the shift log's figures stay with the people who see Shifts, as on the page
     const floor = !ctx.hidden.has("shifts");
-    const link = (s: DashScope) => ({ label: `Planning dashboard (${scopeWord(s)})`, href: linkTo("/", s, ctx) });
+    const link = (s: DashScope) => ({ label: `Planning dashboard (${scopeWord(s)})`, href: dashHref("/", s) });
     if (scope === "LV") {
       const d = await getLvPlanning({}, ctx.now);
       return { ok: true, text: JSON.stringify(lvPlanningView(floor ? d : lvWithoutFloor(d), floor)), links: [link("LV")] };
@@ -295,7 +293,7 @@ export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dep
     const req = floorRequest(input, factoryDayISO(ctx.now));
     // the section's own period needs no dates, so the link does not pin the page to a past week
     const period = !req.isDefault || req.clamped ? { from: req.fromISO, to: req.toISO } : {};
-    const href = (s: DashScope, dept?: string | null) => linkTo("/dashboards/production", s, ctx, { ...period, dept: dept && dept !== "all" ? dept : null });
+    const href = (s: DashScope, dept?: string | null) => dashHref("/dashboards/production", s, { ...period, dept: dept && dept !== "all" ? dept : null });
     const lvDept = lvFloorDeptOf(input.dept);
     if (scope === "LV") {
       const f = await getLvFloorPeriod({ ...req, dept: lvDept }, ctx.now);
@@ -370,7 +368,7 @@ export const explainEfficiencyTool: ReadTool<{ centre?: WorkCentre; days?: numbe
         note: "Stops are machine-hours turned into the man-hours they idled (the centre's people's hours against its machines'), never more than the hours not earned. 'Slower or not logged' is what remains — slower than the standard, or work done but not on the Daily log; it is not, by itself, the people's fault.",
       }),
       // the card lives on the transformers' Production dashboard
-      links: [{ label: "Production dashboard (TR)", href: linkTo("/dashboards/production", "TR", ctx) }],
+      links: [{ label: "Production dashboard (TR)", href: dashHref("/dashboards/production", "TR") }],
     };
   },
 };

@@ -10,7 +10,7 @@ import { PageHead } from "@/components/ui";
 import { ExportMenu } from "@/components/ExportMenu";
 import { OdooClient } from "@/components/OdooClient";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
-import { ViewTabs, trackerViews } from "@/components/ViewTabs";
+import { TrackerSections } from "@/components/TrackerSections";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 
 export const metadata = { title: "Odoo — ATC" };
@@ -24,8 +24,8 @@ export default async function OdooPage({
   await guardTab("/odoo");
   // viewing is free for every account, like the rest of the app; recording is
   // gated on each row's own line's Odoo key (odoo.edit / lv.odoo). Both lines
-  // share the tab and its dashboard — the toggle only picks the default line
-  // for a new row or a sheet.
+  // share the tab and its dashboard — the line on screen (the address's, else
+  // the person's own) only picks the default line for a new row or a sheet.
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   const line = await getActiveLine();
@@ -68,10 +68,10 @@ export default async function OdooPage({
   return (
     <div className="space-y-3">
       <RememberLastVisit storageKey="odoo:log" forget={["day"]} />
+      <TrackerSections current="odoo" />
       <PageHead
-        title="ODOO"
-        sub="Close-out log · both lines"
-        views={<ViewTabs views={trackerViews(line)} current="/odoo" label="Tracker view" />}
+        title="ODOO log"
+        sub="The daily close-out log on Odoo · both lines"
         actions={<ExportMenu excel={[{ rows: exportRows, filename: `odoo-${day.replace("..", "_to_")}.xlsx`, sheetName: "Sheet1" }]} />}
       />
       <UrlDateSlicer

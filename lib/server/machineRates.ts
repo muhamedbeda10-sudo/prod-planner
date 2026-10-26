@@ -42,8 +42,8 @@ export async function getMeasuredRates(dept?: string): Promise<MachineRatesRepor
     }),
     getStdData(),
     // the machines are one physical floor, and the records above carry no
-    // line: priced against the transformer registry whatever the nav toggle
-    // says, else an LV toggle would leave every machine row unpriced
+    // line: priced against the transformer registry whatever line is on
+    // screen, else the panels' screens would leave every machine row unpriced
     loadMasterOrdersOf("TR"),
     getShiftHours(),
   ]);

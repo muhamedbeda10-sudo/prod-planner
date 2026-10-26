@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { planLastVisit } from "@/lib/domain/lastVisit";
+import { useLineKey } from "@/components/LineContext";
 
 /**
  * Keeps a tab where it was left. Every filter change on the page (a day, a
@@ -17,7 +18,7 @@ import { planLastVisit } from "@/lib/domain/lastVisit";
  * nothing else — the switch's own link, or a bare link to that view) reopens
  * the view as it was left (lib/domain/lastVisit.ts).
  */
-export function RememberLastVisit({ storageKey, forget = [], view, carry = [] }: {
+export function RememberLastVisit({ storageKey: rawKey, forget = [], view, carry = [] }: {
   storageKey: string;
   /** Query keys NOT carried to the next visit — the tab opens on its own
    *  default for them every time (the ODOO log's day: always every day). */
@@ -29,6 +30,8 @@ export function RememberLastVisit({ storageKey, forget = [], view, carry = [] }:
   carry?: string[];
 }) {
   const router = useRouter();
+  // each product line keeps its own memory: one line's filters never reopen on the other
+  const storageKey = useLineKey(rawKey);
   const pathname = usePathname();
   const params = useSearchParams();
   // the view switch moves between views of ONE route, so this component is

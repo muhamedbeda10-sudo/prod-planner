@@ -35,16 +35,30 @@ feature 13), **Material** (`/dashboards/material`, feature 5), **Consumables**
 (`/dashboards/consumables`) and **ODOO** (`/dashboards/odoo`). Each is seen with the screen it reads (its
 tab id: the Production dashboard with Shifts), and no dashboard is anywhere else; the old addresses
 (`/analytics`, `?view=dashboard`) land on them. Planning and Production each show **one line or the whole
-plant** — an **All | TR | LV** switch in their head (`?line=`, `lib/domain/dashboardScope.ts`), which follows the
-nav's line toggle when the address says nothing and never moves it: the recording screens still work one line at
-a time. Links between the two dashboards carry the scope and the period. **Material** holds the nesting sheets, Physical Material
+plant** — an **All | TR | LV** switch in their head (`?line=`, `lib/domain/dashboardScope.ts`, the same parameter
+the other screens' line switch writes, plus `all`); opened with none named, a dashboard shows the line the person's
+screens open on, and All is the dashboards' alone: the recording screens still work one line at a time. Links
+between the two dashboards, and the assistant's, always name the scope and carry the period. **Material** holds the nesting sheets, Physical Material
 and Consumables behind the same kind of strip; **Plan Tracker** carries the tracker, the **Daily log** it
 adds up, the **What-if Simulator** the plan is tried out on (`/simulate`, transformers only) and the
-**ODOO** close-out log (`/odoo`, whose alerts' badge rides on the Plan Tracker tab). Two things left the strip entirely: **chat** is the icon in the nav's
+**ODOO log** (`/odoo`, whose alerts' badge rides on the Plan Tracker tab), behind the same strip
+(`components/TrackerSections.tsx`). The rule: the strip at the top moves between a tab's PLACES; the
+switch in a page head moves between VIEWS of one place's rows (`components/ViewTabs.tsx`). Two things left the strip entirely: **chat** is the icon in the nav's
 right cluster, opening a panel over whatever page you are on (a glance, not a destination — its
 bundle is fetched only on first open), and the **barcode sheet** is a button on the painting
 worklist, where the tanks it prints for finish. In Admin the two plan imports share one page. The
 mobile drawer still lists every view flat, since it has the vertical room.
+
+**Product lines (Transformers / LV Panels).** There is no line switch in the top bar. A screen whose rows
+depend on the line (Planning, the Material dashboard, the Plan Tracker, the Daily log, Material, the Orders
+Registry, the welding and painting worklists) carries a **Transformers | LV Panels** switch in its page head
+(`components/LineSwitch.tsx`), and the line is part of the address (`?line=LV`): the proxy copies it into a
+request header that `getActiveLine` (`lib/server/line.ts`) reads, so the page's loaders and every server
+action posted from the page agree on it. With no line in the address a screen opens on the person's own line
+(`defaultLineOf`, `lib/domain/permissions.ts`): LV Panels for someone who records only on the panels, Transformers for
+everyone else. A screen that belongs to one line always shows it (`PINNED_LINE`, which the proxy applies): the Simulator, the weekly import,
+and Fabrication are the transformers', Punching and Bending the panels'. The Floor tab
+lists both lines' departments; the ODOO log shows both lines at once; a trace opens on its order's own line.
 
 ## Features
 1. **Weekly plan import** (`/import`) — grid parser from row 6, merged-BOM carry-down, `ParseBalance`
@@ -270,7 +284,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    standard hours they earned, or by pieces when nothing that day is priced — so AR and MB get a figure too).
    Click it to take it as the figure. Only a ✓ on a machine card carries the machine, so the page says what
    share of the recorded output can be measured at all. The machines are one physical floor: the measured
-   figures are priced against the transformer registry whichever line the nav toggle shows, and a record whose
+   figures are priced against the transformer registry whichever line is on screen, and a record whose
    MO is not on the master list is priced by its project's class.
    **Shift hours** (Shifts → Shift hours, admin): what the day shift, the night shift and each shift's overtime are
    worth. Every man-hour the app counts is measured with them — the shift log's day, a machine's crew, the
@@ -488,7 +502,10 @@ mobile drawer still lists every view flat, since it has the vertical room.
      (`AI_PAGE_SUGGESTIONS`). Chats can be pinned and renamed. Before a long chat is sent back to the model, the big
      results of every question but the last two are folded to a note that keeps their source (`compactHistory`), so the
      chat goes on to 200 messages and the prompt cache keeps hitting on the folded prefix. Stop closes the connection, which
-     stops the model too: what was written is kept in the chat with a note, and the question's turn is freed. `AiUsage`
+     stops the model too: what was written is kept in the chat with a note, and the question's turn is freed. A chat
+     question has up to 740 s (the route's `maxDuration` 800 under Vercel's Fluid compute, less a minute to save;
+     `AI_ASK_TIMEOUT_MAX`), an automation's or a check's four minutes; past three quarters of its time the next model call
+     must answer with what it has (`tool_choice: none`, with a note) rather than time out with nothing. `AiUsage`
      keeps how long each question (a chat's, an automation's, a check's) took and when its first word came (shown on AI
      settings → Latest questions).
    - **It learns and is measured** (`lib/domain/aiLearn.ts`, `lib/server/ai/memory.ts`, `lib/server/ai/checks.ts`,

@@ -16,7 +16,7 @@ import { getChatUnreadCount } from "@/lib/server/chat";
 import { getSettings } from "@/lib/server/data";
 import { getUserPrefs } from "@/lib/server/userPrefs";
 import { WHATS_NEW_PREF_KEYS } from "@/lib/domain/userPrefs";
-import { getActiveLine } from "@/lib/server/line";
+import { ownLine } from "@/lib/server/line";
 import { aiVisibleFor } from "@/lib/server/ai/access";
 import { inboxState } from "@/lib/server/inbox";
 import { getNeedingMo, getReadyToClose } from "@/lib/server/odooAlerts";
@@ -51,12 +51,14 @@ export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentUser(); // null on /login (proxy guards the rest)
-  const [unreadChat, settings, line, prefs, ai, inbox] = user
-    ? await Promise.all([getChatUnreadCount(user.id), getSettings(), getActiveLine(), getUserPrefs(user.id, WHATS_NEW_PREF_KEYS), aiVisibleFor(user), inboxState(user.id)])
-    : [0, null, "TR" as const, {}, false, { unread: 0, any: false }];
+  const [unreadChat, settings, prefs, ai, inbox] = user
+    ? await Promise.all([getChatUnreadCount(user.id), getSettings(), getUserPrefs(user.id, WHATS_NEW_PREF_KEYS), aiVisibleFor(user), inboxState(user.id)])
+    : [0, null, {}, false, { unread: 0, any: false }];
   // the ODOO alerts — "ready to close" and "needs an MO" — for whoever is
   // subscribed to either
   const perms = user ? userPerms(user) : new Set<string>();
+  // where a screen whose address names no line opens for this person
+  const line = ownLine(user);
   const wantClose = perms.has(ODOO_ALERTS_PERM);
   const wantMo = perms.has(ODOO_NEED_MO_PERM);
   const odooAlertsOn = wantClose || wantMo;
@@ -85,7 +87,6 @@ export default async function RootLayout({
             tankTracking={!!settings?.tankTracking}
             machinePlanning={!!settings?.machinePlanning}
             odooAlerts={{ enabled: odooAlertsOn, count: odooReady }}
-            line={line}
             whatsNewSeen={prefs["whatsnew:seen"] ?? null}
             ai={ai}
             inbox={inbox}

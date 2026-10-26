@@ -1,5 +1,6 @@
 "use client";
 
+import { trackerHref } from "@/lib/domain/links";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { importPlanAction } from "@/app/import/actions";
@@ -68,7 +69,7 @@ export function ImportForm({ defaultDate }: { defaultDate: string }) {
               </ul>
             </div>
           )}
-          <a href={`/tracker?plan=${res.planNo}`} className="text-brand-ink font-semibold text-sm">→ View tracker for plan {res.planNo}</a>
+          <a href={trackerHref(res.planNo, undefined, "TR")} className="text-brand-ink font-semibold text-sm">→ View tracker for plan {res.planNo}</a>
         </div>
       )}
     </div>

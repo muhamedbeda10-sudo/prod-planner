@@ -1,4 +1,5 @@
 import "server-only";
+import { ownLine, withLine } from "@/lib/server/line";
 import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { effectiveUser, hasPerm, hiddenTabsOf } from "@/lib/server/auth";
@@ -60,7 +61,8 @@ export async function runDailyReviews(o: { now: Date; deadline: number }): Promi
     if (done?.value === today) continue;
     if (!(await claimToday(user.id, today))) continue;
     try {
-      await reviewFor(user, o.now);
+      // as the person's own screens would read it: the tick is no page of theirs
+      await withLine(ownLine(user), () => reviewFor(user, o.now));
       ran++;
     } catch (e) {
       console.error(`review: ${user.name} failed`, e);

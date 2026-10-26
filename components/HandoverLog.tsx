@@ -41,15 +41,12 @@ export interface LogRow {
   flags?: string[] | null; // data-guard warnings — the row LOOKS wrong, check it
 }
 
-export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "TR" }: {
+export function HandoverLog({ rows, editableDepts = [], soi, line = "TR" }: {
   rows: LogRow[];
   editableDepts?: string[];
   /** Whose log this is — the transformers' departments and components, or the panels' stages. */
   line?: ProductLine;
   soi?: SoiLookup;
-  /** The tab's view switcher (Tracker / Daily log) — it rides in the filter
-   *  bar, since the log is sized to fill the screen. */
-  viewTabs?: React.ReactNode;
 }) {
   const canEditRow = (r: LogRow) => editableDepts.includes(r.dept);
   const router = useRouter();
@@ -250,7 +247,6 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
   return (
     <>
       <FilterBar count={filtered.length} total={rows.length} onReset={reset} hasActive={hasActive}>
-        {viewTabs}
         <SearchBox value={q} onChange={setQ} placeholder="Search BOM…" />
         <SelectFilter label={line === "LV" ? "Stage" : "Dept"} value={dept} onChange={setDept} options={(line === "LV" ? [...LV_CHAIN] : LOG_DEPTS).map((d) => ({ value: d, label: deptLabel(d) }))} />
         {line !== "LV" && <SelectFilter label="Item" value={item} onChange={setItem} options={ITEMS.map((i) => ({ value: i, label: i }))} />}

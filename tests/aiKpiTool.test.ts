@@ -48,7 +48,7 @@ describe("get_kpis", () => {
     expect(j.losses).toMatchObject({ unplannedH: 6.5, absentRate: 0.11, overtimeH: 126 });
     expect(j.trend[0]).toMatchObject({ day: "2026-10-25", behind: 29, efficiency: { Welding: 0.9 } });
     expect(j.workBetweenStages).toMatchObject({ cutNotWelded: [{ item: "TN", pcs: 12 }], returnsOpen: { count: 1, qty: 2 } });
-    expect(out.links).toEqual([{ label: "Planning dashboard (TR)", href: "/" }]);
+    expect(out.links).toEqual([{ label: "Planning dashboard (TR)", href: "/?line=TR" }]);
   });
 
   it("leaves the shift log's figures out for a person the Shifts screen is closed to", async () => {
@@ -107,7 +107,7 @@ describe("get_kpis on the panels and the plant", () => {
     expect(j.manpower.departments[0]).toMatchObject({ dept: "WeldingLV", peoplePresent: 0.5, gap: -1 });
     expect(j.notAvailable.join(" ")).toContain("no delivery dates");
     // the app is on the panels, so the panels' link needs no line
-    expect(out.links).toEqual([{ label: "Planning dashboard (LV)", href: "/" }]);
+    expect(out.links).toEqual([{ label: "Planning dashboard (LV)", href: "/?line=LV" }]);
     // the shift log's figures leave with the Shifts screen
     const closed = JSON.parse((await getKpisTool.run({ line: "LV" }, { now: new Date(), hidden: new Set(["shifts"]) } as never)).text);
     expect(closed.departmentsRecent).toBeUndefined();
@@ -127,7 +127,7 @@ describe("get_kpis on the panels and the plant", () => {
     expect(j.decisions[0]).toBe("TR bad: 29 plan line(s) are behind");
     expect(j.decisions).toContain("LV bad: October 2026's plan is behind its pace");
     expect(j.plant.notes.join(" ")).toContain("Pieces are never added across the lines");
-    expect((out.links ?? []).map((l) => l.href)).toEqual(["/?line=all", "/", "/?line=LV"]);
+    expect((out.links ?? []).map((l) => l.href)).toEqual(["/?line=all", "/?line=TR", "/?line=LV"]);
   });
   it("links the transformers' planning by name when the app is on the panels", async () => {
     h.getCockpit.mockResolvedValue(cockpit);
@@ -178,7 +178,7 @@ describe("get_floor_performance", () => {
     expect(j.departments[0]).toMatchObject({ dept: "Welding", pieces: 30, piecesPerPersonDay: 2.5 });
     // a day without booked hours is left out of a centre's days
     expect(j.centres[0].days).toEqual([{ day: "2026-10-24", efficiency: 0.91, earnedH: 91.2, bookedH: 100 }]);
-    expect(out.links).toEqual([{ label: "Production dashboard (TR)", href: "/dashboards/production?from=2026-10-01&to=2026-10-25&dept=Welding" }]);
+    expect(out.links).toEqual([{ label: "Production dashboard (TR)", href: "/dashboards/production?line=TR&from=2026-10-01&to=2026-10-25&dept=Welding" }]);
   });
 
   it("falls back to the last 7 days and every department on a bad or missing input, and links to the section without pinning its dates", async () => {
@@ -186,7 +186,7 @@ describe("get_floor_performance", () => {
     const now = new Date("2026-10-25T08:00:00Z");
     const out = await getFloorPerformanceTool.run({ from: "soon", dept: "Cutting" }, { now, hidden: new Set() } as never);
     expect(h.getFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ fromISO: "2026-10-19", toISO: "2026-10-25", dept: "all", isDefault: true }), now);
-    expect(out.links).toEqual([{ label: "Production dashboard (TR)", href: "/dashboards/production" }]);
+    expect(out.links).toEqual([{ label: "Production dashboard (TR)", href: "/dashboards/production?line=TR" }]);
   });
 
   it("reads the panels' side on the LV line (or when asked), through the panels' own loader, and says what is not the panels'", async () => {
@@ -197,9 +197,9 @@ describe("get_floor_performance", () => {
     const j = JSON.parse(out.text);
     expect(j).toMatchObject({ line: "LV", summary: { efficiency: 0.5 }, departments: [{ dept: "WeldingLV", panels: 5 }], panelsMovedPerStage: { Welding: 5 } });
     expect(j.notAvailable.join(" ")).toContain("Machine stops");
-    // the app is on the panels, so the panels' link needs no line
-    expect(out.links).toEqual([{ label: "Production dashboard (LV)", href: "/dashboards/production?dept=WeldingLV" }]);
-    // asked for the transformers while the app is on the panels: the link names the line
+    // every link names its line, so it opens the same view whatever line the reader's screens are on
+    expect(out.links).toEqual([{ label: "Production dashboard (LV)", href: "/dashboards/production?line=LV&dept=WeldingLV" }]);
+    // asked for the transformers while the app is on the panels
     h.getFloorPeriod.mockResolvedValue(period);
     const tr = await getFloorPerformanceTool.run({ line: "TR" }, { now, hidden: new Set(), line: "LV" } as never);
     expect(tr.links).toEqual([{ label: "Production dashboard (TR)", href: "/dashboards/production?line=TR&dept=Welding" }]);

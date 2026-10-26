@@ -14,7 +14,7 @@ import { runAsActor } from "@/lib/server/actor";
 import { createTask } from "@/app/tasks/actions";
 import { TASK_LIMITS } from "@/lib/domain/tasks";
 import { getCockpit, recordKpiSnapshot } from "@/lib/server/kpis";
-import { withLine } from "@/lib/server/line";
+import { ownLine, withLine } from "@/lib/server/line";
 import { automationWindowOf, configOf, eventReaches, nextRunOf, offDays, ownerDenied, runCondition } from "./store";
 import { runDailyReviews } from "./review";
 import { runWatch } from "@/lib/server/watchdog";
@@ -245,13 +245,19 @@ function askTimeout(o: RunOptions): number | undefined {
 /** Run one automation. True when it fired (sent or prepared something, or
  *  failed trying); false for a condition check that found nothing new. */
 export async function runAutomation(a: Automation, o: RunOptions): Promise<boolean> {
+  // a run reads the owner's own line wherever a screen would have (getActiveLine):
+  // the tick that starts it is no page, and the person whose page ticked is not the owner
+  const ownerRow = await prisma.user.findUnique({ where: { id: a.ownerId } });
+  if (!ownerRow) return false;
+  const owner = effectiveUser(ownerRow);
+  return withLine(ownLine(owner), () => runAutomationAsOwner(a, o, owner));
+}
+
+async function runAutomationAsOwner(a: Automation, o: RunOptions, owner: User): Promise<boolean> {
   const test = !!o.testTo;
   const offDay = await offDays(o.now);
   const config = configOf(a);
   const next = test ? a.nextRunAt : nextRunOf(config, o.now, offDay);
-  const ownerRow = await prisma.user.findUnique({ where: { id: a.ownerId } });
-  if (!ownerRow) return false;
-  const owner = effectiveUser(ownerRow);
 
   // an owner who may no longer keep it: it stops, and says why
   const denied = ownerDenied(owner, config);

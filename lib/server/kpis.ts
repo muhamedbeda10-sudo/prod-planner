@@ -334,7 +334,7 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
   const fromISO = addDaysISO(todayISO, -HISTORY_DAYS);
   const [read, settings, holidays, plan, returnsOpen] = await Promise.all([
     readCentreDays(fromISO), getSettings(), loadHolidays(),
-    // the transformers' plan, whichever line the toggle is on
+    // the transformers' plan, whichever line is on screen
     withLine("TR", () => getWeeklyPlanTracker()),
     prisma.returnEntry.aggregate({ where: { status: "open" }, _count: { _all: true }, _sum: { qty: true } }),
   ]);

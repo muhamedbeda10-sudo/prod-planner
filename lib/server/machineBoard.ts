@@ -366,7 +366,7 @@ export async function getOptimizerInputs(dept: BoardDept, dayISO: string, mayPla
  *  loaded them itself (the Floor canvas). Shot blast has no worklist. */
 export async function getDeptBoardLines(dept: BoardDept, dayISO: string): Promise<BoardLineInput[]> {
   // One physical floor: the punches carry panels beside transformer parts,
-  // so the board draws BOTH lines' work whatever the toggle says. The
+  // so the board draws BOTH lines' work whatever line is on screen. The
   // transformers' lines come off their worklists under a forced line; the
   // panels' off their stage worklists, which read the panels regardless.
   const [tr, lv] = await Promise.all([withLine("TR", () => transformerBoardLines(dept, dayISO)), lvBoardLines(dept)]);
