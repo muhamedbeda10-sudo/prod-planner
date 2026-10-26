@@ -9,7 +9,6 @@ import { isPowderDepartment, POWDER_DEPARTMENTS } from "@/lib/domain/powderScrap
 import {
   canEditIssue,
   departmentLabel,
-  departmentWorkers,
   describeSnapshot,
   factoryDateTimeLabel,
   groupLabel,
@@ -281,29 +280,15 @@ export async function getConsumableEdits(fromISO: string, toISO: string): Promis
 
 const CAIRO_HOUR = new Intl.DateTimeFormat("en-US", { timeZone: "Africa/Cairo", hour: "2-digit", hourCycle: "h23" });
 
-/** The dashboard for factory days from..to: the period's hand-outs worked
- *  into cards, charts and tables, and the count of the period just before.
+/** Factory days from..to item by item — the AI's consumables_summary sheet.
  *  A group hand-out is one hand-out, to "the group" of its department — one
- *  entry among the workers, not a hand-out per man. */
+ *  entry among an item's workers, not a hand-out per man. */
 export async function getConsumablesDashboard(fromISO: string, toISO: string): Promise<ConsumablesStats> {
   const { gte, lt } = periodBounds(fromISO, toISO);
-  const prev = previousPeriod(fromISO, toISO);
-  const prevBounds = periodBounds(prev.fromISO, prev.toISO);
-  const [rows, previousCount, allWorkers, first] = await Promise.all([
-    prisma.consumableIssue.findMany({
-      where: { deletedAt: null, issuedAt: { gte, lt } },
-      select: {
-        item: true, qty: true, department: true, workerId: true, issuedAt: true,
-        worker: { select: { name: true, empId: true } },
-      },
-    }),
-    prisma.consumableIssue.count({ where: { deletedAt: null, issuedAt: { gte: prevBounds.gte, lt: prevBounds.lt } } }),
-    getAllWorkers(),
-    prisma.consumableIssue.findFirst({ where: { deletedAt: null }, orderBy: { issuedAt: "asc" }, select: { issuedAt: true } }),
-  ]);
-  // the period before is only a comparison if the log already ran for all
-  // of it — against a part of one, "▲ 400%" is the log's start, not the store
-  const previousIssues = first && factoryDayISO(first.issuedAt) <= prev.fromISO ? previousCount : null;
+  const rows = await prisma.consumableIssue.findMany({
+    where: { deletedAt: null, issuedAt: { gte, lt } },
+    select: { item: true, qty: true, department: true },
+  });
   // hand-outs are the department's: every row counts under its department
   // (an older row's worker is not read), one stand-in id per department
   const groupIds = new Map<string, number>();
@@ -312,21 +297,9 @@ export async function getConsumablesDashboard(fromISO: string, toISO: string): P
     return groupIds.get(department)!;
   };
   return consumablesStats(
-    rows.map((r) => ({
-      item: r.item,
-      qty: r.qty.toNumber(),
-      department: r.department,
-      departmentLabel: departmentLabel(r.department),
-      workerId: groupId(r.department),
-      workerName: departmentLabel(r.department),
-      empId: "",
-      dayISO: factoryDayISO(r.issuedAt),
-      hour: Number(CAIRO_HOUR.format(r.issuedAt)) % 24,
-    })),
+    rows.map((r) => ({ item: r.item, qty: r.qty.toNumber(), workerId: groupId(r.department) })),
     fromISO,
     toISO,
-    previousIssues,
-    { headcount: departmentWorkers(allWorkers) },
   );
 }
 
