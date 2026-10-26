@@ -315,6 +315,7 @@ export const keepScenarioTool: ReadTool<StartInput> = {
     "Make a what-if this chat's working scenario — what the next what-if, comparison or deadline search starts from — and say what it does. Nothing in the plant changes and no card is needed: it is kept on this chat alone. Use it when the person asks for a what-if (\"add two welders\", \"and Fridays too\"), so the next question builds on it; weigh variants without keeping them with simulate_scenario. Built like simulate_scenario: from the working scenario (the default), the plant as it stands (from: plant — start afresh) or a saved scenario, with the knobs turned. A knob given replaces that knob of the start — stoppages, holds and splits as whole lists, so send back the result's knobs with the one change; a knob left out keeps it. Returns what it does against today's reality.",
   schema: { type: "object", properties: { ...KNOB_PROPS, from: FROM, optimize: OPTIMIZE }, additionalProperties: false },
   tabs: TABS,
+  keeps: true,
   // a chat's own — never in an automation, where there is no chat
   liveOnly: true,
   // the reads beside it would start from the scenario it replaces

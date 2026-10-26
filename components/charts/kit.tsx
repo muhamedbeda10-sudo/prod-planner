@@ -1,17 +1,16 @@
 "use client";
 
-import { Table2 } from "lucide-react";
-import { EmptyState } from "@/components/primitives";
-
-import { useState } from "react";
+import { Badge } from "@/components/Badge";
+import { aiTargetRef } from "@/lib/aiTarget";
 
 // The dashboards' shared parts, so every dashboard reads the same way:
 //
 //  - colours: the palette's first SIX categorical slots (validated light and
 //    dark — slots 7 and 8 are too close to 6 for a legend to separate), then
 //    "Other" in the neutral. A series keeps its slot for the whole view.
-//  - a card whose chart has a Table twin one click away, with its export —
-//    the chart is never the only way to read a number;
+//  - a card that carries only its title and its chart: what it means and
+//    how it is counted (`about`), and its numbers (`data`), go to the
+//    assistant on a right-click's "Ask AI" (lib/aiTarget), not on screen;
 //  - stat tiles with a sparkline or a meter; a legend; a tooltip shell;
 //    a heatmap in one hue, light → dark; data bars for tables.
 
@@ -51,68 +50,36 @@ export type TableRow = Record<string, string | number>;
 export function ChartCard({
   title,
   sub,
+  about,
+  data,
   right,
-  table,
   className = "",
   children,
 }: {
   title: string;
+  /** A short caption under the title — an AI answer's chart's own. The
+   *  dashboards say nothing more on screen: what they would say is `about`. */
   sub?: React.ReactNode;
+  /** What the card shows and how it is counted, for the assistant's "Ask AI". */
+  about?: string;
+  /** The chart's numbers, for the assistant's "Ask AI". */
+  data?: TableRow[];
   right?: React.ReactNode;
-  /** The chart's numbers as a table — a Chart | Table switch. (A sheet of
-   *  them comes from the assistant; its own charts carry an export in `right`.) */
-  table?: { rows: TableRow[] };
   className?: string;
   children: React.ReactNode;
 }) {
-  const [asTable, setAsTable] = useState(false);
+  const ref = aiTargetRef({ kind: "chart", title, about, rows: data });
   return (
-    <section className={`bg-surface border rounded-xl p-4 min-w-0 ${className}`}>
+    <section ref={ref} className={`bg-surface border rounded-xl p-4 min-w-0 ${className}`}>
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <div className="min-w-0">
           <h2 className="font-bold leading-tight">{title}</h2>
           {sub && <p className="text-xs text-muted mt-0.5">{sub}</p>}
         </div>
-        <div className="flex items-center gap-2 no-print">
-          {right}
-          {table && (
-            <>
-              <nav className="seg" aria-label={`${title}: chart or table`}>
-                <button type="button" className={asTable ? "" : "on"} onClick={() => setAsTable(false)}>Chart</button>
-                <button type="button" className={asTable ? "on" : ""} onClick={() => setAsTable(true)}>Table</button>
-              </nav>
-            </>
-          )}
-        </div>
+        {right && <div className="flex items-center gap-2 no-print">{right}</div>}
       </div>
-      {table && asTable ? <DataTable rows={table.rows} /> : children}
+      {children}
     </section>
-  );
-}
-
-/** A plain table of records: numbers right-aligned in tabular figures. */
-export function DataTable({ rows, max = 400 }: { rows: TableRow[]; max?: number }) {
-  if (rows.length === 0) return <EmptyState compact icon={Table2} title="Nothing to show" />;
-  const cols = Object.keys(rows[0]);
-  const numeric = cols.map((c) => rows.every((r) => typeof r[c] === "number"));
-  return (
-    <div className="overflow-auto max-h-[420px]">
-      <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-surface border-b">
-          <tr>{cols.map((c, i) => <th key={c} className={`px-2 py-1.5 text-xs font-bold text-muted whitespace-nowrap ${numeric[i] ? "text-right" : "text-left"}`}>{c}</th>)}</tr>
-        </thead>
-        <tbody className="divide-y">
-          {rows.slice(0, max).map((r, k) => (
-            <tr key={k}>
-              {cols.map((c, i) => (
-                <td key={c} className={`px-2 py-1.5 ${numeric[i] ? "text-right tabnum" : ""}`}>{typeof r[c] === "number" ? fmt(r[c] as number) : r[c]}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {rows.length > max && <p className="text-xs text-muted mt-1">First {max} of {rows.length} rows — ask the assistant for the full list as an Excel file.</p>}
-    </div>
   );
 }
 
@@ -147,6 +114,9 @@ export function Meter({ value, label }: { value: number; label?: string }) {
   );
 }
 
+/** A tile: its name with the change beside it, the figure, then at most one
+ *  short line. What it means and how it is counted (`about`) is the
+ *  assistant's to say — right-click, "Ask AI". */
 export function StatTile({
   label,
   value,
@@ -156,10 +126,13 @@ export function StatTile({
   meter,
   hero,
   compact,
+  about,
 }: {
   label: string;
   value: string;
+  /** One short line — cut to the tile's width, the whole of it on hover. */
   sub?: React.ReactNode;
+  /** A <DeltaChip>, beside the name. */
   delta?: React.ReactNode;
   spark?: number[];
   meter?: number;
@@ -167,35 +140,41 @@ export function StatTile({
   hero?: boolean;
   /** A small figure inside a card, not a tile of the page's own row. */
   compact?: boolean;
+  /** What the figure means and how it is counted, for "Ask AI". */
+  about?: string;
 }) {
+  const ref = aiTargetRef({ kind: "figure", title: label, about });
   return (
-    <div className={`bg-surface border ${compact ? "rounded-lg px-3 py-2 min-w-[8rem]" : "rounded-xl px-4 py-3 min-w-[10.5rem]"} flex-1 flex flex-col gap-1 ${hero ? "sm:min-w-[15rem]" : ""}`}>
-      <div className="text-xs font-bold text-muted">{label}</div>
+    <div ref={ref} className={`bg-surface border ${compact ? "rounded-lg px-3 py-2 min-w-[8rem] gap-1" : "rounded-xl px-4 py-3 min-w-[10.5rem] gap-2"} flex-1 flex flex-col ${hero ? "sm:min-w-[15rem]" : ""}`}>
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="text-xs font-bold text-muted leading-tight">{label}</div>
+        {delta && <div className="shrink-0 -mt-0.5">{delta}</div>}
+      </div>
       <div className="flex min-w-0 items-end justify-between gap-3">
-        <div className={`${hero ? "text-[44px]" : compact ? "text-xl leading-tight" : "text-[28px] leading-none"} min-w-0 [overflow-wrap:anywhere] font-semibold ltr`}>{value}</div>
+        <div className={`${compact ? "text-xl leading-tight" : hero ? "text-[length:calc(var(--fs-kpi)*1.45)] leading-none" : "text-[length:var(--fs-kpi)] leading-none"} min-w-0 [overflow-wrap:anywhere] font-semibold tabnum ltr`}>{value}</div>
         {spark && <Sparkline values={spark} />}
       </div>
       {meter !== undefined && <Meter value={meter} />}
-      <div className="flex flex-wrap items-baseline gap-x-2 min-h-[1rem]">
-        {delta}
-        {sub && <span className="text-xs text-muted">{sub}</span>}
-      </div>
+      {sub && <div className="text-xs text-muted truncate" title={typeof sub === "string" ? sub : undefined}>{sub}</div>}
     </div>
   );
 }
 
-/** "▲ 12% vs the period before (40)" — direction only; whether up is good
- *  depends on the measure, so the caller picks `tone`. */
+/** A change as a badge — "▲ 3 pts", "▼ 12%", "• 0" — green where it is
+ *  good news, red where bad, grey where `up` does not say (or nothing moved);
+ *  what it is measured against on hover. */
+export function DeltaChip({ value, unit = "", up, title }: { value: number; unit?: string; up?: "good" | "bad"; title?: string }) {
+  const arrow = value > 0 ? "▲" : value < 0 ? "▼" : "•";
+  const tone = !up || value === 0 ? "neutral" : (value > 0) === (up === "good") ? "success" : "danger";
+  return <Badge tone={tone} title={title} className="tabnum">{arrow} {fmt(Math.abs(value), 1)}{unit}</Badge>;
+}
+
+/** "▲ 12%" against the period before — direction only; whether up is good
+ *  depends on the measure, so the caller picks `tone`. Nothing where there
+ *  was nothing before. */
 export function Delta({ pct: p, before, tone = "neutral" }: { pct: number | null; before: number; tone?: "neutral" | "upGood" | "upBad" }) {
-  if (p === null) return <span className="text-xs text-muted">none in the period before</span>;
-  const arrow = p > 0 ? "▲" : p < 0 ? "▼" : "•";
-  const good = tone === "neutral" || p === 0 ? null : (p > 0) === (tone === "upGood");
-  const cls = good === null ? "" : good ? "text-ok-fg" : "text-bad-fg";
-  return (
-    <span className={`text-xs font-bold ${cls}`} title={`Period before: ${fmt(before)}`}>
-      {arrow} {Math.abs(p)}% <span className="font-normal text-muted">vs the period before ({fmt(before)})</span>
-    </span>
-  );
+  if (p === null) return null;
+  return <DeltaChip value={p} unit="%" up={tone === "upGood" ? "good" : tone === "upBad" ? "bad" : undefined} title={`Against the period before: ${fmt(before)}`} />;
 }
 
 // ---------------------------------------------------------------- legend & tooltip

@@ -310,16 +310,6 @@ export function OdooMaterialPopup({ e, nesting, needCtx, onClose }: { e: OdooEnt
             <NeedTable need={need} copied={copied} copy={copy} lv={needCtx.lv} />
           </>
         )}
-        <p className="text-[11px] text-muted mt-2">
-          {needCtx.lv ? (
-            <><b>For qty (actual)</b> = sheets actually consumed on the order ÷ the units it produced them for × this qty — what to book in Odoo. Where nothing
-            was consumed yet, Copy takes the BOM number instead and says so.</>
-          ) : (
-            <><b>For qty (actual)</b> = sheets actually nested for the job ÷ its units × this qty — what to book in Odoo. Where nothing was
-            nested yet, Copy takes the BOM number instead and says so.</>
-          )}{" "}
-          <b>vs BOM</b> is the actual against the BOM: past ±{VARIANCE_WARN}% amber, past ±{VARIANCE_BAD}% red.
-        </p>
       </div>
     </div>
   );

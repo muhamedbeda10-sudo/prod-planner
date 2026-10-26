@@ -134,14 +134,17 @@ export function callDenied(user: User, hidden: ReadonlySet<string>, tool: AiTool
 }
 
 /** The tools this person's assistant gets, in the fixed order — fewer when
- *  it runs unattended (an automation, the morning review). */
-export function toolsFor(user: User, o: { hidden: ReadonlySet<string>; actionsPaused: boolean; unattended?: boolean }): AiTool[] {
+ *  it runs unattended (an automation, the morning review), and only those
+ *  that read and keep nothing for a read-only question (a right-click's
+ *  "Ask AI", which carries text read off the page). */
+export function toolsFor(user: User, o: { hidden: ReadonlySet<string>; actionsPaused: boolean; unattended?: boolean; readOnly?: boolean }): AiTool[] {
   return AI_TOOLS.filter((t) => {
     if (t.internal) return false;
     if (t.ownerOnly && !user.isOwner) return false;
     if (t.needs && !hasPerm(user, t.needs)) return false;
     if (t.liveOnly && o.unattended) return false;
     if (t.tabs?.some((x) => o.hidden.has(x))) return false;
+    if (o.readOnly && (t.kind !== "read" || t.keeps)) return false;
     if (t.kind === "read") return true;
     if (o.actionsPaused) return false;
     if (areaDenied(user, t)) return false;

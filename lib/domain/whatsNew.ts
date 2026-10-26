@@ -24,6 +24,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "No more All | TR | LV switch: Planning and Production now show the transformers and the LV panels together. Each page opens on the plant's figures — both lines' headline, their decisions in one list, who is needed where — then a Transformers section and an LV panels section. Hide a section you don't follow with its header; the page remembers it. On Production one date bar at the top sets the period for both lines, and each section keeps its own department filter. New on Production: What did we make, item by item? — each line's pieces at every stage in the period, the transformers by component and KVA class (Tank 630 kVA, Top Cover 1000 kVA…) and the panels by plan and type (USS, LSS, meter boxes), against this month's plan: planned, finished, left and the share done. Switch between items only and items with their types; for an Excel of it, ask the assistant. The assistant answers the same questions, for example \"How many 630 kVA tanks did we weld this month against the plan?\".",
   },
   {
+    id: "2026-10-26-ask-ai-right-click",
+    dateISO: "2026-10-26",
+    title: "Right-click anything and Ask AI: the cards say less, the assistant explains",
+    where: "Every page · AI assistant",
+    body: "Right-click a card, a chart, a figure, a table row or a column header — anywhere in the app — and pick Ask AI (on a phone, a long press): the assistant opens and explains it at once — what it is, what it says right now and how it is worked out, checked against the live data. The dashboards are cleaner for it: the Chart | Table switch is gone from every chart, the long notes under the cards and the warnings under the capacity check are gone too (the assistant has them), and the headline tiles show their figure with one short line and a small ▲ / ▼ chip against a week ago — nothing where there is no reading to compare with. A row's own menu (hold, close, trace…) ends with Ask AI too. In a field, on text you selected, or with Shift held, the browser's own menu still opens. Each Ask AI is one question from your AI allowance.",
+  },
+  {
     id: "2026-10-26-excel-through-assistant",
     dateISO: "2026-10-26",
     title: "Excel files and printouts come from the assistant now",

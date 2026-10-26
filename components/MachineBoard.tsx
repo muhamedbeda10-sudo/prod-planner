@@ -471,8 +471,12 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
       </li>
     );
   };
+  // how the board works — the assistant's to tell ("Ask AI" on it)
+  const about = sheetBoard
+    ? `Each job is sheets of one thickness, material and size, carrying the parts of the projects on them. ✋ Add job types it in and puts it on a ${word}. ✓ records the sheets a ${word} cut (blank = all its sheets of the job, the rest stays in its queue); a job leaves the board once every sheet is cut. To share a job between ${machineWord(board.dept, true)}, type the sheets in the box beside the picker before choosing the ${word}; ✂ on a card resizes a share. The pieces cut are recorded on the weekly plan.`
+    : `Hours are the standard times of what is left on each line${multi ? ", split over the work centres its routing names (a tank is cut, then bent, then its fins folded — so it queues once on each)" : ""}. A ${word}'s hours today are its hours a day less the downtime on the shift log. A line leaves the board by itself once nothing remains on it. ✓ records what a ${word} finished (blank = the whole share, the rest stays in its queue). To split a line, type the pieces in the box beside the picker before choosing the ${word}; ✂ on a card resizes a share.`;
   return (
-    <section className="mb-6">
+    <section className="mb-6" data-ai-title={`${machineWord(board.dept, true)} — who is on what`} data-ai-about={about}>
       <h2>
         🏭 {machineWord(board.dept, true)[0].toUpperCase() + machineWord(board.dept, true).slice(1)} — who is on what
         {sheetBoard ? (
@@ -574,18 +578,6 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
           )}
         </div>
       )}
-      <p className="text-[11px] text-muted mt-1">
-        {sheetBoard ? (
-          <>
-            Each job is sheets of one thickness, material and size, carrying the parts of the projects on them — ✋ Add job types it in and puts it on a {word}. ✓ records the sheets a {word} cut (blank = all its sheets of the job, the rest stays in its queue); a job leaves the board once every sheet is cut. To share a job between {machineWord(board.dept, true)}, type the sheets in the box beside the picker before choosing the {word}; ✂ on a card resizes a share. The pieces cut are recorded on the weekly plan below.
-          </>
-        ) : (
-          <>
-            Hours are the standard times of what is left on each line{multi ? ", split over the work centres its routing names (a tank is cut, then bent, then its fins folded — so it queues once on each)" : ""}. A {word}&apos;s hours today are its hours a day less the downtime on the shift log. A line leaves the board by itself once nothing remains on it.
-            ✓ records what a {word} finished (blank = the whole share, the rest stays in its queue). To split a line, type the pieces in the box beside the picker before choosing the {word}; ✂ on a card resizes a share.
-          </>
-        )}
-      </p>
     </section>
   );
 }

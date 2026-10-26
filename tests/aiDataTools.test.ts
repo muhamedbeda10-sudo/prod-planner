@@ -359,6 +359,16 @@ describe("who is offered the data tools", () => {
     // deletions only with the deletions key
     expect(names).not.toContain("delete_material_lines");
   });
+
+  it("a read-only question (Ask AI) gets the reading tools alone — nothing that changes or keeps", () => {
+    h.perms.add("ai.act.data");
+    const all = toolsFor(user(), { hidden: new Set(), actionsPaused: false });
+    const names = toolsFor(user(), { hidden: new Set(), actionsPaused: false, readOnly: true }).map((t) => t.name);
+    expect(names).toEqual(expect.arrayContaining(["query_database", "get_kpis"]));
+    expect(names).not.toContain("set_material_cells");
+    for (const kept of ["remember", "forget", "keep_scenario"]) expect(names).not.toContain(kept);
+    expect(all.filter((t) => t.kind === "read" && !t.keeps).map((t) => t.name)).toEqual(names);
+  });
 });
 
 describe("a quantity, a closing or several rows wait for the person's click", () => {

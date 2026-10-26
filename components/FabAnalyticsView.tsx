@@ -33,16 +33,16 @@ function Tile({ head, value, unit, sub, tone }: { head: string; value: string; u
         <span className="text-2xl font-extrabold tabnum leading-none" style={color ? { color } : undefined}>{value}</span>
         {unit && <span className="text-xs font-bold text-muted">{unit}</span>}
       </div>
-      {sub && <div className="text-[11px] text-muted mt-1">{sub}</div>}
+      {sub && <div className="text-[11px] text-muted mt-1 truncate" title={typeof sub === "string" ? sub : undefined}>{sub}</div>}
     </div>
   );
 }
 
-function Section({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
+/** A card: its title on screen, what it shows (`about`) for "Ask AI". */
+function Section({ title, about, children }: { title: string; about?: string; children: React.ReactNode }) {
   return (
-    <section className="bg-surface border rounded-xl p-3 min-w-0">
-      <h2 className="text-sm font-extrabold">{title}</h2>
-      {sub && <p className="text-[11px] text-muted mt-0.5 mb-2">{sub}</p>}
+    <section className="bg-surface border rounded-xl p-3 min-w-0" data-ai-title={title} data-ai-about={about}>
+      <h2 className="text-sm font-extrabold mb-2">{title}</h2>
       {children}
     </section>
   );
@@ -147,7 +147,7 @@ export function FabAnalyticsView({ a }: { a: MaterialDashboardData }) {
           value={t(c.scrapKg)}
           unit="t"
           tone={c.scrapKg > 0 ? "warn" : undefined}
-          sub={c.kg > 0 ? `${pct(c.scrapKg / c.kg)} of the consumed weight${c.scrapKnownShare < 0.999 ? ` · utilization known on ${pct(c.scrapKnownShare)} of it` : ""}` : "nothing closed yet"}
+          sub={c.kg > 0 ? `${pct(c.scrapKg / c.kg)} of consumed` : undefined}
         />
         <Tile head="In the product" value={t(c.netKg)} unit="t" sub="consumed less scrap" />
         <Tile head="Units closed" value={n1(c.units)} sub={`${c.mos} MO(s) · ${c.closings} closing(s)`} />
@@ -163,36 +163,36 @@ export function FabAnalyticsView({ a }: { a: MaterialDashboardData }) {
           tone={overTone}
           sub={a.overBom.kg > 0 ? `${n1(a.overBom.sheets)} sheets over the BOM` : a.overBom.kg < 0 ? `${n1(-a.overBom.sheets)} sheets saved on the BOM` : "no nesting to compare yet"}
         />
-        <Tile head="Average utilization" value={pct(a.utilization)} tone={utilTone} sub={a.utilization === null ? "fill “Average Utilization” on the sheet" : "weighted by the nested weight"} />
+        <Tile head="Average utilization" value={pct(a.utilization)} tone={utilTone} sub={a.utilization === null ? "not on the sheet yet" : undefined} />
         <Tile
           head="Scrap on the sheet"
           value={t(a.scrap.kg)}
           unit="t"
           tone={scrapTone}
-          sub={a.scrap.knownShare > 0 ? `${pct(a.scrap.share)} of the nested weight${a.scrap.knownShare < 0.999 ? ` · known on ${pct(a.scrap.knownShare)}` : ""}` : "needs the nesting and the utilization"}
+          sub={a.scrap.knownShare > 0 ? `${pct(a.scrap.share)} of nested` : undefined}
         />
         <Tile head="Still to consume" value={t(a.remaining.kg)} unit="t" sub={`${n1(a.remaining.sheets)} sheets · ${n1(a.remaining.units)} units open`} />
         <Tile head="MOs on the sheet" value={String(a.mos.total)} sub={`${a.mos.nested} nested · ${a.mos.closed} closed on Odoo · ${a.mos.open} open`} />
         <Tile head="Consumed so far" value={pct(consumedShare)} sub="of the planned weight" />
       </Group>
 
-      <Section title="Consumed a day" sub={`Sheets booked on the day each MO was closed on Odoo · ${n1(a.consumedPerDay.sheets)} sheets a day over ${a.consumedPerDay.days} day(s) (dashed).`}>
+      <Section title="Consumed a day" about={`Sheets booked on the day each MO was closed on Odoo · ${n1(a.consumedPerDay.sheets)} sheets a day over ${a.consumedPerDay.days} day(s) (dashed).`}>
         {a.days.length ? <SheetsPerDayChart days={a.days} avg={a.consumedPerDay.sheets} /> : <p className="text-xs text-muted">No MO of the sheet was closed on Odoo in {windowWords} yet.</p>}
       </Section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-        <Section title="By thickness" sub="Sheets consumed in the window.">
+        <Section title="By thickness" about="Sheets consumed in the window.">
           {a.thicknesses.length ? <ThicknessChart rows={a.thicknesses} /> : <p className="text-xs text-muted">Nothing consumed in the window yet.</p>}
         </Section>
-        <Section title="By material" sub="The sheet's weight — nested where nested, else the BOM's; red = scrap.">
+        <Section title="By material" about="The sheet's weight — nested where nested, else the BOM's; red = scrap.">
           <Bars rows={a.materials} />
         </Section>
-        <Section title="By sheet size" sub="The same weight, per size.">
+        <Section title="By sheet size" about="The same weight, per size.">
           <Bars rows={a.sizes} />
         </Section>
       </div>
 
-      <Section title="By part" sub="Plan, nesting, consumption and scrap per part">
+      <Section title="By part" about="Plan, nesting, consumption and scrap per part">
         <div className="overflow-x-auto">
           <table className="w-full text-xs border-collapse">
             <thead>
@@ -235,10 +235,10 @@ export function FabAnalyticsView({ a }: { a: MaterialDashboardData }) {
       </Section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-        <Section title="Most scrap" sub="The MOs leaving the most steel unused">
+        <Section title="Most scrap" about="The MOs leaving the most steel unused">
           <MoTable rows={a.topScrap} value={(m) => m.scrapKg} head="Scrap" />
         </Section>
-        <Section title="Most over the BOM" sub="The MOs whose nesting took more steel than the BOM allows.">
+        <Section title="Most over the BOM" about="The MOs whose nesting took more steel than the BOM allows.">
           <MoTable rows={a.topOver} value={(m) => m.overKg} head="Over" />
         </Section>
       </div>

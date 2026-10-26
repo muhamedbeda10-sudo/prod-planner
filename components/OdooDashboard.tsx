@@ -7,6 +7,8 @@ import { productColor, productInk } from "@/lib/domain/productColors";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList,
 } from "recharts";
+import { ChartCard, DeltaChip } from "@/components/charts/kit";
+import { Badge } from "@/components/Badge";
 import { OdooInsightsSection } from "@/components/OdooInsights";
 import type { OdooInsights } from "@/lib/domain/odooInsights";
 import { axisWidth, describeDelta, niceScale, DELTA_MIN_BASE } from "@/lib/domain/chartScale";
@@ -102,21 +104,12 @@ function Delta({ cur, prev, suffix = "" }: { cur: number; prev: number | null; s
   const dv = describeDelta(cur, prev);
   if (dv.kind === "none") return null;
   const title = `Compared period: ${fmt(prev!)}${suffix}`;
-  if (dv.kind === "new") return <span className="text-xs text-muted" title={title}>new — none before</span>;
-  if (dv.kind === "same") return <span className="text-xs text-muted" title={title}>• same as previous</span>;
-  const up = dv.kind === "pct" ? dv.pct > 0 : dv.diff > 0;
-  const zero = dv.kind === "pct" && dv.pct === 0;
-  const cls = zero ? "text-muted" : up ? "text-ok-fg" : "text-bad-fg";
-  const arrow = zero ? "•" : up ? "▲" : "▼";
-  return (
-    <span
-      className={`text-xs font-bold ${cls}`}
-      title={dv.kind === "abs" ? `${title} — under ${DELTA_MIN_BASE} before, so the change is shown in pieces, not %` : title}
-    >
-      {arrow} {dv.kind === "pct" ? `${Math.abs(dv.pct)}%` : `${dv.diff > 0 ? "+" : "−"}${fmt(Math.abs(dv.diff))}${suffix || " pcs"}`}{" "}
-      <span className="font-normal text-muted">vs {dv.kind === "abs" ? fmt(prev!) : "previous"}</span>
-    </span>
-  );
+  if (dv.kind === "new") return <Badge title={title}>new</Badge>;
+  if (dv.kind === "same") return <DeltaChip value={0} title={title} />;
+  // under DELTA_MIN_BASE before, the change is told in pieces, not %
+  return dv.kind === "pct"
+    ? <DeltaChip value={dv.pct} unit="%" up="good" title={title} />
+    : <DeltaChip value={dv.diff} unit={suffix || " pcs"} up="good" title={`${title} — under ${DELTA_MIN_BASE} before, so the change is shown in pieces, not %`} />;
 }
 
 /** A dozen-ish thin bars of the product's daily quantity — a shape, not a chart. */
@@ -254,21 +247,6 @@ function Tip({ active, label, payload, total }: { active?: boolean; label?: stri
         </div>
       )}
     </div>
-  );
-}
-
-function Card({ title, sub, children, right }: { title: string; sub?: string; children: React.ReactNode; right?: React.ReactNode }) {
-  return (
-    <section className="bg-surface border rounded-xl p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
-        <div>
-          <h2 className="font-bold leading-tight">{title}</h2>
-          {sub && <p className="text-xs text-muted">{sub}</p>}
-        </div>
-        {right}
-      </div>
-      {children}
-    </section>
   );
 }
 
@@ -460,9 +438,9 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
         <ProductCards d={d} pal={pal} />
       </section>
 
-      <Card title={`Quantity ${word} per day, by product`} sub={`Each column is a day (the day rows were ${word}); every segment carries its count, the cap the day's total. Hover a column for the full breakdown.`}>
+      <ChartCard title={`Quantity ${word} per day, by product`} about={`Each column is a day (the day rows were ${word}); every segment carries its count, the cap the day's total. Hover a column for the full breakdown.`}>
         <DailyByProduct d={d} present={present} pal={pal} />
-      </Card>
+      </ChartCard>
 
       <OdooInsightsSection
         ins={d.insights}
@@ -470,12 +448,12 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
       />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <Card title="Totals per product" sub={`Quantity ${word} and share of the period.`}>
+        <ChartCard title="Totals per product" about={`Quantity ${word} and share of the period.`}>
           <ProductTotals d={d} />
-        </Card>
-        <Card title="Logged vs closed, per day" sub="Logged on entry · closed when Done">
+        </ChartCard>
+        <ChartCard title="Logged vs closed, per day" about="Logged on entry · closed when Done">
           <LoggedVsClosed d={d} />
-        </Card>
+        </ChartCard>
       </div>
 
       <section className="bg-surface border rounded-xl overflow-hidden">

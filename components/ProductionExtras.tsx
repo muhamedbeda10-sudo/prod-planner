@@ -27,11 +27,11 @@ export function ProductionExtras({ period }: { period: FloorPeriod }) {
       <ChartCard
         className="xl:col-span-6"
         title="Which machines stand still?"
-        sub="The stops still open now, with the time stopped so far, and the machines that lost the most unplanned hours in the period. A stop is recorded on the machine, by department — the punches carry the panels too, so a stop is never one line's."
-        table={{ rows: [
+        about="The stops still open now, with the time stopped so far, and the machines that lost the most unplanned hours in the period. A stop is recorded on the machine, by department — the punches carry the panels too, so a stop is never one line's."
+        data={[
           ...stops.open.map((s) => ({ Row: "Open now", Machine: s.machine, Department: s.dept, Since: s.sinceISO, Hours: s.hours, Cause: s.cause, Stops: 1 })),
           ...stops.byMachine.map((m) => ({ Row: "Most stopped", Machine: m.machine, Department: m.dept, Since: "", Hours: m.hours, Cause: "", Stops: m.stops })),
-        ] }}
+        ]}
       >
         {stops.open.length === 0 && stops.byMachine.length === 0 ? (
           <EmptyState compact icon={Info} title="No machine stopped" hint={<>Nothing is stopped now and no unplanned stop was recorded in the period. Stops are recorded on <Link href="/shifts" className="text-brand-ink font-semibold hover:underline">Shifts → Machine stops</Link>.</>} />
@@ -67,10 +67,10 @@ export function ProductionExtras({ period }: { period: FloorPeriod }) {
       <ChartCard
         className="xl:col-span-6"
         title="Quality and rework"
-        sub={t
+        about={t
           ? `The tanks, tracked one by one: where the open ones stand, the leak test passed first time over the tanks first tested in the period (every attempt is kept, so a re-test never flatters it), and the days a tank waited — the median over the tanks that reached the step in the period. Then the pieces sent back upstream.`
           : "The pieces sent back upstream (Welding to Fabrication, Painting to Welding): open now, filed in the period, by reason. Tanks are recorded as quantities — turn on per-piece tank tracking in Settings for the leak-test figures."}
-        table={{ rows: [
+        data={[
           ...(t ? [
             { Figure: "Tanks waiting for the leak test", Value: t.waitingTest, Note: "now" },
             { Figure: "Tanks in repair", Value: t.inRepair, Note: "now" },
@@ -84,7 +84,7 @@ export function ProductionExtras({ period }: { period: FloorPeriod }) {
           { Figure: "Returns open", Value: q.returns.open.count, Note: `${q.returns.open.qty} pcs` },
           { Figure: "Returns filed in the period", Value: q.returns.filed.count, Note: `${q.returns.filed.qty} pcs` },
           ...q.returns.byReason.map((r) => ({ Figure: `Reason — ${r.reason}`, Value: r.qty, Note: `${r.count} return${r.count === 1 ? "" : "s"}` })),
-        ] }}
+        ]}
       >
         <div className="space-y-3">
           {t && (

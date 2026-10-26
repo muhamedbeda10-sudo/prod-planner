@@ -19,8 +19,7 @@ import {
 // in the inbox's reports and on their printout. Drawn the way the dashboards
 // draw theirs: the palette's categorical slots in order (a series keeps its
 // slot), gray for what is not the point, one value scale per chart, thin
-// marks, a tooltip on every mark, a legend from two series up, and the
-// numbers one click away as a table with its export.
+// marks, a tooltip on every mark, and a legend from two series up.
 
 export function AiChart({ source, streaming }: { source: string; streaming: boolean }) {
   const spec = parseAiChart(source);

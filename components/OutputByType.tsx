@@ -6,7 +6,7 @@ import { ChartCard, fmt, pctOrDash } from "@/components/charts/kit";
 import { EmptyState } from "@/components/primitives";
 import { GroupBand, TableFrame, Th } from "@/components/DataTable";
 import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
-import { LV_TYPE_STAGE_LABEL, TR_TYPE_STAGE_LABEL, type OutputByTypeData, type TypeRow } from "@/lib/domain/outputByType";
+import { LV_TYPE_STAGE_LABEL, TR_TYPE_STAGE_LABEL, outputByTypeRows, type OutputByTypeData, type TypeRow } from "@/lib/domain/outputByType";
 import { STAGES, type Stage } from "@/lib/domain/kpis";
 import { LV_STAGES, type LvStage } from "@/lib/domain/lv";
 
@@ -97,7 +97,8 @@ export function OutputByType({ tr, lv, range }: { tr: OutputByTypeData<Stage>; l
   return (
     <ChartCard
       title="What did we make, item by item?"
-      sub={`Each line's pieces at each stage in the period, by item and type — the transformers by component and KVA class, the panels by plan and panel type — against ${months}'s plan. Pieces add up within an item, never across items or lines; an order counts on the plan up to what it asks.`}
+      data={outputByTypeRows(tr, lv)}
+      about={`Each line's pieces at each stage in the period, by item and type — the transformers by component and KVA class, the panels by plan and panel type — against ${months}'s plan. Pieces add up within an item, never across items or lines; an order counts on the plan up to what it asks.`}
       right={
         <nav className="seg" aria-label="Rows">
             <button type="button" className={detail ? "" : "on"} aria-pressed={!detail} onClick={() => setDetail(false)}>Items</button>

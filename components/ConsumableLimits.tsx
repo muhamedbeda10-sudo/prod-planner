@@ -431,9 +431,9 @@ export function ConsumableLimits({
     <div className="space-y-3">
       <div className="flex flex-wrap gap-3">
         <StatTile label="Items in use" value={fmt(counts.active)} sub={`${fmt(counts.limits)} limit${counts.limits === 1 ? "" : "s"} set`} />
-        <StatTile label="Over a limit now" value={fmt(counts.over)} sub={counts.over ? "items past a number in its current window" : "✓ every item within its limits"} />
+        <StatTile label="Over a limit now" value={fmt(counts.over)} sub={counts.over ? undefined : "✓ all within limits"} about="Items past a limit's number in its current window." />
         <StatTile label={`Close (${Math.round(NEAR_RATIO * 100)}%+)`} value={fmt(counts.near)} sub="items near a limit" />
-        <StatTile label="No limit" value={fmt(counts.nolimit)} sub="active items only logged" />
+        <StatTile label="No limit" value={fmt(counts.nolimit)} about="Active items with hand-outs logged and no limit set." />
       </div>
 
       <div className="toolbar toolbar-row no-print !mb-0">

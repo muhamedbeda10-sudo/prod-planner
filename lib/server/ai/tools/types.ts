@@ -89,6 +89,9 @@ interface ToolBase<I> {
   /** Only in a chat the person is in, never in an automation or the morning
    *  review: what must not move while nobody is watching. */
   liveOnly?: true;
+  /** A reading tool that still keeps something (a memory line, the chat's
+   *  what-if): left out of a read-only question (toolsFor's readOnly). */
+  keeps?: true;
   /** In the model's context from the first request — the tools nearly every
    *  question needs. Every other tool waits until the model finds it with the
    *  tool search (lib/server/ai/agent.ts), so its definition costs nothing

@@ -20,11 +20,21 @@ function loadTone(load: number | null): { bg: string; fg: string; label: string 
 export function PlanCapacityCard({ check }: { check: PlanCapacityCheck | null }) {
   if (!check || check.totalPcs === 0) return null;
   const overloaded = check.stages.filter((s) => (s.load ?? 0) > 1);
+  // the pace and the warnings are the assistant's to tell ("Ask AI" on the
+  // card): the card keeps one row of chips
+  const about = [
+    "Standard hours the weekly plan needs per stage against the stage's capacity over the plan's own working days.",
+    check.pace &&
+      `Pace after ${check.pace.elapsedWd} of ${check.workingDays} working days: at the rate so far (earned standard hours extended over the days left) the week closes at ${Math.round(check.pace.projectedCoverage * 100)}%` +
+        (check.pace.worstStage && check.pace.worstStage.coverage < 1 ? `, ${deptLabel(check.pace.worstStage.dept)} at ${Math.round(check.pace.worstStage.coverage * 100)}%.` : "."),
+    overloaded.length > 0 && `Over capacity: ${overloaded.map((s) => `${deptLabel(s.dept)} needs ${fmt(s.required - (s.available ?? 0))} h more than the window holds`).join("; ")}.`,
+    check.uncoveredPcs > 0 && `${check.uncoveredPcs} of ${check.totalPcs} pcs have no standard time (no FG code or KVA), so the required figures undercount the plan.`,
+  ].filter(Boolean).join(" ");
 
   // one row: the title, then one compact chip per stage (needed / capacity,
-  // a bar, the load); the pace and the warnings on one quiet line under it
+  // a bar, the load)
   return (
-    <div className="print-keep bg-surface border rounded-[10px] px-3 py-2">
+    <div className="print-keep bg-surface border rounded-[10px] px-3 py-2" data-ai-title="Capacity check" data-ai-about={about}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="leading-tight basis-full sm:basis-auto" title="Standard hours the plan needs vs the stage's capacity over the plan's working days">
           <h2 className="!mb-0">Capacity check</h2>
@@ -54,31 +64,6 @@ export function PlanCapacityCard({ check }: { check: PlanCapacityCheck | null })
           })}
         </div>
       </div>
-      {(check.pace || overloaded.length > 0 || check.uncoveredPcs > 0) && (
-        <p className="mt-1.5 text-[11px] font-semibold tabnum flex flex-wrap gap-x-4 gap-y-0.5">
-          {check.pace && (
-            <span
-              style={{ color: check.pace.projectedCoverage >= 1 ? "var(--ok-fg)" : check.pace.projectedCoverage >= 0.9 ? "var(--warn-fg)" : "var(--bad-fg)" }}
-              title="Projection: the plan's earned standard hours so far, extended over the remaining working days at the same daily rate"
-            >
-              ⏱ Pace after {check.pace.elapsedWd} of {check.workingDays} working days: at this rate the week closes at {Math.round(check.pace.projectedCoverage * 100)}%
-              {check.pace.worstStage && check.pace.worstStage.coverage < 1 && (
-                <> — {deptLabel(check.pace.worstStage.dept)} at {Math.round(check.pace.worstStage.coverage * 100)}%</>
-              )}
-            </span>
-          )}
-          {overloaded.length > 0 && (
-            <span className="text-bad-fg">
-              ⚠ Over capacity: {overloaded.map((s) => `${deptLabel(s.dept)} needs ${fmt(s.required - (s.available ?? 0))} h more than the window holds`).join(" · ")}
-            </span>
-          )}
-          {check.uncoveredPcs > 0 && (
-            <span className="text-warn-fg font-normal" title="Orders missing an FG code or KVA have no standard time — the required figures undercount the plan">
-              ⚠ {check.uncoveredPcs} of {check.totalPcs} pcs have no standard time — the required figures undercount the plan
-            </span>
-          )}
-        </p>
-      )}
     </div>
   );
 }
