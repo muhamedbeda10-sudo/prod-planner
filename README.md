@@ -141,16 +141,31 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    job, cut and left, which machines hold the rest, every project's part on the sheets, the note and every ✓
    (when, which machine, how many, by whom), with ✓, ✎ Edit and ⧉ Duplicate beside them. Closing sheets records no
    pieces in the plan — those are recorded on the weekly plan below. A machine's load there reads in sheets.
-5. **Fabrication analytics** (`/dashboards/material`, the Material place of the Dashboards tab) — the floor read in SHEETS instead of pieces, because a piece is
-   not a unit of work: a tank cut from four sheets and one cut from half a sheet are both "1". Every daily-log
-   cut record is converted through its BOM's bill of sheets off the Material tab, over a 30/60/90-day or
-   all-time window. Sheets and tonnes cut, per day and in total; the thickness mix (which decides what a job
-   can go to — the thin end and the thick end are not the same plant); and **sheets per piece per component**
-   with the range across the BOMs produced, which is the argument for sheets over pieces and sizes a new order
-   before anyone nests it. Tonnes come from the sheet size, the thickness and the material's own density; a BOM
-   planned in several months takes its NEWEST nesting, never the sum. A piece whose BOM has no bill still
-   counts as a piece and contributes no sheets, so the rates read low rather than flattering — the coverage
-   figure and the list of un-nested BOMs say exactly how much of the floor the Material tab describes.
+5. **Material dashboard** (`/dashboards/material`, the Material place of the Dashboards tab) — steel in sheets and
+   tonnes, for one line (Transformers | LV Panels), answering four questions: what the BOM needs, what the nesting
+   took, what the period's ODOO closings consumed **by calculation**, and how much of it the data covers. Two
+   views: **Consumption in period** (`?from=&to=`, or `?all=1`; the last 90 days by default) and **Nesting plan ·
+   Now** (the current sheet — no period touches it). Filters in the address: material, thickness, size, part, MO,
+   SOI. Six tiles: BOM planned t (units × BOM sheets per unit × one sheet's weight), nested t, nesting variance t
+   (nested − BOM on the SAME nested lines only), weighted utilization (by nested tonnes of the lines whose
+   utilization is known), calculated consumption t (each ODOO row moved to Done in the period, on its Cairo day,
+   whose MO is on the sheet — a backorder (`…-002`) by the MO it came from, as the ODOO tab finds it: closed qty × the actual nesting rate — else the BOM's, shown as *Estimated from BOM* —
+   × one sheet's weight; each closing's units once, whatever its MO's number of material lines) and estimated
+   scrap t on known coverage (consumed t × (1 − utilization) where utilization is known — the rest is unknown, not
+   scrap-free). A sheet's weight is the sheet's own, else size × thickness × density, else unknown — counted in
+   sheets, never as zero. The period tiles carry their change against the period before (N/A where there is no
+   base); the nesting tiles say **Now**. A **Data coverage** strip says how the closings link (rows and units —
+   a blank MO never links; an unlinked closing's weight is unknown), the share consumed at an actual rate, the
+   lines with a known weight and the nested tonnes with a known utilization, and which sheet copies were read:
+   one copy of each MO — the living sheet, else the newest month that carries it — so an older month's MOs stay
+   in and no MO counts twice. What needs a look (closings without an MO or off the sheet, lines with no weight, rate
+   or utilization, the worst overrun) opens from the **Needs a look** button in the bar, as a popup. Then
+   calculated consumption per closing day (or actual vs BOM by part), the breakdown by thickness / material / size, the MOs most over their BOM, and the detail by MO and part,
+   whose totals equal the tiles. Every tile and bar opens the rows behind it and keeps the choices; every chart
+   folds out its numbers as a table; the Excel comes from the assistant (`make_excel` → `material_dashboard`),
+   and `get_material_dashboard` gives it the same figures. Consumption here is not a store issue and not the
+   sheets cut: the machines' sheets are on the Floor, the store's balance in Material → Physical. The panels'
+   sheet has no part codes, weights or utilization, so their side reads partial — said on the page.
 
 6. **Material — nesting project tracker** (`/material`) — the planner's Nesting Project Tracker sheet, filed
    month by month, exactly its columns: BOM Ref · Quantity of Units · Part Code · Part Name · Codes · Material ·
@@ -452,6 +467,9 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      in `data-ai-title` / `data-ai-about`. A row menu of its own (hold, close, trace…) carries the entry at its foot. The
      browser's own menu stays in a field, on selected text and on Shift + right-click; there is none of it for someone
      without the assistant. Each Ask AI is one question, from the person's AI allowance.
+   - **A chart's title explains it** (`components/ChartAbout.tsx`, the shared `Tooltip`'s `interactive` card): resting
+     the pointer on a chart card's title or its ⓘ (a tap on a phone, Tab from the keyboard) opens a card with the chart's
+     `about` and an **Ask AI about these numbers** button. It costs nothing until that button is pressed.
    - **Tools on demand** (`lib/server/ai/agent.ts`): the model starts each question with two tools — `query_database` and
      `get_machine_board` (`loaded` on the tool) — and finds every other one with the API's tool search (BM25, the tools
      sent with `defer_loading`), so a question carries only the definitions it uses (two tools and the search ≈ 0.5 k

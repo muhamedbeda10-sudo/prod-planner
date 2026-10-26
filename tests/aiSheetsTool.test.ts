@@ -240,7 +240,7 @@ describe("the Consumables dashboard's sheet", () => {
       { key: "t:rags|Store", itemKey: "t:rags", itemId: null, item: "Rags", code: null, uom: null, department: "Store", departmentLabel: "Store", qty: 4, handOuts: 1, lastDayISO: "2026-10-02",
         recordedOver: 0, lastReason: null, status: "none", limits: [], suggestion: { id: 9, name: "Cleaning Cloth", code: null, match: "similar" }, issues: [], logIds: [] },
     ] });
-    const r = await makeSheetTool.run({ sheet: "consumables_dashboard", view: "from=2026-10-01&to=2026-10-20&dept=WeldingTX&status=over&junk=1" }, ctxOf());
+    const r = await makeSheetTool.run({ sheet: "consumables_dashboard", address: "from=2026-10-01&to=2026-10-20&dept=WeldingTX&status=over&junk=1" }, ctxOf());
     expect(r.ok).toBe(true);
     expect(h.decisions).toHaveBeenCalledWith("2026-10-01", "2026-10-20", "2026-10-26", { department: "WeldingTX", item: null, link: null, status: "over" });
     const kept = keptSheet();
@@ -252,7 +252,7 @@ describe("the Consumables dashboard's sheet", () => {
   });
 
   it("takes nothing but the address", () => {
-    expect(checkToolInput(makeSheetTool, { sheet: "consumables_dashboard", from: "2026-10-01" })).toEqual({ ok: false, error: expect.stringContaining("takes view") });
+    expect(checkToolInput(makeSheetTool, { sheet: "consumables_dashboard", from: "2026-10-01" })).toEqual({ ok: false, error: expect.stringContaining("takes address") });
   });
 });
 

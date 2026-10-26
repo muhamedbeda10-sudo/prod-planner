@@ -13,7 +13,7 @@ import { formatDate, formatFigure as fmt, formatShare as pct } from "@/lib/domai
 import { DataQualityBar, MetricNotes, NowBadge, StatTile, DeltaChip } from "@/components/charts/kit";
 import { Badge } from "@/components/Badge";
 import { LoadFailed } from "@/components/DataTable";
-import { CockpitDecisions, PrintDecisions } from "@/components/CockpitDecisions";
+import { CockpitDecisions, PrintDecisions, type DecisionCopy } from "@/components/CockpitDecisions";
 import { ConsumablesMonthly } from "@/components/ConsumablesMonthly";
 import { ConsumablesBreakdown, ConsumablesTrend } from "@/components/LazyCharts";
 import { ConsumablesDetailTable, ConsumablesFilters } from "@/components/ConsumablesDecisionsUi";
@@ -80,7 +80,7 @@ export default async function ConsumablesDashboardPage({ searchParams }: { searc
   // what needs someone: one button at the end of the bar, the list in its popup
   const closedLabel = d ? `${monthShort(d.limits.closedSpan.from.slice(0, 7))} – ${monthShort(d.limits.closedSpan.to.slice(0, 7))}` : "";
   const decisions = d ? consumablesActions(d, d.powder, periodLabel, closedLabel, href) : null;
-  const store = { title: "Needs a decision at the store", nothing: "Nothing needs a decision — every hand-out in scope is a catalogue item within its limits." };
+  const store: DecisionCopy = { noun: "a decision", title: "Needs a decision at the store", button: "Decisions", nothing: "Nothing needs a decision — every hand-out in scope is a catalogue item within its limits." };
   // the browser parts get the rows, cards and charts — the list and the strip are drawn here
   const view = d && { fromISO: d.fromISO, toISO: d.toISO, endsToday: d.endsToday, filters: d.filters, kpis: d.kpis, rows: d.rows, trend: d.trend, items: d.items, units: d.units, quality: d.quality };
 
@@ -97,11 +97,11 @@ export default async function ConsumablesDashboardPage({ searchParams }: { searc
         end={d && decisions && (
           <>
             <ConsumablesFilters filters={filters} options={d.options} />
-            <CockpitDecisions actions={decisions.actions} notes={decisions.notes} {...store} />
+            <CockpitDecisions actions={decisions.actions} notes={decisions.notes} copy={store} />
           </>
         )}
       />
-      {decisions && <PrintDecisions actions={decisions.actions} notes={decisions.notes} {...store} />}
+      {decisions && <PrintDecisions actions={decisions.actions} notes={decisions.notes} copy={store} />}
 
       {d === null || k === undefined || view === null ? <LoadFailed what="The consumables' figures" /> : (
         <>

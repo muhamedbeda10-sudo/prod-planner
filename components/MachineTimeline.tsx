@@ -5,6 +5,7 @@ import { buildTimeline, type TimelineBlock } from "@/lib/domain/machineTimeline"
 import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import { DeptLoadCurve } from "@/components/DeptLoadCurve";
+import { ChartAbout } from "@/components/ChartAbout";
 
 // 📊 The board's Timeline view: every machine a track, every queued line a
 // block as long as that machine needs for it, laid on the working days ahead.
@@ -56,14 +57,15 @@ export function MachineTimeline({ board }: { board: MachineBoardData }) {
   const days = t.days.slice(0, horizon);
   if (days.length === 0) return null;
 
+  const about = `Each block is one line on that ${word}, as long as the machine needs for it (its standard hours over the hours it has in a day, at the planner's own time per piece where there is one). They run in the queue's order, what is running now first. A block turns red when it is still running after the day its stage was owed; the thin mark on the track is that day. The work is moved with the machine cards, or with the printed sheets on the machines worklist.`;
   return (
-    <section className="bg-surface border rounded-xl p-3 no-print" data-ai-title={`The ${word}s' next ${horizon} working days`} data-ai-about={`Each block is one line on that ${word}, as long as the machine needs for it (its standard hours over the hours it has in a day, at the planner's own time per piece where there is one). They run in the queue's order, what is running now first. A block turns red when it is still running after the day its stage was owed; the thin mark on the track is that day. The work is moved with the machine cards, or with the printed sheets on the machines worklist.`}>
+    <section className="bg-surface border rounded-xl p-3 no-print" data-ai-title={`The ${word}s' next ${horizon} working days`} data-ai-about={about}>
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <span className="inline-flex rounded-md overflow-hidden border">
           <button type="button" className={`btn btn-sm rounded-none ${view === "machines" ? "btn-primary" : "btn-ghost"}`} onClick={() => setView("machines")} title={`What each ${word} runs, and when`}>By {word}</button>
           <button type="button" className={`btn btn-sm rounded-none ${view === "load" ? "btn-primary" : "btn-ghost"}`} onClick={() => setView("load")} title="What the whole department has promised, against the hours it has">Department load</button>
         </span>
-        <span className="text-sm font-bold">the next {horizon} working days</span>
+        <span className="text-sm font-bold"><ChartAbout title={`the next ${horizon} working days`} about={view === "machines" ? about : undefined} /></span>
         {view === "machines" && t.lateCount > 0 ? (
           <span className="pill pill-bad tabnum" title="Blocks that finish after the day their stage was promised">{t.lateCount} job(s) land late</span>
         ) : view === "machines" ? (

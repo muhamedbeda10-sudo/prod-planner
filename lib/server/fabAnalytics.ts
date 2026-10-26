@@ -1,61 +1,56 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { getActiveLine } from "./line";
-import { buildMaterialDashboard, type DoneRow, type MaterialDashboard, type SheetLine } from "@/lib/domain/materialDashboard";
-import { factoryDayISO, factoryToday, toISODate } from "@/lib/domain/dates";
+import { buildMaterialDashboard, type DoneRow, type MaterialDashboard, type MaterialRequest, type SheetLine } from "@/lib/domain/materialDashboard";
+import { factoryDayISO, factoryDayStart } from "@/lib/domain/dates";
+import { addDaysISO } from "@/lib/domain/dateSlicer";
+import type { ProductLine } from "@/lib/domain/lines";
 import { isDoneStatus } from "@/lib/domain/odoo";
 
-// The material dashboard's one query pair: every MO closed on Odoo, and every
-// line of the material sheet. The sheet is NOT windowed — an MO closed today
-// was nested whenever it was nested.
-
-/** The windows the page offers, in days back from today. */
-export const WINDOWS = [30, 60, 90, 0] as const; // 0 = everything on record
-export type Window = (typeof WINDOWS)[number];
-
-export function resolveWindow(raw: string | undefined): Window {
-  const n = Number(raw);
-  return (WINDOWS as readonly number[]).includes(n) ? (n as Window) : 90;
-}
+// The material dashboard's one query pair, for the line on screen: every line
+// of its material sheet (every month — the domain reads one copy of each MO)
+// and its ODOO rows moved to Done from the period before's first day to the
+// period's last, blank MOs included so the page can say what did not link.
+// The sheet is NOT windowed — an MO closed today was nested whenever it was
+// nested. Nothing here writes; the page and the assistant read the same.
 
 export interface MaterialDashboardData extends MaterialDashboard {
-  windowDays: Window;
-  fromISO: string | null;
+  /** When the sheet and the ODOO log of the line last changed — null when empty. */
+  sheetUpdatedISO: string | null;
+  odooUpdatedISO: string | null;
 }
 
-/**
- * The material dashboard: the whole material sheet, and the window's
- * closings on the ODOO log of the sheet's MOs — booked on the day each was
- * moved to Done.
- */
-export async function getMaterialDashboard(windowDays: Window): Promise<MaterialDashboardData> {
-  let from: Date | null = null;
-  if (windowDays > 0) {
-    from = factoryToday();
-    from.setUTCDate(from.getUTCDate() - windowDays);
-  }
+/** `maxRows`: how many detail rows to carry — the page's few hundred by
+ *  default, the assistant's Excel sheet all of them. */
+export async function getMaterialDashboard(req: MaterialRequest, line: ProductLine, opts: { maxRows?: number } = {}): Promise<MaterialDashboardData> {
+  const firstDay = req.prev?.fromISO ?? req.fromISO;
+  const gte = firstDay ? factoryDayStart(firstDay) : null;
+  const lt = factoryDayStart(addDaysISO(req.toISO, 1));
 
-  const line = await getActiveLine(); // the line on screen's sheet and closings only
-  const [done, material] = await Promise.all([
-    // every closing — what is still open needs all of them; the window picks its own
-    prisma.odooEntry.findMany({
-      where: { line, odooMo: { not: "" }, doneAt: { not: null } },
-      select: { odooMo: true, qty: true, status: true, doneAt: true },
-    }),
+  const [material, done, sheetLatest, odooLatest] = await Promise.all([
     prisma.materialUsage.findMany({
-      where: { line, month: "" },
+      where: { line },
       select: {
-        mo: true, soi: true, bom: true, partCode: true, partName: true, material: true, thicknessMm: true, sheetSize: true, units: true,
+        month: true, mo: true, soi: true, bom: true, partCode: true, partName: true, material: true, thicknessMm: true, sheetSize: true, units: true,
         sheetsPerUnit: true, actualPerUnit: true, sheetsUsed: true, weightKg: true, utilization: true,
       },
     }),
+    prisma.odooEntry.findMany({
+      where: { line, doneAt: { not: null, ...(gte ? { gte } : {}), ...(lt ? { lt } : {}) } },
+      select: { odooMo: true, qty: true, status: true, doneAt: true },
+    }),
+    prisma.materialUsage.aggregate({ where: { line }, _max: { updatedAt: true } }),
+    prisma.odooEntry.aggregate({ where: { line }, _max: { updatedAt: true } }),
   ]);
 
+  // Done on Odoo, on the factory's day it was moved there
   const rows: DoneRow[] = done
     .filter((r) => r.doneAt && isDoneStatus(r.status))
-    .map((r) => ({ dateISO: factoryDayISO(r.doneAt!), mo: r.odooMo.trim(), qty: r.qty }));
-  const fromISO = from ? toISODate(from) : null;
+    .map((r) => ({ dateISO: factoryDayISO(r.doneAt!), mo: r.odooMo ?? "", qty: r.qty }));
   const lines: SheetLine[] = material;
 
-  return { ...buildMaterialDashboard(lines, rows, fromISO), windowDays, fromISO };
+  return {
+    ...buildMaterialDashboard(lines, rows, req, opts),
+    sheetUpdatedISO: sheetLatest._max.updatedAt ? sheetLatest._max.updatedAt.toISOString() : null,
+    odooUpdatedISO: odooLatest._max.updatedAt ? odooLatest._max.updatedAt.toISOString() : null,
+  };
 }

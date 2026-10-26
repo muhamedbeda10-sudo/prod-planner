@@ -59,11 +59,12 @@ const KIND = {
 } as const;
 
 /** The list as the paper carries it — the popup's content, printed. */
-export function PrintDecisions({ actions, kind = "decision", title, nothing, notes = [] }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind; title?: string; nothing?: string; notes?: readonly string[] }) {
+export function PrintDecisions({ actions, kind = "decision", nothing, copy, notes = [] }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind; nothing?: string; copy?: DecisionCopy; notes?: readonly string[] }) {
+  const k = copy ?? KIND[kind];
   return (
-    <section className="print-only" aria-label={title ?? KIND[kind].title}>
-      <h2>{title ?? KIND[kind].title}</h2>
-      <DecisionList actions={actions} nothing={nothing ?? KIND[kind].nothing} />
+    <section className="print-only" aria-label={k.title}>
+      <h2>{k.title}</h2>
+      <DecisionList actions={actions} nothing={nothing ?? k.nothing} />
       <Notes notes={notes} />
     </section>
   );
@@ -79,21 +80,23 @@ function Notes({ notes }: { notes: readonly string[] }) {
   );
 }
 
-export function CockpitDecisions({ actions, kind = "decision", title, nothing, notes = [] }: {
+/** A list's own wording, where neither preset fits (a dashboard's data checks). */
+export interface DecisionCopy { noun: string; title: string; button: string; nothing: string; when?: string }
+
+export function CockpitDecisions({ actions, kind = "decision", copy, notes = [] }: {
   actions: readonly (CockpitAction & { line?: string })[];
   kind?: DecisionKind;
-  /** The popup's own title and empty line, where the kind's do not fit. */
-  title?: string;
-  nothing?: string;
+  copy?: DecisionCopy;
   /** Lines under the list that need no one (not counted). */
   notes?: readonly string[];
 }) {
   const [open, setOpen] = useState(false);
   const ai = useAiPanel();
-  const k = { ...KIND[kind], ...(title ? { title } : {}), ...(nothing ? { nothing } : {}) };
+  const k = copy ?? KIND[kind];
+  const when = copy ? (copy.when ? ` ${copy.when}` : "") : " today";
   const worst = actions.some((a) => a.tone === "bad") ? "bad" : actions.some((a) => a.tone === "warn") ? "warn" : actions.length > 0 ? "info" : null;
   const Icon = worst ? ACTION_ICON[worst] : CheckCircle2;
-  const label = actions.length === 0 ? `Nothing needs ${k.noun} today` : `${actions.length} ${actions.length === 1 ? "thing needs" : "things need"} ${k.noun} today`;
+  const label = actions.length === 0 ? `Nothing needs ${k.noun}${when}` : `${actions.length} ${actions.length === 1 ? "thing needs" : "things need"} ${k.noun}${when}`;
 
   return (
     <>

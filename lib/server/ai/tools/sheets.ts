@@ -14,6 +14,7 @@ import { getLvTrace } from "@/lib/server/lvTrace";
 import { getLvTracker } from "@/lib/server/lvTracker";
 import { getMasterTracker } from "@/lib/server/masterTracker";
 import { getMaterialData } from "@/lib/server/material";
+import { getMaterialDashboard } from "@/lib/server/fabAnalytics";
 import { getOdooDashboard, getOdooData } from "@/lib/server/odoo";
 import { getPhysicalStock } from "@/lib/server/physicalStock";
 import { getPowderReport } from "@/lib/server/powderScrap";
@@ -23,7 +24,7 @@ import { getTrace } from "@/lib/server/trace";
 import { getWeeklyPlanTracker } from "@/lib/server/weeklyPlanTracker";
 import {
   consumableEditRows, consumableLimitRows, consumablesDecisionRows, consumablesLogRows, consumablesMonthlyRows, consumablesSummaryRows, dailyLogRows, downtimeRows,
-  lvTraceRows, lvTrackerRows, masterTrackerRows, materialRows, odooDailyRows, odooLogRows, physicalRows, powderRows, registryRows, rosterRows,
+  lvTraceRows, lvTrackerRows, masterTrackerRows, materialDashboardRows, materialRows, odooDailyRows, odooLogRows, physicalRows, powderRows, registryRows, rosterRows,
   traceRows, type SheetRow,
 } from "@/lib/server/sheets";
 import { blockedTableIn, blockedTablesFor } from "@/lib/domain/ai";
@@ -45,6 +46,7 @@ import { WEEKLY_STAGES, filterWeeklyDays, weeklyMetricOf, weeklyPlanRows, weekly
 import { runAiRows } from "../reader";
 import { roomProblem, storeMadeWorkbook } from "../files";
 import { TRACKER_FILTER_SCHEMA, trackerFiltersFor } from "./planning";
+import { MATERIAL_SCOPE_PROPERTIES, materialScopeProblem, materialScopeRequest, type MaterialScopeInput } from "./materialDashboard";
 import type { ReadResult, ReadTool, ToolCtx } from "./types";
 
 // The assistant's spreadsheets. The screens no longer carry an Export button
@@ -77,12 +79,13 @@ const SHEETS = {
   odoo_log: { tab: "odoo", params: ["from", "to"], about: "the ODOO close-out log, with the office sheet's headers — from/to, or every day" },
   odoo_daily: { tab: "odoo", params: ["from", "to", "basis"], about: "the ODOO dashboard by day: closed (or logged) quantity per product series — from/to (default the last 30 days), basis" },
   material: { tab: "material", params: ["line"], about: "the Material (nesting) sheet of a line, with the workbook's own columns" },
+  material_dashboard: { tab: "analytics", params: ["line", "from", "to", "allTime", "view", "materialName", "thicknessMm", "sheetSize", "part", "mo", "soi"], about: "the Material dashboard's detail table: a row per MO × part × sheet spec with units, BOM / actual sheets, the difference, sheet weight, utilization, closed qty, calculated consumption and estimated scrap, coverage and rate source — view consumption (lines consumed in the period, default) or nesting (the whole current sheet), from/to (default the last 90 days) or allTime, filters materialName, thicknessMm, sheetSize, part, mo, soi" },
   physical_stock: { tab: "physical", params: [], about: "Physical Material: the store's count against Odoo's stock, code by code" },
   consumables_log: { tab: "consumables", params: ["from", "to"], about: "the consumables hand-out log — from/to (default today)" },
   consumables_limits: { tab: "consumables", params: [], about: "the consumables catalogue, its limits and where each stands now" },
   consumables_edits: { tab: "consumables", admin: true, params: ["from", "to"], about: "every change made to a recorded hand-out (admins) — from/to" },
   consumables_summary: { tab: "consumables", params: ["from", "to"], about: "what went out over a period, item by item — from/to" },
-  consumables_dashboard: { tab: "consumables", params: ["view"], about: "the Consumables dashboard's detail table: a row per item and department against its limit at the period's end — view, the dashboard's address query as on the screen (from, to, dept, item, link, status)" },
+  consumables_dashboard: { tab: "consumables", params: ["address"], about: "the Consumables dashboard's detail table: a row per item and department against its limit at the period's end — address, the dashboard's address query as on the screen (from, to, dept, item, link, status)" },
   consumables_monthly: { tab: "consumables", params: ["month"], about: "the consumables monthly review: a row per item and per limit, with the trend — month" },
   powder_scrap: { tab: "consumables", params: ["month"], about: "a month of powder scrap: the sections' totals, then each weighing — month" },
   shift_attendance: { tab: "shifts", params: ["day", "section"], about: "a day's attendance as saved: a row per worker — day, section" },
@@ -92,7 +95,7 @@ const SHEETS = {
 } as const satisfies Record<string, { tab: string | null; admin?: true; params: readonly Param[]; about: string }>;
 type SheetKind = keyof typeof SHEETS;
 
-interface Input {
+interface Input extends MaterialScopeInput {
   sheet: SheetKind;
   name?: string;
   line?: ProductLine;
@@ -110,11 +113,12 @@ interface Input {
   source?: string;
   mo?: string;
   bom?: string;
+
   month?: string;
   day?: string;
   section?: string;
   basis?: "closed" | "logged";
-  view?: string;
+  address?: string;
   sql?: string;
 }
 
@@ -140,26 +144,28 @@ export const makeSheetTool: ReadTool<Input> = {
     properties: {
       sheet: { type: "string", enum: Object.keys(SHEETS) },
       name: str(100, "The file's name, without .xlsx — short and saying what it holds (\"late-orders-october\"). Defaults to the screen's own."),
-      line: { type: "string", enum: ["TR", "LV"], description: "The product line, for plan_tracker, daily_log, orders_registry, trace (a code's) and material. Defaults to the chat's line." },
+      line: { type: "string", enum: ["TR", "LV"], description: "The product line, for plan_tracker, daily_log, orders_registry, trace (a code's), material and material_dashboard. Defaults to the chat's line." },
       filters: TRACKER_FILTER_SCHEMA,
       plan: { type: "integer", minimum: 1, description: "weekly_plan: the plan number; defaults to the newest." },
       q: str(160, "A search: weekly_plan (project, SOI, description), daily_log (BOM), orders_registry (MO, BOM, SOI, FG code, KVA, product). The plan tracker's search is filters.q."),
       hideDone: { type: "boolean", description: "weekly_plan: leave out the rows the measured stage has finished." },
       stages: str(60, `weekly_plan: the stage columns, comma-separated from ${STAGE_VALUES.join(",")}; all of them by default.`),
-      from: { ...DAY, description: "The first day (YYYY-MM-DD) of daily_log, odoo_log, odoo_daily, consumables_log, consumables_edits, consumables_summary; a period given by its first day alone runs to today." },
-      to: { ...DAY, description: "The last day (YYYY-MM-DD), the same sheets." },
       dept: str(40, "daily_log: one department, as the ledger names it (Cut, Welding, Painting, ShotBlast, Delivered, or an LV stage)."),
       item: str(40, "daily_log: one component (TN, TC, CF, CB, …)."),
       flaggedOnly: { type: "boolean", description: "daily_log: only the entries the data guard flagged." },
       urgent: { type: "string", enum: ["yes", "no"], description: "orders_registry: urgent orders only, or none of them." },
       source: str(80, "orders_registry: the import the order came from, exactly as listed."),
-      mo: str(80, "trace: the order's MO."),
+      // material_dashboard's own scope, as get_material_dashboard takes it
+      ...MATERIAL_SCOPE_PROPERTIES,
+      mo: str(80, "trace: the order's MO; material_dashboard: one MO."),
+      from: { ...DAY, description: "The first day (YYYY-MM-DD) of daily_log, odoo_log, odoo_daily, consumables_log, consumables_edits, consumables_summary, material_dashboard; a period given by its first day alone runs to today." },
+      to: { ...DAY, description: "The last day (YYYY-MM-DD), the same sheets." },
       bom: str(80, "trace: the code (BOM), when no MO is given."),
       month: { type: "string", pattern: "^\\d{4}-\\d{2}$", description: "powder_scrap, consumables_monthly: the month (YYYY-MM); defaults to this one." },
       day: { ...DAY, description: "shift_attendance, machine_stops: the day; defaults to today." },
       section: str(40, "shift_attendance, machine_stops: line:TR, line:LV or a roster section, as the Shifts screen's filter."),
       basis: { type: "string", enum: ["closed", "logged"], description: "odoo_daily: count by the day closed (default) or the day logged." },
-      view: { type: "string", maxLength: 600, description: "consumables_dashboard: the dashboard's address query, exactly as on the screen — e.g. \"from=2026-10-01&to=2026-10-26&dept=WeldingTX&status=over\" (dept, item c<id> or t:<typed name>, link linked|unlinked, status over|near|within|none); empty for today with no filter." },
+      address: { type: "string", maxLength: 600, description: "consumables_dashboard: the dashboard's address query, exactly as on the screen — e.g. \"from=2026-10-01&to=2026-10-26&dept=WeldingTX&status=over\" (dept, item c<id> or t:<typed name>, link linked|unlinked, status over|near|within|none); empty for today with no filter." },
       sql: str(20000, "query: one SELECT statement — no semicolons, no writes."),
     },
   },
@@ -171,6 +177,7 @@ export const makeSheetTool: ReadTool<Input> = {
     if (i.sheet === "query" && !i.sql) return "A query sheet needs its SELECT (sql).";
     if (i.sheet === "trace" && !i.mo && !i.bom) return "A trace needs the order's MO or the code (bom).";
     if (i.from && i.to && i.from > i.to) return "from must not be after to.";
+    if (i.sheet === "material_dashboard") { const problem = materialScopeProblem(i); if (problem) return problem; }
     if (i.to && !i.from && (i.sheet === "odoo_log" || i.sheet === "odoo_daily")) return "Give the first day (from) too — a period with no start is every day.";
     if (i.stages?.split(",").some((s) => !(STAGE_VALUES as readonly string[]).includes(s.trim()))) return `Stages are ${STAGE_VALUES.join(", ")}.`;
     return i;
@@ -309,6 +316,18 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       const { lines } = await withLine(line, () => getMaterialData(""));
       return { rows: materialRows(lines, line), name: `material-sheet${line === "LV" ? "-lv" : ""}`, sheet: "Material", scope: `${line} Material sheet` };
     }
+    case "material_dashboard": {
+      const req = materialScopeRequest(i, today);
+      // the rows alone: no period before to compare with
+      const d = await getMaterialDashboard({ ...req, prev: null }, line, { maxRows: MAX_SHEET_ROWS + 1 });
+      const when = req.fromISO ? stamp(req.fromISO, req.toISO) : "all";
+      return {
+        rows: materialDashboardRows(d.rows),
+        name: `material-dashboard-${line.toLowerCase()}-${req.view}-${when}`,
+        sheet: req.view === "nesting" ? "Nesting" : "Consumption",
+        scope: `${line} Material dashboard, ${req.view === "nesting" ? "the current sheet (Now)" : `consumed ${req.fromISO ? `${req.fromISO} – ${req.toISO}` : "on every day on record"}`}, ${d.rowsTotal} lines`,
+      };
+    }
     case "physical_stock": {
       const { items } = await getPhysicalStock();
       return { rows: physicalRows(items), name: `physical-material-${today}`, sheet: "Physical", scope: "Physical Material" };
@@ -335,7 +354,7 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
     }
     case "consumables_dashboard": {
       // the screen's own address, read by the screen's own rules
-      const sp = Object.fromEntries(new URLSearchParams(i.view ?? ""));
+      const sp = Object.fromEntries(new URLSearchParams(i.address ?? ""));
       const p = consumablesPeriod({ from: sp.from, to: sp.to }, today);
       const d = await getConsumablesDecisions(p.from, p.to, today, readDecisionFilters(sp));
       return { rows: consumablesDecisionRows(d.rows), name: `consumables-dashboard-${p.stamp}`, sheet: "By item and department", scope: `Consumables by item and department ${p.label}` };

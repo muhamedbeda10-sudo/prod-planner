@@ -73,7 +73,7 @@ const LINE_GROUPS = PRODUCT_LINES.map((line) => ({ line, label: LINE_LABEL[line]
 const DASHBOARD_PLACES: Place[] = [
   { href: "/", label: "Planning", icon: LayoutDashboard, title: "The plan: what needs a decision, the week, the load ahead, the month and its people" },
   { href: "/dashboards/production", label: "Production", icon: Gauge, title: "How the floor worked: output, efficiency, where the hours went, what stopped the machines" },
-  { href: "/dashboards/material", label: "Material", icon: ChartColumnBig, title: "Consumption booked when the MO is closed on Odoo — sheets, tonnes, thicknesses, scrap" },
+  { href: "/dashboards/material", label: "Material", icon: ChartColumnBig, title: "BOM need, nesting, the steel ODOO closings consumed by calculation, and how much the data covers" },
   { href: "/dashboards/consumables", label: "Consumables", icon: PackageMinus, title: "What went out, to whom, against the limits — and the monthly review" },
   { href: "/dashboards/odoo", label: "ODOO", icon: Boxes, title: "Closed quantities per product and the close-out time" },
 ];
