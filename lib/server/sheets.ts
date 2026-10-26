@@ -2,6 +2,7 @@ import "server-only";
 import { ITEMS, deptLabel, isPaintExempt, type Item } from "@/lib/domain/constants";
 import { BASIS_EXPORT, PERIOD_LABEL } from "@/lib/domain/consumableLimits";
 import { MONTH_STATUS_LABEL } from "@/lib/domain/consumableMonthly";
+import { ROW_STATUS_LABEL, headcountText, limitBasisText, type DecisionRow } from "@/lib/domain/consumablesDecisions";
 import type { ConsumablesStats } from "@/lib/domain/consumablesStats";
 import type { LogRow } from "@/lib/domain/dailyLogView";
 import { downtimeLabel, stopDurationLabel } from "@/lib/domain/downtime";
@@ -195,6 +196,38 @@ export function consumablesLogRows(entries: ConsumablesPageData["entries"]): She
 /** What went out over a period, item by item. */
 export function consumablesSummaryRows(items: ConsumablesStats["items"]): SheetRow[] {
   return items.map((i) => ({ Item: i.item, "Hand-outs": i.issues, Qty: i.qty, Workers: i.workers }));
+}
+
+/** The Consumables dashboard's detail table: a row per item and department,
+ *  against the limit that reads worst at the period's end — the screen's own
+ *  columns, under the same filters. */
+export function consumablesDecisionRows(rows: readonly DecisionRow[]): SheetRow[] {
+  return rows.map((r) => {
+    const l = r.limit;
+    return {
+      Item: r.item,
+      Code: r.code ?? "",
+      UOM: r.uom ?? "",
+      Department: r.departmentLabel,
+      Qty: r.qty,
+      "Hand-outs": r.handOuts,
+      "Limit basis": l ? limitBasisText(l, r.uom) : "",
+      Limit: l ? l.limit : "",
+      Per: l ? PERIOD_LABEL[l.period] : "",
+      Window: l ? `${l.windowLabel}${l.toDate ? " to date" : ""}` : "",
+      "Used in window": l ? l.used : "",
+      Left: l ? Math.max(0, l.left) : "",
+      Over: l ? Math.max(0, -l.left) : "",
+      Status: ROW_STATUS_LABEL[r.status],
+      "Other limits": r.limits.length > 1 ? r.limits.slice(1).map((x) => `${limitBasisText(x, r.uom)} ${PERIOD_LABEL[x.period]}: ${x.used}/${x.limit}`).join(" | ") : "",
+      Headcount: l?.headcount ? headcountText(l.headcount) : "",
+      "Recorded over": r.recordedOver,
+      "Recorded reason": r.lastReason ?? "",
+      Catalogue: r.itemId !== null ? "linked" : "not linked",
+      "Suggested item (review)": r.suggestion ? `${r.suggestion.name}${r.suggestion.code ? ` (${r.suggestion.code})` : ""} — ${r.suggestion.match} name` : "",
+      "Last hand-out": r.lastDayISO,
+    };
+  });
 }
 
 /** The monthly review: a row per item, then a row per limit under it, and a

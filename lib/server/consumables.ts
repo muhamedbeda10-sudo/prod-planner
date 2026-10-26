@@ -2,8 +2,10 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { WORKER_SECTIONS } from "@/lib/domain/tanks";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
-import { factoryDayISO, factoryDayStart } from "@/lib/domain/dates";
+import { factoryDayISO, factoryDayStart, parseISODate } from "@/lib/domain/dates";
 import { consumablesStats, previousPeriod, type ConsumablesStats } from "@/lib/domain/consumablesStats";
+import { buildConsumablesDecisions, type ConsumablesDecisions, type DecisionFilters } from "@/lib/domain/consumablesDecisions";
+import { isPowderDepartment, POWDER_DEPARTMENTS } from "@/lib/domain/powderScrap";
 import {
   canEditIssue,
   departmentLabel,
@@ -16,7 +18,9 @@ import {
   snapshotChanges,
 } from "@/lib/domain/consumables";
 import { getAllWorkers } from "./workers";
-import { ALL_DEPARTMENTS, parseDepartments } from "@/lib/domain/consumableLimits";
+import { departmentsUsed, groupName, loadRawRules, loadUses } from "./consumableLimits";
+import { loadHeadcount } from "./consumableHeadcount";
+import { ALL_DEPARTMENTS, parseDepartments, windowsSpan } from "@/lib/domain/consumableLimits";
 
 // The CONSUMABLES tab's reads. Writes are app/consumables/actions.ts.
 //
@@ -324,4 +328,95 @@ export async function getConsumablesDashboard(fromISO: string, toISO: string): P
     previousIssues,
     { headcount: departmentWorkers(allWorkers) },
   );
+}
+
+export interface ConsumablesDecisionsView extends ConsumablesDecisions {
+  /** The catalogue's active items and their limits. */
+  catalogue: { items: number; limits: number };
+  /** The first day on the log; null when nothing was ever handed out. */
+  logStart: string | null;
+  /** The latest hand-out on the log, and when the page read it. */
+  lastIssueLabel: string | null;
+  readAtLabel: string;
+  /** Powder scrap weighed in the period (every painting section, or the one
+   *  filtered) — kg as weighed, never a rate here. "other": the department
+   *  filtered is not a painting section. */
+  powder: { scope: "painting" | "other"; kg: number; weighings: number; sections: { department: string; label: string; kg: number }[] };
+}
+
+/**
+ * The dashboard as decisions, for factory days from..to: every live hand-out
+ * of the period (deleted ones are out), each against the limits as they are
+ * set, counted in the window that holds the period's last day — with the
+ * period before for the comparison, when the log covers all of it. The
+ * filters are applied by lib/domain/consumablesDecisions.ts, so the cards,
+ * the charts, the table and the Excel read the same rows.
+ */
+export async function getConsumablesDecisions(fromISO: string, toISO: string, todayISO: string, filters: DecisionFilters): Promise<ConsumablesDecisionsView> {
+  const { gte, lt } = periodBounds(fromISO, toISO);
+  const prev = previousPeriod(fromISO, toISO);
+  const prevBounds = periodBounds(prev.fromISO, prev.toISO);
+  const [rules, seen, headcount, catalogue, limits, rows, prevRows, first, last, scraps] = await Promise.all([
+    loadRawRules(),
+    departmentsUsed(),
+    loadHeadcount(),
+    prisma.consumableItem.findMany({ select: { id: true, code: true, name: true, uom: true, active: true } }),
+    prisma.consumableLimit.count({ where: { item: { active: true } } }),
+    prisma.consumableIssue.findMany({
+      where: { deletedAt: null, issuedAt: { gte, lt } },
+      orderBy: [{ issuedAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true, item: true, itemId: true, qty: true, department: true, issuedAt: true, workerId: true, recipientScope: true, recipientCount: true,
+        overLimit: true, overLimitReason: true, recordedBy: true, worker: { select: { name: true, empId: true } },
+      },
+    }),
+    prisma.consumableIssue.findMany({
+      where: { deletedAt: null, issuedAt: { gte: prevBounds.gte, lt: prevBounds.lt } },
+      select: { item: true, itemId: true, department: true, issuedAt: true },
+    }),
+    prisma.consumableIssue.findFirst({ where: { deletedAt: null }, orderBy: { issuedAt: "asc" }, select: { issuedAt: true } }),
+    prisma.consumableIssue.findFirst({ where: { deletedAt: null }, orderBy: { issuedAt: "desc" }, select: { issuedAt: true } }),
+    prisma.powderScrap.findMany({
+      where: { deletedAt: null, day: { gte: parseISODate(fromISO)!, lte: parseISODate(toISO)! } },
+      select: { department: true, kg: true },
+    }),
+  ]);
+  // every window that holds the period's last day, for every limit
+  const span = windowsSpan(rules, toISO);
+  const uses = span ? await loadUses(span.from, span.to) : [];
+  const hourOf = (at: Date) => Number(CAIRO_HOUR.format(at)) % 24;
+  // the period before is a comparison only if the log already ran for all of it
+  const comparable = first !== null && factoryDayISO(first.issuedAt) <= prev.fromISO;
+
+  const decisions = buildConsumablesDecisions({
+    fromISO, toISO, todayISO,
+    issues: rows.map((r) => ({
+      id: r.id, dayISO: factoryDayISO(r.issuedAt), hour: hourOf(r.issuedAt), item: r.item, itemId: r.itemId, qty: r.qty.toNumber(), department: r.department,
+      // a group is the group — never one known worker
+      recipient: r.worker && r.workerId !== null
+        ? { kind: "worker" as const, name: r.worker.name, empId: r.worker.empId }
+        : { kind: "group" as const, label: groupName(r.recipientScope, r.department, r.recipientCount), count: r.recipientCount },
+      overLimit: r.overLimit, overLimitReason: r.overLimitReason, recordedBy: r.recordedBy,
+    })),
+    previous: comparable ? prevRows.map((r) => ({ item: r.item, itemId: r.itemId, department: r.department, dayISO: factoryDayISO(r.issuedAt), hour: hourOf(r.issuedAt) })) : null,
+    catalogue, rules, uses, seen,
+    headcountOf: headcount.headcountOf, headcountSourceOf: headcount.sourceOf,
+  }, filters);
+
+  // powder scrap: the painting sections' weighings, the department filter applied
+  const scope = filters.department && !isPowderDepartment(filters.department) ? "other" : "painting";
+  const sections = scope === "other" ? [] : POWDER_DEPARTMENTS
+    .filter((d) => !filters.department || d === filters.department)
+    .map((d) => ({ department: d, label: departmentLabel(d), kg: Math.round(scraps.filter((s) => s.department === d).reduce((n, s) => n + s.kg.toNumber(), 0) * 1000) / 1000 }))
+    .filter((s) => s.kg > 0);
+  const weighings = scope === "other" ? 0 : scraps.filter((s) => !filters.department || s.department === filters.department).length;
+
+  return {
+    ...decisions,
+    catalogue: { items: catalogue.filter((c) => c.active).length, limits },
+    logStart: first ? factoryDayISO(first.issuedAt) : null,
+    lastIssueLabel: last ? factoryDateTimeLabel(last.issuedAt) : null,
+    readAtLabel: factoryDateTimeLabel(new Date()),
+    powder: { scope, kg: Math.round(sections.reduce((n, s) => n + s.kg, 0) * 1000) / 1000, weighings, sections },
+  };
 }

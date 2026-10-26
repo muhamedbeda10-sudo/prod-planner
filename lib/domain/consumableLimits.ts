@@ -239,6 +239,28 @@ export function headcountResolver(
   };
 }
 
+/** Where the headcount of a month comes from, as headcountResolver reads it. */
+export type HeadcountSource =
+  | { kind: "live" }
+  | { kind: "recorded"; month: string }
+  | { kind: "carried"; month: string }
+  | { kind: "fallback" };
+
+/** Whose headcount a month is held to: the list as it stands (the current
+ *  month or later), the month's own record, the latest record before it, or
+ *  — before any was kept — the list as it stands again. The same choice as
+ *  headcountResolver, said in words on the dashboard. */
+export function headcountSource(recordedMonths: Iterable<string>, month: string, currentMonth: string): HeadcountSource {
+  if (month >= currentMonth) return { kind: "live" };
+  let found: string | undefined;
+  for (const m of [...new Set(recordedMonths)].sort()) {
+    if (m > month) break;
+    found = m;
+  }
+  if (!found) return { kind: "fallback" };
+  return found === month ? { kind: "recorded", month } : { kind: "carried", month: found };
+}
+
 /** Do two limits count any department twice (an "every department" limit
  *  overlaps every other)? Both then hold — a hand-out must fit each. */
 export function rulesOverlap(a: Pick<LimitRule, "departments">, b: Pick<LimitRule, "departments">): boolean {
@@ -418,6 +440,8 @@ export function standings(rules: readonly LimitRule[], uses: readonly LimitUse[]
 export interface LimitExceedance {
   ruleId: number;
   itemId: number;
+  /** The departments the counted limit covers. */
+  departments: typeof ALL_DEPARTMENTS | readonly string[];
   period: LimitPeriod;
   basis: LimitBasis;
   departmentsLabel: string;
@@ -439,7 +463,7 @@ export function exceedances(rules: readonly LimitRule[], uses: readonly LimitUse
     for (const w of windowsOverlapping(rule.period, fromISO, toISO)) {
       const inW = mine.filter((u) => u.dayISO >= w.from && u.dayISO <= w.to);
       if (inW.length === 0) continue;
-      const base = { ruleId: rule.id, itemId: rule.itemId, period: rule.period, basis: rule.basis, departmentsLabel: ruleLabel(rule), window: w, windowLabel: windowLabel(rule.period, w), limit: rule.qty };
+      const base = { ruleId: rule.id, itemId: rule.itemId, departments: rule.departments, period: rule.period, basis: rule.basis, departmentsLabel: ruleLabel(rule), window: w, windowLabel: windowLabel(rule.period, w), limit: rule.qty };
       if (rule.basis === "person") {
         const per = new Map<number, number>();
         for (const u of inW) per.set(u.workerId, round3((per.get(u.workerId) ?? 0) + u.qty));

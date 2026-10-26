@@ -421,9 +421,22 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    catalogue item by its name or code — case, spacing and a size's × / x aside — is linked to it; anything else is recorded as
    typed and has no limit, shows where the limit stands as the quantity is typed, and a hand-out that would take a limit over is refused
    until the recorder gives a **reason** — then saved flagged "over limit" with the reason and the breach. The
-   **Consumables dashboard** (`/dashboards/consumables`, in the Dashboards tab) opens with the **alarms** — a limit **past its number** in the running month (or its months so far), nothing less —
-   then the finished months that ended over, and the hand-outs recorded over a limit.
-   **Monthly review** (the foot of the Dashboard, with its own month picker; its Excel through the assistant) — the month-end review: every
+   **Consumables dashboard** (`/dashboards/consumables`, in the Dashboards tab) reads as decisions — what went out, to which
+   department, and is it over the limits that are set? One period and four filters in the address (`dept`, `item`, `link`
+   = in / not in the catalogue, `status` = over / close / within / no limit) set every card, chart and the table. A
+   **data-quality strip** says what the figures stand on (live hand-outs, how many are not in the catalogue, the limits as
+   set now — "recomputed using current limits" for a window already over — and whose headcount a per-worker limit is
+   times). Six cards: hand-outs (against the same days before, only when the log covers them — N/A otherwise), items (or
+   the quantity, when one item is picked — never across units), departments, limits over **now**, hand-outs **no limit
+   counts** (typed items and departments a limit does not cover — never "within"), and the share in the catalogue. The
+   **Decisions** button at the end of the bar opens what needs someone in a popup (the limits over now, the coverage gaps,
+   the months closed over, the hand-outs **recorded** over a limit when saved — kept apart from the recomputed standing —
+   and, as notes, the powder scrap weighed, in kg as weighed). Then the hand-outs per hour / day / week, use against each row's limit, the most handed-out items (by hand-outs, or by quantity
+   in one unit), and the table: a row per item × department with its limit's basis, window, used, left, over, the
+   recorded reason, the catalogue link (a typed name is only **suggested** a catalogue item, for review) and the last
+   hand-out — each row opening onto its hand-outs and the log. A click on a card or a chart opens its rows; its Excel is
+   the assistant's (`consumables_dashboard`, the page's own address).
+   **Monthly review: YYYY-MM** (the foot of the Dashboard — the period's last month, or its own month picker; its Excel through the assistant) — the month-end review: every
    catalogue item's calendar month against its monthly limit (a limit of several months counted over its months so far
    against its whole number), graded **over / close (80–100%) / under / not issued**, with the month before and the last six
    months (a sparkline per item and a chart of how many items fell in each grade), each item opening onto its departments.

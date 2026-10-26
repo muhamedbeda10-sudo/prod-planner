@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { departmentWorkers } from "@/lib/domain/consumables";
-import { headcountResolver, HEADCOUNT_TOTAL, type HeadcountOf } from "@/lib/domain/consumableLimits";
+import { headcountResolver, headcountSource, HEADCOUNT_TOTAL, type HeadcountOf, type HeadcountSource } from "@/lib/domain/consumableLimits";
 import { getAllWorkers } from "./workers";
 
 // CONSUMABLES — each section's workers, month by month (ConsumableHeadcount).
@@ -36,9 +36,16 @@ export async function snapshotHeadcount(): Promise<void> {
  *  it stands; an earlier one its own record, or the latest before it, or —
  *  before anything was recorded — the list as it stands. */
 export async function loadHeadcountOf(): Promise<HeadcountOf> {
+  return (await loadHeadcount()).headcountOf;
+}
+
+/** The same, with where each month's headcount comes from — said on the dashboard. */
+export async function loadHeadcount(): Promise<{ headcountOf: HeadcountOf; sourceOf: (month: string) => HeadcountSource }> {
   const [rows, workers] = await Promise.all([
     prisma.consumableHeadcount.findMany({ select: { month: true, department: true, workers: true } }),
     getAllWorkers(),
   ]);
-  return headcountResolver(rows, departmentWorkers(workers), thisMonth());
+  const current = thisMonth();
+  const months = [...new Set(rows.map((r) => r.month))];
+  return { headcountOf: headcountResolver(rows, departmentWorkers(workers), current), sourceOf: (month) => headcountSource(months, month, current) };
 }

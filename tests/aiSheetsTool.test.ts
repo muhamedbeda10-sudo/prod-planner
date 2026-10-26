@@ -14,7 +14,7 @@ const h = vi.hoisted(() => {
       masterOrder: { findMany: fn(), findUnique: fn() },
     },
     perms: new Set<string>(),
-    production: fn(), recent: fn(), master: fn(), lv: fn(), weekly: fn(), trace: fn(), lvTrace: fn(), soi: fn(), rows: fn(), roster: fn(), stops: fn(), odooLog: fn(), odooDays: fn(),
+    production: fn(), decisions: fn(), recent: fn(), master: fn(), lv: fn(), weekly: fn(), trace: fn(), lvTrace: fn(), soi: fn(), rows: fn(), roster: fn(), stops: fn(), odooLog: fn(), odooDays: fn(),
     lines: [] as string[],
   };
 });
@@ -39,7 +39,7 @@ vi.mock("@/lib/server/material", () => ({ getMaterialData: vi.fn() }));
 vi.mock("@/lib/server/odoo", () => ({ getOdooData: h.odooLog, getOdooDashboard: h.odooDays }));
 vi.mock("@/lib/server/physicalStock", () => ({ getPhysicalStock: vi.fn() }));
 vi.mock("@/lib/server/powderScrap", () => ({ getPowderReport: vi.fn() }));
-vi.mock("@/lib/server/consumables", () => ({ getConsumablesData: vi.fn(), getConsumableEdits: vi.fn(), getConsumablesDashboard: vi.fn() }));
+vi.mock("@/lib/server/consumables", () => ({ getConsumablesData: vi.fn(), getConsumableEdits: vi.fn(), getConsumablesDashboard: vi.fn(), getConsumablesDecisions: h.decisions }));
 vi.mock("@/lib/server/consumableLimits", () => ({ getCatalogue: vi.fn(), getCurrentStandings: vi.fn() }));
 vi.mock("@/lib/server/consumableMonthly", () => ({ getMonthlyReport: vi.fn() }));
 vi.mock("@/lib/server/ai/reader", () => ({ runAiRows: h.rows }));
@@ -227,6 +227,32 @@ describe("make_excel", () => {
     expect(h.odooDays.mock.calls[0].slice(2)).toEqual([null, "none"]);
     expect(checkToolInput(makeSheetTool, { sheet: "odoo_log", to: "2026-10-20" })).toEqual({ ok: false, error: expect.stringContaining("first day") });
     expect(await makeSheetTool.run({ sheet: "consumables_log", from: "2026-11-02" }, ctxOf())).toEqual({ ok: false, text: expect.stringContaining("not started") });
+  });
+});
+
+describe("the Consumables dashboard's sheet", () => {
+  it("reads the screen's own address — the period and the filters — and writes its detail table", async () => {
+    const limit = { ruleId: 1, sourceId: 1, basis: "pool", period: "month", qty: 10, perWorker: null, departmentsLabel: "Welding TX", shared: false,
+      window: { from: "2026-10-01", to: "2026-10-31" }, windowLabel: "Oct 2026", toDate: true, limit: 10, used: 12, left: -2, ratio: 1.2, status: "over", headcount: null };
+    h.decisions.mockResolvedValue({ rows: [
+      { key: "c1|WeldingTX", itemKey: "c1", itemId: 1, item: "Cotton Gloves", code: "C-GLV", uom: "PAIR", department: "WeldingTX", departmentLabel: "Welding TX", qty: 12, handOuts: 3, lastDayISO: "2026-10-20",
+        recordedOver: 1, lastReason: "new crew", status: "over", limit, limits: [limit], suggestion: null, issues: [] },
+      { key: "t:rags|Store", itemKey: "t:rags", itemId: null, item: "Rags", code: null, uom: null, department: "Store", departmentLabel: "Store", qty: 4, handOuts: 1, lastDayISO: "2026-10-02",
+        recordedOver: 0, lastReason: null, status: "none", limit: null, limits: [], suggestion: { id: 9, name: "Cleaning Cloth", code: null, match: "similar" }, issues: [] },
+    ] });
+    const r = await makeSheetTool.run({ sheet: "consumables_dashboard", view: "from=2026-10-01&to=2026-10-20&dept=WeldingTX&status=over&junk=1" }, ctxOf());
+    expect(r.ok).toBe(true);
+    expect(h.decisions).toHaveBeenCalledWith("2026-10-01", "2026-10-20", "2026-10-26", { department: "WeldingTX", item: null, link: null, status: "over" });
+    const kept = keptSheet();
+    expect(kept.sheet).toBe("By item and department");
+    expect(kept.rows[0]).toMatchObject({ Item: "Cotton Gloves", UOM: "PAIR", "Used in window": 12, Left: 0, Over: 2, Status: "Over the limit", "Recorded reason": "new crew", Catalogue: "linked" });
+    expect(kept.rows[1]).toMatchObject({ Item: "Rags", Status: "No limit", Catalogue: "not linked", "Suggested item (review)": "Cleaning Cloth — similar name" });
+    // no limit is no number — never a zero
+    expect(kept.rows[1].Limit ?? "").toBe("");
+  });
+
+  it("takes nothing but the address", () => {
+    expect(checkToolInput(makeSheetTool, { sheet: "consumables_dashboard", from: "2026-10-01" })).toEqual({ ok: false, error: expect.stringContaining("takes view") });
   });
 });
 

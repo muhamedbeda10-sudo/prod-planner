@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
+  LOG_IDS_MAX,
   consumablesPeriod,
+  readLogIds,
   keepsOverLimitReason,
   overLimitReasonProblem,
   NEW_DEPARTMENT,
@@ -355,5 +357,15 @@ describe("the consumables' period", () => {
   it("holds a period to the last year and today, and ignores what is not a day", () => {
     expect(consumablesPeriod({ from: "2020-01-01", to: "2030-01-01" }, today)).toMatchObject({ from: "2025-10-26", to: today });
     expect(consumablesPeriod({ from: "soon", to: ["2026-10-01"] }, today)).toMatchObject({ from: today, to: today });
+  });
+});
+
+describe("the hand-outs a link opens the log on", () => {
+  it("reads whole positive ids, once each, and at most LOG_IDS_MAX", () => {
+    expect(readLogIds("12, 15,12,-3,abc,0,7.5")).toEqual([12, 15]);
+    expect(readLogIds("")).toBeNull();
+    expect(readLogIds(undefined)).toBeNull();
+    expect(readLogIds("x,y")).toBeNull();
+    expect(readLogIds(Array.from({ length: LOG_IDS_MAX + 20 }, (_, i) => i + 1).join(","))).toHaveLength(LOG_IDS_MAX);
   });
 });

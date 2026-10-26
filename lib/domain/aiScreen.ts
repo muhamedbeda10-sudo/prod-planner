@@ -10,6 +10,8 @@ const LABELS: Record<string, string> = {
   lvDept: "LV department",
   // the line a page's address names (its Transformers | LV Panels switch)
   line: "Line shown",
+  // the Consumables dashboard's item and catalogue filters
+  item: "Item", link: "Catalogue link",
 };
 
 export interface AiPageContext {

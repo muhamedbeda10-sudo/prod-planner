@@ -50,25 +50,38 @@ export function DecisionList({ actions, onOpen, nothing = NOTHING }: { actions: 
   );
 }
 
-/** What a list is: a decision (the Planning dashboard) or an intervention
- *  (the Production dashboard) — the button, the popup and the paper name it. */
-export type DecisionKind = "decision" | "intervention";
+/** What a list is: a decision (the Planning dashboard), an intervention
+ *  (the Production dashboard) or the store's (the Consumables dashboard) —
+ *  the button, the popup and the paper name it. */
+export type DecisionKind = "decision" | "intervention" | "store";
 const KIND = {
   decision: { noun: "a decision", title: "Needs a decision today", button: "Decisions", nothing: NOTHING },
   intervention: { noun: "an intervention", title: "Needs intervention in production", button: "Interventions", nothing: "Nothing pressing on the floor." },
+  store: { noun: "a decision", title: "Needs a decision at the store", button: "Decisions", nothing: "Nothing needs a decision — every hand-out in scope is a catalogue item within its limits." },
 } as const;
 
 /** The list as the paper carries it — the popup's content, printed. */
-export function PrintDecisions({ actions, kind = "decision", nothing }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind; nothing?: string }) {
+export function PrintDecisions({ actions, kind = "decision", nothing, notes = [] }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind; nothing?: string; notes?: readonly string[] }) {
   return (
     <section className="print-only" aria-label={KIND[kind].title}>
       <h2>{KIND[kind].title}</h2>
       <DecisionList actions={actions} nothing={nothing ?? KIND[kind].nothing} />
+      <Notes notes={notes} />
     </section>
   );
 }
 
-export function CockpitDecisions({ actions, kind = "decision" }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind }) {
+/** Lines under the list that need no one — not counted on the button. */
+function Notes({ notes }: { notes: readonly string[] }) {
+  if (notes.length === 0) return null;
+  return (
+    <ul className="mt-3 pt-3 border-t space-y-1 text-sm text-muted">
+      {notes.map((n) => <li key={n} className="flex items-start gap-2"><Info size={14} className="mt-0.5 shrink-0" aria-hidden />{n}</li>)}
+    </ul>
+  );
+}
+
+export function CockpitDecisions({ actions, kind = "decision", notes = [] }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind; /** Lines under the list that need no one (not counted). */ notes?: readonly string[] }) {
   const [open, setOpen] = useState(false);
   const ai = useAiPanel();
   const k = KIND[kind];
@@ -88,6 +101,7 @@ export function CockpitDecisions({ actions, kind = "decision" }: { actions: read
       {open && (
         <Modal title={k.title} sub="Worst first — open one to act on it, or ask the assistant." onClose={() => setOpen(false)} width="max-w-3xl" focusField={false}>
           <DecisionList actions={actions} onOpen={() => setOpen(false)} nothing={k.nothing} />
+          <Notes notes={notes} />
           {ai && (
             <div className="flex justify-end mt-4 pt-3 border-t">
               <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setOpen(false); ai.open(); }} title="Ask the assistant about these figures — it reads the same cockpit">

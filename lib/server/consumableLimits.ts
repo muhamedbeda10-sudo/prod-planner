@@ -75,13 +75,13 @@ export async function loadRules(itemIds?: number[], alsoCovers: readonly string[
 }
 
 /** The limits of active items as they are set — not yet made each department's. */
-async function loadRawRules(itemIds?: number[], db: Db = prisma): Promise<LimitRule[]> {
+export async function loadRawRules(itemIds?: number[], db: Db = prisma): Promise<LimitRule[]> {
   const rows = await db.consumableLimit.findMany({ where: { item: { active: true }, ...(itemIds ? { itemId: { in: itemIds } } : {}) } });
   return rows.map(toRule);
 }
 
 /** Every department a live hand-out went to. */
-async function departmentsUsed(db: Db = prisma): Promise<string[]> {
+export async function departmentsUsed(db: Db = prisma): Promise<string[]> {
   const rows = await db.consumableIssue.groupBy({ by: ["department"], where: { deletedAt: null } });
   return rows.map((r) => r.department);
 }
@@ -169,6 +169,8 @@ export async function limitHints(itemId: number, department: string, workerIds: 
 export interface AlarmRow {
   ruleId: number;
   itemId: number;
+  /** The departments the counted limit covers ("*" = every one). */
+  departments: typeof ALL_DEPARTMENTS | string[];
   item: string;
   code: string | null;
   uom: string;
@@ -186,6 +188,9 @@ export interface AlarmRow {
 }
 
 export interface ExceedanceRow {
+  itemId: number;
+  /** The departments the counted limit covers ("*" = every one). */
+  departments: typeof ALL_DEPARTMENTS | string[];
   item: string;
   code: string | null;
   period: LimitPeriod;
@@ -227,14 +232,17 @@ export interface LimitDashboard {
 }
 
 /** A group row's short name where its workers are not listed. */
-function groupName(scope: string, department: string, count: number): string {
+export function groupName(scope: string, department: string, count: number): string {
   return scope === "department" ? `Whole ${departmentLabel(department)} (${count})` : `${count} workers`;
 }
 
 /** How many finished months "past months over the limit" looks back over. */
 export const EXCEEDANCE_MONTHS = 3;
 
-export async function getLimitDashboard(fromISO: string, toISO: string, todayISO: string): Promise<LimitDashboard> {
+/** `flagged: false` leaves out the period's flagged hand-outs and the
+ *  uncatalogued count (empty, zero) — for a page that reads its own. */
+export async function getLimitDashboard(fromISO: string, toISO: string, todayISO: string, opts: { flagged?: boolean } = {}): Promise<LimitDashboard> {
+  const flaggedToo = opts.flagged !== false;
   const [items, raw, list, seen, headcountOf] = await Promise.all([
     prisma.consumableItem.findMany({ select: { id: true, name: true, code: true, uom: true } }),
     loadRawRules(),
@@ -260,13 +268,13 @@ export async function getLimitDashboard(fromISO: string, toISO: string, todayISO
   const lt = factoryDayStart(addDaysISO(toISO, 1))!;
   const [uses, flagged, uncatalogued] = await Promise.all([
     loadUses(spanFrom, spanTo),
-    prisma.consumableIssue.findMany({
+    !flaggedToo ? [] : prisma.consumableIssue.findMany({
       where: { deletedAt: null, overLimit: true, issuedAt: { gte, lt } },
       orderBy: { issuedAt: "desc" },
       take: 200,
       select: { id: true, issuedAt: true, item: true, qty: true, department: true, overLimitReason: true, overLimitNote: true, recordedBy: true, recipientScope: true, recipientCount: true, worker: { select: { name: true, empId: true } } },
     }),
-    prisma.consumableIssue.count({ where: { deletedAt: null, itemId: null, issuedAt: { gte, lt } } }),
+    flaggedToo ? prisma.consumableIssue.count({ where: { deletedAt: null, itemId: null, issuedAt: { gte, lt } } }) : 0,
   ]);
 
   const workerIds = [...new Set(uses.map((u) => u.workerId).filter((id) => id > 0))];
@@ -274,10 +282,11 @@ export async function getLimitDashboard(fromISO: string, toISO: string, todayISO
   const workerOf = new Map(workers.map((w) => [w.id, { name: w.name, empId: w.empId }]));
   const unknown = { name: "?", empId: "" };
 
+  const departmentsOf = new Map<number, AlarmRow["departments"]>(rules.map((r) => [r.id, r.departments === ALL_DEPARTMENTS ? ALL_DEPARTMENTS : [...r.departments]]));
   const board: AlarmRow[] = standings(rules, uses, todayISO).map((s) => {
     const it = itemOf.get(s.itemId);
     return {
-      ruleId: s.ruleId, itemId: s.itemId, item: it?.name ?? "?", code: it?.code ?? null, uom: it?.uom ?? "",
+      ruleId: s.ruleId, itemId: s.itemId, departments: departmentsOf.get(s.ruleId) ?? ALL_DEPARTMENTS, item: it?.name ?? "?", code: it?.code ?? null, uom: it?.uom ?? "",
       period: s.period, basis: s.basis, departmentsLabel: s.departmentsLabel, windowLabel: s.windowLabel,
       limit: s.limit, used: s.used, ratio: s.ratio,
       over: s.over.map((o) => ({ ...(workerOf.get(o.workerId) ?? unknown), used: o.used })),
@@ -291,6 +300,7 @@ export async function getLimitDashboard(fromISO: string, toISO: string, todayISO
     .map((e) => {
     const it = itemOf.get(e.itemId);
     return {
+      itemId: e.itemId, departments: e.departments === ALL_DEPARTMENTS ? ALL_DEPARTMENTS : [...e.departments],
       item: it?.name ?? "?", code: it?.code ?? null, period: e.period, basis: e.basis, departmentsLabel: e.departmentsLabel,
       windowLabel: e.windowLabel, windowFrom: e.window.from, limit: e.limit, used: e.used,
       worker: e.workerId === null ? null : workerOf.get(e.workerId) ?? unknown,

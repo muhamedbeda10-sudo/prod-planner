@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/Badge";
 import { aiTargetRef } from "@/lib/aiTarget";
+import { formatFigure, formatShare } from "@/lib/domain/format";
 
 // The dashboards' shared parts, so every dashboard reads the same way:
 //
@@ -33,8 +34,8 @@ export const TONE_CELL = { ok: "bg-ok-bg text-ok-fg", warn: "bg-warn-bg text-war
 export const catColor = (i: number) => (i >= 0 && i < CAT.length ? CAT[i] : OTHER);
 export const catInk = (i: number) => (i >= 0 && i < INK_ON.length ? INK_ON[i] : INK_ON_OTHER);
 
-export const fmt = (n: number, digits = 3) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { maximumFractionDigits: digits }));
-export const pct = (f: number, digits = 0) => `${(f * 100).toFixed(digits)}%`;
+export const fmt = formatFigure;
+export const pct = formatShare;
 /** A rate, or a dash where there is none. */
 export const pctOrDash = (v: number | null | undefined) => (v === null || v === undefined ? "—" : pct(v));
 /** A difference with its sign: "+2.5" or "−1" (a plain minus is the number's own). */
@@ -337,5 +338,60 @@ export function Bullet({ label, value, target, max, text, tone }: { label: strin
         {target !== null && <div className="absolute -inset-y-1 w-0.5 rounded bg-foreground" style={{ left: `calc(${w(target)} - 1px)` }} aria-hidden />}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- data quality
+
+/** A current reading — what the figure says right now, not over the period. */
+export function NowBadge({ title = "As it stands now, not over the period picked" }: { title?: string }) {
+  return <Badge tone="info" title={title} className="shrink-0">● Now</Badge>;
+}
+
+export interface QualityItem {
+  label: string;
+  value: React.ReactNode;
+  /** A status word goes with its colour: "partial" marks what is missing. */
+  tone?: "ok" | "warn" | "bad";
+  title?: string;
+}
+
+/**
+ * The dashboard's data-quality strip, under the filters: what the figures
+ * are read from and how much of it is there — how many records, how many of
+ * them can be counted, which rules were used, when it was read. A gap marks
+ * the strip "Partial data"; nothing is ever filled in to hide one.
+ */
+export function DataQualityBar({ items, partial, about }: { items: QualityItem[]; partial: boolean; about?: string }) {
+  const ref = aiTargetRef({ kind: "figure", title: "Data quality", about: [about, ...items.map((i) => `${i.label}: ${typeof i.value === "string" || typeof i.value === "number" ? i.value : i.title ?? ""}`)].filter(Boolean).join(" · ") });
+  return (
+    <section ref={ref} aria-label="Data quality" className="bg-surface border rounded-xl px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+      <Badge tone={partial ? "warning" : "success"} className="shrink-0">{partial ? "⚠ Partial data" : "✓ Complete"}</Badge>
+      {items.map((i) => (
+        <span key={i.label} className="inline-flex items-baseline gap-1 min-w-0" title={i.title}>
+          <span className="text-muted">{i.label}</span>
+          <b className={`tabnum ${i.tone ? TONE_TEXT[i.tone] : ""}`}>{i.value}</b>
+        </span>
+      ))}
+    </section>
+  );
+}
+
+/** Under a row of tiles, shut until opened: what each figure is, how it is
+ *  counted and what it is read from — the tiles themselves say one line. */
+export function MetricNotes({ items, title = "How these are counted" }: { items: { label: string; definition: string; source: string; coverage?: string }[]; title?: string }) {
+  return (
+    <details className="bg-surface border rounded-xl px-4 py-2 text-sm no-print">
+      <summary className="cursor-pointer font-semibold text-muted">{title}</summary>
+      <dl className="mt-2 grid gap-x-6 gap-y-2 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+        {items.map((i) => (
+          <div key={i.label} className="min-w-0">
+            <dt className="font-bold">{i.label}</dt>
+            <dd>{i.definition}</dd>
+            <dd className="text-muted">Source: {i.source}{i.coverage ? ` · ${i.coverage}` : ""}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }

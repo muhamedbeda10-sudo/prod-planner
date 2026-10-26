@@ -448,6 +448,17 @@ export function summarizeHandouts(rows: HandoutLike[]): HandoutSummary {
   };
 }
 
+/** The most hand-outs a link opens the log on (?ids=). */
+export const LOG_IDS_MAX = 300;
+
+/** The hand-outs a link opens the log on: ?ids=12,15,… — whole positive
+ *  numbers, at most LOG_IDS_MAX; null when none reads. */
+export function readLogIds(raw: unknown): number[] | null {
+  if (typeof raw !== "string" || !raw) return null;
+  const ids = [...new Set(raw.split(",").map((x) => Number(x.trim())).filter((n) => Number.isInteger(n) && n > 0))].slice(0, LOG_IDS_MAX);
+  return ids.length ? ids : null;
+}
+
 /** How far back the consumables' slicer reaches — a year of hand-outs. */
 export const CONSUMABLES_HISTORY_DAYS = 365;
 

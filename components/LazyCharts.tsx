@@ -20,4 +20,5 @@ export const ProductivityTrendChart = dynamic(() => import("./CockpitCharts").th
 export const SheetsPerDayChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.SheetsPerDayChart), { ssr: false, loading: () => <Placeholder h={260} /> });
 export const ThicknessChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.ThicknessChart), { ssr: false, loading: () => <Placeholder h={220} /> });
 export const OdooDashboard = dynamic(() => import("./OdooDashboard").then((m) => m.OdooDashboard), { ssr: false, loading: () => <Placeholder h={520} /> });
-export const ConsumablesDashboard = dynamic(() => import("./ConsumablesDashboard").then((m) => m.ConsumablesDashboard), { ssr: false, loading: () => <Placeholder h={520} /> });
+export const ConsumablesTrend = dynamic(() => import("./ConsumablesDashboard").then((m) => m.ConsumablesTrend), { ssr: false, loading: () => <Placeholder h={380} /> });
+export const ConsumablesBreakdown = dynamic(() => import("./ConsumablesDashboard").then((m) => m.ConsumablesBreakdown), { ssr: false, loading: () => <Placeholder h={420} /> });
