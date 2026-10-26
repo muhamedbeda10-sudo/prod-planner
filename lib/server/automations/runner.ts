@@ -58,7 +58,9 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
   const now = o.now ?? new Date();
   const deadline = o.deadline ?? now.getTime() + 240_000;
   const settings = await getAiSettings();
-  // housekeeping once an hour, paused or not
+  // housekeeping once an hour, paused or not — through the day: the night's
+  // quarter-hour ticks (lib/server/automations/scheduler.ts) never land on
+  // minute 7, and nothing here needs the night
   if (now.getUTCMinutes() === 7) {
     await pruneOld(now).catch((e) => console.error("automations: housekeeping failed", e));
     // the cockpit's trend gets its point for the day, opened or not

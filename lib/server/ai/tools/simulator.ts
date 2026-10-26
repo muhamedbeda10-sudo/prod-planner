@@ -5,6 +5,7 @@ import { getWhatIfInputs } from "@/lib/server/whatif";
 import { applyRunOrder, clearRunOrder, deleteScenario, saveScenario, type RunOrderLine } from "@/app/simulate/actions";
 import { defaultScenario, optimizeQueueWithin, simulate, type Scenario, type WhatIfInputs, type WhatIfResult } from "@/lib/domain/whatif";
 import { describeScenario, knobsOfScenario, kpisOf, loadScenario, scenarioCost, scenarioName, withKnobs, type ScenarioKnobs } from "@/lib/domain/whatifScenario";
+import { describePlan, planForDeadlines } from "@/lib/domain/deadlinePlan";
 import type { AiChange } from "@/lib/domain/aiActions";
 import type { ArraySchema, ObjectSchema } from "@/lib/domain/aiInput";
 import { formOf, type ReadTool, type ToolCtx, type WriteTool } from "./types";
@@ -294,6 +295,70 @@ export const showOnSimulatorTool: ReadTool<ScreenInput> = {
   },
 };
 
+interface DeadlineInput extends ScreenInput {
+  mos?: string[];
+  fridays?: boolean;
+}
+
+/** How long the deadline search may take inside one request. */
+const DEADLINE_MS = 5000;
+
+/** The cheapest way to meet the deadlines — searched on the Simulator's model. */
+export const planForDeadlinesTool: ReadTool<DeadlineInput> = {
+  kind: "read",
+  name: "plan_for_deadlines",
+  title: "Finding what it takes to meet the deadlines",
+  description:
+    "What it takes to bring the late orders back on time — or only the orders named — searched on the Simulator's own model: first what costs nothing (the order the jobs are worked in), then one step at a time the addition that rescues the most per man-hour: more workers at a department, or Fridays worked (overtime for today's crew is not in the Simulator's model). Returns each step with what it does (late orders and days late after it), the man-hours a week it adds, the knobs of the result (put them on the person's Simulator with show_on_simulator) and the orders still late, if any. It changes nothing. Starts like simulate_scenario (the person's Simulator, the plant, or a saved scenario, with knobs turned).",
+  schema: {
+    type: "object",
+    properties: {
+      ...KNOB_PROPS,
+      from: FROM,
+      mos: { type: "array", maxItems: 50, items: { type: "string", minLength: 3, maxLength: 60 }, description: "Only these orders (their MOs) must make their due day; leave out for every order with a due day." },
+      fridays: { type: "boolean", description: "May it suggest working Fridays (default yes)." },
+    },
+    additionalProperties: false,
+  },
+  tabs: TABS,
+  parse: (r) => {
+    const base = parseScreenInput(r);
+    if (typeof base === "string") return base;
+    return {
+      ...base,
+      ...(Array.isArray(r.mos) && r.mos.length ? { mos: [...new Set((r.mos as string[]).map((m) => m.trim()).filter(Boolean))] } : {}),
+      ...(r.fridays === false ? { fridays: false } : {}),
+    };
+  },
+  status: () => "Searching for what meets the deadlines",
+  async run(i, ctx) {
+    const built = await buildScenario(i, screenStart(i, ctx));
+    if ("error" in built) return { ok: false, text: built.error };
+    if (i.mos) {
+      const open = new Set(built.inputs.jobs.map((j) => j.mo));
+      const unknown = i.mos.filter((m) => !open.has(m));
+      if (unknown.length) return { ok: false, text: `Not open in today's queue: ${unknown.join(", ")}.` };
+    }
+    const p = planForDeadlines(built.inputs, built.scenario, { mos: i.mos, budgetMs: DEADLINE_MS, allowFridays: i.fridays !== false });
+    const knobs = knobsOfScenario(p.scenario, built.inputs);
+    return {
+      ok: true,
+      text: JSON.stringify({
+        startedFrom: built.start,
+        summary: describePlan(p),
+        before: { lateOrders: p.before.late, daysLate: p.before.lateDays, cannotTime: p.before.blocked },
+        steps: p.steps.map((s) => ({ change: s.change, addsManHoursAWeek: Math.round(s.costMhWeek), lateOrdersAfter: s.after.late, daysLateAfter: s.after.lateDays })),
+        after: { lateOrders: p.after.late, daysLate: p.after.lateDays, stillLate: p.after.orders.filter((o) => o.late).map((o) => ({ mo: o.mo, due: o.dueISO, finishes: o.etaISO })) },
+        met: p.met,
+        searchComplete: p.complete,
+        addsManHoursAWeek: Math.round(p.costMhWeek),
+        scenario: describeScenario(p.scenario, built.inputs),
+        knobs: { ...knobs, holds: knobs.holds.slice(0, MAX_KNOB_ROWS), splits: knobs.splits.slice(0, MAX_KNOB_ROWS) },
+      }),
+    };
+  },
+};
+
 // ------------------------------------------------------- saved scenarios
 
 interface SaveInput extends KnobInput {
@@ -552,6 +617,7 @@ export const SIMULATOR_TOOLS = [
   listScenariosTool,
   simulateScenarioTool,
   showOnSimulatorTool,
+  planForDeadlinesTool,
   saveScenarioTool,
   deleteScenarioTool,
   applyRunOrderTool,

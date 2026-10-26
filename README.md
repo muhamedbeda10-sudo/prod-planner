@@ -332,8 +332,11 @@ mobile drawer still lists every view flat, since it has the vertical room.
 10. **What-if Simulator** (`/simulate`, a view of the Plan Tracker tab; the transformers only) — the planner's
    sandbox: move the delivery dates, the capacity and the crew, reorder and split the queue, and see what lands
    on time and what slips, in standard hours. A scenario can be saved by name for everyone (`simulator.edit`),
-   and an admin can apply one as the plant's run order. The AI assistant reads and puts scenarios on it (feature
-   12). Viewing is free.
+   and an admin can apply one as the plant's run order. **Meet the deadlines** (`lib/domain/deadlinePlan.ts`)
+   searches the same model for the cheapest way to bring the late orders back on time — the order of the jobs first,
+   then one step at a time the addition that rescues the most per man-hour (workers at a department, Fridays — overtime
+   for today's crew is not in the model) — puts the result on the knobs with each step's effect, and Undo puts the scenario before back. The AI
+   assistant reads and puts scenarios on it (feature 12), and runs the same search (`plan_for_deadlines`). Viewing is free.
 11. **Consumables** (`/consumables`) — the store's log of what it hands out to the floor. A hand-out is recorded
    on **one line above the log** (after a save the department and the person stay and the item box is ready for the
    next paste); a correction opens in a popup. Item (typed
@@ -483,8 +486,10 @@ mobile drawer still lists every view flat, since it has the vertical room.
      the next runs, the rows a condition finds now, or what an event would have caught in the last 7 days, or from ten
      ready-made recipes (`AUTOMATION_RECIPES`). They run as their owner, count against the month's caps, stop after five
      failures in a row. The clock: Supabase pg_cron + pg_net call `/api/automations/tick`
-     every minute with a secret kept in Supabase Vault — set up in one click on AI assistant settings; until then open pages
-     tick, at most once a minute for the whole plant.
+     every minute through the plant's day (UTC 02:00-21:59: 04:00-23:59 Cairo in winter, 05:00-00:59 in summer) and
+     every quarter hour at night, with a secret kept in Supabase Vault — set up in one click on AI assistant settings,
+     which also schedules the nightly clearing of pg_cron's own run log (a week is kept); until then open pages tick,
+     at most once a minute for the whole plant.
    - **Inbox and push** (`/inbox`): reports, messages and suggestions, with Web Push to phones (VAPID keys made on first use,
      the private half encrypted; only the real push services are posted to). The count rides on the chat's poll.
    - **Tasks** (the inbox's Tasks tab, `lib/domain/tasks.ts`, `lib/server/tasks.ts`, `app/tasks/actions.ts`): given by
@@ -523,7 +528,12 @@ mobile drawer still lists every view flat, since it has the vertical room.
    the load as one centre's running totals (owed so far against what it could have worked, the short days shaded)
    beside every centre's status; **the month's pace** — each centre's share of the month's plan done against where an
    even pace through its working days stands today; the people as bullets (who comes against who is needed from
-   today), with welding's coverage beside them. The headline figures each read against a week ago. Under them,
+   today), with welding's coverage beside them. **Where did the hours go?** (`lib/domain/losses.ts`) walks a
+   centre's (or the floor's) rostered man-hours over the last 7, 14 or 30 days down to the standard hours earned —
+   absence, overtime, the man-hours machine stops idled by cause (machine-hours × the centre's people's hours against
+   its machines', never more than the hours not earned), and what is left: slower than the standard, or work not on the
+   Daily log — as a waterfall, and says which of them moved the efficiency against the days before (the assistant's
+   `explain_efficiency`). The headline figures each read against a week ago. Under them,
    **Floor performance** — the shift log's side over the period and the department picked in its toolbar (the app's
    date slicer, the last 7 days by default, up to 92 days within the last 180; All, Fabrication, Welding, Shot blast or Painting; kept
    in the URL as `?from=&to=&dept=` and reopened as it was left): the period's efficiency, standard hours and pieces
@@ -534,7 +544,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    efficiency, std-h and pieces a person a day, overtime, attendance, machines up, stopped hours); each day's output
    in standard hours by department against the man-hours booked; and the floor's efficiency each day with its rolling
    7-recorded-day line. The page prints. An account the Shifts screen is closed to sees neither the centres'
-   efficiency, nor the losses, nor who is present (the floor's tiles, the Floor performance section, and the people
+   efficiency, nor the losses, nor who is present (the floor's tiles, Where did the hours go?, the Floor performance section, and the people
    card's Present and Gap) — on the page or through the assistant. The day's figures are kept for their trend
    (`KpiSnapshot`): after the page is served, and each hour by the automations' housekeeping. The
    pure arithmetic is `lib/domain/kpis.ts` and `lib/domain/floorKpis.ts` (tested); the loader `lib/server/kpis.ts` is

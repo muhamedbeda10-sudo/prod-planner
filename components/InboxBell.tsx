@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
 import { pollInbox } from "@/app/inbox/actions";
+import { startPoll } from "@/lib/poll";
 
 // The bell in the bar: what the assistant and the automations sent this
 // person, with the number not read yet. The number rides on the chat's own
@@ -15,33 +16,28 @@ import { pollInbox } from "@/app/inbox/actions";
 export const INBOX_CHANGED = "inbox-changed";
 /** A fresh count from the chat's poll (CustomEvent<number>). */
 export const INBOX_UNREAD = "inbox-unread";
-const FALLBACK_MS = 5 * 60_000;
+const PACE = { visibleMs: 5 * 60_000, hiddenMs: null };
 
 export function InboxBell({ initial, active, onOpen }: { initial: number; active: boolean; /** Open the inbox in the AI panel instead of its page. */ onOpen?: () => void }) {
   const [unread, setUnread] = useState(initial);
 
   useEffect(() => {
-    let stop = false;
     const refresh = async () => {
-      if (document.visibilityState !== "visible") return;
       try {
-        const r = await pollInbox();
-        if (!stop) setUnread(r.unread);
+        setUnread((await pollInbox()).unread);
       } catch {
         /* offline for a moment — the next tick tries again */
       }
     };
     const fromChat = (e: Event) => setUnread((e as CustomEvent<number>).detail);
-    const t = window.setInterval(refresh, FALLBACK_MS);
-    const onShow = () => void refresh();
-    document.addEventListener("visibilitychange", onShow);
-    window.addEventListener(INBOX_CHANGED, onShow);
+    // the fallback asks only in front (out of sight nothing shows the number), the first one after the chat's own
+    const stopPoll = startPoll(refresh, PACE, PACE.visibleMs);
+    const onChanged = () => void refresh();
+    window.addEventListener(INBOX_CHANGED, onChanged);
     window.addEventListener(INBOX_UNREAD, fromChat);
     return () => {
-      stop = true;
-      window.clearInterval(t);
-      document.removeEventListener("visibilitychange", onShow);
-      window.removeEventListener(INBOX_CHANGED, onShow);
+      stopPoll();
+      window.removeEventListener(INBOX_CHANGED, onChanged);
       window.removeEventListener(INBOX_UNREAD, fromChat);
     };
   }, []);

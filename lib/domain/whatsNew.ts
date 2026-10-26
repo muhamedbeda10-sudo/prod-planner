@@ -24,6 +24,21 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "Under the plan, the cockpit now has a Floor performance section with its own filters: pick a period (the last 7 days by default, this month, last month, up to 92 days) and a department (All, Fabrication, Welding, Shot blast, Painting). Each centre's efficiency shows day by day as a colour grid — green at the standard, amber short, red well short — with the whole period at the end. New productivity figures show what one person turns out a day (standard hours and pieces), people a day, attendance, overtime and machine availability, with a table by department and a trend line. The output and machine-stop charts follow the same filters. The assistant can answer the same questions for any period.",
   },
   {
+    id: "2026-10-26-lighter-polling",
+    dateISO: "2026-10-26",
+    title: "Open pages ask the server less often",
+    where: "Every page — the chat icon, the Odoo alerts, the open chat",
+    body: "A page in front now checks for new chat messages every half minute (it was every 15 seconds) and for Odoo alerts every minute as before; a page out of sight — another tab, a minimised window — checks every two and five minutes instead of at full pace, and an open chat thread waits until you are back, then catches up at once. Live delivery of chat messages, the pop-up cards, the chime and the system notifications all stay. The scheduler behind the automations also ticks every quarter hour in the small hours (about midnight to 4 am) instead of every minute — an automation due then may run up to 15 minutes after its time — and clears its own run log every night, keeping a week. All of it to keep the app well inside the free hosting and database plans.",
+  },
+  {
+    id: "2026-10-26-why-and-meet-deadlines",
+    dateISO: "2026-10-26",
+    title: "Why did efficiency fall? and Meet the deadlines: the answer, and what it takes",
+    where: "Plan Tracker → Cockpit · Plan Tracker → Simulator · AI assistant",
+    href: "/",
+    body: "The Cockpit has a new card at the bottom, “Where did the hours go?”: for the whole floor or one work centre over the last 7, 14 or 30 days, a waterfall from the hours people were rostered for down to the standard hours they earned — what absence took, what overtime added, the man-hours machine stops idled (by cause: breakdowns, no material, setup…), and what is left: work slower than the standard or not on the Daily log. It says which of those moved the efficiency against the days before, and the biggest loss to act on first. On the Simulator, “Meet the deadlines” finds the cheapest way to bring the late orders back on time — first the order the jobs are worked in (free), then step by step the addition that saves the most per man-hour: workers at a department or Fridays — puts it on the knobs, lists each step with what it does and costs, and Undo puts back what you had. Ask the assistant “why did welding fall this week?” or “what do we need to deliver these orders on time?” and it uses the same.",
+  },
+  {
     id: "2026-10-26-cockpit-decisions-button",
     dateISO: "2026-10-26",
     title: "The cockpit's decisions open from a button",

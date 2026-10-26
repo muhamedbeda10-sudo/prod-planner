@@ -587,12 +587,13 @@ function SchedulerCard({ clock }: { clock: SchedulerStatus }) {
     <SectionCard
       icon={PlugZap}
       title="Scheduler"
-      description={clock.scheduled ? "The database calls the app every minute, so automations run with the app closed." : "Without it, automations run only while the app is open somewhere."}
+      description={clock.scheduled ? "The database calls the app every minute through the day and every quarter hour in the small hours, so automations run with the app closed." : "Without it, automations run only while the app is open somewhere."}
       end={<span className={`pill ${clock.scheduled ? "pill-ok" : "pill-warn"}`}>{clock.scheduled ? "On time" : "Not set up"}</span>}
     >
-      {(clock.lastTickAt || failing || clock.error) && (
+      {(clock.lastTickAt || clock.outdated || failing || clock.error) && (
         <div className="text-sm space-y-1 mb-3">
           {clock.lastTickAt && <p className="text-muted">Last tick {when(clock.lastTickAt)}.</p>}
+          {clock.outdated && <p className="text-warn-fg font-semibold">Set up again once: the clock still ticks every minute all night and never clears its run log.</p>}
           {failing && <p className="text-bad-fg font-semibold">Last run {failing.status}{failing.message ? ` — ${failing.message}` : ""}</p>}
           {clock.error && <p className="text-bad-fg font-semibold">{clock.error}</p>}
         </div>

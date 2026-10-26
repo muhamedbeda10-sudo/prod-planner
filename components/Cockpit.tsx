@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Info } from "lucide-react";
 import { Bullet, ChartCard, Meter, StatTile, TONE_TEXT, fmt, pct, pctOrDash } from "@/components/charts/kit";
 import { BurnUpChart, LoadChart } from "@/components/LazyCharts";
+import { LossWaterfallCard } from "@/components/LossWaterfallCard";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/primitives";
 import { TableFrame, Th } from "@/components/DataTable";
@@ -255,6 +256,8 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
         </ChartCard>
       </div>
 
+      {/* 4 — why: the hours walked down to what they earned (the shift log's side) */}
+      {floor && <LossWaterfallCard />}
     </div>
   );
 }
