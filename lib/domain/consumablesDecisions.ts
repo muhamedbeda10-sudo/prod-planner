@@ -16,11 +16,11 @@
 //                       as the record form counts them (expandPerWorker: an
 //                       "each department" or per-worker limit is each
 //                       department's own number), in the window that holds
-//                       the period's LAST day, up to that day. A per-worker
-//                       number is times the headcount recorded for the
-//                       window's month (the list as it stands for the running
-//                       month, or before any was recorded) — and the dashboard
-//                       says which;
+//                       the day read, up to that day — the period's last day
+//                       for the table, today for "now". A per-worker number is
+//                       times the headcount recorded for the window's month
+//                       (the list as it stands for the running month, or
+//                       before any was recorded) — and the dashboard says which;
 //   no limit .......... a typed item, or a catalogue item handed out to a
 //                       department none of its limits covers: "no limit", never
 //                       "within the limit";
@@ -31,16 +31,14 @@
 
 import { addDaysISO, daysBetweenISO } from "./dateSlicer";
 import { formatDayShort } from "./format";
-import { departmentLabel, foldItemName, matchCatalogueItem } from "./consumables";
-import { pctChange, previousPeriod, spanDays } from "./consumablesStats";
-import { grade } from "./consumableMonthly";
+import { LOG_IDS_MAX, departmentLabel, foldItemName, matchCatalogueItem } from "./consumables";
+import { commonestSpelling, hourLabel, hourSpan, pctChange, previousPeriod, spanDays } from "./consumablesStats";
+import { MONTH_STATUS_LABEL, grade, monthBounds, shiftMonth } from "./consumableMonthly";
 import {
-  ALL_DEPARTMENTS, coversDepartment, expandPerWorker, periodWindow, ruleLabel, usageIn, windowLabel,
+  ALL_DEPARTMENTS, coversDepartment, exceedancesByMonth, expandPerWorker, periodWindow, round3, ruleLabel, usageIn, windowLabel,
   type HeadcountOf, type HeadcountSource, type LimitBasis, type LimitPeriod, type LimitRule, type LimitUse,
 } from "./consumableLimits";
 import type { CockpitAction } from "./kpis";
-
-const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 // ---------------------------------------------------------------- filters
 
@@ -51,11 +49,12 @@ export const LINK_LABEL: Record<LinkFilter, string> = { linked: "In the catalogu
 /** Where an item × department stands against its limits at the period's end. */
 export const ROW_STATUSES = ["over", "near", "within", "none"] as const;
 export type RowStatus = (typeof ROW_STATUSES)[number];
+/** The monthly review's words for the same grades. */
 export const ROW_STATUS_LABEL: Record<RowStatus, string> = {
-  over: "Over the limit",
-  near: "Close to it (80–100%)",
+  over: MONTH_STATUS_LABEL.over,
+  near: MONTH_STATUS_LABEL.near,
   within: "Within the limit",
-  none: "No limit",
+  none: MONTH_STATUS_LABEL.nolimit,
 };
 /** Worst first: what needs a decision opens the table. */
 const STATUS_RANK: Record<RowStatus, number> = { over: 0, none: 1, near: 2, within: 3 };
@@ -70,16 +69,19 @@ export interface DecisionFilters {
 }
 
 export const NO_FILTERS: DecisionFilters = { department: null, item: null, link: null, status: null };
+/** The address keys the filters are written under, in DecisionFilters' order. */
+export const FILTER_KEYS = ["dept", "item", "link", "status"] as const;
 
-const one = (v: unknown): string => (Array.isArray(v) ? String(v[0] ?? "") : typeof v === "string" ? v : "").trim();
+/** A search parameter's one value ("" for none, the first of several). */
+export const firstParam = (v: unknown): string => (Array.isArray(v) ? String(v[0] ?? "") : typeof v === "string" ? v : "").trim();
 
 /** The filters from the address (?dept=&item=&link=&status=) — anything that
  *  does not read is no filter, never an error. */
 export function readDecisionFilters(sp: Record<string, unknown>): DecisionFilters {
-  const department = one(sp.dept);
-  const item = one(sp.item);
-  const link = one(sp.link);
-  const status = one(sp.status);
+  const department = firstParam(sp.dept);
+  const item = firstParam(sp.item);
+  const link = firstParam(sp.link);
+  const status = firstParam(sp.status);
   return {
     department: department && department.length <= 80 ? department : null,
     item: /^c\d{1,9}$/.test(item) ? item : /^t:.{1,120}$/.test(item) ? `t:${foldItemName(item.slice(2))}` : null,
@@ -90,15 +92,11 @@ export function readDecisionFilters(sp: Record<string, unknown>): DecisionFilter
 
 /** The filters as the address writes them — what the page's links carry. */
 export function filterParams(f: DecisionFilters): [string, string][] {
-  const out: [string, string][] = [];
-  if (f.department) out.push(["dept", f.department]);
-  if (f.item) out.push(["item", f.item]);
-  if (f.link) out.push(["link", f.link]);
-  if (f.status) out.push(["status", f.status]);
-  return out;
+  const values = [f.department, f.item, f.link, f.status];
+  return FILTER_KEYS.flatMap((k, i) => (values[i] ? [[k, values[i]!] as [string, string]] : []));
 }
 
-export const hasFilters = (f: DecisionFilters) => !!(f.department || f.item || f.link || f.status);
+export const hasFilters = (f: DecisionFilters) => filterParams(f).length > 0;
 
 /** An item's key: the catalogue id, or the typed name folded. */
 export function itemKeyOf(itemId: number | null, name: string): string {
@@ -139,7 +137,7 @@ export interface DecisionIssue {
 }
 
 /** A hand-out of the period before, for the like-for-like comparison. */
-export type PreviousIssue = Pick<DecisionIssue, "itemId" | "item" | "department" | "dayISO" | "hour">;
+type PreviousIssue = Pick<DecisionIssue, "itemId" | "item" | "department" | "dayISO" | "hour">;
 
 export interface DecisionCatalogueItem {
   id: number;
@@ -156,12 +154,12 @@ export interface DecisionInput {
   /** The period's live hand-outs, every one (the filters are applied here). */
   issues: readonly DecisionIssue[];
   /** The period before, of the same length — null when the log does not go
-   *  back over all of it (the comparison is then not shown). */
+   *  back over all of it, or it is not needed (the comparison is not shown). */
   previous: readonly PreviousIssue[] | null;
   catalogue: readonly DecisionCatalogueItem[];
   /** The limits of active items as they are set (not yet made each department's). */
   rules: readonly LimitRule[];
-  /** Catalogue hand-outs over every window that holds the period's last day. */
+  /** Catalogue hand-outs over usesSpan(rules, toISO, todayISO). */
   uses: readonly LimitUse[];
   headcountOf: HeadcountOf;
   headcountSourceOf: (month: string) => HeadcountSource;
@@ -187,18 +185,21 @@ export interface RowLimit {
   shared: boolean;
   window: { from: string; to: string };
   windowLabel: string;
-  /** The window runs past the period's end — counted up to that day. */
+  /** The window runs past the day read — counted up to that day. */
   toDate: boolean;
   limit: number;
   used: number;
+  /** What is still free (0 once over). */
   left: number;
+  /** How far past the limit (0 within it). */
+  over: number;
   ratio: number;
   status: Exclude<RowStatus, "none">;
   /** A per-worker limit: whose headcount it is times. */
   headcount: HeadcountSource | null;
 }
 
-export interface CatalogueSuggestion {
+interface CatalogueSuggestion {
   id: number;
   name: string;
   code: string | null;
@@ -224,60 +225,25 @@ export interface DecisionRow {
   recordedOver: number;
   lastReason: string | null;
   status: RowStatus;
-  /** The limit that reads worst; null with no limit. */
-  limit: RowLimit | null;
-  /** Every limit that counts the row (each must hold), worst first. */
+  /** Every limit that counts the row (each must hold), the worst first; none with no limit. */
   limits: RowLimit[];
   /** A typed item: the catalogue item it may be, to review — never applied. */
   suggestion: CatalogueSuggestion | null;
   /** Its hand-outs, newest first (the latest ROW_ISSUES). */
   issues: DecisionIssue[];
-  /** Every one of its hand-outs — what the log opens on (?ids=). */
-  issueIds: number[];
+  /** The latest LOG_IDS_MAX of its hand-outs — what the log opens on (?ids=). */
+  logIds: number[];
 }
 
-export interface TrendBucket {
-  key: string;
-  label: string;
-  issues: number;
-  /** The same place in the period before; null when it is not comparable. */
-  prev: number | null;
-  /** The first day of the bucket (a day, or a week's first day); the hour's day for hours. */
-  fromISO: string;
-  toISO: string;
-}
-
-export interface ItemTotal {
-  itemKey: string;
+/** A limit as the decisions list reads it — over now, or a window that closed over. */
+export interface LimitAlarm {
+  ruleId: number;
   item: string;
-  uom: string | null;
-  handOuts: number;
-  qty: number;
-}
-
-export interface DecisionKpis {
-  handOuts: number;
-  /** The period before, under the same filters; null when it is not comparable. */
-  previousHandOuts: number | null;
-  /** % change; null with no comparison or nothing before (N/A). */
-  change: number | null;
-  /** Why there is no comparison, when there is none. */
-  noComparison: string | null;
-  items: number;
-  departments: number;
-  /** Hand-outs and items no limit counts. */
-  uncovered: { handOuts: number; items: number };
-  /** Hand-outs of catalogue items. */
-  linked: number;
-  /** linked / handOuts; null with no hand-out. */
-  linkedShare: number | null;
-  /** The quantity, only when one item (one unit) is picked. */
-  quantity: { qty: number; uom: string | null } | null;
-}
-
-export interface DecisionOptions {
-  departments: { value: string; label: string }[];
-  items: { value: string; label: string }[];
+  uom: string;
+  departmentsLabel: string;
+  windowLabel: string;
+  used: number;
+  limit: number;
 }
 
 export interface ConsumablesDecisions {
@@ -286,36 +252,66 @@ export interface ConsumablesDecisions {
   /** The period ends today: its standings are "now". */
   endsToday: boolean;
   filters: DecisionFilters;
-  kpis: DecisionKpis;
+  kpis: {
+    handOuts: number;
+    /** The period before, under the same filters; null when it is not comparable. */
+    previousHandOuts: number | null;
+    /** % change; null with no comparison or nothing before (N/A). */
+    change: number | null;
+    /** Why there is no comparison, when there is none. */
+    noComparison: string | null;
+    items: number;
+    departments: number;
+    /** Hand-outs and items no limit counts. */
+    uncovered: { handOuts: number; items: number };
+    /** Hand-outs of catalogue items. */
+    linked: number;
+    /** linked / handOuts; null with no hand-out. */
+    linkedShare: number | null;
+    /** The quantity, only when one item (one unit) is picked. */
+    quantity: { qty: number; uom: string | null } | null;
+  };
   rows: DecisionRow[];
-  trend: { unit: "hour" | "day" | "week"; buckets: TrendBucket[] };
-  items: ItemTotal[];
+  trend: {
+    unit: "hour" | "day" | "week";
+    /** `prev`: the same place in the period before; null when not comparable.
+     *  `fromISO`..`toISO`: the bucket's days (the period's one day for hours). */
+    buckets: { key: string; label: string; issues: number; prev: number | null; fromISO: string; toISO: string }[];
+  };
+  /** Each item in its own unit, most hand-outs first. */
+  items: { itemKey: string; item: string; uom: string | null; handOuts: number; qty: number }[];
   /** The catalogue units handed out — the items ranking can read one in quantity. */
   units: string[];
-  /** Hand-outs flagged over a limit when saved, newest first (the latest RECORDED_OVER_SHOWN). */
-  recordedOver: DecisionIssue[];
+  /** The latest hand-out flagged over a limit when saved, and how many were. */
+  latestRecordedOver: DecisionIssue | null;
   recordedOverCount: number;
+  /** The limits over NOW (today's reading, whatever the period), and the
+   *  windows of the last EXCEEDANCE_MONTHS finished months that closed over —
+   *  both in the filters' scope. */
+  limits: { overNow: LimitAlarm[]; closedOver: LimitAlarm[]; closedSpan: { from: string; to: string } };
   /** The filters' choices: what the period holds, and what is picked. */
-  options: DecisionOptions;
+  options: {
+    departments: { value: string; label: string }[];
+    items: { value: string; label: string }[];
+  };
   quality: {
     /** Live hand-outs in the period, every filter aside. */
     total: number;
+    /** …of which typed by hand. */
     unlinked: number;
-    typedItems: number;
-    /** …of which with a catalogue item suggested for review. */
-    suggested: number;
     /** A limit was counted in a window already over — with today's limits. */
     pastWindows: boolean;
-    /** Whose headcount the per-worker limits are times — one per window month
-     *  counted (the period's last month when no per-worker limit is set). */
+    /** Whose headcount the per-worker limits were counted with — each once
+     *  (the period's last month when no per-worker limit is set). */
     headcount: HeadcountSource[];
   };
 }
 
 export const ROW_ISSUES = 50;
-export const RECORDED_OVER_SHOWN = 50;
 /** Longer than this, the trend reads week by week. */
-export const TREND_DAYS_MAX = 45;
+const TREND_DAYS_MAX = 45;
+/** How many finished months "closed over a limit" looks back over. */
+export const EXCEEDANCE_MONTHS = 3;
 
 // ---------------------------------------------------------------- suggestions
 
@@ -347,6 +343,22 @@ export function suggestCatalogueItem(text: string, catalogue: readonly DecisionC
 
 // ---------------------------------------------------------------- the limits
 
+/** The finished months "closed over a limit" looks back over. */
+export function closedSpan(todayISO: string): { from: string; to: string } {
+  const thisMonth = todayISO.slice(0, 7);
+  return { from: monthBounds(shiftMonth(thisMonth, -EXCEEDANCE_MONTHS)).from, to: monthBounds(shiftMonth(thisMonth, -1)).to };
+}
+
+/** The days the hand-outs must be read over for the dashboard: every window
+ *  that holds the period's last day or today, and every window of the months
+ *  looked back over — up to today. Null with no limit. */
+export function usesSpan(rules: readonly Pick<LimitRule, "period">[], toISO: string, todayISO: string): { from: string; to: string } | null {
+  if (rules.length === 0) return null;
+  const past = closedSpan(todayISO);
+  const froms = rules.flatMap((r) => [periodWindow(r.period, toISO).from, periodWindow(r.period, todayISO).from, periodWindow(r.period, past.from).from]);
+  return { from: froms.sort()[0], to: todayISO };
+}
+
 interface Counted {
   rule: LimitRule;
   source: LimitRule;
@@ -357,23 +369,18 @@ interface Counted {
 /** Every limit as it is counted for the window that holds `dayISO`: an
  *  "each" or per-worker limit made each department's — the per-worker number
  *  times the headcount of the window's last month. */
-function countedRules(rules: readonly LimitRule[], dayISO: string, headcountOf: HeadcountOf, sourceOf: (month: string) => HeadcountSource, seen: readonly string[]): Map<number, Counted[]> {
-  const out = new Map<number, Counted[]>();
-  for (const source of rules) {
+function countedRules(rules: readonly LimitRule[], dayISO: string, headcountOf: HeadcountOf, sourceOf: (month: string) => HeadcountSource, seen: readonly string[]): Counted[] {
+  return rules.flatMap((source) => {
     const window = periodWindow(source.period, dayISO);
     const month = window.to.slice(0, 7);
-    const list = out.get(source.itemId) ?? [];
-    for (const rule of expandPerWorker([source], headcountOf(month), seen)) {
-      list.push({ rule, source, window, headcount: source.basis === "person" ? sourceOf(month) : null });
-    }
-    out.set(source.itemId, list);
-  }
-  return out;
+    const headcount = source.basis === "person" ? sourceOf(month) : null;
+    return expandPerWorker([source], headcountOf(month), seen).map((rule) => ({ rule, source, window, headcount }));
+  });
 }
 
-function rowLimit(c: Counted, uses: readonly LimitUse[], toISO: string): RowLimit {
-  const counted = { from: c.window.from, to: c.window.to < toISO ? c.window.to : toISO };
-  const used = usageIn(c.rule, uses, counted);
+/** A counted limit's standing up to `dayISO`; `uses`: the item's own. */
+function rowLimit(c: Counted, uses: readonly LimitUse[], dayISO: string): RowLimit {
+  const used = usageIn(c.rule, uses, { from: c.window.from, to: c.window.to < dayISO ? c.window.to : dayISO });
   const limit = c.rule.qty;
   const g = grade(used, limit);
   return {
@@ -381,8 +388,10 @@ function rowLimit(c: Counted, uses: readonly LimitUse[], toISO: string): RowLimi
     perWorker: c.rule.perWorker ?? null,
     departmentsLabel: ruleLabel(c.rule),
     shared: c.rule.departments === ALL_DEPARTMENTS || c.rule.departments.length > 1,
-    window: c.window, windowLabel: windowLabel(c.rule.period, c.window), toDate: c.window.to > toISO,
-    limit, used, left: round3(limit - used), ratio: limit > 0 ? used / limit : used > 0 ? Number.MAX_SAFE_INTEGER : 0,
+    window: c.window, windowLabel: windowLabel(c.rule.period, c.window), toDate: c.window.to > dayISO,
+    limit, used, left: Math.max(0, round3(limit - used)), over: Math.max(0, round3(used - limit)),
+    // a limit of nothing with something used reads fullest of all
+    ratio: limit > 0 ? used / limit : used > 0 ? Number.MAX_SAFE_INTEGER : 0,
     status: g === "over" ? "over" : g === "near" ? "near" : "within",
     headcount: c.headcount,
   };
@@ -390,18 +399,7 @@ function rowLimit(c: Counted, uses: readonly LimitUse[], toISO: string): RowLimi
 
 const LIMIT_RANK: Record<RowLimit["status"], number> = { over: 0, near: 1, within: 2 };
 
-/** The headcounts the per-worker limits were counted with, each once. */
-function headcountsUsed(counted: ReadonlyMap<number, readonly Counted[]>, otherwise: HeadcountSource): HeadcountSource[] {
-  const seen = new Map<string, HeadcountSource>();
-  for (const c of [...counted.values()].flat()) if (c.headcount) seen.set(JSON.stringify(c.headcount), c.headcount);
-  return seen.size ? [...seen.values()] : [otherwise];
-}
-
 // ---------------------------------------------------------------- the trend
-
-function hourLabel(h: number) {
-  return `${String(h).padStart(2, "0")}:00`;
-}
 
 function trendOf(issues: readonly PreviousIssue[], previous: readonly PreviousIssue[] | null, fromISO: string, toISO: string, now: Date): ConsumablesDecisions["trend"] {
   if (fromISO === toISO) {
@@ -409,10 +407,8 @@ function trendOf(issues: readonly PreviousIssue[], previous: readonly PreviousIs
     const prev = new Array<number>(24).fill(0);
     for (const i of issues) per[i.hour] += 1;
     for (const i of previous ?? []) prev[i.hour] += 1;
-    const used = [...issues, ...(previous ?? [])].map((i) => i.hour);
-    const first = Math.min(7, ...used);
-    const last = Math.max(17, ...used);
-    const buckets: TrendBucket[] = [];
+    const { first, last } = hourSpan([...issues, ...(previous ?? [])].map((i) => i.hour));
+    const buckets: ConsumablesDecisions["trend"]["buckets"] = [];
     for (let h = first; h <= last; h++) {
       buckets.push({ key: String(h), label: hourLabel(h), issues: per[h], prev: previous ? prev[h] : null, fromISO, toISO });
     }
@@ -422,7 +418,7 @@ function trendOf(issues: readonly PreviousIssue[], previous: readonly PreviousIs
   const unit = days > TREND_DAYS_MAX ? "week" : "day";
   const size = unit === "week" ? 7 : 1;
   const prevFrom = previousPeriod(fromISO, toISO).fromISO;
-  const buckets: TrendBucket[] = [];
+  const buckets: ConsumablesDecisions["trend"]["buckets"] = [];
   for (let i = 0; i < days && buckets.length < 400; i += size) {
     const a = addDaysISO(fromISO, i);
     const b = addDaysISO(fromISO, Math.min(days, i + size) - 1);
@@ -451,22 +447,25 @@ function matches(f: DecisionFilters, i: Pick<DecisionIssue, "itemId" | "item" | 
   return true;
 }
 
-/** The commonest way a typed item was written (the first, alphabetically, on a tie). */
-function commonest(names: readonly string[]): string {
-  const n = new Map<string, number>();
-  for (const x of names) n.set(x.trim(), (n.get(x.trim()) ?? 0) + 1);
-  return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? "";
-}
-
 export function buildConsumablesDecisions(input: DecisionInput, filters: DecisionFilters): ConsumablesDecisions {
   const { fromISO, toISO, todayISO } = input;
   const now = new Date(`${todayISO}T12:00:00Z`);
   const catalogueOf = new Map(input.catalogue.map((c) => [c.id, c]));
+  // the limits count an item's own hand-outs only
+  const usesOf = new Map<number, LimitUse[]>();
+  for (const u of input.uses) {
+    const list = usesOf.get(u.itemId);
+    if (list) list.push(u);
+    else usesOf.set(u.itemId, [u]);
+  }
   const counted = countedRules(input.rules, toISO, input.headcountOf, input.headcountSourceOf, input.seen);
-  const suggestionOf = new Map<string, CatalogueSuggestion | null>();
-  const suggest = (key: string, name: string) => {
-    if (!suggestionOf.has(key)) suggestionOf.set(key, suggestCatalogueItem(name, input.catalogue));
-    return suggestionOf.get(key)!;
+  const countedOf = new Map<number, Counted[]>();
+  for (const c of counted) countedOf.set(c.rule.itemId, [...(countedOf.get(c.rule.itemId) ?? []), c]);
+  // a shared limit stands the same for every department row it covers
+  const standing = new Map<number, RowLimit>();
+  const standingOf = (c: Counted) => {
+    if (!standing.has(c.rule.id)) standing.set(c.rule.id, rowLimit(c, usesOf.get(c.rule.itemId) ?? [], toISO));
+    return standing.get(c.rule.id)!;
   };
 
   // ---- an item × department per row, over the hand-outs the filters keep
@@ -485,41 +484,39 @@ export function buildConsumablesDecisions(input: DecisionInput, filters: Decisio
     const cat = first.itemId !== null ? catalogueOf.get(first.itemId) : undefined;
     const sorted = [...list].sort((a, b) => b.dayISO.localeCompare(a.dayISO) || b.id - a.id);
     const flagged = sorted.filter((i) => i.overLimit);
-    const limits = first.itemId === null ? [] : (counted.get(first.itemId) ?? [])
+    const limits = first.itemId === null ? [] : (countedOf.get(first.itemId) ?? [])
       .filter((c) => coversDepartment(c.rule, first.department))
-      .map((c) => rowLimit(c, input.uses, toISO))
+      .map(standingOf)
       .sort((a, b) => LIMIT_RANK[a.status] - LIMIT_RANK[b.status] || b.ratio - a.ratio || a.departmentsLabel.localeCompare(b.departmentsLabel));
-    const item = cat?.name ?? commonest(list.map((i) => i.item));
+    const item = cat?.name ?? commonestSpelling(list.map((i) => i.item));
     return {
       key, itemKey, itemId: first.itemId, item, code: cat?.code ?? null, uom: cat?.uom ?? null,
       department: first.department, departmentLabel: departmentLabel(first.department),
       qty: round3(list.reduce((n, i) => n + i.qty, 0)), handOuts: list.length, lastDayISO: sorted[0].dayISO,
       recordedOver: flagged.length, lastReason: flagged.find((i) => i.overLimitReason)?.overLimitReason ?? null,
       status: limits[0]?.status ?? "none",
-      limit: limits[0] ?? null,
       limits,
-      suggestion: first.itemId === null ? suggest(itemKey, item) : null,
+      suggestion: first.itemId === null ? suggestCatalogueItem(item, input.catalogue) : null,
       issues: sorted.slice(0, ROW_ISSUES),
-      issueIds: sorted.map((i) => i.id),
+      logIds: sorted.slice(0, LOG_IDS_MAX).map((i) => i.id),
     };
   });
   if (filters.status) rows = rows.filter((r) => r.status === filters.status);
-  rows.sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || (b.limit?.ratio ?? 0) - (a.limit?.ratio ?? 0) || b.handOuts - a.handOuts || a.item.localeCompare(b.item) || a.departmentLabel.localeCompare(b.departmentLabel));
+  rows.sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || (b.limits[0]?.ratio ?? 0) - (a.limits[0]?.ratio ?? 0) || b.handOuts - a.handOuts || a.item.localeCompare(b.item) || a.departmentLabel.localeCompare(b.departmentLabel));
 
   // what the rows hold, hand-out by hand-out — the cards and the trend count these
-  const kept = new Set(rows.map((r) => r.key));
-  const shown = input.issues.filter((i) => matches(filters, i) && kept.has(`${itemKeyOf(i.itemId, i.item)}|${i.department}`));
+  const shown = rows.flatMap((r) => groups.get(r.key)!);
 
   // ---- the comparison: the period before, under the same filters — not
   // under a limit status, which is this period's own reading
   let previous: PreviousIssue[] | null = null;
   let noComparison: string | null = null;
-  if (input.previous === null) noComparison = "The log does not go back over the whole period before";
-  else if (filters.status) noComparison = "A limit status is this period's own reading — the period before is not compared under it";
+  if (filters.status) noComparison = "A limit status is this period's own reading — the period before is not compared under it";
+  else if (input.previous === null) noComparison = "The log does not go back over the whole period before";
   else previous = input.previous.filter((i) => matches(filters, i));
 
   // ---- items, in their own unit
-  const totals = new Map<string, ItemTotal>();
+  const totals = new Map<string, ConsumablesDecisions["items"][number]>();
   for (const r of rows) {
     const t = totals.get(r.itemKey) ?? { itemKey: r.itemKey, item: r.item, uom: r.uom, handOuts: 0, qty: 0 };
     t.handOuts += r.handOuts;
@@ -530,10 +527,25 @@ export function buildConsumablesDecisions(input: DecisionInput, filters: Decisio
 
   const none = rows.filter((r) => r.status === "none");
   const linked = shown.filter((i) => i.itemId !== null).length;
-  const quantity = filters.item && items.length === 1 ? { qty: items[0].qty, uom: items[0].uom } : null;
   const prevCount = previous ? previous.length : null;
-
   const flagged = shown.filter((i) => i.overLimit).sort((a, b) => b.dayISO.localeCompare(a.dayISO) || b.id - a.id);
+
+  // ---- the limits now (the same counting, at today) and the windows that closed over
+  const nowCounted = countedRules(input.rules, todayISO, input.headcountOf, input.headcountSourceOf, input.seen);
+  const alarm = (itemId: number, x: { ruleId: number; departmentsLabel: string; windowLabel: string; used: number; limit: number }): LimitAlarm => {
+    const it = catalogueOf.get(itemId);
+    return { ruleId: x.ruleId, item: it?.name ?? "?", uom: it?.uom ?? "", departmentsLabel: x.departmentsLabel, windowLabel: x.windowLabel, used: x.used, limit: x.limit };
+  };
+  const overNow = nowCounted
+    .filter((c) => ruleInScope(filters, c.rule.itemId, c.rule.departments))
+    .map((c) => ({ c, l: rowLimit(c, usesOf.get(c.rule.itemId) ?? [], todayISO) }))
+    .filter(({ l }) => l.status === "over")
+    .sort((a, b) => b.l.ratio - a.l.ratio)
+    .map(({ c, l }) => alarm(c.rule.itemId, l));
+  const past = closedSpan(todayISO);
+  const closedOver = exceedancesByMonth(input.rules, input.uses, past.from, past.to, input.headcountOf, input.seen)
+    .filter((e) => e.window.to >= past.from && e.window.to <= past.to && ruleInScope(filters, e.itemId, e.departments))
+    .map((e) => alarm(e.itemId, e));
 
   // ---- the filters' choices, from the whole period (and what is picked)
   const deptOpts = new Map<string, string>();
@@ -548,17 +560,10 @@ export function buildConsumablesDecisions(input: DecisionInput, filters: Decisio
     const id = filters.item.startsWith("c") ? Number(filters.item.slice(1)) : null;
     itemOpts.set(filters.item, id !== null ? catalogueOf.get(id)?.name ?? `Item ${id}` : `${filters.item.slice(2)} (typed)`);
   }
-  const byLabel = (a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label);
+  const options = (m: Map<string, string>) => [...m.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
 
-  // every typed name in the period, each with its spellings — the strip's counts
-  const typedNames = new Map<string, string[]>();
-  for (const i of input.issues) {
-    if (i.itemId !== null) continue;
-    const k = itemKeyOf(null, i.item);
-    const names = typedNames.get(k);
-    if (names) names.push(i.item);
-    else typedNames.set(k, [i.item]);
-  }
+  // the headcounts the per-worker limits were counted with, each once
+  const headcounts = new Map(counted.filter((c) => c.headcount).map((c) => [JSON.stringify(c.headcount), c.headcount!]));
 
   return {
     fromISO, toISO, endsToday: toISO === todayISO, filters,
@@ -572,31 +577,27 @@ export function buildConsumablesDecisions(input: DecisionInput, filters: Decisio
       uncovered: { handOuts: none.reduce((n, r) => n + r.handOuts, 0), items: new Set(none.map((r) => r.itemKey)).size },
       linked,
       linkedShare: shown.length ? linked / shown.length : null,
-      quantity,
+      quantity: filters.item && items.length === 1 ? { qty: items[0].qty, uom: items[0].uom } : null,
     },
     rows,
     trend: trendOf(shown, previous, fromISO, toISO, now),
     items,
     units: [...new Set(items.map((i) => i.uom).filter((u): u is string => u !== null))].sort(),
-    recordedOver: flagged.slice(0, RECORDED_OVER_SHOWN),
+    latestRecordedOver: flagged[0] ?? null,
     recordedOverCount: flagged.length,
-    options: {
-      departments: [...deptOpts.entries()].map(([value, label]) => ({ value, label })).sort(byLabel),
-      items: [...itemOpts.entries()].map(([value, label]) => ({ value, label })).sort(byLabel),
-    },
+    limits: { overNow, closedOver, closedSpan: past },
+    options: { departments: options(deptOpts), items: options(itemOpts) },
     quality: {
       total: input.issues.length,
-      unlinked: [...typedNames.values()].reduce((n, names) => n + names.length, 0),
-      typedItems: typedNames.size,
-      suggested: [...typedNames.entries()].filter(([k, names]) => suggest(k, commonest(names)) !== null).length,
-      pastWindows: [...counted.values()].flat().some((c) => c.window.to < todayISO),
-      headcount: headcountsUsed(counted, input.headcountSourceOf(toISO.slice(0, 7))),
+      unlinked: input.issues.filter((i) => i.itemId === null).length,
+      pastWindows: counted.some((c) => c.window.to < todayISO),
+      headcount: headcounts.size ? [...headcounts.values()] : [input.headcountSourceOf(toISO.slice(0, 7))],
     },
   };
 }
 
-/** How a counted limit reads: "60 PC a month · shared by Welding TX + Welding
- *  USS/LV", "2 PC per worker × 12 workers a month". */
+/** How a counted limit reads: "60 PC shared · Welding TX + Welding USS/LV",
+ *  "2 PC per worker × 12 workers". */
 export function limitBasisText(l: Pick<RowLimit, "basis" | "perWorker" | "qty" | "shared" | "departmentsLabel">, uom: string | null): string {
   const u = uom ? ` ${uom}` : "";
   if (l.perWorker) {
@@ -619,16 +620,6 @@ export function headcountText(h: HeadcountSource): string {
 
 // ---------------------------------------------------------------- what needs a decision
 
-/** A limit as the decisions list reads it — now, or a window that closed. */
-export interface LimitAlarm {
-  item: string;
-  departmentsLabel: string;
-  windowLabel: string;
-  used: number;
-  limit: number;
-  uom: string;
-}
-
 /** How many of each kind the list names one by one before it sums the rest. */
 const NAMED = 4;
 
@@ -640,28 +631,25 @@ const NAMED = 4;
  * closed over, and the hand-outs recorded over a limit when saved. `notes`
  * are lines that need no one (the powder scrap weighed; no flag is not
  * proof) — said under the list, not counted. `href` keeps the page's period
- * and filters.
+ * and filters; `closedLabel` names the months looked back over.
  */
 export function consumablesActions(
-  d: Pick<ConsumablesDecisions, "rows" | "endsToday" | "toISO" | "recordedOver" | "recordedOverCount" | "quality">,
-  limits: { overNow: readonly LimitAlarm[]; closedOver: readonly LimitAlarm[]; closedSpan: string } | null,
+  d: Pick<ConsumablesDecisions, "rows" | "endsToday" | "toISO" | "latestRecordedOver" | "recordedOverCount" | "quality" | "limits">,
   powder: { scope: "painting" | "other"; kg: number; weighings: number; sections: readonly { label: string; kg: number }[] },
   periodLabel: string,
+  closedLabel: string,
   href: (set: Record<string, string | null>, hash?: string) => string,
 ): { actions: CockpitAction[]; notes: string[] } {
   const actions: CockpitAction[] = [];
   const notes: string[] = [];
   const limitsView = "/consumables?view=limits";
-  const over = (a: LimitAlarm) => round3(a.used - a.limit);
   const n = (k: number, one: string, many = `${one}s`) => `${k} ${k === 1 ? one : many}`;
+  const { overNow, closedOver } = d.limits;
 
-  if (limits === null) actions.push({ tone: "bad", text: "The limits could not load — reload the page to see which are over.", href: limitsView });
-  else {
-    for (const a of limits.overNow.slice(0, NAMED)) {
-      actions.push({ tone: "bad", text: `Now: ${a.item} · ${a.departmentsLabel} — ${a.used} of ${a.limit} ${a.uom} (${a.windowLabel}), ${over(a)} over`, href: limitsView });
-    }
-    if (limits.overNow.length > NAMED) actions.push({ tone: "bad", text: `Now: ${n(limits.overNow.length - NAMED, "more limit")} over`, href: limitsView });
+  for (const a of overNow.slice(0, NAMED)) {
+    actions.push({ tone: "bad", text: `Now: ${a.item} · ${a.departmentsLabel} — ${a.used} of ${a.limit} ${a.uom} (${a.windowLabel}), ${round3(a.used - a.limit)} over`, href: limitsView });
   }
+  if (overNow.length > NAMED) actions.push({ tone: "bad", text: `Now: ${n(overNow.length - NAMED, "more limit")} over`, href: limitsView });
 
   const overAtEnd = d.rows.filter((r) => r.status === "over");
   if (!d.endsToday && overAtEnd.length > 0) {
@@ -688,15 +676,13 @@ export function consumablesActions(
     });
   }
 
-  if (limits) {
-    for (const e of limits.closedOver.slice(0, NAMED)) {
-      actions.push({ tone: "warn", text: `Closed over: ${e.item} · ${e.departmentsLabel} — ${e.windowLabel} ended at ${e.used} of ${e.limit}`, href: limitsView });
-    }
-    if (limits.closedOver.length > NAMED) actions.push({ tone: "warn", text: `Closed over: ${n(limits.closedOver.length - NAMED, "more window")} (${limits.closedSpan})`, href: limitsView });
+  for (const e of closedOver.slice(0, NAMED)) {
+    actions.push({ tone: "warn", text: `Closed over: ${e.item} · ${e.departmentsLabel} — ${e.windowLabel} ended at ${e.used} of ${e.limit} ${e.uom}`.trimEnd(), href: limitsView });
   }
+  if (closedOver.length > NAMED) actions.push({ tone: "warn", text: `Closed over: ${n(closedOver.length - NAMED, "more window")} (${closedLabel})`, href: limitsView });
 
-  if (d.recordedOverCount > 0) {
-    const last = d.recordedOver[0];
+  const last = d.latestRecordedOver;
+  if (last) {
     actions.push({
       tone: "info",
       text: `${n(d.recordedOverCount, "hand-out")} recorded over a limit when saved ${periodLabel} — latest ${last.dayISO}, ${last.item}: “${last.overLimitReason ?? "no reason"}”`,
@@ -709,7 +695,7 @@ export function consumablesActions(
   if (powder.scope === "other") notes.push("Powder scrap is weighed for the painting sections only.");
   else if (powder.weighings === 0) notes.push(`No powder scrap recorded ${periodLabel}.`);
   else notes.push(`Powder scrap ${periodLabel}: ${powder.kg} kg recorded (${powder.sections.map((s) => `${s.label} ${s.kg} kg`).join(" · ")}) — as weighed, not a waste rate.`);
-  if (limits && limits.closedOver.length === 0) notes.push(`No finished window in scope ended over a limit (${limits.closedSpan}).`);
+  if (closedOver.length === 0) notes.push(`No finished window in scope ended over a limit (${closedLabel}).`);
 
   return { actions, notes };
 }

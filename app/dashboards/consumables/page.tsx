@@ -2,12 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { getConsumablesDecisions } from "@/lib/server/consumables";
-import { getLimitDashboard } from "@/lib/server/consumableLimits";
 import { getMonthlyReport } from "@/lib/server/consumableMonthly";
 import { loadOrNull } from "@/lib/server/dashboards";
 import { monthLong, monthShort, pastMonthOf } from "@/lib/domain/consumableMonthly";
 import { consumablesPeriod } from "@/lib/domain/consumables";
-import { consumablesActions, filterParams, hasFilters, headcountText, readDecisionFilters, ruleInScope } from "@/lib/domain/consumablesDecisions";
+import { consumablesActions, filterParams, firstParam, hasFilters, headcountText, readDecisionFilters } from "@/lib/domain/consumablesDecisions";
 import { previousPeriod } from "@/lib/domain/consumablesStats";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { formatDate, formatFigure as fmt, formatShare as pct } from "@/lib/domain/format";
@@ -43,7 +42,7 @@ export default async function ConsumablesDashboardPage({ searchParams }: { searc
   if (!me) redirect("/login");
 
   const sp = await searchParams;
-  const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
+  const one = (k: string) => firstParam(sp[k]) || undefined;
   const today = factoryDayISO(new Date());
   const { from, to, min, label: periodLabel } = consumablesPeriod({ from: one("from"), to: one("to") }, today);
   const filters = readDecisionFilters(sp);
@@ -52,9 +51,8 @@ export default async function ConsumablesDashboardPage({ searchParams }: { searc
   const month = pickedMonth ?? to.slice(0, 7);
   const rank = one("rank") ?? "count";
 
-  const [d, limits, report] = await Promise.all([
-    loadOrNull("consumables", "the period's hand-outs", getConsumablesDecisions(from, to, today, filters)),
-    loadOrNull("consumables", "the limits", getLimitDashboard(from, to, today, { flagged: false })),
+  const [d, report] = await Promise.all([
+    loadOrNull("consumables", "the period's hand-outs and limits", getConsumablesDecisions(from, to, today, filters)),
     loadOrNull("consumables", "the monthly review", getMonthlyReport(month)),
   ]);
 
@@ -71,26 +69,20 @@ export default async function ConsumablesDashboardPage({ searchParams }: { searc
     const q = p.toString();
     return `/dashboards/consumables${q ? `?${q}` : ""}${hash ? `#${hash}` : ""}`;
   };
+  // the month goes last: the picker appends it
   const monthParams = new URLSearchParams(base);
   monthParams.delete("month");
   monthParams.set("month", "");
 
-  const board = limits ? limits.board.filter((a) => ruleInScope(filters, a.itemId, a.departments)) : [];
-  const closedOver = limits ? limits.exceedances.filter((e) => ruleInScope(filters, e.itemId, e.departments)) : [];
-  const overNow = board.filter((a) => a.used > a.limit + 1e-9);
   const multiMonth = from.slice(0, 7) !== to.slice(0, 7);
   const prev = previousPeriod(from, to);
   const k = d?.kpis;
   // what needs someone: one button at the end of the bar, the list in its popup
-  const decisions = d ? consumablesActions(
-    d,
-    limits && {
-      overNow,
-      closedOver: closedOver.map((e) => ({ ...e, uom: "" })),
-      closedSpan: `${monthShort(limits.exceedanceSpan.from.slice(0, 7))} – ${monthShort(limits.exceedanceSpan.to.slice(0, 7))}`,
-    },
-    d.powder, periodLabel, href,
-  ) : null;
+  const closedLabel = d ? `${monthShort(d.limits.closedSpan.from.slice(0, 7))} – ${monthShort(d.limits.closedSpan.to.slice(0, 7))}` : "";
+  const decisions = d ? consumablesActions(d, d.powder, periodLabel, closedLabel, href) : null;
+  const store = { title: "Needs a decision at the store", nothing: "Nothing needs a decision — every hand-out in scope is a catalogue item within its limits." };
+  // the browser parts get the rows, cards and charts — the list and the strip are drawn here
+  const view = d && { fromISO: d.fromISO, toISO: d.toISO, endsToday: d.endsToday, filters: d.filters, kpis: d.kpis, rows: d.rows, trend: d.trend, items: d.items, units: d.units, quality: d.quality };
 
   return (
     <div className="space-y-4">
@@ -105,13 +97,13 @@ export default async function ConsumablesDashboardPage({ searchParams }: { searc
         end={d && decisions && (
           <>
             <ConsumablesFilters filters={filters} options={d.options} />
-            <CockpitDecisions actions={decisions.actions} notes={decisions.notes} kind="store" />
+            <CockpitDecisions actions={decisions.actions} notes={decisions.notes} {...store} />
           </>
         )}
       />
-      {decisions && <PrintDecisions actions={decisions.actions} notes={decisions.notes} kind="store" />}
+      {decisions && <PrintDecisions actions={decisions.actions} notes={decisions.notes} {...store} />}
 
-      {d === null || k === undefined ? <LoadFailed what="The consumables' figures" /> : (
+      {d === null || k === undefined || view === null ? <LoadFailed what="The consumables' figures" /> : (
         <>
           <DataQualityBar
             partial={d.quality.unlinked > 0 || d.quality.pastWindows || d.quality.headcount.some((h) => h.kind === "fallback" || h.kind === "carried")}
@@ -146,7 +138,7 @@ export default async function ConsumablesDashboardPage({ searchParams }: { searc
               <StatTile label="Departments served" value={fmt(k.departments)} sub={periodLabel} about="Departments the period's hand-outs were recorded to." />
             </Link>
             <Link href="/consumables?view=limits" className="flex rounded-xl">
-              <StatTile label="Over a limit now" value={limits ? fmt(overNow.length) : "—"} delta={<NowBadge />} sub={limits ? "in the filters' scope" : "could not load"}
+              <StatTile label="Over a limit now" value={fmt(d.limits.overNow.length)} delta={<NowBadge />} sub="in the filters' scope"
                 about="Limits past their number in their current window (this month, or a limit of several months over its months so far), for the department and item filtered. Today's reading, whatever the period." />
             </Link>
             <Link href={href({ status: "none" }, "detail")} className="flex rounded-xl">
@@ -167,9 +159,9 @@ export default async function ConsumablesDashboardPage({ searchParams }: { searc
             { label: "In the catalogue", definition: "Catalogue hand-outs over all hand-outs. A typed name may be suggested a catalogue item in the table, for review — nothing is linked by itself.", source: "ConsumableIssue.itemId" },
           ]} />
 
-          <ConsumablesTrend d={d} periodLabel={periodLabel} prevLabel={`${formatDate(prev.fromISO)} – ${formatDate(prev.toISO)}`} />
-          <ConsumablesBreakdown d={d} rank={rank} periodLabel={periodLabel} />
-          <ConsumablesDetailTable d={d} periodLabel={periodLabel} />
+          <ConsumablesTrend d={view} periodLabel={periodLabel} prevLabel={`${formatDate(prev.fromISO)} – ${formatDate(prev.toISO)}`} />
+          <ConsumablesBreakdown d={view} rank={rank} periodLabel={periodLabel} />
+          <ConsumablesDetailTable d={view} periodLabel={periodLabel} />
         </>
       )}
 

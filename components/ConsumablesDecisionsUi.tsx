@@ -1,28 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
 import { Fragment, useState } from "react";
 import { FilterSelect } from "@/components/FilterControls";
 import { TableEmpty, TableFrame, Th } from "@/components/DataTable";
 import { Badge, type BadgeTone } from "@/components/Badge";
-import { useSetParam } from "@/components/useSetParam";
+import { useHrefWith, useSetParam } from "@/components/useSetParam";
 import { fmt } from "@/components/charts/kit";
 import { formatDate } from "@/lib/domain/format";
 import { PERIOD_LABEL } from "@/lib/domain/consumableLimits";
 import {
-  LINK_FILTERS, LINK_LABEL, ROW_ISSUES, ROW_STATUSES, ROW_STATUS_LABEL, hasFilters, headcountText, limitBasisText,
-  type DecisionFilters, type DecisionOptions, type DecisionRow, type RowLimit, type RowStatus,
+  FILTER_KEYS, LINK_FILTERS, LINK_LABEL, ROW_ISSUES, ROW_STATUSES, ROW_STATUS_LABEL, hasFilters, headcountText, limitBasisText,
+  type ConsumablesDecisions, type DecisionFilters, type DecisionRow, type RowLimit, type RowStatus,
 } from "@/lib/domain/consumablesDecisions";
 import { LOG_IDS_MAX } from "@/lib/domain/consumables";
-import type { ConsumablesDecisionsView } from "@/lib/server/consumables";
+import type { ConsumablesDecisionsClient } from "@/lib/server/consumables";
 
 // The CONSUMABLES dashboard's filters (in the date bar, kept in the address)
 // and its detail table: a row per item × department, against the limit that
 // reads worst at the period's end — each opening onto its limits and its
 // hand-outs, with the way into the log.
 
-export function ConsumablesFilters({ filters: f, options }: { filters: DecisionFilters; options: DecisionOptions }) {
+export function ConsumablesFilters({ filters: f, options }: { filters: DecisionFilters; options: ConsumablesDecisions["options"] }) {
   const set = useSetParam();
   return (
     <>
@@ -38,17 +37,14 @@ export function ConsumablesFilters({ filters: f, options }: { filters: DecisionF
 const STATUS_TONE: Record<RowStatus, BadgeTone> = { over: "danger", near: "warning", within: "success", none: "neutral" };
 const STATUS_ICON: Record<RowStatus, string> = { over: "⚠", near: "◐", within: "✓", none: "—" };
 
-export function StatusBadge({ s }: { s: RowStatus }) {
-  return <Badge tone={STATUS_TONE[s]} className="whitespace-nowrap">{STATUS_ICON[s]} {ROW_STATUS_LABEL[s]}</Badge>;
+export function LimitStatusBadge({ s }: { s: RowStatus }) {
+  return <Badge tone={STATUS_TONE[s]} icon={STATUS_ICON[s]} className="whitespace-nowrap">{ROW_STATUS_LABEL[s]}</Badge>;
 }
-
-const left = (l: RowLimit) => (l.left < 0 ? 0 : l.left);
-const overBy = (l: RowLimit) => (l.left < 0 ? -l.left : 0);
 
 function LimitLine({ l, uom }: { l: RowLimit; uom: string | null }) {
   return (
     <li className="flex flex-wrap items-baseline gap-x-2">
-      <StatusBadge s={l.status} />
+      <LimitStatusBadge s={l.status} />
       <span className="font-semibold">{limitBasisText(l, uom)}</span>
       <span className="text-muted">{PERIOD_LABEL[l.period]} · {l.windowLabel}{l.toDate ? " to date" : ""}</span>
       <span className="tabnum"><b>{fmt(l.used)}</b> of {fmt(l.limit)}</span>
@@ -63,7 +59,7 @@ function RowDetail({ r, logHref, cols }: { r: DecisionRow; logHref: string; cols
       <td colSpan={cols} className="p-3 text-sm">
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="min-w-0">
-            <h4 className="font-bold mb-1">Limits that count it</h4>
+            <h3 className="font-bold mb-1">Limits that count it</h3>
             {r.limits.length === 0
               ? <p className="text-muted">{r.itemId === null ? "Typed by hand — not in the catalogue, so no limit counts it." : "None of the item's limits covers this department."}</p>
               : <ul className="space-y-1">{r.limits.map((l) => <LimitLine key={l.ruleId} l={l} uom={r.uom} />)}</ul>}
@@ -75,7 +71,7 @@ function RowDetail({ r, logHref, cols }: { r: DecisionRow; logHref: string; cols
             )}
           </div>
           <div className="min-w-0">
-            <h4 className="font-bold mb-1">Its hand-outs <span className="font-normal text-muted">({fmt(r.handOuts)}{r.handOuts > ROW_ISSUES ? `, the latest ${ROW_ISSUES}` : ""})</span></h4>
+            <h3 className="font-bold mb-1">Its hand-outs <span className="font-normal text-muted">({fmt(r.handOuts)}{r.handOuts > ROW_ISSUES ? `, the latest ${ROW_ISSUES}` : ""})</span></h3>
             <ul className="divide-y max-h-64 overflow-auto">
               {r.issues.map((i) => (
                 <li key={i.id} className="py-1 flex flex-wrap gap-x-2">
@@ -87,7 +83,7 @@ function RowDetail({ r, logHref, cols }: { r: DecisionRow; logHref: string; cols
                 </li>
               ))}
             </ul>
-            <Link className="text-brand-ink font-semibold hover:underline text-xs" href={logHref}>Open {r.issueIds.length > LOG_IDS_MAX ? `the latest ${LOG_IDS_MAX}` : "these"} on the log →</Link>
+            <Link className="text-brand-ink font-semibold hover:underline text-xs" href={logHref}>Open {r.handOuts > LOG_IDS_MAX ? `the latest ${LOG_IDS_MAX}` : "these"} on the log →</Link>
           </div>
         </div>
       </td>
@@ -95,18 +91,13 @@ function RowDetail({ r, logHref, cols }: { r: DecisionRow; logHref: string; cols
   );
 }
 
-export function ConsumablesDetailTable({ d, periodLabel }: { d: ConsumablesDecisionsView; periodLabel: string }) {
+export function ConsumablesDetailTable({ d, periodLabel }: { d: ConsumablesDecisionsClient; periodLabel: string }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const pathname = usePathname();
-  const params = useSearchParams();
+  const hrefWith = useHrefWith();
   const toggle = (k: string) => setOpen((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   // the row's own hand-outs on the log, by their ids
-  const logHref = (r: DecisionRow) => `/consumables?${new URLSearchParams({ from: d.fromISO, to: d.toISO, ids: r.issueIds.slice(0, LOG_IDS_MAX).join(",") })}`;
-  const clear = (() => {
-    const p = new URLSearchParams(params.toString());
-    for (const k of ["dept", "item", "link", "status"]) p.delete(k);
-    return `${pathname}${p.size ? `?${p}` : ""}#detail`;
-  })();
+  const logHref = (r: DecisionRow) => `/consumables?${new URLSearchParams({ from: d.fromISO, to: d.toISO, ids: r.logIds.join(",") })}`;
+  const clear = hrefWith(Object.fromEntries(FILTER_KEYS.map((k) => [k, null])), "detail");
   const COLS = 13;
 
   return (
@@ -148,14 +139,17 @@ export function ConsumablesDetailTable({ d, periodLabel }: { d: ConsumablesDecis
             <tbody>
               {d.rows.map((r) => {
                 const isOpen = open.has(r.key);
-                const l = r.limit;
+                const l = r.limits[0];
                 return (
                   <Fragment key={r.key}>
-                    <tr className="border-t align-middle cursor-pointer hover:bg-surface-2" onClick={() => toggle(r.key)}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(r.key); } }}
-                      tabIndex={0} aria-expanded={isOpen}>
+                    {/* the whole row opens it with the pointer; the item's button with the keyboard */}
+                    <tr className="border-t align-middle cursor-pointer hover:bg-surface-2" onClick={() => toggle(r.key)}>
                       <td className="p-2 min-w-[12rem]">
-                        <div className="font-semibold"><span className="text-muted me-1 no-print inline-block w-3" aria-hidden>{isOpen ? "▾" : "▸"}</span><bdi>{r.item}</bdi></div>
+                        <button type="button" className="font-semibold text-start" aria-expanded={isOpen}
+                          aria-label={`${r.item} · ${r.departmentLabel} — ${isOpen ? "hide" : "show"} its limits and hand-outs`}
+                          onClick={(e) => { e.stopPropagation(); toggle(r.key); }}>
+                          <span className="text-muted me-1 no-print inline-block w-3" aria-hidden>{isOpen ? "▾" : "▸"}</span><bdi>{r.item}</bdi>
+                        </button>
                         {r.code && <div className="text-xs text-muted ltr ps-4">{r.code}</div>}
                       </td>
                       <td className="p-2 text-xs">{r.uom ?? <span className="text-muted">—</span>}</td>
@@ -164,16 +158,16 @@ export function ConsumablesDetailTable({ d, periodLabel }: { d: ConsumablesDecis
                       <td className="p-2 text-xs min-w-[10rem]">{l ? limitBasisText(l, r.uom) : <span className="text-muted">—</span>}{r.limits.length > 1 && <div className="text-muted">+{r.limits.length - 1} more limit{r.limits.length > 2 ? "s" : ""}</div>}</td>
                       <td className="p-2 text-right tabnum whitespace-nowrap">{l ? <>{fmt(l.limit)}<div className="text-[11px] text-muted">{PERIOD_LABEL[l.period]}</div></> : "—"}</td>
                       <td className="p-2 text-right tabnum whitespace-nowrap">{l ? <><b>{fmt(l.used)}</b><div className="text-[11px] text-muted">{l.windowLabel}{l.toDate ? " to date" : ""}</div></> : "—"}</td>
-                      <td className="p-2 text-right tabnum">{l ? fmt(left(l)) : "—"}</td>
-                      <td className="p-2 text-right tabnum">{l ? (overBy(l) > 0 ? <b className="text-bad-fg">+{fmt(overBy(l))}</b> : "0") : "—"}</td>
-                      <td className="p-2"><StatusBadge s={r.status} /></td>
+                      <td className="p-2 text-right tabnum">{l ? fmt(l.left) : "—"}</td>
+                      <td className="p-2 text-right tabnum">{l ? (l.over > 0 ? <b className="text-bad-fg">+{fmt(l.over)}</b> : "0") : "—"}</td>
+                      <td className="p-2"><LimitStatusBadge s={r.status} /></td>
                       <td className="p-2 text-xs min-w-[9rem]">
                         {r.recordedOver > 0 ? <><b className="text-bad-fg">⚠ {fmt(r.recordedOver)}</b> <bdi className="text-muted">“{r.lastReason ?? "no reason"}”</bdi></> : <span className="text-muted">none flagged</span>}
                       </td>
                       <td className="p-2 text-xs min-w-[9rem]">
-                        {r.itemId !== null ? <Badge tone="success">✓ Linked</Badge> : (
+                        {r.itemId !== null ? <Badge tone="success" icon="✓">Linked</Badge> : (
                           <>
-                            <Badge tone="warning">⚠ Not linked</Badge>
+                            <Badge tone="warning" icon="⚠">Not linked</Badge>
                             {r.suggestion && <div className="text-muted mt-0.5">may be <bdi className="text-foreground">{r.suggestion.name}</bdi> — review</div>}
                           </>
                         )}

@@ -4,7 +4,7 @@ import { WORKER_SECTIONS } from "@/lib/domain/tanks";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { factoryDayISO, factoryDayStart, parseISODate } from "@/lib/domain/dates";
 import { consumablesStats, previousPeriod, type ConsumablesStats } from "@/lib/domain/consumablesStats";
-import { buildConsumablesDecisions, type ConsumablesDecisions, type DecisionFilters } from "@/lib/domain/consumablesDecisions";
+import { buildConsumablesDecisions, usesSpan, type ConsumablesDecisions, type DecisionFilters } from "@/lib/domain/consumablesDecisions";
 import { isPowderDepartment, POWDER_DEPARTMENTS } from "@/lib/domain/powderScrap";
 import {
   canEditIssue,
@@ -20,7 +20,7 @@ import {
 import { getAllWorkers } from "./workers";
 import { departmentsUsed, groupName, loadRawRules, loadUses } from "./consumableLimits";
 import { loadHeadcount } from "./consumableHeadcount";
-import { ALL_DEPARTMENTS, parseDepartments, windowsSpan } from "@/lib/domain/consumableLimits";
+import { ALL_DEPARTMENTS, parseDepartments, round3 } from "@/lib/domain/consumableLimits";
 
 // The CONSUMABLES tab's reads. Writes are app/consumables/actions.ts.
 //
@@ -330,6 +330,10 @@ export async function getConsumablesDashboard(fromISO: string, toISO: string): P
   );
 }
 
+/** What the dashboard's browser parts read — the rows, cards and charts;
+ *  the decisions list and the strip are drawn on the server. */
+export type ConsumablesDecisionsClient = Pick<ConsumablesDecisions, "fromISO" | "toISO" | "endsToday" | "filters" | "kpis" | "rows" | "trend" | "items" | "units" | "quality">;
+
 export interface ConsumablesDecisionsView extends ConsumablesDecisions {
   /** The catalogue's active items and their limits. */
   catalogue: { items: number; limits: number };
@@ -356,12 +360,15 @@ export async function getConsumablesDecisions(fromISO: string, toISO: string, to
   const { gte, lt } = periodBounds(fromISO, toISO);
   const prev = previousPeriod(fromISO, toISO);
   const prevBounds = periodBounds(prev.fromISO, prev.toISO);
-  const [rules, seen, headcount, catalogue, limits, rows, prevRows, first, last, scraps] = await Promise.all([
-    loadRawRules(),
+  const [[rules, uses], seen, headcount, catalogue, rows, prevRows, first, last, scraps] = await Promise.all([
+    // the limits, then the hand-outs they count — every window the page reads
+    loadRawRules().then(async (r) => {
+      const span = usesSpan(r, toISO, todayISO);
+      return [r, span ? await loadUses(span.from, span.to) : []] as const;
+    }),
     departmentsUsed(),
     loadHeadcount(),
     prisma.consumableItem.findMany({ select: { id: true, code: true, name: true, uom: true, active: true } }),
-    prisma.consumableLimit.count({ where: { item: { active: true } } }),
     prisma.consumableIssue.findMany({
       where: { deletedAt: null, issuedAt: { gte, lt } },
       orderBy: [{ issuedAt: "desc" }, { id: "desc" }],
@@ -370,7 +377,8 @@ export async function getConsumablesDecisions(fromISO: string, toISO: string, to
         overLimit: true, overLimitReason: true, recordedBy: true, worker: { select: { name: true, empId: true } },
       },
     }),
-    prisma.consumableIssue.findMany({
+    // a limit status is never compared with the period before
+    filters.status ? null : prisma.consumableIssue.findMany({
       where: { deletedAt: null, issuedAt: { gte: prevBounds.gte, lt: prevBounds.lt } },
       select: { item: true, itemId: true, department: true, issuedAt: true },
     }),
@@ -381,9 +389,6 @@ export async function getConsumablesDecisions(fromISO: string, toISO: string, to
       select: { department: true, kg: true },
     }),
   ]);
-  // every window that holds the period's last day, for every limit
-  const span = windowsSpan(rules, toISO);
-  const uses = span ? await loadUses(span.from, span.to) : [];
   const hourOf = (at: Date) => Number(CAIRO_HOUR.format(at)) % 24;
   // the period before is a comparison only if the log already ran for all of it
   const comparable = first !== null && factoryDayISO(first.issuedAt) <= prev.fromISO;
@@ -398,7 +403,7 @@ export async function getConsumablesDecisions(fromISO: string, toISO: string, to
         : { kind: "group" as const, label: groupName(r.recipientScope, r.department, r.recipientCount), count: r.recipientCount },
       overLimit: r.overLimit, overLimitReason: r.overLimitReason, recordedBy: r.recordedBy,
     })),
-    previous: comparable ? prevRows.map((r) => ({ item: r.item, itemId: r.itemId, department: r.department, dayISO: factoryDayISO(r.issuedAt), hour: hourOf(r.issuedAt) })) : null,
+    previous: comparable && prevRows ? prevRows.map((r) => ({ item: r.item, itemId: r.itemId, department: r.department, dayISO: factoryDayISO(r.issuedAt), hour: hourOf(r.issuedAt) })) : null,
     catalogue, rules, uses, seen,
     headcountOf: headcount.headcountOf, headcountSourceOf: headcount.sourceOf,
   }, filters);
@@ -407,16 +412,16 @@ export async function getConsumablesDecisions(fromISO: string, toISO: string, to
   const scope = filters.department && !isPowderDepartment(filters.department) ? "other" : "painting";
   const sections = scope === "other" ? [] : POWDER_DEPARTMENTS
     .filter((d) => !filters.department || d === filters.department)
-    .map((d) => ({ department: d, label: departmentLabel(d), kg: Math.round(scraps.filter((s) => s.department === d).reduce((n, s) => n + s.kg.toNumber(), 0) * 1000) / 1000 }))
+    .map((d) => ({ department: d, label: departmentLabel(d), kg: round3(scraps.filter((s) => s.department === d).reduce((n, s) => n + s.kg.toNumber(), 0)) }))
     .filter((s) => s.kg > 0);
   const weighings = scope === "other" ? 0 : scraps.filter((s) => !filters.department || s.department === filters.department).length;
 
   return {
     ...decisions,
-    catalogue: { items: catalogue.filter((c) => c.active).length, limits },
+    catalogue: { items: catalogue.filter((c) => c.active).length, limits: rules.length },
     logStart: first ? factoryDayISO(first.issuedAt) : null,
     lastIssueLabel: last ? factoryDateTimeLabel(last.issuedAt) : null,
     readAtLabel: factoryDateTimeLabel(new Date()),
-    powder: { scope, kg: Math.round(sections.reduce((n, s) => n + s.kg, 0) * 1000) / 1000, weighings, sections },
+    powder: { scope, kg: round3(sections.reduce((n, s) => n + s.kg, 0)), weighings, sections },
   };
 }

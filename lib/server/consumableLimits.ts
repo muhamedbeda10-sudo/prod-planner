@@ -5,11 +5,9 @@ import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { factoryDayISO, factoryDayStart } from "@/lib/domain/dates";
 import { departmentLabel, departmentWorkers } from "@/lib/domain/consumables";
 import { getAllWorkers } from "./workers";
-import { loadHeadcountOf } from "./consumableHeadcount";
-import { monthBounds, shiftMonth } from "@/lib/domain/consumableMonthly";
 import {
-  ALL_DEPARTMENTS, PERIOD_LABEL, candidateStanding, checkAgainstLimits, expandPerWorker, ruleLabel, coversDepartment, departmentsLabel, exceedancesByMonth, isLimitBasis, isLimitPeriod,
-  issueUses, parseDepartments, periodWindow, standings, windowsSpan, type LimitBasis, type LimitBreach, type LimitPeriod, type LimitRule, type LimitUse,
+  ALL_DEPARTMENTS, PERIOD_LABEL, candidateStanding, checkAgainstLimits, expandPerWorker, ruleLabel, coversDepartment, departmentsLabel, isLimitBasis, isLimitPeriod,
+  issueUses, parseDepartments, standings, windowsSpan, type LimitBasis, type LimitBreach, type LimitPeriod, type LimitRule, type LimitUse,
 } from "@/lib/domain/consumableLimits";
 
 // The CONSUMABLES catalogue and limits — the reads. The rules are pure in
@@ -166,157 +164,9 @@ export async function limitHints(itemId: number, department: string, workerIds: 
 
 // ---------------------------------------------------------------- the dashboard
 
-export interface AlarmRow {
-  ruleId: number;
-  itemId: number;
-  /** The departments the counted limit covers ("*" = every one). */
-  departments: typeof ALL_DEPARTMENTS | string[];
-  item: string;
-  code: string | null;
-  uom: string;
-  period: LimitPeriod;
-  basis: LimitBasis;
-  departmentsLabel: string;
-  windowLabel: string;
-  limit: number;
-  used: number;
-  ratio: number;
-  /** Per-person rules: the workers over their number. */
-  over: { name: string; empId: string; used: number }[];
-  /** Per-person rules: who took the most. */
-  top: { name: string; empId: string } | null;
-}
-
-export interface ExceedanceRow {
-  itemId: number;
-  /** The departments the counted limit covers ("*" = every one). */
-  departments: typeof ALL_DEPARTMENTS | string[];
-  item: string;
-  code: string | null;
-  period: LimitPeriod;
-  basis: LimitBasis;
-  departmentsLabel: string;
-  windowLabel: string;
-  windowFrom: string;
-  limit: number;
-  used: number;
-  worker: { name: string; empId: string } | null;
-}
-
-export interface OverLimitIssue {
-  id: number;
-  dayISO: string;
-  item: string;
-  qty: number;
-  department: string;
-  /** Who it went to: the worker, or the group's label ("Whole Welding TX (12)"). */
-  worker: { name: string; empId: string };
-  reason: string | null;
-  note: string | null;
-  recordedBy: string;
-}
-
-export interface LimitDashboard {
-  /** Every rule in its current window (this month, this quarter …). */
-  board: AlarmRow[];
-  /** Windows of the last EXCEEDANCE_MONTHS finished months (whatever the
-   *  slicer) that closed over their number — each counted with the workers
-   *  of its own month. The window still running is the board's. */
-  exceedances: ExceedanceRow[];
-  /** The months the exceedances look back over: "Jul 2026 – Sep 2026". */
-  exceedanceSpan: { from: string; to: string };
-  /** Hand-outs in the slicer's period recorded over a limit, with the reason. */
-  overLimitIssues: OverLimitIssue[];
-  /** Hand-outs in the period of items not in the catalogue — no limit counts them. */
-  uncatalogued: number;
-}
-
 /** A group row's short name where its workers are not listed. */
 export function groupName(scope: string, department: string, count: number): string {
   return scope === "department" ? `Whole ${departmentLabel(department)} (${count})` : `${count} workers`;
-}
-
-/** How many finished months "past months over the limit" looks back over. */
-export const EXCEEDANCE_MONTHS = 3;
-
-/** `flagged: false` leaves out the period's flagged hand-outs and the
- *  uncatalogued count (empty, zero) — for a page that reads its own. */
-export async function getLimitDashboard(fromISO: string, toISO: string, todayISO: string, opts: { flagged?: boolean } = {}): Promise<LimitDashboard> {
-  const flaggedToo = opts.flagged !== false;
-  const [items, raw, list, seen, headcountOf] = await Promise.all([
-    prisma.consumableItem.findMany({ select: { id: true, name: true, code: true, uom: true } }),
-    loadRawRules(),
-    getAllWorkers(),
-    departmentsUsed(),
-    loadHeadcountOf(),
-  ]);
-  // now: the list as it stands
-  const rules = expandPerWorker(raw, departmentWorkers(list), seen);
-  const itemOf = new Map(items.map((i) => [i.id, i]));
-
-  // the past: the last few finished months, widened to the whole windows
-  // they touch (a quarter that began before them)
-  const thisMonth = todayISO.slice(0, 7);
-  const pastFrom = monthBounds(shiftMonth(thisMonth, -EXCEEDANCE_MONTHS)).from;
-  const pastTo = monthBounds(shiftMonth(thisMonth, -1)).to;
-  const cur = windowsSpan(rules, todayISO);
-  const rangeFrom = [pastFrom, ...raw.map((r) => periodWindow(r.period, pastFrom).from)].sort()[0];
-  const spanFrom = [rangeFrom, cur?.from ?? rangeFrom].sort()[0];
-  const spanTo = [todayISO, cur?.to ?? todayISO].sort().at(-1)!;
-
-  const gte = factoryDayStart(fromISO)!;
-  const lt = factoryDayStart(addDaysISO(toISO, 1))!;
-  const [uses, flagged, uncatalogued] = await Promise.all([
-    loadUses(spanFrom, spanTo),
-    !flaggedToo ? [] : prisma.consumableIssue.findMany({
-      where: { deletedAt: null, overLimit: true, issuedAt: { gte, lt } },
-      orderBy: { issuedAt: "desc" },
-      take: 200,
-      select: { id: true, issuedAt: true, item: true, qty: true, department: true, overLimitReason: true, overLimitNote: true, recordedBy: true, recipientScope: true, recipientCount: true, worker: { select: { name: true, empId: true } } },
-    }),
-    flaggedToo ? prisma.consumableIssue.count({ where: { deletedAt: null, itemId: null, issuedAt: { gte, lt } } }) : 0,
-  ]);
-
-  const workerIds = [...new Set(uses.map((u) => u.workerId).filter((id) => id > 0))];
-  const workers = await prisma.worker.findMany({ where: { id: { in: workerIds } }, select: { id: true, name: true, empId: true } });
-  const workerOf = new Map(workers.map((w) => [w.id, { name: w.name, empId: w.empId }]));
-  const unknown = { name: "?", empId: "" };
-
-  const departmentsOf = new Map<number, AlarmRow["departments"]>(rules.map((r) => [r.id, r.departments === ALL_DEPARTMENTS ? ALL_DEPARTMENTS : [...r.departments]]));
-  const board: AlarmRow[] = standings(rules, uses, todayISO).map((s) => {
-    const it = itemOf.get(s.itemId);
-    return {
-      ruleId: s.ruleId, itemId: s.itemId, departments: departmentsOf.get(s.ruleId) ?? ALL_DEPARTMENTS, item: it?.name ?? "?", code: it?.code ?? null, uom: it?.uom ?? "",
-      period: s.period, basis: s.basis, departmentsLabel: s.departmentsLabel, windowLabel: s.windowLabel,
-      limit: s.limit, used: s.used, ratio: s.ratio,
-      over: s.over.map((o) => ({ ...(workerOf.get(o.workerId) ?? unknown), used: o.used })),
-      top: s.topWorkerId === null ? null : workerOf.get(s.topWorkerId) ?? null,
-    };
-  }).sort((a, b) => b.ratio - a.ratio || a.item.localeCompare(b.item));
-
-  // windows that ended inside the last few months — each with its month's workers
-  const ex: ExceedanceRow[] = exceedancesByMonth(raw, uses, pastFrom, pastTo, headcountOf, seen)
-    .filter((e) => e.window.to >= pastFrom && e.window.to <= pastTo)
-    .map((e) => {
-    const it = itemOf.get(e.itemId);
-    return {
-      itemId: e.itemId, departments: e.departments === ALL_DEPARTMENTS ? ALL_DEPARTMENTS : [...e.departments],
-      item: it?.name ?? "?", code: it?.code ?? null, period: e.period, basis: e.basis, departmentsLabel: e.departmentsLabel,
-      windowLabel: e.windowLabel, windowFrom: e.window.from, limit: e.limit, used: e.used,
-      worker: e.workerId === null ? null : workerOf.get(e.workerId) ?? unknown,
-    };
-  });
-
-  return {
-    board,
-    exceedances: ex,
-    exceedanceSpan: { from: pastFrom, to: pastTo },
-    overLimitIssues: flagged.map((f) => ({
-      id: f.id, dayISO: CAIRO_DAY(f.issuedAt), item: f.item, qty: f.qty.toNumber(), department: f.department,
-      worker: f.worker ?? { name: groupName(f.recipientScope, f.department, f.recipientCount), empId: "" }, reason: f.overLimitReason, note: f.overLimitNote, recordedBy: f.recordedBy,
-    })),
-    uncatalogued,
-  };
 }
 
 // ---------------------------------------------------------------- the Limits view

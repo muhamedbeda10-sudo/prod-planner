@@ -46,6 +46,6 @@ export async function loadHeadcount(): Promise<{ headcountOf: HeadcountOf; sourc
     getAllWorkers(),
   ]);
   const current = thisMonth();
-  const months = [...new Set(rows.map((r) => r.month))];
+  const months = [...new Set(rows.map((r) => r.month))].sort();
   return { headcountOf: headcountResolver(rows, departmentWorkers(workers), current), sourceOf: (month) => headcountSource(months, month, current) };
 }

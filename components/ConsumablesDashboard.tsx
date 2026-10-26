@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Package, Target } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ComposedChart, LabelList, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -8,8 +8,9 @@ import { EmptyState } from "@/components/primitives";
 import { FilterSelect } from "@/components/FilterControls";
 import { Bullet, CAT, ChartCard, Legend, TipBox, fmt, type TableRow } from "@/components/charts/kit";
 import { PERIOD_LABEL } from "@/lib/domain/consumableLimits";
-import { ROW_STATUS_LABEL, limitBasisText, type DecisionRow } from "@/lib/domain/consumablesDecisions";
-import type { ConsumablesDecisionsView } from "@/lib/server/consumables";
+import { ROW_STATUS_LABEL, limitBasisText, type DecisionRow, type RowLimit } from "@/lib/domain/consumablesDecisions";
+import { useHrefWith } from "@/components/useSetParam";
+import type { ConsumablesDecisionsClient } from "@/lib/server/consumables";
 
 // The CONSUMABLES dashboard's charts — one per question, nothing twice:
 //
@@ -31,13 +32,8 @@ type TipProps<T> = { active?: boolean; payload?: readonly { payload?: T }[] };
 
 /** The address with some parameters changed, landing on the detail table. */
 function useHref() {
-  const pathname = usePathname();
-  const params = useSearchParams();
-  return (set: Record<string, string | null>, hash = "detail") => {
-    const p = new URLSearchParams(params.toString());
-    for (const [k, v] of Object.entries(set)) if (v === null) p.delete(k); else p.set(k, v);
-    return `${pathname}?${p}${hash ? `#${hash}` : ""}`;
-  };
+  const hrefWith = useHrefWith();
+  return (set: Record<string, string | null>, hash = "detail") => hrefWith(set, hash);
 }
 
 function Box({ height, minWidth = 0, children }: { height: number; minWidth?: number; children: React.ReactElement }) {
@@ -54,12 +50,12 @@ const nothing = (periodLabel: string) => <EmptyState icon={Package} title={`Noth
 
 // ---------------------------------------------------------------- the trend
 
-export function ConsumablesTrend({ d, periodLabel, prevLabel }: { d: ConsumablesDecisionsView; periodLabel: string; prevLabel: string }) {
+export function ConsumablesTrend({ d, periodLabel, prevLabel }: { d: ConsumablesDecisionsClient; periodLabel: string; prevLabel: string }) {
   const router = useRouter();
   const href = useHref();
   const t = d.trend;
   const compared = t.buckets.some((b) => b.prev !== null);
-  const unit = t.unit === "hour" ? "hour" : t.unit === "day" ? "day" : "week";
+  const unit = t.unit;
   const rows: TableRow[] = t.buckets.map((b) => ({ [unit === "hour" ? "Hour" : unit === "day" ? "Day" : "Week of"]: unit === "hour" ? b.label : b.fromISO, "Hand-outs": b.issues, ...(compared ? { "Period before": b.prev ?? "" } : {}) }));
   const every = t.buckets.length > 16 ? Math.ceil(t.buckets.length / 16) - 1 : 0;
   const open = (b: (typeof t.buckets)[number]) => router.push(t.unit === "hour" ? href({}) : href({ from: b.fromISO, to: b.toISO }));
@@ -104,20 +100,22 @@ function limitTone(r: DecisionRow): "bad" | "warn" | null {
   return r.status === "over" ? "bad" : r.status === "near" ? "warn" : null;
 }
 
-export function ConsumablesBreakdown({ d, rank, periodLabel }: { d: ConsumablesDecisionsView; rank: string; periodLabel: string }) {
+export function ConsumablesBreakdown({ d, rank, periodLabel }: { d: ConsumablesDecisionsClient; rank: string; periodLabel: string }) {
   const router = useRouter();
   const href = useHref();
-  const limited = d.rows.filter((r) => r.limit).sort((a, b) => b.limit!.ratio - a.limit!.ratio || a.item.localeCompare(b.item)).slice(0, TOP);
-  const limitRows: TableRow[] = d.rows.filter((r) => r.limit).map((r) => ({
-    Item: r.item, Department: r.departmentLabel, Basis: limitBasisText(r.limit!, r.uom), Per: PERIOD_LABEL[r.limit!.period], Window: r.limit!.windowLabel,
-    Used: r.limit!.used, Limit: r.limit!.limit, UOM: r.uom ?? "", Status: ROW_STATUS_LABEL[r.status],
+  // each row with the limit that reads worst
+  const withLimit = d.rows.flatMap((r) => (r.limits[0] ? [{ r, l: r.limits[0] as RowLimit }] : []));
+  const limited = [...withLimit].sort((a, b) => b.l.ratio - a.l.ratio || a.r.item.localeCompare(b.r.item)).slice(0, TOP);
+  const limitRows: TableRow[] = withLimit.map(({ r, l }) => ({
+    Item: r.item, Department: r.departmentLabel, Basis: limitBasisText(l, r.uom), Per: PERIOD_LABEL[l.period], Window: l.windowLabel,
+    Used: l.used, Limit: l.limit, UOM: r.uom ?? "", Status: ROW_STATUS_LABEL[r.status],
   }));
 
   // one unit at a time, or the number of hand-outs — never a quantity across units
   const byUnit = rank !== "count" && d.units.includes(rank) ? rank : null;
-  const ranked = (byUnit ? d.items.filter((i) => i.uom === byUnit).sort((a, b) => b.qty - a.qty || a.item.localeCompare(b.item)) : d.items).slice(0, TOP);
-  const itemData = ranked.map((i) => ({ key: i.itemKey, name: i.item, value: byUnit ? i.qty : i.handOuts }));
-  const itemRows: TableRow[] = (byUnit ? d.items.filter((i) => i.uom === byUnit) : d.items).map((i) => ({ Item: i.item, UOM: i.uom ?? "(typed, no unit)", "Hand-outs": i.handOuts, Qty: i.qty }));
+  const inUnit = byUnit ? d.items.filter((i) => i.uom === byUnit).sort((a, b) => b.qty - a.qty || a.item.localeCompare(b.item)) : d.items;
+  const itemData = inUnit.slice(0, TOP).map((i) => ({ key: i.itemKey, name: i.item, value: byUnit ? i.qty : i.handOuts }));
+  const itemRows: TableRow[] = inUnit.map((i) => ({ Item: i.item, UOM: i.uom ?? "(typed, no unit)", "Hand-outs": i.handOuts, Qty: i.qty }));
   const longest = Math.min(22, Math.max(6, ...itemData.map((x) => x.name.length)));
 
   return (
@@ -130,11 +128,11 @@ export function ConsumablesBreakdown({ d, rank, periodLabel }: { d: ConsumablesD
             hint={d.kpis.handOuts === 0 ? undefined : "Typed items and departments no limit covers have nothing to be held against — they are listed under No limit counts."} />
         ) : (
           <ul className="space-y-3">
-            {limited.map((r) => (
+            {limited.map(({ r, l }) => (
               <li key={r.key}>
                 <Link href={href({ item: r.itemKey, dept: r.department })} className="block rounded-lg hover:bg-surface-2 -mx-1 px-1">
-                  <Bullet label={`${r.item} · ${r.departmentLabel}`} value={r.limit!.used} target={r.limit!.limit} max={Math.max(r.limit!.used, r.limit!.limit, 1e-9)} tone={limitTone(r)}
-                    text={`${r.status === "over" ? "⚠ " : ""}${fmt(r.limit!.used)} of ${fmt(r.limit!.limit)}${r.uom ? ` ${r.uom}` : ""} · ${r.limit!.windowLabel}${r.limit!.toDate ? " to date" : ""}`} />
+                  <Bullet label={`${r.item} · ${r.departmentLabel}`} value={l.used} target={l.limit} max={Math.max(l.used, l.limit, 1e-9)} tone={limitTone(r)}
+                    text={`${r.status === "over" ? "⚠ " : ""}${fmt(l.used)} of ${fmt(l.limit)}${r.uom ? ` ${r.uom}` : ""} · ${l.windowLabel}${l.toDate ? " to date" : ""}`} />
                 </Link>
               </li>
             ))}

@@ -345,7 +345,7 @@ export function Bullet({ label, value, target, max, text, tone }: { label: strin
 
 /** A current reading — what the figure says right now, not over the period. */
 export function NowBadge({ title = "As it stands now, not over the period picked" }: { title?: string }) {
-  return <Badge tone="info" title={title} className="shrink-0">● Now</Badge>;
+  return <Badge tone="info" icon="●" title={title} className="shrink-0">Now</Badge>;
 }
 
 export interface QualityItem {
@@ -366,7 +366,7 @@ export function DataQualityBar({ items, partial, about }: { items: QualityItem[]
   const ref = aiTargetRef({ kind: "figure", title: "Data quality", about: [about, ...items.map((i) => `${i.label}: ${typeof i.value === "string" || typeof i.value === "number" ? i.value : i.title ?? ""}`)].filter(Boolean).join(" · ") });
   return (
     <section ref={ref} aria-label="Data quality" className="bg-surface border rounded-xl px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-      <Badge tone={partial ? "warning" : "success"} className="shrink-0">{partial ? "⚠ Partial data" : "✓ Complete"}</Badge>
+      <Badge tone={partial ? "warning" : "success"} icon={partial ? "⚠" : "✓"} className="shrink-0">{partial ? "Partial data" : "Complete"}</Badge>
       {items.map((i) => (
         <span key={i.label} className="inline-flex items-baseline gap-1 min-w-0" title={i.title}>
           <span className="text-muted">{i.label}</span>

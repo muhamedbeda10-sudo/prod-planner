@@ -50,21 +50,19 @@ export function DecisionList({ actions, onOpen, nothing = NOTHING }: { actions: 
   );
 }
 
-/** What a list is: a decision (the Planning dashboard), an intervention
- *  (the Production dashboard) or the store's (the Consumables dashboard) —
- *  the button, the popup and the paper name it. */
-export type DecisionKind = "decision" | "intervention" | "store";
+/** What a list is: a decision (the Planning dashboard) or an intervention
+ *  (the Production dashboard) — the button, the popup and the paper name it. */
+export type DecisionKind = "decision" | "intervention";
 const KIND = {
   decision: { noun: "a decision", title: "Needs a decision today", button: "Decisions", nothing: NOTHING },
   intervention: { noun: "an intervention", title: "Needs intervention in production", button: "Interventions", nothing: "Nothing pressing on the floor." },
-  store: { noun: "a decision", title: "Needs a decision at the store", button: "Decisions", nothing: "Nothing needs a decision — every hand-out in scope is a catalogue item within its limits." },
 } as const;
 
 /** The list as the paper carries it — the popup's content, printed. */
-export function PrintDecisions({ actions, kind = "decision", nothing, notes = [] }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind; nothing?: string; notes?: readonly string[] }) {
+export function PrintDecisions({ actions, kind = "decision", title, nothing, notes = [] }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind; title?: string; nothing?: string; notes?: readonly string[] }) {
   return (
-    <section className="print-only" aria-label={KIND[kind].title}>
-      <h2>{KIND[kind].title}</h2>
+    <section className="print-only" aria-label={title ?? KIND[kind].title}>
+      <h2>{title ?? KIND[kind].title}</h2>
       <DecisionList actions={actions} nothing={nothing ?? KIND[kind].nothing} />
       <Notes notes={notes} />
     </section>
@@ -81,10 +79,18 @@ function Notes({ notes }: { notes: readonly string[] }) {
   );
 }
 
-export function CockpitDecisions({ actions, kind = "decision", notes = [] }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind; /** Lines under the list that need no one (not counted). */ notes?: readonly string[] }) {
+export function CockpitDecisions({ actions, kind = "decision", title, nothing, notes = [] }: {
+  actions: readonly (CockpitAction & { line?: string })[];
+  kind?: DecisionKind;
+  /** The popup's own title and empty line, where the kind's do not fit. */
+  title?: string;
+  nothing?: string;
+  /** Lines under the list that need no one (not counted). */
+  notes?: readonly string[];
+}) {
   const [open, setOpen] = useState(false);
   const ai = useAiPanel();
-  const k = KIND[kind];
+  const k = { ...KIND[kind], ...(title ? { title } : {}), ...(nothing ? { nothing } : {}) };
   const worst = actions.some((a) => a.tone === "bad") ? "bad" : actions.some((a) => a.tone === "warn") ? "warn" : actions.length > 0 ? "info" : null;
   const Icon = worst ? ACTION_ICON[worst] : CheckCircle2;
   const label = actions.length === 0 ? `Nothing needs ${k.noun} today` : `${actions.length} ${actions.length === 1 ? "thing needs" : "things need"} ${k.noun} today`;

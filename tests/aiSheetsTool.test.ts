@@ -233,12 +233,12 @@ describe("make_excel", () => {
 describe("the Consumables dashboard's sheet", () => {
   it("reads the screen's own address — the period and the filters — and writes its detail table", async () => {
     const limit = { ruleId: 1, sourceId: 1, basis: "pool", period: "month", qty: 10, perWorker: null, departmentsLabel: "Welding TX", shared: false,
-      window: { from: "2026-10-01", to: "2026-10-31" }, windowLabel: "Oct 2026", toDate: true, limit: 10, used: 12, left: -2, ratio: 1.2, status: "over", headcount: null };
+      window: { from: "2026-10-01", to: "2026-10-31" }, windowLabel: "Oct 2026", toDate: true, limit: 10, used: 12, left: 0, over: 2, ratio: 1.2, status: "over", headcount: null };
     h.decisions.mockResolvedValue({ rows: [
       { key: "c1|WeldingTX", itemKey: "c1", itemId: 1, item: "Cotton Gloves", code: "C-GLV", uom: "PAIR", department: "WeldingTX", departmentLabel: "Welding TX", qty: 12, handOuts: 3, lastDayISO: "2026-10-20",
-        recordedOver: 1, lastReason: "new crew", status: "over", limit, limits: [limit], suggestion: null, issues: [] },
+        recordedOver: 1, lastReason: "new crew", status: "over", limits: [limit], suggestion: null, issues: [], logIds: [] },
       { key: "t:rags|Store", itemKey: "t:rags", itemId: null, item: "Rags", code: null, uom: null, department: "Store", departmentLabel: "Store", qty: 4, handOuts: 1, lastDayISO: "2026-10-02",
-        recordedOver: 0, lastReason: null, status: "none", limit: null, limits: [], suggestion: { id: 9, name: "Cleaning Cloth", code: null, match: "similar" }, issues: [] },
+        recordedOver: 0, lastReason: null, status: "none", limits: [], suggestion: { id: 9, name: "Cleaning Cloth", code: null, match: "similar" }, issues: [], logIds: [] },
     ] });
     const r = await makeSheetTool.run({ sheet: "consumables_dashboard", view: "from=2026-10-01&to=2026-10-20&dept=WeldingTX&status=over&junk=1" }, ctxOf());
     expect(r.ok).toBe(true);

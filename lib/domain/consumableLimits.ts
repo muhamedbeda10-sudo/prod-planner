@@ -229,13 +229,8 @@ export function headcountResolver(
   }
   const months = [...byMonth.keys()].sort();
   return (month) => {
-    if (month >= currentMonth) return live;
-    let found: string | undefined;
-    for (const m of months) {
-      if (m > month) break;
-      found = m;
-    }
-    return found ? byMonth.get(found)! : live;
+    const s = headcountSource(months, month, currentMonth);
+    return s.kind === "recorded" || s.kind === "carried" ? byMonth.get(s.month)! : live;
   };
 }
 
@@ -248,12 +243,13 @@ export type HeadcountSource =
 
 /** Whose headcount a month is held to: the list as it stands (the current
  *  month or later), the month's own record, the latest record before it, or
- *  — before any was kept — the list as it stands again. The same choice as
- *  headcountResolver, said in words on the dashboard. */
-export function headcountSource(recordedMonths: Iterable<string>, month: string, currentMonth: string): HeadcountSource {
+ *  — before any was kept — the list as it stands again. headcountResolver
+ *  reads the numbers by it; the dashboard says it in words.
+ *  `recordedMonths`: the months with a record, sorted. */
+export function headcountSource(recordedMonths: readonly string[], month: string, currentMonth: string): HeadcountSource {
   if (month >= currentMonth) return { kind: "live" };
   let found: string | undefined;
-  for (const m of [...new Set(recordedMonths)].sort()) {
+  for (const m of recordedMonths) {
     if (m > month) break;
     found = m;
   }
@@ -313,7 +309,8 @@ export function windowsOverlapping(period: LimitPeriod, fromISO: string, toISO: 
 
 // ---------------------------------------------------------------- counting
 
-const round3 = (n: number) => Math.round(n * 1000) / 1000;
+/** A quantity to the gram / millilitre: three decimals. */
+export const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** What counts against a rule in one window (and, for a per-person rule, for one worker). */
 export function usageIn(rule: LimitRule, uses: readonly LimitUse[], w: { from: string; to: string }, workerId?: number): number {

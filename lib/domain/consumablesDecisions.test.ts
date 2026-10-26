@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildConsumablesDecisions, consumablesActions, filterParams, headcountText, itemKeyOf, limitBasisText, readDecisionFilters, ruleInScope, suggestCatalogueItem,
+  buildConsumablesDecisions, consumablesActions, filterParams, usesSpan, headcountText, itemKeyOf, limitBasisText, readDecisionFilters, ruleInScope, suggestCatalogueItem,
   NO_FILTERS, type DecisionCatalogueItem, type DecisionFilters, type DecisionInput, type DecisionIssue,
 } from "./consumablesDecisions";
 import { headcountResolver, headcountSource, issueUses, type LimitRule } from "./consumableLimits";
@@ -65,7 +65,7 @@ describe("a hand-out counts once", () => {
     expect(d.kpis.handOuts).toBe(2);
     expect(d.rows).toHaveLength(1);
     expect(d.rows[0]).toMatchObject({ handOuts: 2, qty: 26 });
-    expect(d.rows[0].issueIds).toHaveLength(2);
+    expect(d.rows[0].logIds).toHaveLength(2);
   });
 
   it("and the details add up to the cards and the trend", () => {
@@ -85,10 +85,10 @@ describe("items never mix", () => {
     expect(d.rows.map((r) => r.itemKey).sort()).toEqual(["c1", itemKeyOf(null, "cotton gloves")].sort());
     const typed = d.rows.find((r) => r.itemId === null)!;
     expect(typed.status).toBe("none");
-    expect(typed.limit).toBeNull();
+    expect(typed.limits).toEqual([]);
     expect(typed.uom).toBeNull();
     expect(typed.suggestion).toMatchObject({ id: 1, match: "same" });
-    expect(d.quality).toMatchObject({ total: 2, unlinked: 1, typedItems: 1, suggested: 1 });
+    expect(d.quality).toMatchObject({ total: 2, unlinked: 1 });
   });
 
   it("gives a quantity only for one item picked — never across units", () => {
@@ -118,7 +118,7 @@ describe("against the limits", () => {
     const issues = [issue({ dayISO: "2026-09-30", qty: 50 }), issue({ dayISO: "2026-10-05", qty: 6 }), issue({ dayISO: "2026-10-20", qty: 5 })];
     // the period ends on the 10th: the 20th is not counted yet
     const d = buildConsumablesDecisions(input(issues, { fromISO: "2026-09-25", toISO: "2026-10-10", rules: [rule({})] }), NO_FILTERS);
-    expect(d.rows[0].limit).toMatchObject({ windowLabel: "Oct 2026", used: 6, limit: 10, left: 4, status: "within", toDate: true });
+    expect(d.rows[0].limits[0]).toMatchObject({ windowLabel: "Oct 2026", used: 6, limit: 10, left: 4, over: 0, status: "within", toDate: true });
     expect(d.endsToday).toBe(false);
   });
 
@@ -128,7 +128,7 @@ describe("against the limits", () => {
     // the July hand-out is outside the period but inside the quarter
     const d = buildConsumablesDecisions(input([sept], { fromISO: "2026-09-01", toISO: "2026-09-30", uses: usesOf([july, sept]), rules: [rule({ period: "quarter", qty: 1 })] }), NO_FILTERS);
     expect(d.rows[0].handOuts).toBe(1);
-    expect(d.rows[0].limit).toMatchObject({ windowLabel: "Q3 2026", used: 2, limit: 1, status: "over", toDate: false });
+    expect(d.rows[0].limits[0]).toMatchObject({ windowLabel: "Q3 2026", used: 2, limit: 1, left: 0, over: 1, status: "over", toDate: false });
     expect(d.quality.pastWindows).toBe(true);
   });
 
@@ -141,8 +141,8 @@ describe("against the limits", () => {
       headcountOf: headcountResolver(rows, live, "2026-10"),
       headcountSourceOf: (m) => headcountSource(rows.map((r) => r.month), m, "2026-10"),
     }), NO_FILTERS);
-    expect(d.rows[0].limit).toMatchObject({ limit: 8, used: 7, status: "near", perWorker: { qty: 2, workers: 4 }, headcount: { kind: "recorded", month: "2026-09" } });
-    expect(limitBasisText(d.rows[0].limit!, "PAIR")).toBe("2 PAIR per worker × 4 workers");
+    expect(d.rows[0].limits[0]).toMatchObject({ limit: 8, used: 7, status: "near", perWorker: { qty: 2, workers: 4 }, headcount: { kind: "recorded", month: "2026-09" } });
+    expect(limitBasisText(d.rows[0].limits[0], "PAIR")).toBe("2 PAIR per worker × 4 workers");
     // the strip names the headcount the figures were counted with
     expect(d.quality.headcount).toEqual([{ kind: "recorded", month: "2026-09" }]);
   });
@@ -150,7 +150,7 @@ describe("against the limits", () => {
   it("counts a shared limit with every department it covers", () => {
     const issues = [issue({ qty: 6 }), issue({ department: "WeldingLV", qty: 5 })];
     const d = buildConsumablesDecisions(input(issues, { rules: [rule({ departments: ["WeldingTX", "WeldingLV"] })] }), NO_FILTERS);
-    expect(d.rows.every((r) => r.limit?.used === 11 && r.limit.shared && r.status === "over")).toBe(true);
+    expect(d.rows.every((r) => r.limits[0]?.used === 11 && r.limits[0].shared && r.status === "over")).toBe(true);
   });
 
   it("reads a limit of nothing with something used as the fullest of all", () => {
@@ -227,13 +227,25 @@ describe("whose headcount", () => {
 describe("what needs a decision", () => {
   const href = (set: Record<string, string | null>, hash = "") => `?${new URLSearchParams(Object.entries(set).filter((e): e is [string, string] => e[1] !== null))}${hash ? `#${hash}` : ""}`;
   const noPowder = { scope: "painting" as const, kg: 0, weighings: 0, sections: [] };
-  const alarm = { item: "Cotton Gloves", departmentsLabel: "Welding TX", windowLabel: "Oct 2026", used: 12, limit: 10, uom: "PAIR" };
+
+  it("counts the limits now with the same rule as the table, in the filters' scope, and the windows closed over", () => {
+    // today's month: 12 against 10 — over now; September closed at 11 of 10
+    const issues = [issue({ dayISO: "2026-10-05", qty: 12 })];
+    const sept = issue({ dayISO: "2026-09-10", qty: 11 });
+    const d = buildConsumablesDecisions(input(issues, { uses: usesOf([...issues, sept]), rules: [rule({})] }), NO_FILTERS);
+    expect(d.limits.overNow).toEqual([expect.objectContaining({ item: "Cotton Gloves", uom: "PAIR", used: 12, limit: 10, windowLabel: "Oct 2026" })]);
+    expect(d.limits.closedOver).toEqual([expect.objectContaining({ item: "Cotton Gloves", used: 11, windowLabel: "Sep 2026" })]);
+    expect(d.limits.closedSpan).toEqual({ from: "2026-07-01", to: "2026-09-30" });
+    const elsewhere = buildConsumablesDecisions(input(issues, { uses: usesOf([...issues, sept]), rules: [rule({})] }), { ...NO_FILTERS, department: "PaintingTX" });
+    expect(elsewhere.limits).toMatchObject({ overNow: [], closedOver: [] });
+  });
 
   it("puts the limits over now first, then what no limit counts — and says what needs no one apart", () => {
-    const d = buildConsumablesDecisions(input([issue({}), issue({ itemId: null, item: "cotton gloves" }), issue({ department: "PaintingTX" })], { rules: [rule({})] }), NO_FILTERS);
-    const { actions, notes } = consumablesActions(d, { overNow: [alarm], closedOver: [], closedSpan: "Jul 26 – Sep 26" }, noPowder, "this month", href);
+    const issues = [issue({ qty: 12 }), issue({ itemId: null, item: "cotton gloves" }), issue({ department: "PaintingTX" })];
+    const d = buildConsumablesDecisions(input(issues, { rules: [rule({})] }), NO_FILTERS);
+    const { actions, notes } = consumablesActions(d, noPowder, "this month", "Jul 26 – Sep 26", href);
     expect(actions.map((a) => a.tone)).toEqual(["bad", "warn", "warn"]);
-    expect(actions[0].text).toMatch(/^Now: Cotton Gloves · Welding TX — 12 of 10 PAIR \(Oct 2026\), 2 over$/);
+    expect(actions[0].text).toBe("Now: Cotton Gloves · Welding TX — 12 of 10 PAIR (Oct 2026), 2 over");
     expect(actions[1]).toMatchObject({ href: "?link=unlinked#detail" });
     expect(actions[1].text).toMatch(/1 with a catalogue item suggested to review/);
     expect(actions[2]).toMatchObject({ href: "?link=linked&status=none#detail" });
@@ -241,13 +253,30 @@ describe("what needs a decision", () => {
     expect(notes).toEqual(expect.arrayContaining([expect.stringMatching(/does not show the limits were kept/), "No powder scrap recorded this month.", expect.stringMatching(/No finished window/)]));
   });
 
-  it("names the rows over at a past period's end, and the scrap as weighed", () => {
+  it("names the rows over at a past period's end, the latest flag, and the scrap as weighed", () => {
     const d = buildConsumablesDecisions(input([issue({ qty: 20, overLimit: true, overLimitReason: "audit" })], { toISO: "2026-10-20", rules: [rule({})] }), NO_FILTERS);
-    const { actions, notes } = consumablesActions(d, null, { scope: "painting", kg: 2.5, weighings: 1, sections: [{ label: "Transformer Painting", kg: 2.5 }] }, "this month", href);
-    expect(actions[0]).toMatchObject({ tone: "bad", text: expect.stringContaining("could not load") });
+    const { actions, notes } = consumablesActions(d, { scope: "painting", kg: 2.5, weighings: 1, sections: [{ label: "Transformer Painting", kg: 2.5 }] }, "this month", "Jul 26 – Sep 26", href);
     expect(actions.some((a) => a.href === "?status=over#detail")).toBe(true);
     expect(actions.at(-1)!.text).toContain("“audit”");
     expect(notes[0]).toContain("2.5 kg recorded");
     expect(notes[0]).toContain("not a waste rate");
+  });
+
+  it("reads hand-outs over every window it counts, up to today", () => {
+    expect(usesSpan([], "2026-10-10", "2026-10-26")).toBeNull();
+    // the year that holds the past months, the quarter that holds the period's end
+    expect(usesSpan([{ period: "month" }, { period: "quarter" }], "2026-10-10", "2026-10-26")).toEqual({ from: "2026-07-01", to: "2026-10-26" });
+    expect(usesSpan([{ period: "year" }], "2026-10-10", "2026-10-26")).toEqual({ from: "2026-01-01", to: "2026-10-26" });
+  });
+});
+
+describe("whose headcount", () => {
+  it("names the month a per-worker limit was counted with", () => {
+    const months = ["2026-07", "2026-09"];
+    expect(headcountSource(months, "2026-10", "2026-10")).toEqual({ kind: "live" });
+    expect(headcountSource(months, "2026-09", "2026-10")).toEqual({ kind: "recorded", month: "2026-09" });
+    expect(headcountSource(months, "2026-08", "2026-10")).toEqual({ kind: "carried", month: "2026-07" });
+    expect(headcountSource(months, "2026-06", "2026-10")).toEqual({ kind: "fallback" });
+    expect(headcountText({ kind: "recorded", month: "2026-09" })).toBe("the headcount recorded for 2026-09");
   });
 });
