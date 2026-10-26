@@ -4,7 +4,7 @@ import { isItem } from "@/lib/domain/constants";
 import { LV_ITEM } from "@/lib/domain/lv";
 import { ITEM_PRODUCT, MIRROR_STATUS, isUntouched, mirrorFgCode, mirrorSource, sameProduct } from "@/lib/domain/odooMirror";
 
-// The ledger → ODOO tab bridge. Every place that writes a Painting or
+// The ledger → ODOO log bridge. Every place that writes a Painting or
 // ShotBlast row to the ledger calls `mirrorLedgerToOdoo` inside the same
 // transaction, so a closing and its Odoo row are one write. The two edit
 // paths of the Daily Logs call `syncMirroredOdoo`, which only moves a row

@@ -21,6 +21,7 @@ const SECTIONS: readonly Section<DashboardSection>[] = [
 
 export function DashboardSections({ current }: { current: DashboardSection }) {
   const line = useActiveLine();
-  const sections = line === "LV" ? SECTIONS.filter((s) => s.id !== "production") : SECTIONS;
+  // on the panels Production is offered only to the one already on it (an old link), so the strip still shows where they are
+  const sections = line === "LV" ? SECTIONS.filter((s) => s.id !== "production" || current === "production") : SECTIONS;
   return <SectionStrip sections={sections} current={current} label="Dashboards" />;
 }

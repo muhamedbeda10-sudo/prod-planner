@@ -36,7 +36,7 @@ export interface MaterialPageData {
   /** LV only: the thickness rows already recorded under each BOM, on any
    *  order — the template a new order of that BOM starts from. */
   lvTemplates: Record<string, { material: string; thicknessMm: number; sheetSize: string; sheetsPerUnit: number }[]>;
-  /** Each MO the ODOO tab carries (upper case) → its status there, so the
+  /** Each MO the ODOO log carries (upper case) → its status there, so the
    *  sheet's rows show which MOs the clerk has typed in. */
   odooByMo: Record<string, string>;
 }

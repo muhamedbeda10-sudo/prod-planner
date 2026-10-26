@@ -8,7 +8,7 @@ import { factoryDayISO } from "@/lib/domain/dates";
 import type { DowntimeCause } from "@/lib/domain/downtime";
 import type { ReadTool } from "./types";
 
-// The planner's KPIs for the assistant, from the loaders the Cockpit reads,
+// The planner's KPIs for the assistant, from the loaders the dashboards read,
 // so an answer never disagrees with the page: get_kpis is the cockpit as it
 // stands today (the floor's figures over its last recorded days, as its
 // tiles read them), get_floor_performance its Floor performance section for
@@ -24,7 +24,7 @@ const FLOOR_WEEK_FIGURES: [string, Picker][] = [["fabricationEfficiency", (p) =>
 export const getKpisTool: ReadTool<Record<string, never>> = {
   kind: "read",
   name: "get_kpis",
-  title: "Reading the planning cockpit",
+  title: "Reading the Planning dashboard",
   description:
     "The planner's KPIs as the Planning dashboard (the home page, /, the first place of the Dashboards tab) shows them, all in STANDARD HOURS (what the work is worth, never pieces) — the transformers only: " +
     "the decisions it flags today; the newest weekly plan — each stage's pieces due by today against done (adherence), and the lines behind with the stage they are stuck at (the oldest 20 of them; behindCount counts them all); " +
@@ -36,7 +36,7 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
     "For a person the Shifts screen is closed to, the shift log's figures (the centres, the losses) are left out.",
   schema: { type: "object", properties: {}, additionalProperties: false },
   tabs: ["dashboard"],
-  status: () => "Reading the planning cockpit",
+  status: () => "Reading the Planning dashboard",
   async run(_input, ctx) {
     const c = await getCockpit(ctx.now);
     // the shift log's figures stay with the people who see Shifts, as on the page
@@ -132,8 +132,8 @@ export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dep
     },
     additionalProperties: false,
   },
-  // the shift log's figures: closed to a person the Shifts screen is closed to
-  tabs: ["dashboard", "shifts"],
+  // the shift log's figures: closed with the Shifts screen, as the Production dashboard is
+  tabs: ["shifts"],
   status: () => "Reading the floor's performance",
   async run(input, ctx) {
     const req = floorRequest(input, factoryDayISO(ctx.now));
@@ -186,11 +186,11 @@ export const explainEfficiencyTool: ReadTool<{ centre?: WorkCentre; days?: numbe
     },
     additionalProperties: false,
   },
-  // the shift log's figures — as on the Cockpit, only for the people who see Shifts
-  tabs: ["dashboard", "shifts"],
+  // the shift log's figures — as on the Production dashboard, only for the people who see Shifts
+  tabs: ["shifts"],
   status: () => "Finding where the hours went",
   async run(i, ctx) {
-    // to the nearest of the stretches the Cockpit offers
+    // to the nearest of the stretches the Production dashboard offers
     const days = i.days ? [...LOSS_DAYS].sort((a, b) => Math.abs(a - i.days!) - Math.abs(b - i.days!))[0] : 14;
     const w = await getLossWaterfall({ centre: i.centre ?? null, days, now: ctx.now });
     const view = (x: typeof w.now) => ({
@@ -210,6 +210,8 @@ export const explainEfficiencyTool: ReadTool<{ centre?: WorkCentre; days?: numbe
         summary: [w.change.text, w.biggest].filter(Boolean).join(" "),
         note: "Stops are machine-hours turned into the man-hours they idled (the centre's people's hours against its machines'), never more than the hours not earned. 'Slower or not logged' is what remains — slower than the standard, or work done but not on the Daily log.",
       }),
+      // the card lives on the Production dashboard, the transformers' only
+      links: ctx.line === "LV" ? [] : [{ label: "Production dashboard", href: "/dashboards/production" }],
     };
   },
 };

@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 
 // Odoo's dashboard, in the Dashboards tab: closed quantities per product and
 // the close-out time, both lines. Seen with the ODOO screen (its tab id); the
-// close-out log stays on the ODOO tab.
+// close-out log is a view of Plan Tracker.
 export default async function OdooDashboardPage({
   searchParams,
 }: {

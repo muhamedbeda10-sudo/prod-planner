@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Layers } from "lucide-react";
+import { EmptyState } from "@/components/primitives";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { PageHead } from "@/components/ui";
 import { DashboardSections } from "@/components/DashboardSections";
@@ -31,14 +33,14 @@ export default async function MaterialDashboardPage({
   // punching, with no nesting sheet yet, so their side says so.
   if ((await getActiveLine()) === "LV") {
     return (
-      <div>
+      <div className="space-y-3">
         <RememberLastVisit storageKey="dashboards:material" />
         <DashboardSections current="material" />
         <PageHead title="Material" sub="Dashboard · LV Panels" />
-        <p className="text-sm text-muted bg-surface border rounded-xl px-4 py-3">
-          The sheet analytics are built on the nesting tracker and the cutting log, which the panels do not have yet — a panel is punched,
-          not nested. When the panels get a nesting sheet, their sheets, tonnes and thicknesses read here the same way.
-        </p>
+        <section className="bg-surface border rounded-xl">
+          <EmptyState icon={Layers} title="No sheet analytics for the panels yet"
+            hint="They are built on the nesting tracker and the cutting log, which the panels do not have — a panel is punched, not nested. When the panels get a nesting sheet, their sheets, tonnes and thicknesses read here the same way." />
+        </section>
       </div>
     );
   }
@@ -48,7 +50,7 @@ export default async function MaterialDashboardPage({
   const a = await getMaterialDashboard(days);
 
   return (
-    <div>
+    <div className="space-y-3">
       <RememberLastVisit storageKey="dashboards:material" />
       <DashboardSections current="material" />
       <PageHead title="Material" sub="Dashboard · Transformers · consumption booked when the MO is closed on Odoo">

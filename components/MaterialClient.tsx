@@ -25,7 +25,7 @@ import {
 } from "@/app/material/actions";
 
 // The MATERIAL tab — the planner's material sheet as one living table: no
-// month, each row known by Odoo's MO (the one the ODOO tab's clerk types), so
+// month, each row known by Odoo's MO (the one the ODOO log's clerk types), so
 // uploading the sheet again simply updates it. Older sheets filed under a plan
 // month were cleared when the table started.
 //
@@ -124,7 +124,7 @@ function LineFields({ line, knownBoms, knownCodes, disabled, product = "TR" }: {
       <Field hint="SOI — as the sheet writes it" label="SOI" className="w-28">
         <input name="soi" aria-label="SOI" defaultValue={line?.soi ?? ""} disabled={disabled} placeholder="S01194-12" className={`${F} ltr w-full`} />
       </Field>
-      <Field hint="Odoo's MO for this part — the ODOO tab finds the line by it" label="MO" className="w-40">
+      <Field hint="Odoo's MO for this part — the ODOO log finds the line by it" label="MO" className="w-40">
         <input name="mo" aria-label="MO" defaultValue={line?.mo ?? ""} disabled={disabled} placeholder="SF01/MO/20941" className={`${F} ltr w-full`} />
       </Field>
       <Field hint="BOM reference" label="BOM Ref" className="w-36">
@@ -222,17 +222,17 @@ function CellInput({ id, field, value, action, title, bold, step = "0.01", class
 
 // ---- one row of the table ----
 
-/** The MO cell: the sheet's MO and whether the ODOO tab carries it yet. */
+/** The MO cell: the sheet's MO and whether the ODOO log carries it yet. */
 function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
   if (!mo) return <span className="text-muted">—</span>;
   const status = odoo[mo.trim().toUpperCase()];
-  // one line: the MO, then where it stands on the ODOO tab as a compact badge
+  // one line: the MO, then where it stands on the ODOO log as a compact badge
   return (
     // the badge gives way to the MO (cut to an ellipsis), and both stay inside the cell
     <span className="flex items-center gap-1.5 min-w-0 overflow-hidden">
       <span className="shrink-0" title={mo}>{mo}</span>
       {status
-        ? <span className="pill pill-ok min-w-0" title={`On the ODOO tab — ${status}`}><Check size={10} className="shrink-0" aria-hidden /><span className="truncate">{status}</span></span>
+        ? <span className="pill pill-ok min-w-0" title={`On the ODOO log — ${status}`}><Check size={10} className="shrink-0" aria-hidden /><span className="truncate">{status}</span></span>
         : <span className="pill pill-muted min-w-0" title="No ODOO row carries this MO yet"><span className="truncate">no ODOO</span></span>}
     </span>
   );
@@ -539,7 +539,7 @@ function SoiGroupRow({ g, open, onToggle, odoo, showMonth, canEdit }: { g: Mater
               <span className="flex items-center gap-1.5 min-w-0">
                 <GroupInput ids={ids} field="mo" type="text" values={g.lines.map((l) => l.mo.trim())} title="MO" className="w-28" />
                 {sharedMo && (odoo[sharedMo.toUpperCase()]
-                  ? <span className="pill pill-ok shrink-0" title={`On the ODOO tab — ${odoo[sharedMo.toUpperCase()]}`}><Check size={10} aria-hidden /></span>
+                  ? <span className="pill pill-ok shrink-0" title={`On the ODOO log — ${odoo[sharedMo.toUpperCase()]}`}><Check size={10} aria-hidden /></span>
                   : <span className="pill pill-muted shrink-0" title="No ODOO row carries this MO yet">no ODOO</span>)}
               </span>
             ) : <MoCell mo={sharedMo} odoo={odoo} />
@@ -548,7 +548,7 @@ function SoiGroupRow({ g, open, onToggle, odoo, showMonth, canEdit }: { g: Mater
               {g.mos.length} MOs
               <span
                 className={`pill ${onOdoo.length === g.mos.length ? "pill-ok" : onOdoo.length ? "pill-warn" : "pill-muted"}`}
-                title={onOdoo.length ? `On the ODOO tab: ${onOdoo.join(", ")}` : "No ODOO row carries these MOs yet"}
+                title={onOdoo.length ? `On the ODOO log: ${onOdoo.join(", ")}` : "No ODOO row carries these MOs yet"}
               >
                 {onOdoo.length > 0 && <Check size={10} aria-hidden />}ODOO {onOdoo.length}/{g.mos.length}
               </span>
@@ -569,7 +569,7 @@ function SoiGroupRow({ g, open, onToggle, odoo, showMonth, canEdit }: { g: Mater
             <span className="font-semibold text-muted tabnum">{n} line{n === 1 ? "" : "s"}</span>
             {g.mos.length > 1 && shownMos.map((mo) => (
               <span key={mo} className="inline-flex items-center gap-1 text-muted">
-                {mo}{odoo[mo.toUpperCase()] && <Check size={11} className="text-ok-fg" aria-label="on the ODOO tab" />}
+                {mo}{odoo[mo.toUpperCase()] && <Check size={11} className="text-ok-fg" aria-label="on the ODOO log" />}
               </span>
             ))}
             {g.mos.length > shownMos.length && <span className="text-muted" title={g.mos.slice(4).join(", ")}>+{g.mos.length - shownMos.length} more</span>}
@@ -933,7 +933,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
   lines: MaterialLineView[]; totals: MaterialTotal[]; month: string; knownBoms: string[]; canEdit: boolean;
   /** The page's Export Excel, set in the action toolbar beside upload and add. */
   exportButton?: React.ReactNode;
-  /** MO (upper case) → its status on the ODOO tab. */
+  /** MO (upper case) → its status on the ODOO log. */
   odooByMo?: Record<string, string>;
   /** Which product line's nesting this is — the transformer part presets are only offered on theirs. */
   product?: ProductLine;
@@ -1053,7 +1053,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                 <tr className="text-left align-bottom">
                   <Th label="MTR #" full="MTR Request #" hint="The material request the sheets were drawn on" group="source" className={stickCls(0)} style={stickStyle(0)} />
                   <Th label="SOI" group="source" className={stickCls(1)} style={stickStyle(1)} />
-                  <Th label="MO" hint="Odoo's MO for the part — the ODOO tab finds the line by it" group="source" className={stickCls(2)} style={stickStyle(2)} />
+                  <Th label="MO" hint="Odoo's MO for the part — the ODOO log finds the line by it" group="source" className={stickCls(2)} style={stickStyle(2)} />
                   <Th label="BOM" full="BOM Ref" group="source" />
                   <Th label="Units" unit="pcs" full="Quantity of Units" group="source" num />
                   <Th label="Part code" full="Part Code" group="source" />

@@ -91,7 +91,7 @@ export interface TraceResult {
   }[];
   ledgerCount: number;
   orderPlans: string[]; // labels of the plans this code was planned in
-  /** The ODOO tab's rows born from this order's closings (painting / shot
+  /** The ODOO log's rows born from this order's closings (painting / shot
    *  blast) — Odoo's MO the clerk typed, the qty, and whether it is closed. */
   odoo: TraceOdooRow[];
 }
@@ -106,7 +106,7 @@ export interface TraceOdooRow {
   status: string;
   done: boolean;
   /** The moment it was closed, as an ISO instant (unlike `dateISO`, which is a
-   *  day) — formatted on the factory clock, so it reads as the ODOO tab does. */
+   *  day) — formatted on the factory clock, so it reads as the ODOO log does. */
   doneAtISO: string | null;
   fgCode: string;
   by: string | null;
@@ -258,7 +258,7 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
 
   const remarksByMo = new Map(masters.map((m) => [m.mo, (m.remarks ?? "").trim()]));
 
-  // ---- the ODOO tab's rows born from these closings ----
+  // ---- the ODOO log's rows born from these closings ----
   const itemOfLedger = new Map(handover.map((h) => [h.id, h.item]));
   const odooRows = handover.length
     ? await prisma.odooEntry.findMany({

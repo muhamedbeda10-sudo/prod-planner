@@ -190,7 +190,7 @@ export async function addHandover(formData: FormData): Promise<ActionResult> {
     const ledger = await tx.handoverEntry.create({
       data: { date, dept, bom: resolved.bom, bomRaw: resolved.bomRaw, item, qty, planNo, source: "manual", createdBy: guard.user?.name ?? null },
     });
-    // a painting row typed here is a closing like any other — ODOO tab too
+    // a painting row typed here is a closing like any other — ODOO log too
     await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
   });
   revalidateEverywhere();

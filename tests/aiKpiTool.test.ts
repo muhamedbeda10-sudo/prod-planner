@@ -120,6 +120,6 @@ describe("get_floor_performance", () => {
   });
 
   it("is closed with the Shifts screen", () => {
-    expect(getFloorPerformanceTool.tabs).toEqual(["dashboard", "shifts"]);
+    expect(getFloorPerformanceTool.tabs).toEqual(["shifts"]);
   });
 });

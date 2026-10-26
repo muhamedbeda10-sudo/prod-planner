@@ -10,7 +10,7 @@ import { DEFAULT_LINE, type ProductLine } from "@/lib/domain/lines";
 // It exists because of a bug worth remembering: the screens' filters live in
 // the browser's storage under one key each, and a filter set on the
 // transformers' side stayed set when the toggle moved to the panels. A Product
-// filter reading "Tank" emptied the panels' ODOO tab, and the daily log's Item
+// filter reading "Tank" emptied the panels' ODOO log, and the daily log's Item
 // filter — hidden on the panels — kept filtering for "CF" with no control on
 // screen to clear it. A closing that HAD been recorded looked like it never
 // arrived. Keying the storage by line keeps each line's filters its own.

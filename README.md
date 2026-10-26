@@ -26,7 +26,7 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 "Done" everywhere = Welding output; Cut gates Welding.
 
 ## Navigation
-Tabs, one per QUESTION rather than per screen — Worklist · Dashboards · Material · Shifts · Plan
+Tabs, one per QUESTION rather than per screen — Floor (the worklists) · Dashboards · Material · Shifts · Plan
 Tracker. **Dashboards** holds every dashboard of the app, one place each, behind a strip at the top of
 its pages (`components/DashboardSections.tsx`): **Planning** (`/`, the home page — the planner's one page
 across departments, feature 13; on the LV line the panels' own dashboard), **Production**
@@ -174,7 +174,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    BOM (past ±15% amber, past ±30% red, with a banner counting the lines off), so a nesting far from
    its BOM is caught before it is booked. The row's own month is used when the
    tracker has it, else the newest month that does; a line not nested yet copies its BOM number and
-   says so. A **Dashboard** view (Log · Dashboard switch) shows what was logged per day by
+   says so. The **ODOO dashboard** (`/dashboards/odoo`, in the Dashboards tab) shows what was logged per day by
    product — a card per product (the sheet's six and any other product logged, by its own name)
    with its trend and change vs the previous period — **each card a filter**: a click narrows every
    chart, figure, table and export below to that product (`product=` in the address, beside the BOM),
@@ -389,8 +389,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
    The item is typed or **pasted** (the catalogue suggested as you type, the department's items first): text naming a
    catalogue item by its name or code — case, spacing and a size's × / x aside — is linked to it; anything else is recorded as
    typed and has no limit, shows where the limit stands as the quantity is typed, and a hand-out that would take a limit over is refused
-   until the recorder gives a **reason** — then saved flagged "over limit" with the reason and the breach. The Dashboard
-   opens with the **alarms** — a limit **past its number** in the running month (or its months so far), nothing less —
+   until the recorder gives a **reason** — then saved flagged "over limit" with the reason and the breach. The
+   **Consumables dashboard** (`/dashboards/consumables`, in the Dashboards tab) opens with the **alarms** — a limit **past its number** in the running month (or its months so far), nothing less —
    then the finished months that ended over, and the hand-outs recorded over a limit.
    **Monthly review** (the foot of the Dashboard, with its own month picker and its own Excel) — the month-end review: every
    catalogue item's calendar month against its monthly limit (a limit of several months counted over its months so far

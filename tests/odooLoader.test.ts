@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// ---- the ODOO tab's reads (lib/server/odoo.ts) -------------------------------
+// ---- the ODOO log's reads (lib/server/odoo.ts) -------------------------------
 // The day picker's days come grouped from SQL, not from every row deduped in
 // memory; and the material lookup of a day's MOs is two bounded queries — the
 // family's MOs by name plus the backorders found by prefix in JS — never a

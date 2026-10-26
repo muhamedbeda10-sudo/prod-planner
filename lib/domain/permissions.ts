@@ -63,9 +63,9 @@ export const PERM_CATEGORIES: PermCategory[] = [
   {
     name: "Odoo",
     perms: [
-      { key: "odoo.edit", label: "Odoo close-out log — record", desc: "Add and edit the rows on the ODOO tab — the daily log of which Odoo manufacturing orders were closed and what Odoo answered" },
-      { key: "odoo.needMo", notify: true, label: "Odoo alerts — rows that need an MO", desc: "Not an access right but a notification: a count on the ODOO tab and a popup whenever a row lands on the log without Odoo's MO number (a painting / shot-blast closing), with a box to type the MO right there. Ticked per person, admins included." },
-      { key: "odoo.alerts", notify: true, label: "Odoo alerts — rows ready to close", desc: "Not an access right but a notification: a count on the ODOO tab and a popup whenever a row has Odoo's MO and is still open, closable from the popup. Ticked per person, admins included." },
+      { key: "odoo.edit", label: "Odoo close-out log — record", desc: "Add and edit the rows on the ODOO log — the daily log of which Odoo manufacturing orders were closed and what Odoo answered" },
+      { key: "odoo.needMo", notify: true, label: "Odoo alerts — rows that need an MO", desc: "Not an access right but a notification: a count on the ODOO log and a popup whenever a row lands on the log without Odoo's MO number (a painting / shot-blast closing), with a box to type the MO right there. Ticked per person, admins included." },
+      { key: "odoo.alerts", notify: true, label: "Odoo alerts — rows ready to close", desc: "Not an access right but a notification: a count on the ODOO log and a popup whenever a row has Odoo's MO and is still open, closable from the popup. Ticked per person, admins included." },
     ],
   },
   {
@@ -98,7 +98,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
       { key: "shifts.lv", label: "Shift log — LV panels", desc: "Record who worked on the panels each day (laser, punching, bending, welding, painting), their shift and overtime" },
       { key: "lv.status", label: "LV orders — close / reopen / hold", desc: "Close finished panel orders, reopen them, and put panel orders on hold or release them" },
       { key: "lv.import", label: "LV plans — import", desc: "Import the panels' monthly plan (with the LV toggle on)" },
-      { key: "lv.odoo", label: "LV Odoo close-out log — record", desc: "Add and edit the ODOO tab's rows while the LV toggle is on" },
+      { key: "lv.odoo", label: "LV Odoo close-out log — record", desc: "Add and edit the ODOO log's rows while the LV toggle is on" },
       { key: "lv.material", label: "LV material — record", desc: "Add and edit the MATERIAL tab's lines while the LV toggle is on" },
     ],
   },

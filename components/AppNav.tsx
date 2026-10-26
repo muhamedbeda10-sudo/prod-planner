@@ -34,7 +34,7 @@ type Item = {
   also?: string[];
 };
 
-// The three department worklists live under ONE "Worklist" tab — clicking it
+// The department worklists live under ONE "Floor" tab — clicking it
 // expands them inline in the bar; picking one navigates and collapses again.
 // Leak test sits where it does on the shop floor: between welding and painting.
 const WORKLIST_DEPTS = [
@@ -189,9 +189,9 @@ export function AppNav({
   /** With tracking off, the Leak Test and Barcode tabs are not part of the app. */
   tankTracking?: boolean;
   /** One switch for the worklists, the machines and machine planning: off, the
-   *  Worklist tab and the two machine pages are gone. */
+   *  Floor tab and the two machine pages are gone. */
   machinePlanning?: boolean;
-  /** The subscribed person's "ready to close in Odoo" alert: its count on the ODOO tab, and the popup. */
+  /** The subscribed person's "ready to close in Odoo" alert: its count on the Plan Tracker tab (which holds the ODOO log), and the popup. */
   odooAlerts?: { enabled: boolean; count: number };
   /** The product line every tab is showing — transformers or LV panels. */
   line?: ProductLine;
@@ -210,7 +210,7 @@ export function AppNav({
   const aiOn = aiPage || !!panel?.shown;
   const inboxPanel = useInboxPanel();
   const alerts = useOdooAlerts(odooAlerts.enabled, odooAlerts.count, user.id);
-  // the ODOO tab lights up with the rows waiting to be closed; its badge
+  // the Plan Tracker tab (the ODOO log is one of its views) lights up with the rows waiting to be closed; its badge
   // opens the popup rather than the page
   // the same count badge as every other count in the bar — it opens the popup
   // rather than the page
@@ -227,14 +227,14 @@ export function AppNav({
   );
 
   // A user who can edit exactly ONE department jumps straight to it from the
-  // Worklist tab; everyone else (admins, multi-dept, view-only) expands the
+  // Floor tab; everyone else (admins, multi-dept, view-only) expands the
   // tab into the three departments inline.
   // the leak test and the barcodes are the tanks' — with tracking off, or the
   // panels on screen, they are not part of the app
   const tankTabs = tankTracking && line !== "LV";
-  // the simulator models the transformers' plan only: on the panels it is not a view of Plan Tracker
+  // the simulator and the Production dashboard are the transformers' only: on the panels no tab holds them
   const ofLine = (items: Item[]): Item[] =>
-    line !== "LV" ? items : items.map((l) => (l.href === "/tracker" ? { ...l, also: (l.also ?? []).filter((h) => !TR_VIEWS.has(h)) } : l));
+    line !== "LV" ? items : items.map((l) => (l.also ? { ...l, also: l.also.filter((h) => !TR_VIEWS.has(h)) } : l));
   // the screens the owner switched off for this account leave the menus too
   const canSee = useCanSee();
   const worklistDepts = (line === "LV" ? LV_WORKLIST_DEPTS : WORKLIST_DEPTS).filter((d) => (tankTabs || !TANK_ONLY.has(d.href)) && canSee(d.href));
@@ -374,7 +374,7 @@ export function AppNav({
           {/* desktop: centered tabs */}
           <nav ref={navRef} className="hidden min-[1440px]:block flex-1 overflow-x-auto overflow-y-hidden">
             <ul className="flex items-center justify-center gap-1 w-max min-w-full">
-              {/* Worklist — opens the three departments in a panel BELOW the tab.
+              {/* Floor (the worklists) — opens the departments in a panel BELOW the tab.
                   They used to unroll sideways inside the bar, which shoved every
                   tab to its right along and left the bar a different width open
                   than closed. */}
@@ -383,7 +383,7 @@ export function AppNav({
                 {singleDeptHref ? (
                   <Link href={singleDeptHref} className={`nav-tab ${isActive("/worklist") ? "nav-tab-active" : ""}`}>
                     <ListChecks size={15} className="shrink-0" />
-                    Worklist
+                    Floor
                   </Link>
                 ) : (
                   <>
@@ -402,7 +402,7 @@ export function AppNav({
                       className={`nav-tab ${isActive("/worklist") || worklistOpen ? "nav-tab-active" : ""}`}
                     >
                       <ListChecks size={15} className="shrink-0" />
-                      Worklist
+                      Floor
                       <ChevronDown size={13} className={`shrink-0 transition-transform duration-150 ${worklistOpen ? "rotate-180" : ""}`} />
                     </button>
                     {worklistOpen && wlPos && (
@@ -435,7 +435,7 @@ export function AppNav({
                   <Link href={l.href} className={`nav-tab ${isActive(l.href, l.match, l.also) ? "nav-tab-active" : ""}`}>
                     <l.icon size={15} className="shrink-0" />
                     {l.label}
-                    {(l.href === "/odoo" || l.also?.includes("/odoo")) && odooBadge()}
+                    {(l.href === "/odoo" || l.also?.includes("/odoo")) && canSee("/odoo") && odooBadge()}
                   </Link>
                 </li>
               ))}

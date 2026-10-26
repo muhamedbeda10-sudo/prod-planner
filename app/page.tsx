@@ -23,9 +23,20 @@ export const dynamic = "force-dynamic";
 // are the transformers'; the LV panels keep their own dashboard here. How the
 // floor worked is the Production dashboard (/dashboards/production).
 export default async function Home({ searchParams }: { searchParams: Promise<{ from?: string | string[]; to?: string | string[]; dept?: string | string[] }> }) {
-  await guardTab("/");
   const sp = await searchParams;
-  if ((await getActiveLine()) === "LV") {
+  const lv = (await getActiveLine()) === "LV";
+  // the floor's department filter moved with it to the Production dashboard —
+  // an old link (or the assistant's) lands there, period kept. Only the
+  // department marks one: the panels' dashboard here reads ?from=&to= too,
+  // and a period carried over by a switch of line must not leave Planning.
+  // Before the home page's own guard, as the Production page guards itself.
+  if (!lv && typeof sp.dept === "string") {
+    const q = new URLSearchParams();
+    for (const k of ["from", "to", "dept"] as const) if (typeof sp[k] === "string") q.set(k, sp[k] as string);
+    redirect(`/dashboards/production?${q}`);
+  }
+  await guardTab("/");
+  if (lv) {
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="dashboard:last" />
@@ -33,13 +44,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ f
         <LvDashboard today={factoryDayISO(new Date())} d={await getLvDashboard({ from: typeof sp.from === "string" ? parseISODate(sp.from) : null, to: typeof sp.to === "string" ? parseISODate(sp.to) : null })} />
       </div>
     );
-  }
-  // the floor's period and department moved with it to the Production
-  // dashboard — an old link (or the assistant's) lands there as it was
-  if (sp.from || sp.to || sp.dept) {
-    const q = new URLSearchParams();
-    for (const k of ["from", "to", "dept"] as const) if (typeof sp[k] === "string") q.set(k, sp[k] as string);
-    redirect(`/dashboards/production${q.size ? `?${q}` : ""}`);
   }
 
   const me = await getCurrentUser();
