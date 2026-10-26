@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ACCESS_PERM_KEYS, AI_PERM_GROUPS, AI_PERM_KEYS, PERMISSIONS, PERM_ALERTS, PERM_KEYS, PERM_OTHER, PERM_TABLES, bayPermKeys, deptPermKey, ledgerPermKey, linePermKey, machineLinePermKey, mayScheduleLine, parsePerms, serializePerms, shiftPermKey, trackerPermKey, withAiPerms, withoutAiChange } from "./permissions";
+import { ACCESS_PERM_KEYS, AI_PERM_GROUPS, AI_PERM_KEYS, PERMISSIONS, defaultLineOf, PERM_ALERTS, PERM_KEYS, PERM_OTHER, PERM_TABLES, bayPermKeys, deptPermKey, ledgerPermKey, linePermKey, machineLinePermKey, mayScheduleLine, parsePerms, serializePerms, shiftPermKey, trackerPermKey, withAiPerms, withoutAiChange } from "./permissions";
 import { DELIVERED_STAGE, DEPTS, ITEMS, SHOTBLAST_STAGE } from "./constants";
 import { LV_CHAIN, LV_PRODUCTS } from "./lv";
 import { MANUAL_ITEM } from "./manualJob";
@@ -180,5 +180,30 @@ describe("the assistant's keys and the rest", () => {
     // Users & Permissions: everything but the assistant's
     expect(withoutAiChange(stored, ["welding.edit", "ai.act.delete"])).toBe("welding.edit,ai.act.tracker,ai.automations");
     expect(withoutAiChange(stored, [])).toBe("ai.act.tracker,ai.automations");
+  });
+});
+
+describe("the line a screen opens on for a person", () => {
+  it("is the transformers' for admins, whatever they hold", () => {
+    expect(defaultLineOf(["lv.punching"], true)).toBe("TR");
+  });
+
+  it("is the panels' for someone who records only on the panels", () => {
+    expect(defaultLineOf(["lv.punching", "lv.bending"], false)).toBe("LV");
+    expect(defaultLineOf(["shifts.lv", "consumables.edit", "odoo.alerts"], false)).toBe("LV");
+    expect(defaultLineOf(["lv.import", "lv.material"], false)).toBe("LV");
+  });
+
+  it("is the transformers' as soon as a transformer key is held too", () => {
+    expect(defaultLineOf(["lv.welding", "welding.edit"], false)).toBe("TR");
+    expect(defaultLineOf(["lv.status", "tracker.status"], false)).toBe("TR");
+    expect(defaultLineOf(["lv.material", "material.edit"], false)).toBe("TR");
+    expect(defaultLineOf(["lv.import", "plans.import"], false)).toBe("TR");
+    expect(defaultLineOf(["lv.odoo", "odoo.edit"], false)).toBe("TR");
+  });
+
+  it("is the transformers' for someone tied to neither line", () => {
+    expect(defaultLineOf([], false)).toBe("TR");
+    expect(defaultLineOf(["consumables.edit", "stock.edit"], false)).toBe("TR");
   });
 });

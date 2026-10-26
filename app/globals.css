@@ -921,7 +921,7 @@ div.overflow-x-auto > table thead {
 .seg > a, .seg > button { padding: 0.25rem 0.7rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: var(--muted); transition: color 0.12s ease, background-color 0.12s ease; }
 .seg > a:hover, .seg > button:hover { color: var(--foreground); }
 .seg > .on, .seg > .on:hover { background: var(--brand-fill); color: #fff; }
-/* the small switch: the bar's TR / LV */
+/* the small switch */
 .seg-sm { border-radius: 7px; }
 .seg-sm > a, .seg-sm > button { padding: 0.1rem 0.45rem; border-radius: 5px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em; }
 .viz .recharts-cartesian-grid line { stroke: var(--border); }
@@ -1647,7 +1647,9 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 @media (max-width: 639px) { .login-card { padding: 28px 20px; } }
 
 /* ---- the phone's navigation drawer ---- */
-.drawer-label { padding: 14px 16px 4px; font-size: var(--fs-label); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.drawer-label, .nav-drop-label { padding: 14px 16px 4px; font-size: var(--fs-label); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+/* a group's name inside a nav panel — the Floor tab's two lines */
+.nav-drop-label { padding: var(--sp-2) var(--sp-3) var(--sp-1); }
 .drawer-link { display: flex; align-items: center; gap: 12px; width: calc(100% - 16px); margin: 0 8px; padding: 10px 12px; border-radius: var(--r-md); font-size: 15px; font-weight: 600; text-align: start; color: var(--foreground); transition: background-color 0.12s ease, color 0.12s ease; }
 .drawer-link:hover { background: var(--surface-2); }
 .drawer-link > svg { flex-shrink: 0; color: var(--muted); }

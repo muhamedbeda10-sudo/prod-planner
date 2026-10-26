@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { getFloorPeriod } from "@/lib/server/kpis";
-import { getActiveLine } from "@/lib/server/line";
 import { floorDefault, floorRequest } from "@/lib/domain/floorKpis";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { formatDate } from "@/lib/domain/format";
@@ -9,8 +8,6 @@ import { DashboardSections } from "@/components/DashboardSections";
 import { FloorPerformance } from "@/components/FloorPerformance";
 import { LossWaterfallCard } from "@/components/LossWaterfallCard";
 import { ErrorState } from "@/components/DataTable";
-import { EmptyState } from "@/components/primitives";
-import { Factory } from "lucide-react";
 import { PageHead } from "@/components/ui";
 import { PrintButton } from "@/components/PrintButton";
 import { PrintHeader } from "@/components/PrintHeader";
@@ -30,19 +27,9 @@ export default async function ProductionDashboardPage({ searchParams }: { search
   if (!me) redirect("/login");
   const todayISO = factoryDayISO(new Date());
 
-  if ((await getActiveLine()) === "LV") {
-    return (
-      <div className="space-y-3">
-        <DashboardSections current="production" />
-        <PageHead title="Production" sub="Dashboard · the floor's efficiency, productivity and stops" />
-        <section className="bg-surface border rounded-xl">
-          <EmptyState icon={Factory} title="The floor's figures are the transformers'" hint="Switch the line to TR in the top bar to see them." />
-        </section>
-      </div>
-    );
-  }
-
-  const req = floorRequest(await searchParams, todayISO);
+  const sp = await searchParams;
+  // the floor's figures are the transformers' (PINNED_LINE)
+  const req = floorRequest(sp, todayISO);
   const period = await getFloorPeriod(req).catch((e: unknown) => { console.error("production: the floor's period could not load", e); return null; });
   return (
     <div className="space-y-3">

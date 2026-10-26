@@ -44,3 +44,18 @@ describe("traceHref", () => {
     expect(traceHref({ bom: "SAD 09/12" })).toBe("/trace?bom=SAD+09%2F12");
   });
 });
+
+describe("links that name the product line", () => {
+  it("names the line on a tracker link, after the plan and view", () => {
+    expect(trackerHref(0, undefined, "LV")).toBe("/tracker?line=LV");
+    expect(trackerHref(30, "weekly", "TR")).toBe("/tracker?view=weekly&plan=30&line=TR");
+    expect(trackerHref(30, "weekly")).toBe("/tracker?view=weekly&plan=30");
+  });
+
+  it("names the line on a trace link when given, and leaves it out otherwise", () => {
+    expect(traceHref({ mo: "SF01/MO/1", line: "LV" })).toBe("/trace?mo=SF01%2FMO%2F1&line=LV");
+    expect(traceHref({ bom: "B 1", line: "TR" }, 30, "weekly")).toBe("/trace?bom=B+1&plan=30&view=weekly&line=TR");
+    expect(traceHref({ mo: "SF01/MO/1" })).toBe("/trace?mo=SF01%2FMO%2F1");
+  });
+});
+

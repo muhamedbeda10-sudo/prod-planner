@@ -1,5 +1,6 @@
 "use client";
 
+import { traceHref } from "@/lib/domain/links";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Info } from "lucide-react";
@@ -148,7 +149,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
                     {lateShown.map((l, i) => (
                       <tr key={i}>
                         <td className="px-2 tabnum whitespace-nowrap">{formatDate(l.dayISO)}</td>
-                        <td className="px-2 whitespace-nowrap"><Link href={`/trace?bom=${encodeURIComponent(l.bom)}`} className="font-semibold hover:underline">{l.bom}</Link>{l.soi && <span className="text-muted ms-1">{l.soi}</span>}</td>
+                        <td className="px-2 whitespace-nowrap"><Link href={traceHref({ bom: l.bom, line: "TR" })} className="font-semibold hover:underline">{l.bom}</Link>{l.soi && <span className="text-muted ms-1">{l.soi}</span>}</td>
                         <td className="px-2">{itemName(l.item)}</td>
                         <td className="px-2"><Badge tone={l.stage === "cut" ? "danger" : "warning"}>{STAGE_LABEL[l.stage]}</Badge></td>
                         <td className="px-2 text-right tabnum font-bold">{l.short} <span className="text-muted font-normal">/ {l.owed}</span></td>

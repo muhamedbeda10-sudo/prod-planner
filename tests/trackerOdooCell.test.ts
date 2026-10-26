@@ -10,7 +10,7 @@ const { filters, exported } = vi.hoisted(() => ({
   exported: vi.fn(),
 }));
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), useSearchParams: () => new URLSearchParams(), usePathname: () => "/tracker" }));
 vi.mock("@/app/orders/actions", () => ({
   closeDeliveredOrders: vi.fn(), setOrderHold: vi.fn(), setOrderStatus: vi.fn(),
   decidePlanQty: vi.fn(), setExcludedItems: vi.fn(), setOrderQty: vi.fn(), setOrderSpec: vi.fn(),

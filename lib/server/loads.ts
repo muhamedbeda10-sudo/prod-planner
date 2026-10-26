@@ -21,7 +21,7 @@ export const loadMasterOrdersOf = cache(async (line: ProductLine) =>
 );
 
 /** Every order of the product line the screens are showing. The line comes
- *  from the planner's toggle (a cookie), read here so that every screen
+ *  from the page's address (getActiveLine), read here so that every screen
  *  built on this loader shows one line at a time without having to ask. */
 export async function loadMasterOrders() {
   return loadMasterOrdersOf(await getActiveLine());

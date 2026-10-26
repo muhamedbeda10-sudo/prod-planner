@@ -12,6 +12,7 @@ import { PrintHeader } from "@/components/PrintHeader";
 import { Cockpit } from "@/components/Cockpit";
 import { CockpitDecisions } from "@/components/CockpitDecisions";
 import { DashboardSections } from "@/components/DashboardSections";
+import { LineSwitch } from "@/components/LineSwitch";
 import { formatDate } from "@/lib/domain/format";
 import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 
@@ -20,7 +21,8 @@ export const dynamic = "force-dynamic";
 // The home page is the Planning dashboard, the first place of the Dashboards
 // tab: what needs a decision, the week's plan and the lines behind, the load
 // ahead, the month's pace and its people, and welding's parts. The figures
-// are the transformers'; the LV panels keep their own dashboard here. How the
+// are the transformers'; the LV panels keep their own dashboard here, behind
+// the page head's line switch (?line=LV). How the
 // floor worked is the Production dashboard (/dashboards/production).
 export default async function Home({ searchParams }: { searchParams: Promise<{ from?: string | string[]; to?: string | string[]; dept?: string | string[] }> }) {
   const sp = await searchParams;
@@ -59,9 +61,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ f
       <DashboardSections current="planning" />
       <PageHead
         title="Planning"
-        sub={`Transformers · today ${formatDate(data.todayISO)}${data.lastDayISO ? ` · last recorded day ${formatDate(data.lastDayISO)}` : ""} · everything in standard hours`}
+        sub={`Today ${formatDate(data.todayISO)}${data.lastDayISO ? ` · last recorded day ${formatDate(data.lastDayISO)}` : ""} · everything in standard hours`}
         actions={<><CockpitDecisions actions={shown.actions} /><PrintButton /></>}
-      />
+      >
+        <LineSwitch />
+      </PageHead>
       <Cockpit data={shown} floor={floor} />
     </div>
   );

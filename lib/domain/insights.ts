@@ -3,6 +3,7 @@
 // bottleneck ranking, WIP aging, delivery-risk assessment and set balance.
 // All copy is generated here in English; no external service is involved.
 
+import { hrefWithLine } from "./lines";
 import { ITEMS, type Item } from "./constants";
 import { dayNumber, parseISODate } from "./dates";
 
@@ -172,8 +173,8 @@ export function bottleneckInsight(opts: {
   const { weldWaiting, paintWaiting, targetPerDeptDay } = opts;
   if (targetPerDeptDay <= 0) return null;
   const stages = [
-    { dept: "Welding", waiting: weldWaiting, href: "/worklist/welding" },
-    { dept: "Painting", waiting: paintWaiting, href: "/worklist/painting" },
+    { dept: "Welding", waiting: weldWaiting, href: hrefWithLine("/worklist/welding", "TR") },
+    { dept: "Painting", waiting: paintWaiting, href: hrefWithLine("/worklist/painting", "TR") },
   ].sort((x, y) => y.waiting - x.waiting);
   const top = stages[0];
   const days = top.waiting / targetPerDeptDay;
@@ -289,6 +290,6 @@ export function idleDeptInsight(dept: string, dayLabel: string, total: number): 
     icon: "😴",
     title: `No ${dept} output recorded ${dayLabel}`,
     detail: `${dayLabel === "today" ? "Nothing has been logged so far today" : `A full working day passed with zero logged output`} for ${dept}. If work happened, the handover log is falling behind reality.`,
-    href: "/handover",
+    href: hrefWithLine("/handover", "TR"),
   };
 }

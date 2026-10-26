@@ -1,4 +1,5 @@
 import "server-only";
+import { traceHref } from "@/lib/domain/links";
 import { getWhatIfInputs } from "@/lib/server/whatif";
 import { withLine } from "@/lib/server/line";
 import { compareSimulations, simulationReadiness, stressSimulations, type NamedSimulation, type StressCase } from "@/lib/domain/simulationReview";
@@ -58,7 +59,7 @@ function alternatives(inputs: WhatIfInputs, base: NamedSimulation["scenario"], v
 }
 const scope = (inputs: WhatIfInputs, start: string) => ({ line: "TR", snapshotAt: new Date().toISOString(), todayISO: inputs.todayISO, startedFrom: start, weeklyPlan: inputs.plan ? { planNo: inputs.plan.planNo, fromISO: inputs.plan.minISO, toISO: inputs.plan.maxISO } : null });
 const links = [{ label: "What-if Simulator", href: "/simulate" }];
-const recordLinks = (mos: string[]) => [...links, ...[...new Set(mos)].slice(0, 20).map((mo) => ({ label: mo, href: `/trace?mo=${encodeURIComponent(mo)}&line=TR` }))];
+const recordLinks = (mos: string[]) => [...links, ...[...new Set(mos)].slice(0, 20).map((mo) => ({ label: mo, href: traceHref({ mo, line: "TR" }) }))];
 export const compareScenariosTool: ReadTool<CompareInput> = {
   kind: "read", name: "compare_scenarios", title: "Comparing planning alternatives on one snapshot", tabs: ["simulate"],
   description: "Compare up to four TR planning alternatives side by side on ONE captured set of live inputs, against a freshly recomputed plant baseline. Defaults to the person's current Simulator scenario as the common starting point. Variants change workers, hours per added worker, Fridays, station stoppages, material holds, splits or job order. Reports MO-level late/on-time/blocked/undated counts, calendar-day delay, extra man-hours/day, department loads, changed records and readiness warnings. No write, no screen change, no monetary cost or delivery guarantee. Use instead of separate simulate_scenario calls when weighing alternatives. A shiftHours change alone does NOT add overtime for existing workers.",

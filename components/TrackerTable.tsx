@@ -1,5 +1,6 @@
 "use client";
 
+import { traceHref } from "@/lib/domain/links";
 import { useMemo } from "react";
 import Link from "next/link";
 import type { TrackerRow } from "@/lib/domain/tracker";
@@ -92,7 +93,7 @@ export function TrackerTable({ rows, planNo }: { rows: TrackerRow[]; planNo: num
             {filtered.map((r, i) => (
               <tr key={r.bom} className={i % 2 ? "bg-zebra" : ""}>
                 <td className="p-2 font-bold whitespace-nowrap">
-                  <Link href={`/trace?plan=${planNo}&bom=${encodeURIComponent(r.bom)}`} className="text-brand-ink hover:underline">
+                  <Link href={traceHref({ bom: r.bom, line: "TR" }, planNo)} className="text-brand-ink hover:underline">
                     {r.bom}
                   </Link>
                 </td>

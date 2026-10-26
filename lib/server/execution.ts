@@ -20,6 +20,7 @@ import type { HiddenLineDTO, PriorityLineDTO } from "@/lib/server/worklistExtras
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getSettings, getPlanWindows } from "./data";
 import { loadAllHandover, loadAllSchedules, loadMasterOrders } from "./loads";
+import { withLine } from "./line";
 
 export interface CutSheet {
   planNo: number | null;
@@ -49,7 +50,12 @@ export interface CutSheet {
  *  - Date-less backlog splits by this week's remarks: remarked lines in one
  *    bucket; unscheduled+unremarked lines feed the machine board, not a table.
  *  - Admin date overrides re-date any line; reverting restores the plan date. */
-export async function getCutSheet(): Promise<CutSheet> {
+export function getCutSheet(): Promise<CutSheet> {
+  // the lasers cut transformer parts: the sheet is the transformers' whoever asks
+  return withLine("TR", cutSheet);
+}
+
+async function cutSheet(): Promise<CutSheet> {
   const today = factoryToday();
   const settings = await getSettings();
   const planNo = findPlanForDate(await getPlanWindows(), today, settings.leadCut);

@@ -95,18 +95,18 @@ export async function importMonthlyPlan(
 
   // MOs are one namespace across both lines — the same MO cannot be a
   // transformer and a panel. A row whose MO sits on the other line is left
-  // out and named, so the sheet (or the toggle) gets fixed rather than the
+  // out and named, so the sheet (or the line picked on the page) gets fixed rather than the
   // order silently changing sides.
   const everything = await prisma.masterOrder.findMany();
   const elsewhere = new Map(everything.filter((o) => o.line !== line).map((o) => [o.mo, o.line]));
   const rows = parsed.rows.filter((r) => {
     const other = elsewhere.get(r.mo);
     if (!other) return true;
-    issues.push(`Row ${r.rowNum}: MO "${r.mo}" is already in the registry as ${LINE_LABEL[other as ProductLine] ?? other} — skipped. Switch the line at the top if this sheet is that line's.`);
+    issues.push(`Row ${r.rowNum}: MO "${r.mo}" is already in the registry as ${LINE_LABEL[other as ProductLine] ?? other} — skipped. Pick the other line at the top of the page if this sheet is that line's.`);
     return false;
   });
   if (rows.length === 0) {
-    return { ok: false, error: `Every MO in this sheet is already filed under the other product line — is the toggle at the top on ${LINE_LABEL[line]} by mistake?`, issues };
+    return { ok: false, error: `Every MO in this sheet is already filed under the other product line — is the page on ${LINE_LABEL[line]} by mistake? Pick the other line at the top of the page.`, issues };
   }
   const registry = everything.filter((o) => o.line === line);
   const byMo = new Map(registry.map((o) => [o.mo, o]));

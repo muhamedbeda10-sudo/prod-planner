@@ -1,5 +1,6 @@
 "use client";
 
+import { traceHref } from "@/lib/domain/links";
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -284,7 +285,7 @@ export function OrdersTable({ rows, line = "TR" }: { rows: OrderRow[]; line?: Pr
                 </td>
                 <td className="p-2 font-bold whitespace-nowrap text-xs">{r.mo}</td>
                 <td className="p-2 font-bold whitespace-nowrap">
-                  <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-brand-ink hover:underline">{r.bom}</Link>
+                  <Link href={traceHref({ bom: r.bom, line })} className="text-brand-ink hover:underline">{r.bom}</Link>
                 </td>
                 <td className="p-2 text-xs whitespace-nowrap">{r.soi ?? "—"}</td>
                 <td className="p-2 text-xs whitespace-nowrap">{r.customer ?? <span className="text-muted">—</span>}</td>

@@ -36,7 +36,7 @@ export interface LvTrackerRow {
 
 export async function getLvTracker(): Promise<LvTrackerRow[]> {
   const [orders, sums] = await Promise.all([
-    loadMasterOrdersOf("LV"), // the panels, whatever the toggle says — the Floor draws both lines
+    loadMasterOrdersOf("LV"), // the panels, whatever line is on screen — the Floor draws both lines
     prisma.handoverEntry.groupBy({
       by: ["mo", "dept"],
       where: { mo: { not: null }, item: LV_ITEM },
