@@ -1,7 +1,6 @@
 import { LV_CHAIN, LV_STAGE_LABEL, LV_STAGE_SHORT } from "@/lib/domain/lv";
 import type { LvDashboardData } from "@/lib/server/lvDashboard";
 import { PageHead } from "@/components/ui";
-import { ViewTabs, trackerViews } from "@/components/ViewTabs";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { PrintButton } from "@/components/PrintButton";
@@ -31,10 +30,10 @@ export function LvDashboard({ d, today }: { d: LvDashboardData; today: string })
   const pct = (n: number) => (o.panels > 0 ? `${Math.round((n / o.panels) * 100)}%` : "—");
   return (
     <div className="space-y-6">
-      {/* The panels' dashboard is a view of the Plan Tracker tab, and carries
+      {/* The panels' Planning dashboard (the Dashboards tab), and it carries
           its own report: pick a day (from = to) or a period and the table
           below is that period, ready to print. */}
-      <PageHead title="Dashboard" sub="LV Panels · the plan through four stages" actions={<PrintButton />} views={<ViewTabs views={trackerViews("LV")} current="/" label="Tracker view" />} />
+      <PageHead title="Planning" sub="Dashboard · LV Panels · the plan through four stages" actions={<PrintButton />} />
       <div className="no-print space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           {d.clamped && <span className="pill pill-warn">cut to {d.days.length} days</span>}

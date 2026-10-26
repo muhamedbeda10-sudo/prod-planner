@@ -46,7 +46,7 @@ const calls: string[] = [];
 const returnDeletes: Record<string, unknown>[] = [];
 
 /** The Odoo row linked to the ledger row under test, if any — a painting
- *  record's row on the ODOO tab follows the record while it is untouched. */
+ *  record's row on the ODOO log follows the record while it is untouched. */
 let odooRow: { id: number; odooMo: string; status: string; _count: { notes: number } } | null = null;
 
 const paintRow = {

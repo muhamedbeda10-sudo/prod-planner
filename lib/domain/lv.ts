@@ -17,7 +17,7 @@ import type { GroupMember } from "./groupSpread";
 export const LV_ITEM = "PNL";
 
 /** The four production stages, in the order a panel passes them. */
-/** The panel types the plan sheet names — the ODOO tab's Product column on
+/** The panel types the plan sheet names — the ODOO log's Product column on
  *  this line, where the transformers' Tank / Top Cover / Core Frame mean
  *  nothing. Free text is still accepted, so a new type needs no code change. */
 export const LV_PRODUCTS = ["USS", "LSS"] as const;
@@ -183,7 +183,7 @@ export function lvDeptPermKey(stage: LvStage): string {
 }
 
 /** The LV worklists, one per stage, in shop-floor order — what the nav's
- *  Worklist tab unrolls into when the panels are on screen. */
+ *  Floor tab (the worklists) unrolls into when the panels are on screen. */
 export const LV_WORKLISTS: readonly { stage: LvStage; href: string; label: string }[] = [
   { stage: "Punching", href: "/worklist/punching", label: "Punching" },
   { stage: "Bending", href: "/worklist/bending", label: "Bending" },

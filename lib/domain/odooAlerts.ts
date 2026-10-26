@@ -4,7 +4,7 @@
 //   in without it;
 // - whoever closes the MOs in Odoo (odoo.alerts) waits for rows that HAVE the
 //   MO and are still open.
-// Each is told the same way: a count on the ODOO tab and a popup when a row
+// Each is told the same way: a count on the ODOO log and a popup when a row
 // they have not seen yet appears, workable from the popup. Pure, tested.
 
 import { statusTone } from "./odoo";

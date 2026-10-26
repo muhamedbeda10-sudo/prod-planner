@@ -1,7 +1,7 @@
 import { SHOTBLAST_STAGE, isPaintExempt, type Item } from "@/lib/domain/constants";
 import { productSeries } from "@/lib/domain/odooStats";
 
-// A closing in the ledger → a row on the ODOO tab. Painting is the last stage
+// A closing in the ledger → a row on the ODOO log. Painting is the last stage
 // of every painted component and shot blast the last of the core, so the
 // moment one of them is recorded, the office has an Odoo manufacturing order
 // to close for exactly that many pieces. The row is born here with what the

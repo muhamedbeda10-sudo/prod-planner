@@ -556,7 +556,7 @@ function Card({ title, sub, actions, children }: { title: string; sub?: string; 
   );
 }
 
-/** What of this order reached the ODOO tab: every row born from its
+/** What of this order reached the ODOO log: every row born from its
  *  painting / shot-blast closings, with Odoo's MO the clerk typed (the child
  *  MO), and whether it is closed. */
 function OnOdoo({ rows }: { rows: TraceOdooRow[] }) {
@@ -589,7 +589,7 @@ function OnOdoo({ rows }: { rows: TraceOdooRow[] }) {
         )}
       </div>
       {rows.length === 0 ? (
-        <p className="px-5 py-4 text-sm text-muted text-center">Not on the ODOO tab yet.</p>
+        <p className="px-5 py-4 text-sm text-muted text-center">Not on the ODOO log yet.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">

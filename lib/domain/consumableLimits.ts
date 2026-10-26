@@ -42,6 +42,9 @@ export const isMultiMonth = (p: LimitPeriod) => (PERIOD_MONTHS[p] ?? 0) > 1;
 export const LIMIT_BASES = ["pool", "each", "person"] as const;
 export type LimitBasis = (typeof LIMIT_BASES)[number];
 
+/** A limit's basis as the Excel exports spell it. */
+export const BASIS_EXPORT = { pool: "shared", each: "each department", person: "per worker" } as const;
+
 export const PERIOD_LABEL: Record<LimitPeriod, string> = {
   month: "a month", bimonth: "every 2 months", quarter: "every 3 months",
   fourmonth: "every 4 months", halfyear: "every 6 months", year: "a year",

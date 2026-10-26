@@ -25,16 +25,19 @@ export const TABS: TabDef[] = [
   { id: "worklist.machines", label: "Machines worklist", group: "Worklists", paths: ["/worklist/machines"] },
 
   { id: "material", label: "Material", group: "Production", paths: ["/material"] },
-  { id: "analytics", label: "Material dashboard", group: "Production", paths: ["/analytics"] },
-  { id: "physical", label: "Physical Material", group: "Production", paths: ["/physical"] },
-  { id: "odoo", label: "ODOO", group: "Production", paths: ["/odoo"] },
-  { id: "consumables", label: "Consumables", group: "Production", paths: ["/consumables"] },
-  { id: "shifts", label: "Shifts", group: "Production", paths: ["/shifts"] },
+  { id: "analytics", label: "Dashboards · Material", group: "Production", paths: ["/dashboards/material", "/analytics"] },
+  // Physical Material and Consumables are places of the Material tab, each still switched on or off on its own
+  { id: "physical", label: "Material · Physical Material", group: "Production", paths: ["/physical"] },
+  // each dashboard of the Dashboards tab is seen with the screen it reads
+  { id: "odoo", label: "ODOO log (Plan Tracker) and its dashboard", group: "Plan Tracker", paths: ["/odoo", "/dashboards/odoo"] },
+  { id: "consumables", label: "Material · Consumables (and its dashboard)", group: "Production", paths: ["/consumables", "/dashboards/consumables"] },
+  // the Production dashboard is the shift log's figures
+  { id: "shifts", label: "Shifts (and the Production dashboard)", group: "Production", paths: ["/shifts", "/dashboards/production"] },
   { id: "barcode", label: "Tank barcodes", group: "Production", paths: ["/barcode", "/tank"] },
   { id: "chat", label: "Chat", group: "Production", paths: ["/chat"] },
 
   // the id stays "dashboard": an account the home page was switched off for keeps it off
-  { id: "dashboard", label: "Cockpit (home)", group: "Plan Tracker", paths: ["/"] },
+  { id: "dashboard", label: "Dashboards · Planning (home)", group: "Plan Tracker", paths: ["/"] },
   { id: "tracker", label: "Plan Tracker", group: "Plan Tracker", paths: ["/tracker"] },
   { id: "handover", label: "Daily log", group: "Plan Tracker", paths: ["/handover"] },
   // the id stays "simulate": an account the Floor / Simulator tab was switched off for keeps the simulator off

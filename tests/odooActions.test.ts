@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ---- the ODOO tab's writes (app/odoo/actions.ts) ----------------------------
+// ---- the ODOO log's writes (app/odoo/actions.ts) ----------------------------
 // A merged line's edit carries each row's last change as the page drew it, so
 // a stale modal cannot put a row someone closed meanwhile back to open; an
 // existing row moved to Done is closed NOW whichever control was used; a row
@@ -14,6 +14,7 @@ const h = vi.hoisted(() => {
       $transaction: fn(),
     },
     requirePerm: fn(),
+    settle: fn(),
   };
 });
 
@@ -24,6 +25,7 @@ vi.mock("@/lib/server/auth", () => ({ requirePerm: h.requirePerm }));
 vi.mock("@/lib/server/line", () => ({ getActiveLine: async () => "TR" }));
 vi.mock("@/lib/server/events", () => ({ emitEvent: async () => {} }));
 vi.mock("@/lib/server/odoo", () => ({ importOdooSheet: vi.fn() }));
+vi.mock("@/lib/server/odooAutoClose", () => ({ settleOrdersAfterOdoo: h.settle }));
 
 import { deleteOdooEntry, updateOdooEntry, updateOdooGroup } from "@/app/odoo/actions";
 
@@ -52,6 +54,7 @@ describe("updateOdooGroup", () => {
     const stale = form({ ...head, versions: `${t1.toISOString()},${new Date("2026-10-20T07:00:00Z").toISOString()}` });
     expect(await updateOdooGroup(stale)).toEqual({ ok: false, error: STALE });
     expect(h.prisma.$transaction).not.toHaveBeenCalled();
+    expect(h.settle).not.toHaveBeenCalled();
   });
 
   it("refuses a line one of whose rows was deleted meanwhile, and writes nothing", async () => {
@@ -70,6 +73,8 @@ describe("updateOdooGroup", () => {
     // row 1 was open on 10 Oct and is closed today, not back-dated to its own day
     expect((writes[0].data.doneAt as Date).getTime()).toBeGreaterThan(Date.now() - 60_000);
     expect(writes[1]).toMatchObject({ where: { id: 2, updatedAt: t2 }, data: { doneAt: closedAt } });
+    // the orders the line finishes in Odoo close by themselves
+    expect(h.settle).toHaveBeenCalledTimes(1);
   });
 
   it("tells the person when a row moved between the check and the write, and rolls the line back as one", async () => {
@@ -88,6 +93,7 @@ describe("updateOdooEntry", () => {
     expect(await updateOdooEntry(form({ id: "1", date: "2026-10-10", product: "Tank", odooMo: "SF01/MO/9", qty: "4", status: "Done" }))).toEqual({ ok: true });
     const data = h.prisma.odooEntry.updateMany.mock.calls[0][0].data;
     expect((data.doneAt as Date).getTime()).toBeGreaterThan(Date.now() - 60_000);
+    expect(h.settle).toHaveBeenCalledTimes(1);
   });
 });
 

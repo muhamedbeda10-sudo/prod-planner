@@ -150,7 +150,7 @@ export function depthPlan(depth: AiDepth, o: { model: string; effort: string; ma
  *  plant writes. The default set is for any other screen. */
 export const AI_PAGE_SUGGESTIONS: Record<string, string[]> = {
   dashboard: [
-    "إيه اللي محتاج قرار النهارده في الـ Cockpit؟",
+    "إيه اللي محتاج قرار النهارده في الـ Planning dashboard؟",
     "Why did efficiency fall this week, and where did the hours go?",
     "اعملي مراجعة بداية اليوم للخط المختار واقترح أهم 3 أولويات بالأسباب",
   ],

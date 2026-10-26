@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  consumablesPeriod,
   keepsOverLimitReason,
   overLimitReasonProblem,
   NEW_DEPARTMENT,
@@ -342,5 +343,17 @@ describe("the over-limit reason", () => {
     expect(keepsOverLimitReason(before, { ...before, qty: 6 })).toBe(false);
     expect(keepsOverLimitReason(before, { ...before, department: "PaintingTX" })).toBe(false);
     expect(keepsOverLimitReason(before, { ...before, itemId: 4 })).toBe(false);
+  });
+});
+
+describe("the consumables' period", () => {
+  const today = "2026-10-26";
+  it("opens on today, and reads a period the right way round with its words and stamp", () => {
+    expect(consumablesPeriod({}, today)).toMatchObject({ from: today, to: today, label: "today", stamp: today });
+    expect(consumablesPeriod({ from: "2026-10-20", to: "2026-10-01" }, today)).toMatchObject({ from: "2026-10-01", to: "2026-10-20", stamp: "2026-10-01_to_2026-10-20" });
+  });
+  it("holds a period to the last year and today, and ignores what is not a day", () => {
+    expect(consumablesPeriod({ from: "2020-01-01", to: "2030-01-01" }, today)).toMatchObject({ from: "2025-10-26", to: today });
+    expect(consumablesPeriod({ from: "soon", to: ["2026-10-01"] }, today)).toMatchObject({ from: today, to: today });
   });
 });

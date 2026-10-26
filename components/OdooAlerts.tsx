@@ -16,7 +16,7 @@ import { ODOO_CHANGED_EVENT, alertKey, pruneSeen, unseenKeys, type ReadyRow } fr
 //   the popup has a box to type it in;
 // - "ready to close" (odoo.alerts): a row has the MO and is still open — the
 //   popup closes it.
-// The ODOO tab carries the count and the browser tab's title starts with it;
+// The ODOO log carries the count and the browser tab's title starts with it;
 // when a row not seen yet appears, the popup opens with both lists. "Later"
 // hides it until the next new row. Checked every minute while the window is
 // in front, every five minutes while it is out of sight (each check is a
@@ -169,7 +169,7 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
   };
 
   // a row clicked in the popup opens its material on top — the same popup
-  // the ODOO tab opens, fetched for that one row
+  // the ODOO log opens, fetched for that one row
   type Material = NonNullable<Awaited<ReturnType<typeof odooRowMaterial>>["data"]>;
   const [material, setMaterial] = useState<Material | null>(null);
   const [opening, setOpening] = useState<number | null>(null);
@@ -333,7 +333,7 @@ function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo
                   <RowFacts r={r} isNew={fresh.has(alertKey("close", r.id))} onOpen={onOpen} opening={opening === r.id} />
                   <button
                     type="button" className="shrink-0 btn btn-sm btn-primary" disabled={pending || !can(r)} onClick={() => onClose([r.id])}
-                    title={can(r) ? "Closed in Odoo — mark it Done" : "You cannot record on this line's ODOO tab"}
+                    title={can(r) ? "Closed in Odoo — mark it Done" : "You cannot record on this line's ODOO log"}
                   >
                     ✓ Done
                   </button>
