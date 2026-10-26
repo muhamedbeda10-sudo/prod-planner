@@ -1,5 +1,6 @@
 "use client";
 
+import type { ProductLine } from "@/lib/domain/lines";
 import { useMemo, useSyncExternalStore } from "react";
 import { useLineKey } from "@/components/LineContext";
 
@@ -25,10 +26,12 @@ function readRaw(key: string): string {
   try { return localStorage.getItem(key) ?? memory.get(key) ?? ""; } catch { return memory.get(key) ?? ""; }
 }
 
-export function useStoredFilters<T>(rawKey: string, parse: (raw: string) => T, empty: T): { filters: T; setFilters: (f: T) => void } {
+export function useStoredFilters<T>(rawKey: string, parse: (raw: string) => T, empty: T, line?: ProductLine): { filters: T; setFilters: (f: T) => void } {
   // one line's filters never apply to the other: a Product reading "Tank"
-  // carried onto the panels' tab hid every panel row it had
-  const key = useLineKey(rawKey);
+  // carried onto the panels' tab hid every panel row it had. `line` names
+  // another line's filters than the screen's — set for the screen it opens.
+  const onScreen = useLineKey(rawKey);
+  const key = line ? `${line}:${rawKey}` : onScreen;
   const subscribe = useMemo(() => subscribeTo(key), [key]);
   const raw = useSyncExternalStore(subscribe, () => readRaw(key), () => "");
   const filters = useMemo(() => (raw ? parse(raw) : empty), [raw, parse, empty]);

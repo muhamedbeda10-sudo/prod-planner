@@ -1,4 +1,5 @@
 import { formatDate } from "@/lib/domain/format";
+import { traceHref } from "@/lib/domain/links";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTankBySerial, getBaseUrl } from "@/lib/server/tanks";
@@ -69,7 +70,7 @@ export default async function TankPage({ params }: { params: Promise<{ serial: s
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <Field label="MO" value={<Link href={`/trace?q=${encodeURIComponent(tank.mo)}`} className="hover:underline">{tank.mo}</Link>} />
+            <Field label="MO" value={<Link href={traceHref({ mo: tank.mo, line: "TR" })} className="hover:underline">{tank.mo}</Link>} />
             <Field label="SO" value={tank.so} />
             <Field label="BOM" value={tank.bom} />
             <Field label="Customer" value={tank.customer} />

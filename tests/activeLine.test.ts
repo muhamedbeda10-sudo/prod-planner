@@ -10,10 +10,7 @@ const h = vi.hoisted(() => ({ header: vi.fn(), user: vi.fn(), redirect: vi.fn() 
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ headers: async () => ({ get: h.header }) }));
 vi.mock("next/navigation", () => ({ redirect: h.redirect }));
-vi.mock("@/lib/server/auth", () => ({
-  getCurrentUser: h.user,
-  userPerms: (u: { perms: string }) => new Set(u.perms.split(",").filter(Boolean)),
-}));
+vi.mock("@/lib/server/auth", () => ({ getCurrentUser: h.user }));
 
 import { getActiveLine, pinLine, withLine } from "@/lib/server/line";
 import { proxy } from "@/proxy";
@@ -64,18 +61,18 @@ describe("getActiveLine", () => {
 describe("pinLine", () => {
   it("does nothing on its own line", async () => {
     h.header.mockReturnValue("TR");
-    await pinLine("TR", "/simulate");
+    await pinLine("/simulate");
     expect(h.redirect).not.toHaveBeenCalled();
   });
 
   it("reopens the page on its line, the rest of the address kept", async () => {
     h.header.mockReturnValue("LV");
-    await pinLine("TR", "/dashboards/production", { from: "2026-10-01", dept: "Welding", line: "LV", list: ["a", "b"] });
+    await pinLine("/dashboards/production", { from: "2026-10-01", dept: "Welding", line: "LV", list: ["a", "b"] });
     expect(h.redirect).toHaveBeenCalledWith("/dashboards/production?from=2026-10-01&dept=Welding&line=TR");
   });
 
   it("reopens a panels-only page for someone whose own line is the transformers'", async () => {
-    await pinLine("LV", "/worklist/punching");
+    await pinLine("/worklist/punching");
     expect(h.redirect).toHaveBeenCalledWith("/worklist/punching?line=LV");
   });
 });
@@ -92,6 +89,15 @@ describe("the proxy hands the address's line to the page", () => {
   it("never passes on a header the browser sent itself", () => {
     const res = proxy(req("/tracker", { "x-atc-line": "LV" }));
     expect(forwarded(res)).toBeNull();
+    // the request's headers are overridden, and the override leaves it out
+    const overridden = res.headers.get("x-middleware-override-headers");
+    expect(overridden).not.toBeNull();
+    expect(overridden!.split(",")).not.toContain("x-atc-line");
+  });
+
+  it("clears the cookie the old top-bar switch left behind", () => {
+    const res = proxy(req("/tracker", { cookie: "atc_session=x; line=LV" }));
+    expect(res.headers.get("set-cookie")).toMatch(/^line=;/);
   });
 
   it("still sends a visitor with no session to the login page", () => {

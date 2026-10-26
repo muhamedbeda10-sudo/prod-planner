@@ -11,6 +11,7 @@
 // alone (AI_PERM_KEYS), and the two pages never write each other's keys.
 
 import { LV_ITEM, lvStageAt } from "./lv";
+import { DEFAULT_LINE, type ProductLine } from "./lines";
 
 export interface PermDef {
   key: string;
@@ -336,4 +337,27 @@ export const PERM_ALERTS: readonly string[] = ["odoo.needMo", "odoo.alerts"];
 
 export function permDef(key: string): PermDef | undefined {
   return PERMISSIONS.find((p) => p.key === key);
+}
+
+// The keys that make someone a worker of one line: the LV Panels group's
+// for the panels; the departments', the Plan Tracker's and the transformer
+// side of every per-line job for the transformers.
+const LV_KEYS = new Set(PERM_CATEGORIES.filter((c) => c.name === "LV Panels").flatMap((c) => c.perms.map((p) => p.key)));
+const TR_KEYS = new Set([
+  ...PERM_CATEGORIES.filter((c) => c.name === "Departments" || c.name === "Plan Tracker").flatMap((c) => c.perms.map((p) => p.key)),
+  ...(["status", "import", "odoo", "material"] as const).map((job) => linePermKey("TR", job)),
+]);
+
+/** The line a screen opens on for this person when its address names none:
+ *  the panels for someone who records only on the panels, the transformers
+ *  for everyone else — admins included. Only where a screen OPENS; what the
+ *  person may see or change is untouched. */
+export function defaultLineOf(perms: Iterable<string>, isAdmin: boolean): ProductLine {
+  if (isAdmin) return DEFAULT_LINE;
+  let lv = false;
+  for (const k of perms) {
+    if (TR_KEYS.has(k)) return DEFAULT_LINE;
+    if (LV_KEYS.has(k)) lv = true;
+  }
+  return lv ? "LV" : DEFAULT_LINE;
 }

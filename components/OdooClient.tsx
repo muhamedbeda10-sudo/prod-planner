@@ -1,5 +1,6 @@
 "use client";
 
+import { traceHref } from "@/lib/domain/links";
 import Link from "next/link";
 
 import { FilterSelect, SearchBox } from "@/components/FilterControls";
@@ -17,7 +18,7 @@ import {
 } from "@/lib/domain/odoo";
 import { sourceLabel } from "@/lib/domain/odooMirror";
 import { LV_PRODUCTS } from "@/lib/domain/lv";
-import type { ProductLine } from "@/lib/domain/lines";
+import { resolveLine, type ProductLine } from "@/lib/domain/lines";
 import { useActiveLine } from "@/components/LineContext";
 import { SAVE_UNCONFIRMED, Soi } from "@/components/ui";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
@@ -235,7 +236,7 @@ function BomValue({ bom, line }: { bom: OdooEntryView["bom"]; line: string }) {
       {bom.boms.map((b, i) => (
         <Fragment key={b}>
           {i > 0 && " / "}
-          <Link href={`/trace?bom=${encodeURIComponent(b)}&line=${line === "LV" ? "LV" : "TR"}`} onClick={(ev) => ev.stopPropagation()} className="text-brand-ink hover:underline" title="Open the order's details">{b}</Link>
+          <Link href={traceHref({ bom: b, line: resolveLine(line) })} onClick={(ev) => ev.stopPropagation()} className="text-brand-ink hover:underline" title="Open the order's details">{b}</Link>
         </Fragment>
       ))}
       {bom.boms.length > 1 && <span className="pill pill-warn text-[10px]" title="The SOI has several BOMs — the row does not say which">{bom.boms.length} BOMs</span>}

@@ -8,6 +8,6 @@ export const dynamic = "force-dynamic";
 // page always shows the panels.
 export default async function PunchingWorklistPage() {
   await guardTab("/worklist/punching");
-  await pinLine("LV", "/worklist/punching");
+  await pinLine("/worklist/punching");
   return <LvWorklistPage stage="Punching" />;
 }

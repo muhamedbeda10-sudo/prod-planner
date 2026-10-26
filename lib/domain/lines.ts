@@ -1,5 +1,3 @@
-import { PERM_CATEGORIES, linePermKey } from "./permissions";
-
 // The plant builds two things that never mix: distribution TRANSFORMERS — the
 // tanks, covers, core frames and cable boxes every screen was built around —
 // and LV PANELS, the low-voltage substations (LSS / USS) planned from their
@@ -10,7 +8,7 @@ import { PERM_CATEGORIES, linePermKey } from "./permissions";
 // The line on screen is part of the page's ADDRESS (`?line=LV`), never a
 // setting hidden somewhere else: a link, a bookmark or a server action sent
 // from the page all carry it. With none in the address, the screen opens on
-// the person's own line (defaultLineOf).
+// the person's own line (defaultLineOf in lib/domain/permissions.ts).
 //
 // The line is a fact about the ORDER, stamped when its plan is imported. It
 // is never inferred from the order's shape, so an LV order with a BOM that
@@ -39,8 +37,7 @@ export function isProductLine(x: unknown): x is ProductLine {
 /** Read a line off whatever a form or a URL carried — anything that is not a
  *  known line is the default, never an error: a screen has to land somewhere. */
 export function resolveLine(raw: unknown): ProductLine {
-  const v = typeof raw === "string" ? raw.trim().toUpperCase() : "";
-  return isProductLine(v) ? v : DEFAULT_LINE;
+  return lineParam(raw) ?? DEFAULT_LINE;
 }
 
 /** The other line. */
@@ -73,25 +70,19 @@ export function hrefWithLine(href: string, line: ProductLine): string {
   return `${path}?${params}${frag}`;
 }
 
-// The keys that make someone a worker of one line: the LV Panels group's
-// for the panels; the departments', the Plan Tracker's and the transformer
-// side of every per-line job for the transformers.
-const LV_KEYS = new Set(PERM_CATEGORIES.filter((c) => c.name === "LV Panels").flatMap((c) => c.perms.map((p) => p.key)));
-const TR_KEYS = new Set([
-  ...PERM_CATEGORIES.filter((c) => c.name === "Departments" || c.name === "Plan Tracker").flatMap((c) => c.perms.map((p) => p.key)),
-  ...(["status", "import", "odoo", "material"] as const).map((job) => linePermKey("TR", job)),
-]);
+/** The screens that belong to one line and always show it, whatever the
+ *  address asks (pinLine in lib/server/line.ts). A line named on one of them
+ *  is the screen's own, not a choice to carry on to the next. */
+export const PINNED_LINE = {
+  "/simulate": "TR",
+  "/import": "TR",
+  "/dashboards/production": "TR",
+  "/worklist/cut": "TR",
+  "/worklist/punching": "LV",
+  "/worklist/bending": "LV",
+} as const satisfies Record<string, ProductLine>;
 
-/** The line a screen opens on for this person when its address names none:
- *  the panels for someone who records only on the panels, the transformers
- *  for everyone else — admins included. Only where a screen OPENS; what the
- *  person may see or change is untouched. */
-export function defaultLineOf(perms: Iterable<string>, isAdmin: boolean): ProductLine {
-  if (isAdmin) return DEFAULT_LINE;
-  let lv = false;
-  for (const k of perms) {
-    if (TR_KEYS.has(k)) return DEFAULT_LINE;
-    if (LV_KEYS.has(k)) lv = true;
-  }
-  return lv ? "LV" : DEFAULT_LINE;
+/** The line a screen is pinned to, or null for one that shows either. */
+export function pinnedLine(path: string): ProductLine | null {
+  return (PINNED_LINE as Record<string, ProductLine>)[path] ?? null;
 }

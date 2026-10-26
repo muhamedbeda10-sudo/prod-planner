@@ -15,7 +15,7 @@ export default async function ImportPage() {
   const me = await getCurrentUser();
   if (!me?.isAdmin) redirect("/");
   // the weekly delivery schedule is the transformers' — the panels plan monthly
-  await pinLine("TR", "/import");
+  await pinLine("/import");
 
   const plans = await getPlanNos();
   return (

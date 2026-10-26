@@ -37,7 +37,7 @@ export default async function MaterialDashboardPage({
       <div className="space-y-3">
         <RememberLastVisit storageKey="dashboards:material" />
         <DashboardSections current="material" />
-        <PageHead title="Material" sub="Dashboard · consumption booked when the MO is closed on Odoo"><LineSwitch /></PageHead>
+        <PageHead title="Material" sub="Dashboard · sheet analytics"><LineSwitch /></PageHead>
         <section className="bg-surface border rounded-xl">
           <EmptyState icon={Layers} title="No sheet analytics for the panels yet"
             hint="They are built on the nesting tracker and the cutting log, which the panels do not have — a panel is punched, not nested. When the panels get a nesting sheet, their sheets, tonnes and thicknesses read here the same way." />

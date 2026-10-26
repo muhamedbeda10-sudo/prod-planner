@@ -41,7 +41,7 @@ describe("get_kpis", () => {
     expect(j.manpower).toMatchObject({ month: "October 2026", workingDaysLeft: 5, centres: [{ centre: "Welding", peopleNeeded: 20, peopleNeededFromToday: 25, peoplePresent: 22, gap: -3 }] });
     expect(j.losses).toMatchObject({ unplannedH: 6.5, absentRate: 0.11, overtimeH: 126 });
     expect(j.trend[0]).toMatchObject({ day: "2026-10-25", behind: 29, efficiency: { Welding: 0.9 } });
-    expect(out.links).toEqual([{ label: "Planning dashboard", href: "/" }]);
+    expect(out.links).toEqual([{ label: "Planning dashboard", href: "/?line=TR" }]);
   });
 
   it("leaves the shift log's figures out for a person the Shifts screen is closed to", async () => {
@@ -113,10 +113,10 @@ describe("get_floor_performance", () => {
     expect(out.links).toEqual([{ label: "Production dashboard", href: "/dashboards/production" }]);
   });
 
-  it("gives no link on the LV line, where the home page is the panels' dashboard", async () => {
+  it("links the Production dashboard from the LV line too — it always shows the transformers", async () => {
     h.getFloorPeriod.mockResolvedValue(period);
     const out = await getFloorPerformanceTool.run({}, { now: new Date("2026-10-25T08:00:00Z"), hidden: new Set(), line: "LV" } as never);
-    expect(out.links).toEqual([]);
+    expect(out.links).toEqual([{ label: "Production dashboard", href: expect.stringMatching(/^\/dashboards\/production/) }]);
   });
 
   it("is closed with the Shifts screen", () => {

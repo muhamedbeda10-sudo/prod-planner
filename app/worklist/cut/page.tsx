@@ -26,7 +26,7 @@ export default async function CutWorklistPage({ searchParams }: { searchParams: 
   const sp = await searchParams;
   // a panel is not cut on the lasers — its fabrication is punching, then
   // bending: this worklist is the transformers' alone
-  await pinLine("TR", "/worklist/cut", sp);
+  await pinLine("/worklist/cut", sp);
   const dayISO = factoryDayISO(new Date());
   // an unknown ?plan= falls back to the newest plan inside the loader
   const [returns, settings, user, week, extras, notes, soi] = await Promise.all([

@@ -2,9 +2,11 @@ import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { DEFAULT_LINE, LINE_HEADER, LINE_PARAM, defaultLineOf, lineParam, type ProductLine } from "@/lib/domain/lines";
+import { DEFAULT_LINE, LINE_HEADER, LINE_PARAM, PINNED_LINE, lineParam, type ProductLine } from "@/lib/domain/lines";
+import { defaultLineOf, parsePerms } from "@/lib/domain/permissions";
+import type { User } from "@prisma/client";
 import { LV_ITEM } from "@/lib/domain/lv";
-import { getCurrentUser, userPerms } from "./auth";
+import { getCurrentUser } from "./auth";
 
 // Which product line the screens are showing — transformers or LV panels.
 //
@@ -13,7 +15,7 @@ import { getCurrentUser, userPerms } from "./auth";
 // threading it down — and a server action sent from the page reads the same
 // line, because the browser posts an action to the page's own address. With
 // no line in the address, the screen opens on the person's own line
-// (defaultLineOf in lib/domain/lines.ts).
+// (ownLine).
 //
 // Some screens show BOTH lines (the Floor's machine boards, the trace of a
 // given order): `withLine` lets them build each line's rows through the same
@@ -31,12 +33,18 @@ export async function getActiveLine(): Promise<ProductLine> {
   try {
     const named = lineParam((await headers()).get(LINE_HEADER));
     if (named) return named;
-    const me = await getCurrentUser();
-    return me ? defaultLineOf(userPerms(me), me.isAdmin) : DEFAULT_LINE;
+    return ownLine(await getCurrentUser());
   } catch {
     // outside a request (a script, a test) there is no address and no person
     return DEFAULT_LINE;
   }
+}
+
+/** The line a screen opens on for this person when its address names none
+ *  (defaultLineOf) — the one rule the server's getActiveLine, the layout's
+ *  LineProvider and an automation run on the person's behalf all use. */
+export function ownLine(user: User | null): ProductLine {
+  return user ? defaultLineOf(parsePerms(user.perms ?? ""), user.isAdmin) : DEFAULT_LINE;
 }
 
 /** Run `fn` with every loader inside it reading `line`, whatever the address
@@ -45,10 +53,11 @@ export function withLine<T>(line: ProductLine, fn: () => Promise<T>): Promise<T>
   return override.run(line, fn);
 }
 
-/** A screen that belongs to one line only: opened on the other, it reopens
- *  on its own line with the rest of its address kept — so the address, the
- *  page's switches and every action sent from it agree. */
-export async function pinLine(line: ProductLine, path: string, sp: Record<string, string | string[] | undefined> = {}): Promise<void> {
+/** A screen that belongs to one line only (PINNED_LINE): opened on the
+ *  other, it reopens on its own line with the rest of its address kept — so
+ *  the address, the page's switches and every action sent from it agree. */
+export async function pinLine(path: keyof typeof PINNED_LINE, sp: Record<string, string | string[] | undefined> = {}): Promise<void> {
+  const line = PINNED_LINE[path];
   if ((await getActiveLine()) === line) return;
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(sp)) if (typeof v === "string" && k !== LINE_PARAM) q.set(k, v);

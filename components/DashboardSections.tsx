@@ -1,12 +1,14 @@
 "use client";
 
 import { SectionStrip, type Section } from "@/components/SectionStrip";
+import { useActiveLine } from "@/components/LineContext";
+import { pinnedLine } from "@/lib/domain/lines";
 
 // The Dashboards tab: every dashboard of the app in one place, one place
 // each — the plan, the floor, the material, the consumables and Odoo. Each
 // is still switched on or off per account with the screen it reads (its tab
 // id in lib/domain/tabs.ts). The floor's figures are the transformers':
-// Production always opens on them, whatever line the strip came from.
+// Production always shows them, and on the panels' Planning it is not offered.
 
 export type DashboardSection = "planning" | "production" | "material" | "consumables" | "odoo";
 
@@ -19,5 +21,8 @@ const SECTIONS: readonly Section<DashboardSection>[] = [
 ];
 
 export function DashboardSections({ current }: { current: DashboardSection }) {
-  return <SectionStrip sections={SECTIONS} current={current} label="Dashboards" />;
+  // a place pinned to the other line is not offered on this one
+  const line = useActiveLine();
+  const sections = SECTIONS.filter((s) => (pinnedLine(s.href) ?? line) === line || s.id === current);
+  return <SectionStrip sections={sections} current={current} label="Dashboards" />;
 }

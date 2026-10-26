@@ -1,5 +1,6 @@
 "use client";
 
+import { traceHref } from "@/lib/domain/links";
 import { Fragment, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -649,7 +650,7 @@ export function MasterTrackerTable({
           { sep: true }
         );
       }
-      e.push({ key: "trace", icon: "🔍", label: "Open trace for this BOM", href: `/trace?bom=${encodeURIComponent(t.bom)}&line=TR` });
+      e.push({ key: "trace", icon: "🔍", label: "Open trace for this BOM", href: traceHref({ bom: t.bom, line: "TR" }) });
       return e;
     }
     const r = t.row;
@@ -668,7 +669,7 @@ export function MasterTrackerTable({
       if (closed) e.push({ key: "reopen", icon: "↩", label: "Reopen order", hint: "If it closed by itself, it stays open until you close it again", onSelect: () => changeStatus(r.mo, "open") });
       else e.push({ key: "close", icon: "✓", label: "Close order", disabled: !done, hint: done ? "It leaves the daily screens; reopen any time" : "Only a finished order — every component through its last stage — can close", onSelect: () => changeStatus(r.mo, "closed") });
     }
-    e.push({ sep: true }, { key: "trace", icon: "🔍", label: "Open trace", href: `/trace?mo=${encodeURIComponent(r.mo)}&line=TR` });
+    e.push({ sep: true }, { key: "trace", icon: "🔍", label: "Open trace", href: traceHref({ mo: r.mo, line: "TR" }) });
     return e;
   }
 
@@ -896,7 +897,7 @@ export function MasterTrackerTable({
         return <Modal title={`${ITEM_NAME[odooDetail.item]} · Odoo plan allocation`} sub={odooDetail.bom} onClose={() => setOdooDetail(null)} width="max-w-3xl">
           <p className="text-sm text-muted mb-3">The BOM&apos;s On Odoo production closings are the primary source. Separate imported project rows are used only when that component has no linked closing rows. Done / Closed quantities fill the oldest matching plan first, up to each order&apos;s requirement; linked records keep their own MO. A carried MO does not create another quantity.</p>
           <p className="text-sm text-muted mb-3">{odooTrackingFrom ? `Tracking begins on ${odooTrackingFrom}. Project entries from this day fill the oldest plans starting with its month; earlier plans do not consume them.` : "No recording start date has been set: project-only quantities remain unallocated."} A linked production closing still confirms its own MO, including an older order. “Not tracked” means the historical closing is unknown.</p>
-          <Link href={`/trace?bom=${encodeURIComponent(odooDetail.bom)}&line=TR#on-odoo`} className="inline-flex text-sm text-brand-ink font-semibold hover:underline mb-3">Open this BOM&apos;s On Odoo records →</Link>
+          <Link href={`${traceHref({ bom: odooDetail.bom, line: "TR" })}#on-odoo`} className="inline-flex text-sm text-brand-ink font-semibold hover:underline mb-3">Open this BOM&apos;s On Odoo records →</Link>
           <div className="overflow-x-auto"><table className="w-full text-sm grid-lines" aria-label="Odoo allocation by plan month">
             <thead><tr><th className="p-2 text-left">Original plan month</th><th className="p-2 text-left">MO</th><th className="p-2 text-right">Required</th><th className="p-2 text-right">Odoo allocated</th></tr></thead>
             <tbody>{members.map((r) => <tr key={r.mo} className={month && r.odooPlanMonth === month ? "bg-brand-light" : ""}>
@@ -1012,7 +1013,7 @@ export function MasterTrackerTable({
                         </>
                       );
                       const chevron = <ChevronRight size={14} className={`shrink-0 text-muted transition-transform duration-150 ${open ? "rotate-90" : ""}`} aria-hidden />;
-                      const bomLink = <Link href={`/trace?bom=${encodeURIComponent(gBom)}&line=TR`} onClick={(e) => e.stopPropagation()} className="text-brand-ink hover:underline whitespace-nowrap">{gBom}</Link>;
+                      const bomLink = <Link href={traceHref({ bom: gBom, line: "TR" })} onClick={(e) => e.stopPropagation()} className="text-brand-ink hover:underline whitespace-nowrap">{gBom}</Link>;
                       return (
                         <>
                           {moOn && (
@@ -1622,8 +1623,8 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                   );
                   const holdEdge = r.hold.onHold ? { boxShadow: "inset 3px 0 0 var(--warn-fg)" } : {};
                   const tip = `${r.mo} · ${r.bom}${r.soi ? ` · SOI ${r.soi}` : ""}${r.customer ? ` · ${r.customer}` : ""}`;
-                  const moLink = <Link href={`/trace?mo=${encodeURIComponent(r.mo)}&line=TR`} className="text-brand-ink hover:underline whitespace-nowrap">{r.mo}</Link>;
-                  const bomLink = <Link href={`/trace?bom=${encodeURIComponent(r.bom)}&line=TR`} className="text-brand-ink hover:underline whitespace-nowrap">{r.bom}</Link>;
+                  const moLink = <Link href={traceHref({ mo: r.mo, line: "TR" })} className="text-brand-ink hover:underline whitespace-nowrap">{r.mo}</Link>;
+                  const bomLink = <Link href={traceHref({ bom: r.bom, line: "TR" })} className="text-brand-ink hover:underline whitespace-nowrap">{r.bom}</Link>;
                   return (
                     <>
                       {moOn && (

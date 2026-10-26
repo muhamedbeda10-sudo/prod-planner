@@ -3,13 +3,13 @@ import { guardTab } from "@/lib/server/auth";
 import { getTrace } from "@/lib/server/trace";
 import { getActiveLine, withLine } from "@/lib/server/line";
 import { prisma } from "@/lib/db";
-import { hrefWithLine, lineParam, type ProductLine } from "@/lib/domain/lines";
+import { lineParam, type ProductLine } from "@/lib/domain/lines";
 import { getLvTrace } from "@/lib/server/lvTrace";
 import { LvTraceView } from "@/components/LvTraceView";
 import { PageHeader } from "@/components/ui";
 import { TraceSearch } from "@/components/TraceSearch";
 import { TraceView } from "@/components/TraceView";
-import { trackerHref } from "@/lib/domain/links";
+import { traceHref, trackerHref } from "@/lib/domain/links";
 
 export const dynamic = "force-dynamic";
 
@@ -57,15 +57,15 @@ export default async function TracePage({
       return (
         <div className="space-y-6">
           <PageHeader title={`Trace — ${lt.key}`} sub="No LV panel order or log row carries this code.">
-            <Link href="/tracker?line=LV" className="text-brand-ink text-sm font-semibold">→ Back to tracker</Link>
+            <Link href={trackerHref(0, undefined, "LV")} className="text-brand-ink text-sm font-semibold">→ Back to tracker</Link>
           </PageHeader>
           <div className="rounded-2xl bg-surface border border-border/60 shadow-sm p-10 flex flex-col items-center gap-3 text-center">
             <div className="text-4xl">🤷</div>
             <p className="text-sm text-muted">
               Nothing found for <b>{lt.key}</b> on the panels — try another code or order, or{" "}
-              <Link href={hrefWithLine(`/trace?${lt.scope}=${encodeURIComponent(lt.key)}`, "TR")} className="text-brand-ink font-semibold hover:underline">look for it on the transformers</Link>.
+              <Link href={traceHref({ [lt.scope]: lt.key, line: "TR" })} className="text-brand-ink font-semibold hover:underline">look for it on the transformers</Link>.
             </p>
-            <TraceSearch initial={lt.key} initialMode={lt.scope} />
+            <TraceSearch initial={lt.key} initialMode={lt.scope} line="LV" />
           </div>
         </div>
       );
@@ -79,12 +79,15 @@ export default async function TracePage({
     return (
       <div className="space-y-6">
         <PageHeader title={`Trace — ${t.key}`} sub="This code or order does not appear in any plan, the registry, or the log yet.">
-          <Link href={trackerHref(planNo, view)} className="text-brand-ink text-sm font-semibold">→ Back to tracker</Link>
+          <Link href={trackerHref(planNo, view, "TR")} className="text-brand-ink text-sm font-semibold">→ Back to tracker</Link>
         </PageHeader>
         <div className="rounded-2xl bg-surface border border-border/60 shadow-sm p-10 flex flex-col items-center gap-3 text-center">
           <div className="text-4xl">🤷</div>
-          <p className="text-sm text-muted">Nothing found for <b>{t.key}</b> — try another code or order.</p>
-          <TraceSearch initial={t.key} initialMode={t.scope} />
+          <p className="text-sm text-muted">
+            Nothing found for <b>{t.key}</b> — try another code or order, or{" "}
+            <Link href={traceHref({ [t.scope]: t.key, line: "LV" })} className="text-brand-ink font-semibold hover:underline">look for it on the panels</Link>.
+          </p>
+          <TraceSearch initial={t.key} initialMode={t.scope} line="TR" />
         </div>
       </div>
     );

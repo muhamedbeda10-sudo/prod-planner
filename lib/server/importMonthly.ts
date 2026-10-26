@@ -95,7 +95,7 @@ export async function importMonthlyPlan(
 
   // MOs are one namespace across both lines — the same MO cannot be a
   // transformer and a panel. A row whose MO sits on the other line is left
-  // out and named, so the sheet (or the toggle) gets fixed rather than the
+  // out and named, so the sheet (or the line picked on the page) gets fixed rather than the
   // order silently changing sides.
   const everything = await prisma.masterOrder.findMany();
   const elsewhere = new Map(everything.filter((o) => o.line !== line).map((o) => [o.mo, o.line]));

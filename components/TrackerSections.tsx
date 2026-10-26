@@ -2,6 +2,7 @@
 
 import { SectionStrip, type Section } from "@/components/SectionStrip";
 import { useActiveLine } from "@/components/LineContext";
+import { pinnedLine } from "@/lib/domain/lines";
 
 // The Plan Tracker tab holds four places: the tracker, the daily log it adds
 // up, the what-if simulator and the ODOO close-out log. The same strip at the
@@ -17,7 +18,9 @@ const SECTIONS: readonly Section<TrackerSection>[] = [
 ];
 
 export function TrackerSections({ current }: { current: TrackerSection }) {
-  // the simulator models the transformers' plan: on the panels it is not offered
-  const lv = useActiveLine() === "LV";
-  return <SectionStrip sections={lv ? SECTIONS.filter((s) => s.id !== "simulate") : SECTIONS} current={current} label="Plan Tracker" />;
+  // a place pinned to the other line (the simulator models the transformers'
+  // plan) is not offered on this one
+  const line = useActiveLine();
+  const sections = SECTIONS.filter((s) => (pinnedLine(s.href) ?? line) === line || s.id === current);
+  return <SectionStrip sections={sections} current={current} label="Plan Tracker" />;
 }

@@ -26,7 +26,7 @@ import type { AiActionView } from "@/lib/domain/aiActions";
 import type { AiChatStatus } from "@/lib/server/ai/panel";
 import { captureAiPage } from "@/lib/domain/aiScreen";
 import { tabForPath } from "@/lib/domain/tabs";
-import { useActiveLine } from "@/components/LineContext";
+import { useActiveLine, useCarryLine } from "@/components/LineContext";
 import { readAiStream } from "@/lib/aiStream";
 import { isAiEvidence } from "@/lib/domain/aiEvidence";
 import { AiSources } from "@/components/AiSources";
@@ -154,6 +154,7 @@ export function AiChat({
   const router = useRouter();
   const pathname = usePathname() ?? "/ai";
   const line = useActiveLine();
+  const carryLine = useCarryLine();
   const [convs, setConvs] = useState<Conv[]>(conversations);
   const [activeId, setActiveId] = useState<number | null>(initial?.id ?? null);
   const [turns, setTurns] = useState<Turn[]>(initial?.turns ?? []);
@@ -237,9 +238,10 @@ export function AiChat({
 
   const setUrl = useCallback(
     (id: number | null) => {
-      if (syncUrl) window.history.replaceState(null, "", id ? `/ai?c=${id}` : "/ai");
+      // a line the address names stays in it, so the next question asks on it too
+      if (syncUrl) window.history.replaceState(null, "", carryLine(id ? `/ai?c=${id}` : "/ai"));
     },
-    [syncUrl],
+    [syncUrl, carryLine],
   );
 
   const open = useCallback(

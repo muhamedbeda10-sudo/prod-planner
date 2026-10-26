@@ -1,8 +1,8 @@
 "use client";
 
-import { createContext, useContext } from "react";
-import { useSearchParams } from "next/navigation";
-import { DEFAULT_LINE, LINE_PARAM, hrefWithLine, lineParam, type ProductLine } from "@/lib/domain/lines";
+import { createContext, useCallback, useContext } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { DEFAULT_LINE, LINE_PARAM, hrefWithLine, lineParam, pinnedLine, type ProductLine } from "@/lib/domain/lines";
 
 // Which product line the browser is looking at, for the client components that
 // must key something by it. The page's address names it (`?line=LV`); with
@@ -37,8 +37,11 @@ export function useLineKey(key: string): string {
 
 /** Links to the other screens of the same tab keep the line the address
  *  names: from the panels' Plan Tracker, the Daily log opens on the panels
- *  too. With no line in the address there is nothing to carry. */
+ *  too. With no line in the address there is nothing to carry — nor on a
+ *  screen pinned to one line, whose line was never the reader's choice. */
 export function useCarryLine(): (href: string) => string {
-  const named = lineParam(useSearchParams().get(LINE_PARAM));
-  return (href) => (named ? hrefWithLine(href, named) : href);
+  const pinned = pinnedLine(usePathname()) !== null;
+  const asked = lineParam(useSearchParams().get(LINE_PARAM));
+  const named = pinned ? null : asked;
+  return useCallback((href: string) => (named ? hrefWithLine(href, named) : href), [named]);
 }

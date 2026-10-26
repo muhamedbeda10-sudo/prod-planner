@@ -99,7 +99,7 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
         },
         trend: c.trend.map(pt),
       }),
-      links: [{ label: "Planning dashboard", href: "/" }],
+      links: [{ label: "Planning dashboard", href: "/?line=TR" }],
     };
   },
 };
@@ -165,7 +165,7 @@ export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dep
         shareOfPiecesPriced: r2(f.pricedShare),
       }),
       // the Production dashboard is the transformers' only
-      links: ctx.line === "LV" ? [] : [{ label: "Production dashboard", href: `/dashboards/production${q ? `?${q}` : ""}` }],
+      links: [{ label: "Production dashboard", href: `/dashboards/production${q ? `?${q}` : ""}` }],
     };
   },
 };
@@ -211,7 +211,7 @@ export const explainEfficiencyTool: ReadTool<{ centre?: WorkCentre; days?: numbe
         note: "Stops are machine-hours turned into the man-hours they idled (the centre's people's hours against its machines'), never more than the hours not earned. 'Slower or not logged' is what remains — slower than the standard, or work done but not on the Daily log.",
       }),
       // the card lives on the Production dashboard, the transformers' only
-      links: ctx.line === "LV" ? [] : [{ label: "Production dashboard", href: "/dashboards/production" }],
+      links: [{ label: "Production dashboard", href: "/dashboards/production" }],
     };
   },
 };

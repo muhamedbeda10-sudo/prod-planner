@@ -1,4 +1,5 @@
 import "server-only";
+import { traceHref } from "@/lib/domain/links";
 import { withLine } from "@/lib/server/line";
 import { getMasterTracker } from "@/lib/server/masterTracker";
 import { getLvTracker } from "@/lib/server/lvTracker";
@@ -16,7 +17,7 @@ export const TRACKER_FILTER_SCHEMA: ObjectSchema = {
 };
 
 interface Input { line?: "TR" | "LV"; usePageFilters?: boolean; filters?: TrackerFilters; detailLimit?: number }
-const trace = (mo: string, line: "TR" | "LV") => `/trace?mo=${encodeURIComponent(mo)}&line=${line}`;
+const trace = (mo: string, line: "TR" | "LV") => traceHref({ mo, line });
 
 export function trackerSummaryTool(loaders = { tr: getMasterTracker, lv: getLvTracker }): ReadTool<Input> {
   return {

@@ -9,6 +9,7 @@ import {
   type MaterialNeed, type NeedContext, type NeedVia, type NestingLookup, type VarianceTone,
 } from "@/lib/domain/odooMaterial";
 import type { OdooEntryView } from "@/lib/domain/odoo";
+import { hrefWithLine, resolveLine, type ProductLine } from "@/lib/domain/lines";
 import { Soi } from "@/components/ui";
 import { parseSaved, useStoredFilters } from "@/components/useStoredFilters";
 
@@ -91,13 +92,14 @@ function VariancePill({ pct, tone }: { pct: number | null; tone: VarianceTone | 
 const MATERIAL_FILTERS_KEY = "material:filters";
 const readMaterialFilters = (raw: string) => parseSaved(raw) as Partial<MaterialFilters>;
 
-/** Go to the MATERIAL tab already narrowed to this part on this BOM. */
-function useOpenInMaterial() {
+/** Go to the MATERIAL tab already narrowed to this part on this BOM — on
+ *  the row's own line, whichever the ODOO log is showing. */
+function useOpenInMaterial(line: ProductLine) {
   const router = useRouter();
-  const { setFilters } = useStoredFilters(MATERIAL_FILTERS_KEY, readMaterialFilters, EMPTY_MATERIAL_FILTERS);
+  const { setFilters } = useStoredFilters(MATERIAL_FILTERS_KEY, readMaterialFilters, EMPTY_MATERIAL_FILTERS, line);
   return (q: string, partCode: string, month: string) => {
     setFilters({ ...EMPTY_MATERIAL_FILTERS, q, partCode });
-    router.push(month ? `/material?month=${encodeURIComponent(month)}` : "/material");
+    router.push(hrefWithLine(month ? `/material?month=${encodeURIComponent(month)}` : "/material", line));
   };
 }
 
@@ -175,7 +177,7 @@ function NeedTable({ need, copied, copy, lv }: { need: MaterialNeed; copied: str
 export function OdooMaterialPopup({ e, nesting, needCtx, onClose }: { e: OdooEntryView; nesting: NestingLookup; needCtx: NeedContext; onClose: () => void }) {
   const [qty, setQty] = useState(String(e.qty));
   const { copied, copy } = useCopy();
-  const openInMaterial = useOpenInMaterial();
+  const openInMaterial = useOpenInMaterial(resolveLine(e.line));
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

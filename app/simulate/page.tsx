@@ -18,7 +18,7 @@ export default async function SimulatePage() {
   await guardTab("/simulate");
   const me = await getCurrentUser();
   if (!me) redirect("/login");
-  await pinLine("TR", "/simulate");
+  await pinLine("/simulate");
 
   const [inputs, saved, applied] = await Promise.all([
     getWhatIfInputs(),

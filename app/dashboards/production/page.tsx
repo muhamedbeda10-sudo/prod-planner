@@ -30,7 +30,7 @@ export default async function ProductionDashboardPage({ searchParams }: { search
 
   const sp = await searchParams;
   // the floor's figures are the transformers': opened on the panels, it reopens on them
-  await pinLine("TR", "/dashboards/production", sp);
+  await pinLine("/dashboards/production", sp);
   const req = floorRequest(sp, todayISO);
   const period = await getFloorPeriod(req).catch((e: unknown) => { console.error("production: the floor's period could not load", e); return null; });
   return (

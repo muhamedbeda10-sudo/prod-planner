@@ -73,7 +73,7 @@ The assistant can run the same shared calculations through three read-only tools
 
 These tools never write plant data, change the screen, send messages or create schedules. Ask the assistant to show a chosen variant using the existing screen tool when wanted; saving/applying continues through the existing permissions and approval cards. Successful reads retain their source snapshot and related record links.
 
-This release uses the **TR fabrication model**, with combined shot blast/painting finishing. It does not forecast LV punching/bending; from an LV chat the tools require an explicit TR scope instead of silently mixing lines. Engineering rates and simulator loaders are fixed to TR even when the navigation toggle is LV.
+This release uses the **TR fabrication model**, with combined shot blast/painting finishing. It does not forecast LV punching/bending; from an LV chat the tools require an explicit TR scope instead of silently mixing lines. Engineering rates and simulator loaders are fixed to TR even when the screen shows LV Panels.
 
 Example requests:
 

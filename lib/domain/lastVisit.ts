@@ -6,6 +6,13 @@
 // keeps one memory per VIEW as well, so the dashboard's period, BOM and
 // product survive a visit to the log, and the view switch (`?view=dashboard`,
 // nothing else) reopens the dashboard as it was left, not on its defaults.
+//
+// The product line (?line=) is never remembered: a screen with no line in its
+// address opens on the person's own line. A line the address does name rides
+// along — it neither makes an arrival "explicit" nor is lost when the tab's
+// last URL is reopened.
+
+import { LINE_PARAM, hrefWithLine, lineParam } from "./lines";
 
 export interface LastVisitInput {
   /** The browser key for the tab's last URL, e.g. "odoo:last". */
@@ -48,6 +55,18 @@ export function viewStorageKey(storageKey: string, view: string): string {
 
 export function planLastVisit(i: LastVisitInput): LastVisitPlan {
   const params = new URLSearchParams(i.qs);
+  const line = lineParam(params.get(LINE_PARAM));
+  params.delete(LINE_PARAM);
+  const qs = params.toString();
+  // a URL reopened keeps the line the address names
+  const onLine = (url: string) => (line ? hrefWithLine(url, line) : url);
+  // memory written before the line was left out of it
+  const unlined = (saved: string | null) => {
+    if (!saved || !saved.startsWith(`${i.pathname}?`)) return saved;
+    const p = new URLSearchParams(saved.slice(i.pathname.length + 1));
+    p.delete(LINE_PARAM);
+    return p.size ? `${i.pathname}?${p}` : i.pathname;
+  };
   const viewKey = i.viewKey ?? "view";
   const scoped = i.view !== undefined ? viewStorageKey(i.storageKey, i.view) : null;
   const here = i.qs ? `${i.pathname}?${i.qs}` : i.pathname;
@@ -55,24 +74,24 @@ export function planLastVisit(i: LastVisitInput): LastVisitPlan {
 
   // a bare path reopens what was left on the tab — on landing only: a view
   // switch to the bare path (Consumables' Log) means that view, not the last one
-  if (i.arriving && !i.qs) {
-    const saved = i.read(i.storageKey);
-    if (ours(saved) && saved !== here) return { redirect: saved, save: [] };
+  if (i.arriving && !qs) {
+    const saved = unlined(i.read(i.storageKey));
+    if (ours(saved) && onLine(saved) !== here) return { redirect: onLine(saved), save: [] };
   }
 
   // the view switch alone (the view, and what the switch carries) reopens
   // that view as it was left, the carried values laid over it
-  if ((i.arriving || i.viewChanged) && scoped && i.qs) {
+  if ((i.arriving || i.viewChanged) && scoped && qs) {
     const carried = new Set([viewKey, ...(i.carry ?? [])]);
     if ([...params.keys()].every((k) => carried.has(k))) {
-      const saved = i.read(scoped);
+      const saved = unlined(i.read(scoped));
       if (ours(saved)) {
         const merged = new URLSearchParams(saved.slice(i.pathname.length + 1));
         for (const k of i.carry ?? []) {
           const v = params.get(k);
           if (v === null) merged.delete(k); else merged.set(k, v);
         }
-        const target = merged.toString() ? `${i.pathname}?${merged}` : i.pathname;
+        const target = onLine(merged.toString() ? `${i.pathname}?${merged}` : i.pathname);
         if (target !== here) return { redirect: target, save: [] };
       }
     }

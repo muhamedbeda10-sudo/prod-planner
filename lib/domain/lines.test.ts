@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_LINE, LINE_LABEL, PRODUCT_LINES, defaultLineOf, hrefWithLine, isProductLine, lineParam, otherLine, resolveLine } from "./lines";
+import { DEFAULT_LINE, LINE_LABEL, PINNED_LINE, PRODUCT_LINES, hrefWithLine, pinnedLine, isProductLine, lineParam, otherLine, resolveLine } from "./lines";
 
 describe("product lines — transformers and LV panels, never mixed", () => {
   it("knows exactly two lines, transformers first", () => {
@@ -16,7 +16,7 @@ describe("product lines — transformers and LV panels, never mixed", () => {
     expect(isProductLine(null)).toBe(false);
   });
 
-  it("reads a line off a cookie or a form however it was spelled", () => {
+  it("reads a line off a form or an address however it was spelled", () => {
     expect(resolveLine("lv")).toBe("LV");
     expect(resolveLine(" TR ")).toBe("TR");
   });
@@ -50,27 +50,17 @@ describe("product lines — transformers and LV panels, never mixed", () => {
   });
 });
 
-describe("the line a screen opens on for a person", () => {
-  it("is the transformers' for admins, whatever they hold", () => {
-    expect(defaultLineOf(["lv.punching"], true)).toBe("TR");
+describe("screens pinned to one line", () => {
+  it("names the transformers' and the panels' own screens", () => {
+    expect(pinnedLine("/simulate")).toBe("TR");
+    expect(pinnedLine("/worklist/cut")).toBe("TR");
+    expect(pinnedLine("/worklist/punching")).toBe("LV");
+    expect(pinnedLine("/worklist/welding")).toBeNull();
+    expect(pinnedLine("/tracker")).toBeNull();
   });
 
-  it("is the panels' for someone who records only on the panels", () => {
-    expect(defaultLineOf(["lv.punching", "lv.bending"], false)).toBe("LV");
-    expect(defaultLineOf(["shifts.lv", "consumables.edit", "odoo.alerts"], false)).toBe("LV");
-    expect(defaultLineOf(["lv.import", "lv.material"], false)).toBe("LV");
-  });
-
-  it("is the transformers' as soon as a transformer key is held too", () => {
-    expect(defaultLineOf(["lv.welding", "welding.edit"], false)).toBe("TR");
-    expect(defaultLineOf(["lv.status", "tracker.status"], false)).toBe("TR");
-    expect(defaultLineOf(["lv.material", "material.edit"], false)).toBe("TR");
-    expect(defaultLineOf(["lv.import", "plans.import"], false)).toBe("TR");
-    expect(defaultLineOf(["lv.odoo", "odoo.edit"], false)).toBe("TR");
-  });
-
-  it("is the transformers' for someone tied to neither line", () => {
-    expect(defaultLineOf([], false)).toBe("TR");
-    expect(defaultLineOf(["consumables.edit", "stock.edit"], false)).toBe("TR");
+  it("pins only real lines", () => {
+    for (const line of Object.values(PINNED_LINE)) expect(PRODUCT_LINES).toContain(line);
   });
 });
+

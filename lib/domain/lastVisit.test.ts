@@ -78,3 +78,25 @@ describe("planLastVisit", () => {
     expect(viewStorageKey("consumables:last", "powder")).toBe("consumables:last:powder");
   });
 });
+
+describe("planLastVisit and the product line", () => {
+  it("never remembers the line — a bare arrival opens on the person's own", () => {
+    const p = planLastVisit({ storageKey: "material:last", pathname: "/material", qs: "line=LV&month=2026-10", arriving: false, read: store({}) });
+    expect(p.save).toEqual([{ key: "material:last", url: "/material?month=2026-10" }]);
+  });
+
+  it("drops a line remembered before it was left out", () => {
+    const p = planLastVisit({ storageKey: "odoo:log", pathname: "/odoo", qs: "", arriving: true, read: store({ "odoo:log": "/odoo?line=LV" }) });
+    expect(p).toEqual({ redirect: null, save: [{ key: "odoo:log", url: "/odoo" }] });
+  });
+
+  it("reopens the tab as it was left on the line the address names", () => {
+    const p = planLastVisit({ storageKey: "material:last", pathname: "/material", qs: "line=LV", arriving: true, read: store({ "material:last": "/material?month=2026-10" }) });
+    expect(p).toEqual({ redirect: "/material?month=2026-10&line=LV", save: [] });
+  });
+
+  it("lets the view switch reopen a view with the line carried along", () => {
+    const p = planLastVisit({ storageKey: "consumables:views", pathname: "/consumables", qs: "view=powder&line=LV", arriving: true, view: "powder", read: store({ "consumables:views:powder": "/consumables?view=powder&month=2026-09" }) });
+    expect(p.redirect).toBe("/consumables?view=powder&month=2026-09&line=LV");
+  });
+});

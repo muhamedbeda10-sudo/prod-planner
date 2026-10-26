@@ -16,7 +16,7 @@ import { getChatUnreadCount } from "@/lib/server/chat";
 import { getSettings } from "@/lib/server/data";
 import { getUserPrefs } from "@/lib/server/userPrefs";
 import { WHATS_NEW_PREF_KEYS } from "@/lib/domain/userPrefs";
-import { defaultLineOf } from "@/lib/domain/lines";
+import { ownLine } from "@/lib/server/line";
 import { aiVisibleFor } from "@/lib/server/ai/access";
 import { inboxState } from "@/lib/server/inbox";
 import { getNeedingMo, getReadyToClose } from "@/lib/server/odooAlerts";
@@ -58,7 +58,7 @@ export default async function RootLayout({
   // subscribed to either
   const perms = user ? userPerms(user) : new Set<string>();
   // where a screen whose address names no line opens for this person
-  const line = user ? defaultLineOf(perms, user.isAdmin) : "TR";
+  const line = ownLine(user);
   const wantClose = perms.has(ODOO_ALERTS_PERM);
   const wantMo = perms.has(ODOO_NEED_MO_PERM);
   const odooAlertsOn = wantClose || wantMo;

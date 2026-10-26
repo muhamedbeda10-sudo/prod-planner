@@ -1,4 +1,5 @@
 import "server-only";
+import { traceHref } from "@/lib/domain/links";
 import type { MasterOrder } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { hasPerm } from "@/lib/server/auth";
@@ -89,7 +90,7 @@ export const getOrders: ReadTool<GetOrdersInput> = {
       if (rows.length === 0) return { ok: true, text: "No LV order matches." };
       return {
         ok: true,
-        links: rows.slice(0, 20).map((r) => ({ label: `${r.mo} · ${r.bom}`, href: `/trace?mo=${encodeURIComponent(r.mo)}&line=LV` })),
+        links: rows.slice(0, 20).map((r) => ({ label: `${r.mo} · ${r.bom}`, href: traceHref({ mo: r.mo, line: "LV" }) })),
         text: JSON.stringify(rows.slice(0, 60).map((r) => ({
           mo: r.mo, bom: r.bom, soi: r.soi, product: r.product, status: r.status,
           onHold: r.hold.onHold ? { note: r.hold.holdNote, by: r.hold.holdBy, since: r.hold.holdSinceISO } : null,
@@ -103,7 +104,7 @@ export const getOrders: ReadTool<GetOrdersInput> = {
     if (rows.length === 0) return { ok: true, text: "No transformer order matches (for panels, ask with line LV)." };
     return {
       ok: true,
-      links: rows.slice(0, 20).map((r) => ({ label: `${r.mo} · ${r.bom}`, href: `/trace?mo=${encodeURIComponent(r.mo)}&line=TR` })),
+      links: rows.slice(0, 20).map((r) => ({ label: `${r.mo} · ${r.bom}`, href: traceHref({ mo: r.mo, line: "TR" }) })),
       text: JSON.stringify(rows.slice(0, 60).map((r) => {
         const items: Record<string, Record<string, number>> = {};
         const notNeeded: string[] = [];

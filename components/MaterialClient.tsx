@@ -1,6 +1,6 @@
 "use client";
 
-import { useActiveLine } from "@/components/LineContext";
+import { traceHref } from "@/lib/domain/links";
 import Link from "next/link";
 
 import type { ProductLine } from "@/lib/domain/lines";
@@ -314,7 +314,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
           <td className="p-2 text-center"><span className="pill pill-muted">{line.partName || "—"}</span></td>
           <td className="p-2 whitespace-nowrap ltr text-xs tabnum text-muted">{line.materialCode || "—"}</td>
           <td className="p-2 text-center tabnum font-bold">{line.units}</td>
-          <td className="p-2 whitespace-nowrap ltr text-xs"><BomLink bom={line.bom} /></td>
+          <td className="p-2 whitespace-nowrap ltr text-xs"><BomLink bom={line.bom} line={product} /></td>
           <td className="p-2 whitespace-nowrap">{line.material}</td>
           <td className="p-2 text-center tabnum ltr">{line.thicknessMm}</td>
           <td className="p-2 text-center whitespace-nowrap ltr tabnum">{line.sheetSize}</td>
@@ -350,7 +350,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
         <td className={`p-2 whitespace-nowrap ltr text-xs font-semibold ${stickCls(1)}`} style={stickStyle(1)}><span className="block truncate" title={line.soi || undefined}>{line.soi || <span className="text-muted">—</span>}</span></td>
         {/* the sheet files each part under Odoo's MO — the key an ODOO row finds it by */}
         <td className={`p-2 font-bold whitespace-nowrap ltr text-xs ${stickCls(2)}`} style={stickStyle(2)}><MoCell mo={line.mo} odoo={odoo} /></td>
-        <td className="p-2 whitespace-nowrap ltr text-xs"><BomLink bom={line.bom} /></td>
+        <td className="p-2 whitespace-nowrap ltr text-xs"><BomLink bom={line.bom} line={product} /></td>
         <td className={`p-2 ${NUM} tabnum ltr`}>{line.units}</td>
         <td className="p-2 whitespace-nowrap ltr text-xs font-bold">{line.partCode || <span className="text-muted">—</span>}</td>
         <td className="p-2 whitespace-nowrap text-xs">{line.partName || <span className="text-muted">—</span>}</td>
@@ -479,7 +479,7 @@ const GROUP_FORM: { name: "mtr" | "soi" | "mo" | "bom" | "units" | "utilization"
   { name: "note", label: "Notes", className: "w-48" },
 ];
 
-function SoiGroupRow({ g, open, onToggle, odoo, showMonth, canEdit }: { g: MaterialSoiGroup; open: boolean; onToggle: () => void; odoo: Record<string, string>; showMonth: boolean; canEdit: boolean }) {
+function SoiGroupRow({ g, open, onToggle, odoo, showMonth, canEdit, product }: { g: MaterialSoiGroup; open: boolean; onToggle: () => void; odoo: Record<string, string>; showMonth: boolean; canEdit: boolean; product: ProductLine }) {
   const onOdoo = g.mos.filter((mo) => odoo[mo.toUpperCase()]);
   const shownMos = g.mos.slice(0, 4);
   const ids = g.lines.map((l) => l.id);
@@ -490,12 +490,11 @@ function SoiGroupRow({ g, open, onToggle, odoo, showMonth, canEdit }: { g: Mater
   const [confirmDelete, confirmDialog] = useConfirm();
   const initial = Object.fromEntries(GROUP_FORM.map((f) => [f.name, sharedOf(g.lines.map((l) => asText(l[f.name])))])) as Record<string, string | null>;
   const label = g.soi || "No SOI";
-  const line = useActiveLine();
   const row = useRowMenu(() => [
     { heading: `${label} · ${n} lines` },
     { key: "edit", label: `Edit all ${n} lines…`, icon: "✏️", onSelect: () => setEditing(true) },
     { key: "fold", label: open ? "Fold the lines" : "Show the lines", icon: open ? "▴" : "▾", onSelect: onToggle },
-    ...(g.lines[0]?.bom ? [{ key: "trace", label: "Open the order's details", icon: "🔍", href: `/trace?bom=${encodeURIComponent(g.lines[0].bom)}&line=${line}` }] : []),
+    ...(g.lines[0]?.bom ? [{ key: "trace", label: "Open the order's details", icon: "🔍", href: traceHref({ bom: g.lines[0].bom, line: product }) }] : []),
     { sep: true },
     {
       key: "delete", label: `Delete all ${n} lines…`, icon: "🗑", danger: true, disabled: del.pending,
@@ -559,7 +558,7 @@ function SoiGroupRow({ g, open, onToggle, odoo, showMonth, canEdit }: { g: Mater
         </td>
         <td className="p-2 whitespace-nowrap ltr text-xs">
           {sharedBom !== null
-            ? (canEdit ? <GroupInput ids={ids} field="bom" type="text" values={g.lines.map((l) => l.bom)} title="BOM Ref" className="w-32" /> : <BomLink bom={sharedBom} />)
+            ? (canEdit ? <GroupInput ids={ids} field="bom" type="text" values={g.lines.map((l) => l.bom)} title="BOM Ref" className="w-32" /> : <BomLink bom={sharedBom} line={product} />)
             : <span className="text-muted" title={[...new Set(g.lines.map((l) => l.bom))].join(", ")}>{new Set(g.lines.map((l) => l.bom)).size} BOMs</span>}
         </td>
         <td className={`p-2 ${NUM}`}>
@@ -1088,7 +1087,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                     // a SOI of one line needs no head: the line is the row
                     g.lines.length === 1 ? <LineRow key={g.lines[0].id} line={g.lines[0]} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} odoo={odooByMo} /> : (
                     <Fragment key={`soi-${g.soi}`}>
-                      <SoiGroupRow g={g} open={!folded.has(g.soi)} onToggle={() => toggleFold(g.soi)} odoo={odooByMo} showMonth={showMonth} canEdit={canEdit} />
+                      <SoiGroupRow g={g} open={!folded.has(g.soi)} onToggle={() => toggleFold(g.soi)} odoo={odooByMo} showMonth={showMonth} canEdit={canEdit} product={product} />
                       {!folded.has(g.soi) && g.lines.map((l, i) => <LineRow key={l.id} line={l} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} odoo={odooByMo} inGroup={i === g.lines.length - 1 ? "last" : "child"} />)}
                     </Fragment>
                   )))}
@@ -1123,8 +1122,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
 }
 
 /** A line's BOM, opening its order's page (the trace: pipeline, orders, log). */
-function BomLink({ bom }: { bom: string }) {
-  const line = useActiveLine();
+function BomLink({ bom, line }: { bom: string; line: ProductLine }) {
   if (!bom) return <span className="text-muted">—</span>;
-  return <Link href={`/trace?bom=${encodeURIComponent(bom)}&line=${line}`} className="text-brand-ink hover:underline" title="Open the order's details">{bom}</Link>;
+  return <Link href={traceHref({ bom, line })} className="text-brand-ink hover:underline" title="Open the order's details">{bom}</Link>;
 }

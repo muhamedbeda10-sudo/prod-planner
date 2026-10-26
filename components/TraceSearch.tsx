@@ -2,18 +2,24 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useCarryLine } from "@/components/LineContext";
+import { traceHref } from "@/lib/domain/links";
+import type { ProductLine } from "@/lib/domain/lines";
 import { Search } from "lucide-react";
 
 /** Jump box: type any MO or BOM and trace it directly (no need to arrive from
  *  a link). A small toggle picks whether the text is a code (BOM) or an order
  *  (MO); BOM is the default. */
-export function TraceSearch({ initial = "", initialMode = "bom" }: { initial?: string; initialMode?: "bom" | "mo" }) {
+export function TraceSearch({ initial = "", initialMode = "bom", line }: { initial?: string; initialMode?: "bom" | "mo"; line?: ProductLine }) {
   const router = useRouter();
+  // a code is searched on the line the page is tracing (`line`, else the one
+  // its address names); an order opens on its own
+  const carry = useCarryLine();
   const [q, setQ] = useState(initial);
   const [mode, setMode] = useState<"bom" | "mo">(initialMode);
   const go = () => {
     const v = q.trim();
-    if (v) router.push(`/trace?${mode}=${encodeURIComponent(v)}`);
+    if (v) router.push(mode === "mo" ? traceHref({ mo: v }) : line ? traceHref({ bom: v, line }) : carry(traceHref({ bom: v })));
   };
   return (
     <div className="flex items-center gap-1.5">
