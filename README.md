@@ -332,8 +332,11 @@ mobile drawer still lists every view flat, since it has the vertical room.
 10. **What-if Simulator** (`/simulate`, a view of the Plan Tracker tab; the transformers only) — the planner's
    sandbox: move the delivery dates, the capacity and the crew, reorder and split the queue, and see what lands
    on time and what slips, in standard hours. A scenario can be saved by name for everyone (`simulator.edit`),
-   and an admin can apply one as the plant's run order. The AI assistant reads and puts scenarios on it (feature
-   12). Viewing is free.
+   and an admin can apply one as the plant's run order. **Meet the deadlines** (`lib/domain/deadlinePlan.ts`)
+   searches the same model for the cheapest way to bring the late orders back on time — the order of the jobs first,
+   then one step at a time the addition that rescues the most per man-hour (workers at a department, Fridays — overtime
+   for today's crew is not in the model) — puts the result on the knobs with each step's effect, and Undo puts the scenario before back. The AI
+   assistant reads and puts scenarios on it (feature 12), and runs the same search (`plan_for_deadlines`). Viewing is free.
 11. **Consumables** (`/consumables`) — the store's log of what it hands out to the floor. A hand-out is recorded
    on **one line above the log** (after a save the department and the person stay and the item box is ready for the
    next paste); a correction opens in a popup. Item (typed
@@ -507,9 +510,9 @@ mobile drawer still lists every view flat, since it has the vertical room.
 13. **Planning cockpit** (`/`, the home page, a view of the Plan Tracker tab; the transformers only — on the
    LV line the home page is the panels' own dashboard) — the planner's one page, every figure in **standard hours**
    (what the work is worth, from the hours a piece per work centre — typed, else the estimate), so Fabrication's
-   ten projects a day add up and departments compare. On top, what needs a decision today (lines behind, a centre
+   ten projects a day add up and departments compare. The **Decisions** button in its head (icon: the worst news; badge: how many) opens what needs a decision today (lines behind, a centre
    short at the end of the horizon or falling behind in it and when it catches up, thin or heavy welding coverage, a slow centre, the
-   biggest loss, an unrecorded day), then five questions: **1** the newest weekly plan — each stage's pieces due by
+   biggest loss, an unrecorded day) in a popup, the printout carrying the list; then five questions: **1** the newest weekly plan — each stage's pieces due by
    today (the oven date less the Settings lead days) against done, by delivery day, and the lines behind with the
    stage they are stuck at (the card shows the oldest 20; its Excel export carries them all); **2** each work centre's earned std-hours against the man-hours the shift log booked
    there — efficiency on the last recorded day and over the recent ones, people a day, machine availability, the
@@ -526,8 +529,12 @@ mobile drawer still lists every view flat, since it has the vertical room.
    even pace through its working days stands today; the people as bullets (who comes against who is needed from
    today); **each day's output** in standard hours by department against the man-hours booked; each centre's
    efficiency day by day, one small chart a centre against the standard; and the stops as a Pareto, biggest cause
-   first with the share it and the causes above make up. The headline figures each read against a week ago. The page
-   prints. An account the Shifts screen is closed to sees neither the centres'
+   first with the share it and the causes above make up. **Where did the hours go?** (`lib/domain/losses.ts`) walks a
+   centre's (or the floor's) rostered man-hours over the last 7, 14 or 30 days down to the standard hours earned —
+   absence, overtime, the man-hours machine stops idled by cause (machine-hours × the centre's people's hours against
+   its machines', never more than the hours not earned), and what is left: slower than the standard, or work not on the
+   Daily log — as a waterfall, and says which of them moved the efficiency against the days before (the assistant's
+   `explain_efficiency`). The headline figures each read against a week ago. The page prints. An account the Shifts screen is closed to sees neither the centres'
    efficiency, nor the losses, nor who is present (questions 2 and 5, and the people card's Present and Gap) — on the page or through the assistant. The day's figures are kept for their trend
    (`KpiSnapshot`): after the page is served, and each hour by the automations' housekeeping. The
    pure arithmetic is `lib/domain/kpis.ts` (tested); the loader `lib/server/kpis.ts` is the one both the page and

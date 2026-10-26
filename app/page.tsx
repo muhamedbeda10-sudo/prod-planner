@@ -9,6 +9,7 @@ import { PageHead } from "@/components/ui";
 import { PrintButton } from "@/components/PrintButton";
 import { PrintHeader } from "@/components/PrintHeader";
 import { Cockpit } from "@/components/Cockpit";
+import { CockpitDecisions } from "@/components/CockpitDecisions";
 import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
 import { formatDate } from "@/lib/domain/format";
 import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
@@ -37,17 +38,18 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ f
   // today's point of the trend, kept once the page is on its way
   after(() => recordKpiSnapshot(data));
   const floor = !hiddenTabsOf(me).has("shifts");
+  // the shift log's figures stay with the accounts that see Shifts
+  const shown = floor ? data : withoutFloor(data);
   return (
     <div className="space-y-3">
       <PrintHeader title="Cockpit" subtitle={data.week.planNo ? `Weekly plan ${data.week.planNo}` : undefined} date={formatDate(data.todayISO)} />
       <PageHead
         title="Cockpit"
         sub={`Transformers · today ${formatDate(data.todayISO)}${data.lastDayISO ? ` · last recorded day ${formatDate(data.lastDayISO)}` : ""} · everything in standard hours`}
-        actions={<PrintButton />}
+        actions={<><CockpitDecisions actions={shown.actions} /><PrintButton /></>}
         views={<ViewTabs views={TRACKER_VIEWS} current="/" label="Tracker view" />}
       />
-      {/* the shift log's figures stay with the accounts that see Shifts */}
-      {floor ? <Cockpit data={data} /> : <Cockpit data={withoutFloor(data)} floor={false} />}
+      <Cockpit data={shown} floor={floor} />
     </div>
   );
 }
