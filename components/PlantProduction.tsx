@@ -30,7 +30,6 @@ export type PlantProductionLv = Pick<LvFloorPeriod, "summary" | "output" | "pric
 export function PlantProduction({ tr, lv, actions }: { tr: PlantProductionTr; lv: PlantProductionLv; actions: readonly CockpitAction[] }) {
   const plant = plantEfficiency([linePart("TR", tr), linePart("LV", lv)]);
   const range = slicerRangeLabel(tr.fromISO, tr.toISO);
-  const stamp = `${tr.fromISO}_${tr.toISO}`;
   // each line's earned hours per day, side by side; the man-hours added (the domain's rule)
   const output = plantDailyOutput(tr.output, lv.output);
   const noDays = output.length === 0;
@@ -53,14 +52,14 @@ export function PlantProduction({ tr, lv, actions }: { tr: PlantProductionTr; lv
         </ul>
       )}
 
-      <OutputByType tr={tr.byType} lv={lv.byType} range={range} stamp={stamp} />
+      <OutputByType tr={tr.byType} lv={lv.byType} range={range} />
 
       <div className="grid gap-3 xl:grid-cols-12">
         <ChartCard className="xl:col-span-5" title="Needs intervention in production" sub="Both lines' interventions in one list, worst first, each tagged with its line.">
           <DecisionList actions={actions} nothing="Nothing pressing on the floor." />
         </ChartCard>
         <ChartCard className="xl:col-span-7" title="What did the plant turn out each day?" sub="Standard hours earned by each line against the man-hours both booked — one unit, so the lines stack. The shot-blast crew's hours are on the transformers' side, the panels' blasting included."
-          table={noDays ? undefined : { filename: `plant-output-${stamp}.xlsx`, rows: output.map((d) => ({ Day: d.dateISO, "TR h": Math.round(d.values.TR * 10) / 10, "LV h": Math.round(d.values.LV * 10) / 10, "Earned h": Math.round(d.earnedH * 10) / 10, "Booked h": Math.round(d.workedH * 10) / 10, "Efficiency %": d.efficiency === null ? "" : Math.round(d.efficiency * 100) })) }}>
+          table={noDays ? undefined : { rows: output.map((d) => ({ Day: d.dateISO, "TR h": Math.round(d.values.TR * 10) / 10, "LV h": Math.round(d.values.LV * 10) / 10, "Earned h": Math.round(d.earnedH * 10) / 10, "Booked h": Math.round(d.workedH * 10) / 10, "Efficiency %": d.efficiency === null ? "" : Math.round(d.efficiency * 100) })) }}>
           {noDays ? <EmptyState compact icon={Info} title="No shift day recorded in this period" hint="Pick a longer period, or record the attendance on Shifts." /> : <OutputChart days={output} groups={["TR", "LV"]} labels={LINE_LABEL} groupWord="line" />}
         </ChartCard>
       </div>

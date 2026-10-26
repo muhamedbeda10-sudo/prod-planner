@@ -242,3 +242,21 @@ export function trPlanLines(
   }
   return [...byOrder.values()];
 }
+
+/** Both lines' cards as one sheet — a row per item type, the line and the
+ *  plan's month on each: what the card shows, for make_excel. */
+export function outputByTypeRows(tr: OutputByTypeData<Stage>, lv: OutputByTypeData<LvStage>): Record<string, string | number>[] {
+  const rows = <S extends string>(line: string, d: OutputByTypeData<S>, stages: readonly S[], label: Record<S, string>) =>
+    d.groups.flatMap((g) => g.types.map((t) => ({
+      Line: line,
+      Item: g.item,
+      Type: t.type,
+      ...Object.fromEntries(stages.map((s) => [`Made — ${label[s]}`, t.made[s]])),
+      "Plan month": d.monthLabel,
+      Planned: t.plan?.required ?? "",
+      Finished: t.plan ? t.plan.done[stages[stages.length - 1]] : "",
+      Left: t.plan?.left ?? "",
+      "Done %": t.plan?.share == null ? "" : Math.round(t.plan.share * 100),
+    })));
+  return [...rows("Transformers", tr, STAGES, TR_TYPE_STAGE_LABEL), ...rows("LV Panels", lv, LV_STAGES, LV_TYPE_STAGE_LABEL)];
+}

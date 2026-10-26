@@ -275,7 +275,6 @@ export function PowderScrap({ r, canRecord, isAdmin, today, earliest }: { r: Pow
         }
         table={{
           rows: series.map((x) => ({ Month: monthLong(x.month), "Drawn (kg)": x.withdrawn, "Scrap (kg)": x.scrap, "Net used (kg)": x.net, "Scrap rate": x.rate === null ? "—" : pct(x.rate, 1) })),
-          filename: `powder-trend-${r.month}.xlsx`, sheet: "Trend",
         }}
       >
         <div className="viz" style={{ height: 260 }}>

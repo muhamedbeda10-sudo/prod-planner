@@ -185,15 +185,6 @@ export function lvDeptPermKey(stage: LvStage): string {
   return `lv.${stage.toLowerCase()}`;
 }
 
-/** The LV worklists, one per stage, in shop-floor order — what the nav's
- *  Floor tab (the worklists) unrolls into when the panels are on screen. */
-export const LV_WORKLISTS: readonly { stage: LvStage; href: string; label: string }[] = [
-  { stage: "Punching", href: "/worklist/punching", label: "Punching" },
-  { stage: "Bending", href: "/worklist/bending", label: "Bending" },
-  { stage: "Welding", href: "/worklist/welding", label: "Welding" },
-  { stage: "Painting", href: "/worklist/painting", label: "Painting" },
-];
-
 /** What a stage's worklist has to do on one order: the panels the stage
  *  before it finished that this one has not — the order quantity for
  *  punching — less what is already done here. */

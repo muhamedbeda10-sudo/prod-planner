@@ -9,6 +9,7 @@ import {
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
 import { AiPrintButton } from "@/components/AiPrint";
+import { aiFileHref } from "@/lib/domain/links";
 import { EmptyState } from "@/components/primitives";
 import { useAsk } from "@/components/DataTable";
 import { ShareDialog } from "@/components/AiShare";
@@ -988,7 +989,7 @@ function FileKindIcon({ kind, size }: { kind: string; size: number }) {
  *  other file as its name to download — or a note once it is no longer kept. */
 function SentFile({ file }: { file: { id: number; name: string; kind: string } }) {
   const [gone, setGone] = useState(false);
-  const href = `/api/ai/files/${file.id}`;
+  const href = aiFileHref(file.id);
   if (file.kind === "image" && !gone) {
     return (
       <a href={href} target="_blank" rel="noopener" title={file.name} className="block">

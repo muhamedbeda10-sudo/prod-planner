@@ -1,4 +1,5 @@
 import type { SheetItem } from "@/lib/domain/constants";
+import { WORKER_DEPT_LABEL } from "@/lib/domain/tanks";
 
 // The shift log's arithmetic — pure, so the day's totals can be tested
 // without a database and recomputed in the browser as the supervisor types.
@@ -329,4 +330,21 @@ export function shiftSplit(lines: readonly { recorded?: boolean; present: boolea
 export function machineAvailable(hoursPerDay: number | null, downtimeH: number): number | null {
   if (hoursPerDay === null) return null;
   return round1(Math.max(0, hoursPerDay - Math.max(0, downtimeH)));
+}
+
+/** A department as the Shifts screen names it: a roster department by its
+ *  label, anything else (a machine's own) as it is. */
+export const rosterDeptName = (d: string): string => (isRosterDept(d) ? WORKER_DEPT_LABEL[d] : d);
+
+/** How one worker's line reads on the board, the printout and the sheet:
+ *  the attendance, overtime only on a shift worked, the hours, and the work
+ *  centre (Fabrication's alone). */
+export function rosterLineReading(l: ShiftLine & { recorded?: boolean; dept: string; center: WorkCentre | null }, hrs: ShiftHours): { attendance: Attendance | "unset"; overtimeH: number; hours: number; centre: string | null } {
+  const attendance = attendanceOf(l);
+  return {
+    attendance,
+    overtimeH: attendance === "day" || attendance === "night" ? l.overtimeH : 0,
+    hours: attendance === "unset" ? 0 : lineHours(l, hrs),
+    centre: l.dept === "Cut" && l.center ? WORK_CENTRE_LABEL[l.center] : null,
+  };
 }

@@ -50,7 +50,7 @@ export function PlantPlanning({ tr, lv, floor, actions, summary }: { tr: PlantPl
         </ChartCard>
         {floor && (
           <ChartCard className="xl:col-span-7" title="Who is needed where, from today" sub={`${tr.manpower.monthLabel}: the people each department needs on each remaining working day for what is left of the month's plan, against who comes on an average recorded day. Each line prices its own plan; the shot-blast crew is the transformers' and blasts the panels too.`}
-            table={{ filename: `plant-people-${tr.todayISO}.xlsx`, rows: peopleRows.map((r) => ({ Line: r.line, Department: r.label, "Needed from today": r.neededNow ?? "", Present: r.present ?? "", Gap: r.gap ?? "" })) }}>
+            table={{ rows: peopleRows.map((r) => ({ Line: r.line, Department: r.label, "Needed from today": r.neededNow ?? "", Present: r.present ?? "", Gap: r.gap ?? "" })) }}>
             <TableFrame className="!max-h-[24rem]">
               <table className="w-full text-sm">
                 <thead><tr><Th label="Line" /><Th label="Department" /><Th label="Needed from today" num className="text-right" /><Th label="Present" num className="text-right" /><Th label="Gap" num className="text-right" /></tr></thead>

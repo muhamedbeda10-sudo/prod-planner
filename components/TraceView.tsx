@@ -13,7 +13,6 @@ import type { TraceResult, TracePipelineRow, TraceOdooRow } from "@/lib/server/t
 import { trackerHref, traceHref } from "@/lib/domain/links";
 import { deptLabel, FINISHING_LABEL } from "@/lib/domain/constants";
 import { TraceSearch } from "@/components/TraceSearch";
-import { ExportButton } from "@/components/ExportButton";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { Soi } from "@/components/ui";
 
@@ -53,14 +52,6 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
     { key: "Delivered", name: "Delivery", icon: <Truck size={17} />, done: sum((p) => p.delivered) },
   ].map((s) => ({ ...s, pct: pctOf(s.done, totalReq), left: Math.max(0, totalReq - s.done) }));
 
-  // one export, whichever button is pressed — a code's page spans several
-  // orders, so each row says which; the MO's slashes cannot be in a filename
-  const exportLedger = t.ledger.map((l) => ({
-    Date: l.dateISO, MO: l.mo ?? "", Plan: l.planLabel, Dept: deptLabel(l.dept), Item: l.item, Qty: l.qty,
-    Source: l.source, By: l.by ?? "", "Corrected from": l.corrected ?? "",
-  }));
-  const exportFilename = `trace-${t.key.replace(/[^A-Za-z0-9-]+/g, "_")}.xlsx`;
-
   return (
     <div className="space-y-6">
       {/* ================= sticky header ================= */}
@@ -84,7 +75,6 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
             <button type="button" onClick={() => router.refresh()} className="btn btn-ghost btn-sm" title="Refresh the data">
               <RotateCw size={14} />
             </button>
-            <ExportButton rows={exportLedger} filename={exportFilename} sheetName="Trace" />
             <Link href={trackerHref(planNo, view, "TR")} className="btn btn-ghost btn-sm whitespace-nowrap">← Tracker</Link>
             <button
               type="button"
@@ -119,7 +109,7 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
           <StagePipeline stages={stages} totalReq={totalReq} pipeline={t.pipeline} />
           <ComponentProgress pipeline={t.pipeline} />
           <OnOdoo rows={t.odoo} />
-          <Records t={t} exportRows={exportLedger} exportFilename={exportFilename} />
+          <Records t={t} />
         </div>
 
         {sidebar && (
@@ -427,7 +417,7 @@ function ComponentProgress({ pipeline }: { pipeline: TracePipelineRow[] }) {
 
 /* ============================== records (tabbed) ============================== */
 
-function Records({ t, exportRows, exportFilename }: { t: TraceResult; exportRows: Record<string, string | number>[]; exportFilename: string }) {
+function Records({ t }: { t: TraceResult }) {
   // the plan rows name an MO; its SOI already sits on the linked order card
   const soiOfMo = (mo: string) => t.members.find((m) => m.mo === mo)?.soi ?? null;
   const [tab, setTab] = useState<"ledger" | "orders">("ledger");
@@ -445,7 +435,6 @@ function Records({ t, exportRows, exportFilename }: { t: TraceResult; exportRows
       title="Records"
       actions={
         <div className="flex items-center gap-2">
-          {tab === "ledger" && <ExportButton rows={exportRows} filename={exportFilename} sheetName="Trace" />}
           <div className="inline-flex rounded-lg border border-border/60 overflow-hidden text-xs font-bold">
             {TABS.map((tb) => (
               <button key={tb.key} type="button" onClick={() => setTab(tb.key)}

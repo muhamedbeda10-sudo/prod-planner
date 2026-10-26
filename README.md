@@ -49,19 +49,18 @@ adds up and the
 between its PLACES; the switch in a page's bar moves between VIEWS of one place's rows (`components/ViewTabs.tsx`). Two things are not tabs at all: **chat** is the icon in the nav's
 right cluster, opening a panel over whatever page you are on (a glance, not a destination — its
 bundle is fetched only on first open), and the **barcode sheet** is a button on the painting
-worklist, where the tanks it prints for finish. In Admin the two plan imports share one page. The
+worklist, where the tanks it prints for finish. In Admin the Orders Registry (with the monthly plan import) and the weekly plan import are two entries of the tools menu. The
 mobile drawer still lists every view flat, since it has the vertical room.
 
 **Product lines (Transformers / LV Panels).** There is no line switch in the top bar. A screen whose rows
 depend on the line (Planning, the Material dashboard, the Plan Tracker, the Daily log, Material, the Orders
-Registry, the welding and painting worklists) carries a **Transformers | LV Panels** switch in its page head
-(`components/LineSwitch.tsx`), and the line is part of the address (`?line=LV`): the proxy copies it into a
+Registry) carries a **Transformers | LV Panels** switch first in its filter bar (`components/LineSwitch.tsx`);
+the worklists carry none — the Floor tab's menu lists each line's departments, and its links name the line. And the line is part of the address (`?line=LV`): the proxy copies it into a
 request header that `getActiveLine` (`lib/server/line.ts`) reads, so the page's loaders and every server
 action posted from the page agree on it. With no line in the address a screen opens on the person's own line
 (`defaultLineOf`, `lib/domain/permissions.ts`): LV Panels for someone who records only on the panels, Transformers for
 everyone else. A screen that belongs to one line always shows it (`PINNED_LINE`, which the proxy applies): the weekly import
-and Fabrication are the transformers', Punching and Bending the panels'. The Floor tab
-lists both lines' departments; the ODOO log shows both lines at once; a trace opens on its order's own line.
+and Fabrication are the transformers', Punching and Bending the panels'. The ODOO log shows both lines at once; a trace opens on its order's own line.
 
 ## Features
 1. **Weekly plan import** (`/import`) — grid parser from row 6, merged-BOM carry-down, `ParseBalance`
@@ -180,7 +179,7 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    still while they are toggled. "Not closed" is every status that is not a closing, which the exact-match
    status select cannot express, and **"ready to close"** is the office's own queue — still open AND Odoo's MO
    already on the row, so nothing stands between it and a closing but someone doing it. The three read as one
-   sentence: of the open rows, these are ready and those are still waiting for a number. Exports in the sheet's own headers. A row can also be **born from the daily log**: every
+   sentence: of the open rows, these are ready and those are still waiting for a number. Its Excel (the assistant's `odoo_log` sheet) keeps the sheet's own headers. A row can also be **born from the daily log**: every
    painting record (and the core frame's shot blast) writes its own row here on the same day with the SOI,
    product and qty, MO left empty for the office to type in place — the FG-CODE is copied from the last row
    of the same SOI and product, or composed from the part code and the transformer's BOM and flagged
@@ -211,7 +210,7 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    counted, by a **Closed day · Logged day** switch, on the day each row's status went to Done
    (the default: a row logged in August and closed in September is one of September's closings,
    under its product) or on the day it was logged — over today, yesterday, 7/30/90 days, this
-   month, all time or a custom from/to, with the numbers as a table and an Excel export.
+   month, all time or a custom from/to, with the numbers as a table (the assistant makes its Excel).
 
 8. **Shift log** (`/shifts`) — the supervisors' page, one day at a time: every worker registered in a
    section (Tools → Production Workers), narrowed to a line, a section or a search. Each worker gets ONE
@@ -224,7 +223,7 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    not set to Day / Night / Absent" fills the rest in one click, keeping anyone on vacation absent. The
    figures on top — day shift, night shift, overtime, absent, not set — are also the list's filters,
    beside the man-hours against the capacity. The **Day / Night board** lists the two shifts' people side by side by
-   department, with the absent under them; it is what Print / PDF prints and what Export Excel carries.
+   department, with the absent under them; it is what Ctrl+P prints, and its Excel comes from the assistant.
    **Save [department]** (pinned to the bottom of the screen) writes every worker in that department,
    including those hidden by search, section or attendance filters, and re-sums its
    man-hours into the figure the calibration and the plan's capacity check read (Admin → Standard Times
@@ -259,8 +258,8 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    loaders calculate live elapsed hours, so that marker must never be reported as zero downtime.
    A clock end earlier than the start automatically suggests the next date; adjust **End date** when needed.
    Choose **Other equipment** to type an unlisted asset's name and department (and work centre for
-   Fabrication); it is logged without creating a schedulable machine. The table, editor and Excel export
-   keep the range. Timed stops cannot overlap on the same asset, including across midnight; older
+   Fabrication); it is logged without creating a schedulable machine. The table, the editor and the
+   assistant's sheet keep the range. Timed stops cannot overlap on the same asset, including across midnight; older
    duration-only rows retain their hours and can be corrected without inventing times. Why — one of the plant's
    codes (`lib/domain/downtime.ts`: breakdown mechanical / electrical, no material, no operator, no drawing
    or program, setup, quality, power or air, planned maintenance, other) with an optional note; each stop
@@ -404,14 +403,14 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    someone else's. A worker with hand-outs cannot be deleted from the workers list, only deactivated.
    Likewise a user account that chat messages, assistant changes or automation runs name is deactivated,
    never deleted, so that history keeps its person.
-   Opens on today; the slicer reaches a year back; Excel export of the log and of the edits.
+   Opens on today; the slicer reaches a year back; the log and the edits as Excel through the assistant.
    **Powder** (the switch's Powder view) — the painting lines' **powder scrap**: the storekeeper records each
    weighing (day, Transformer Painting / USS Painting, kg, note — `PowderScrap`, corrected by its recorder or
    an admin with every change kept, deleted softly by the admin). The month sets it against the **powder
    drawn**: the hand-outs to that section of items named "…Powder…" (catalogue or typed), in kg — a powder
    item counted in another unit is listed apart, not added in. **Scrap rate = scrap ÷ drawn**, **net used =
    drawn − scrap**, per section and both together, the month before in points, six months of trend
-   (bars + rate line), what was drawn by item; print and Excel.
+   (bars + rate line), what was drawn by item; its Excel and printout through the assistant.
    **Catalogue & limits** (the **Limits** view, `consumables.edit`): the store's list — code, name, unit, remark — loaded
    from its sheet (47 items), each with its limits: a number per **calendar month**, or every **2, 3, 4 or 6 months** or a
    **year** — nothing shorter: the store is tracked month by month and draws stock in bulk — for the departments it names,
@@ -424,11 +423,11 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    until the recorder gives a **reason** — then saved flagged "over limit" with the reason and the breach. The
    **Consumables dashboard** (`/dashboards/consumables`, in the Dashboards tab) opens with the **alarms** — a limit **past its number** in the running month (or its months so far), nothing less —
    then the finished months that ended over, and the hand-outs recorded over a limit.
-   **Monthly review** (the foot of the Dashboard, with its own month picker and its own Excel) — the month-end review: every
+   **Monthly review** (the foot of the Dashboard, with its own month picker; its Excel through the assistant) — the month-end review: every
    catalogue item's calendar month against its monthly limit (a limit of several months counted over its months so far
    against its whole number), graded **over / close (80–100%) / under / not issued**, with the month before and the last six
    months (a sparkline per item and a chart of how many items fell in each grade), each item opening onto its departments.
-   Month picker, Excel export (item and limit lines) and a print / PDF with the company header.
+   Month picker; the assistant makes its Excel (item and limit lines).
 12. **AI assistant** (`/ai`) — Claude answers from the live data in Arabic or English: SQL through `ai_reader`, a
    read-only login that cannot see the private tables, nor the tables of a screen hidden from the person. What it may do
    is the owner's call per person (Users & Permissions → AI assistant), and never more than the person may do themselves.
@@ -523,6 +522,16 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    - **Owner's reach**: the app's owner lists everyone's automations and pauses, retimes
      (`set_automation_timing`) or deletes any, as AI assistant settings lets them; what one does stays its owner's to
      change.
+   - **Excel files and printing** (`lib/server/ai/tools/sheets.ts`, `lib/server/sheets.ts`): the screens carry no
+     Export or Print button — the Floor's worklists (and the tank barcodes) aside. Asked for "an Excel of …", the
+     assistant's `make_excel` builds the sheet the screen's button used to make — the same loader, filters, columns and
+     headers (the Plan Tracker TR/LV, a weekly plan, the Daily log, the Orders Registry, a trace, the ODOO log and its
+     days, Material, Physical Material, the consumables' log, limits, edits, summary, monthly review and powder scrap,
+     a day's attendance and machine stops) — or the rows of one read-only SELECT, up to 50,000 rows. Each screen's sheet
+     follows the screen's own access (its tab; the Orders Registry and the consumables' edits the admin's). The workbook
+     is kept as the person's own file in their chat (`AiFile`, same limits and 14 days), and the answer carries two
+     buttons: download it, or `/ai/print/[id]` — the sheet under the company header with the print dialog open. A
+     dashboard or an analysis is printed from the answer itself (its Print / PDF).
    - **Attached files and imports** (`lib/server/ai/files.ts`, `lib/server/ai/tools/imports.ts`): a photo, a PDF, an Excel
      or CSV sheet attached with the 📎 is checked by its bytes (a photo shrunk in the browser first; a photo or PDF also
      measured by the model's own token count, so one it refuses never reaches a chat), kept in `AiFile` for 14 days (closed
@@ -579,7 +588,7 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    its day, the lines behind, welding's coverage, and — over the last 7 recorded days — Fabrication's efficiency, the
    machine time lost and the people short. Then: **1** the newest weekly plan — each stage's pieces due by
    today (the oven date less the Settings lead days) against done, by delivery day, and the lines behind with the
-   stage they are stuck at (the card shows the oldest 20; its Excel export carries them all); **2** the load ahead —
+   stage they are stuck at (the card shows the oldest 20; its Table view carries them all); **2** the load ahead —
    each centre's remaining plan hours over the next 10 working days against what it
    can work (its usual man-hours × its measured pace — "not measured" while no hours are booked there); **3** welding
    coverage — days of cut parts waiting in front of the welders; and **the month in
@@ -587,7 +596,7 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    left out) over the month's working days × the net hours a person works (Settings) give the people it needs, what
    is left over the days still to come the people needed from today, against who comes on an average recorded day
    (the plant's manpower sheet, read live). Every card answers with a chart and keeps its numbers under its
-   Table switch, with the Excel export: the week's plan as a burn-up (pieces asked and finished, summed day by day);
+   Table switch: the week's plan as a burn-up (pieces asked and finished, summed day by day);
    the load as one centre's running totals (owed so far against what it could have worked, the short days shaded)
    beside every centre's status; **the month's pace** — each centre's share of the month's plan done against where an
    even pace through its working days stands today; the people as bullets (who comes against who is needed from
@@ -599,7 +608,7 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    `explain_efficiency`; it sits on the Production dashboard). The headline figures each read against a week ago. The
    Production dashboard (`/dashboards/production`) reads one period for both lines — the date bar at the top of the page
    (the app's date slicer, the last 7 days by default, up to 92 days within the last 180; `?from=&to=`), with its
-   Interventions and Print buttons at the end — and each line's section keeps its own department (`?dept=` All,
+   Interventions button at the end — and each line's section keeps its own department (`?dept=` All,
    Fabrication, Welding, Shot blast or Painting on the transformers; `?lvDept=` on the panels), all reopened as left.
    The transformers' **Floor performance**: the period's efficiency, standard hours and pieces
    a person a day (shot blast's pieces are every painted piece, as on Shifts), people a day, attendance, overtime share
@@ -655,7 +664,8 @@ lists both lines' departments; the ODOO log shows both lines at once; a trace op
    panel type (USS, LSS, …) through punched, bent, welded and painted — against the plan of the month the period ends in:
    planned, finished on the month's orders (each order counted up to what it asks, so one order's extra never covers
    another's shortfall), left and the share done. Pieces add within an item, never across items or lines; an Items /
-   Items and types switch folds the types away, and the export carries every type. The assistant reads the same loaders
+   Items and types switch folds the types away, and the assistant's `make_excel` makes it a sheet (`output_by_type`,
+   every type of both lines). The assistant reads the same loaders
    with the same `line` (`get_kpis`, `get_floor_performance`, whose `byItemAndType` is that card) — both lines when the
    person is on a dashboard, else the line they are on — and follows the same rules.
 
@@ -682,8 +692,8 @@ The pure logic is checked cell-for-cell against the workbook's own computed shee
 - `lib/server/*` — Prisma-backed data access feeding the pure functions (`server-only`). `loads.ts` holds the
   request-cached loads of the tables every screen reads (orders registry, schedules, the daily log, holidays,
   plans, settings): the first caller in a request pays for the query, every later one shares the rows.
-- Heavy browser code loads on demand: the charts (`components/LazyCharts.tsx`) and SheetJS (only when Export
-  is pressed) stay out of every page's first load; `app/loading.tsx` paints a skeleton the instant a tab is
+- Heavy browser code loads on demand: the charts (`components/LazyCharts.tsx`) and SheetJS (only when an Export
+  is pressed — the Floor's worklists and the assistant's answer tables) stay out of every page's first load; `app/loading.tsx` paints a skeleton the instant a tab is
   clicked while the page streams in.
 - `app/*` — RTL pages + server actions. `components/*` — shared UI + client widgets.
 - `scripts/*` — seed + validation/diagnostic scripts. `reference/*` — original VBA + workbook.

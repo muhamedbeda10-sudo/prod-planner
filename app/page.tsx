@@ -6,7 +6,6 @@ import { getLvPlanning } from "@/lib/server/lvKpis";
 import { loadOrNull, lvPlanningFor, planningSummary, trPlanningFor } from "@/lib/server/dashboards";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { PageHead } from "@/components/ui";
-import { PrintButton } from "@/components/PrintButton";
 import { PrintHeader } from "@/components/PrintHeader";
 import { Cockpit } from "@/components/Cockpit";
 import { CockpitDecisions, PrintDecisions } from "@/components/CockpitDecisions";
@@ -62,7 +61,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
         date={formatDate(todayISO)}
       />
       <PageHead title="Planning" sub={`Both lines, today ${formatDate(todayISO)}: the plant's figures, then the transformers and the LV panels`}
-        actions={<><CockpitDecisions actions={actions} /><PrintButton /></>} />
+        actions={<CockpitDecisions actions={actions} />} />
       <PrintDecisions actions={actions} />
 
       {tr && lv ? (

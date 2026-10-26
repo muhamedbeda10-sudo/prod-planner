@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { spreadOverGroup } from "./groupSpread";
-import { LV_CHAIN, LV_STAGES, LV_WORKLISTS, lvCaps, lvChainError, lvChainViolation, lvComplete, lvDeptPermKey, lvFed, lvGroupMembers, lvPermKey, lvStageAt, lvWaiting, lvWorklistBucket, type LvState } from "./lv";
+import { LV_CHAIN, LV_STAGES, lvCaps, lvChainError, lvChainViolation, lvComplete, lvDeptPermKey, lvFed, lvGroupMembers, lvPermKey, lvStageAt, lvWaiting, lvWorklistBucket, type LvState } from "./lv";
 
 const st = (over: Partial<LvState> = {}): LvState => ({ required: 10, punch: 0, bend: 0, weld: 0, paint: 0, delivered: 0, ...over });
 
@@ -116,10 +116,6 @@ describe("an LV stage's worklist", () => {
     expect(lvStageAt("ShotBlast")).toBeNull(); // takes no panels
   });
 
-  it("lists the four worklists in the order a panel passes them", () => {
-    expect(LV_WORKLISTS.map((w) => w.stage)).toEqual([...LV_STAGES]);
-    expect(LV_WORKLISTS.map((w) => w.href)).toEqual(["/worklist/punching", "/worklist/bending", "/worklist/welding", "/worklist/painting"]);
-  });
 });
 
 describe("lvChainViolation — the whole chain after an edit", () => {

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Info } from "lucide-react";
 import { ChartCard, fmt, pctOrDash } from "@/components/charts/kit";
-import { ExportButton } from "@/components/ExportButton";
 import { EmptyState } from "@/components/primitives";
 import { GroupBand, TableFrame, Th } from "@/components/DataTable";
 import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
@@ -92,24 +91,7 @@ function LineTable<S extends string>({ line, data, stages, stageLabel, typeWord,
   );
 }
 
-/** The card's rows as one export — both lines, every type. */
-function exportRows(tr: OutputByTypeData<Stage>, lv: OutputByTypeData<LvStage>) {
-  const rows = <S extends string>(line: ProductLine, d: OutputByTypeData<S>, stages: readonly S[], label: Record<S, string>) =>
-    d.groups.flatMap((g) => g.types.map((t) => ({
-      Line: LINE_LABEL[line],
-      Item: g.item,
-      Type: t.type,
-      ...Object.fromEntries(stages.map((s) => [`Made — ${label[s]}`, t.made[s]])),
-      "Plan month": d.monthLabel,
-      Planned: t.plan?.required ?? "",
-      Finished: t.plan ? t.plan.done[stages[stages.length - 1]] : "",
-      Left: t.plan?.left ?? "",
-      "Done %": t.plan?.share == null ? "" : Math.round(t.plan.share * 100),
-    })));
-  return [...rows("TR", tr, STAGES, TR_TYPE_STAGE_LABEL), ...rows("LV", lv, LV_STAGES, LV_TYPE_STAGE_LABEL)];
-}
-
-export function OutputByType({ tr, lv, range, stamp }: { tr: OutputByTypeData<Stage>; lv: OutputByTypeData<LvStage>; range: string; stamp: string }) {
+export function OutputByType({ tr, lv, range }: { tr: OutputByTypeData<Stage>; lv: OutputByTypeData<LvStage>; range: string }) {
   const [detail, setDetail] = useState(true);
   const months = tr.monthLabel === lv.monthLabel ? tr.monthLabel : `${tr.monthLabel} / ${lv.monthLabel}`;
   return (
@@ -117,13 +99,10 @@ export function OutputByType({ tr, lv, range, stamp }: { tr: OutputByTypeData<St
       title="What did we make, item by item?"
       sub={`Each line's pieces at each stage in the period, by item and type — the transformers by component and KVA class, the panels by plan and panel type — against ${months}'s plan. Pieces add up within an item, never across items or lines; an order counts on the plan up to what it asks.`}
       right={
-        <>
-          <nav className="seg" aria-label="Rows">
+        <nav className="seg" aria-label="Rows">
             <button type="button" className={detail ? "" : "on"} aria-pressed={!detail} onClick={() => setDetail(false)}>Items</button>
             <button type="button" className={detail ? "on" : ""} aria-pressed={detail} onClick={() => setDetail(true)}>Items and types</button>
-          </nav>
-          <ExportButton rows={exportRows(tr, lv)} filename={`output-by-type-${stamp}.xlsx`} label="Export" />
-        </>
+        </nav>
       }
     >
       <div className="grid gap-4 2xl:grid-cols-2">

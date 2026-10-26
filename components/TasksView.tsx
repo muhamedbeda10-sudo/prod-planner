@@ -425,7 +425,7 @@ function TaskPane({ id, onBack, onChanged, onOpen }: { id: number; onBack?: () =
           </div>
           {task.details && (
             <div className="rounded-xl border bg-surface-2 px-3 py-2.5">
-              <AiMarkdown text={task.details} className="!text-[13px]" />
+              <AiMarkdown text={task.details} shared className="!text-[13px]" />
             </div>
           )}
           <FilesView files={task.attachments} />

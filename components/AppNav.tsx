@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList, Warehouse,
   Table2, BookOpenCheck, ListChecks, ChevronDown,
-  CalendarDays, Users, Timer,
+  CalendarDays, CalendarRange, Users, Timer,
   MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus, Bot, Gauge,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
@@ -125,9 +125,10 @@ const DRAWER_VIEWS: Item[] = [
 // `perm` opens an entry to a non-admin holding that permission — the rest of
 // the list stays admin-only, exactly as it was.
 const ADMIN: (Item & { desc: string; perm?: string })[] = [
-  // both plan imports live here now, behind the page's own switcher — they
-  // were two Admin entries doing the same job a month apart
-  { href: "/orders", label: "Orders Registry", desc: "Master MO list, with the monthly plan and weekly delivery schedule imports", icon: ClipboardList, also: ["/import"] },
+  // the two plan imports: the registry with the monthly plan, and the
+  // transformers' weekly delivery schedule — each its own entry, no page tabs
+  { href: "/orders", label: "Orders Registry", desc: "Master MO list and the monthly plan import", icon: ClipboardList },
+  { href: "/import", label: "Weekly plan import", desc: "The transformers' delivery schedule — the dates per MO", icon: CalendarRange },
   { href: "/calendar", label: "Factory Calendar", desc: "Holidays & shutdown days off", icon: CalendarDays },
   { href: "/admin/settings", label: "Settings", desc: "Plant-wide switches, including per-piece tank tracking", icon: SlidersHorizontal },
   { href: "/admin/workers", label: "Production Workers", desc: "The shop-floor people of every department — the shift log and the tank dropdowns", icon: HardHat, perm: "workers.manage" },

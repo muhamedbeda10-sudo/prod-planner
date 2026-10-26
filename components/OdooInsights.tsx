@@ -42,7 +42,7 @@ function Gauge({ value, label, sub }: { value: number; label: string; sub: strin
   );
 }
 
-export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; colorOf: (product: string) => string; file: (name: string) => string }) {
+export function OdooInsightsSection({ ins, colorOf }: { ins: Insights; colorOf: (product: string) => string }) {
   const f = ins.funnel;
   const funnelData = [
     { name: "Logged", value: f.logged },
@@ -74,7 +74,7 @@ export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; col
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <ChartCard title="How long a close takes" sub={lt.rows ? `From the day a row was logged to the day it went Done — ${fmt(lt.rows)} row(s) closed in the period` : "No row closed in the period"}
-          table={{ rows: tables.lead, filename: file("lead-time"), sheet: "Lead time" }}>
+          table={{ rows: tables.lead }}>
           <div className="flex flex-wrap gap-2 mb-2 text-xs">
             {[["Median", lt.medianDays], ["Average", lt.avgDays], ["9 in 10 within", lt.p90Days]].map(([label, v]) => (
               <span key={String(label)} className="pill pill-muted">{label} <b className="tabnum">{v === null ? "—" : `${fmt(Number(v), 1)} d`}</b></span>
@@ -96,7 +96,7 @@ export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; col
           </Box>
         </ChartCard>
 
-        <ChartCard title="Average days to close, by product" sub="The slower products first" table={{ rows: tables.leadProduct, filename: file("lead-time-by-product"), sheet: "Lead by product" }}>
+        <ChartCard title="Average days to close, by product" sub="The slower products first" table={{ rows: tables.leadProduct }}>
           {lt.byProduct.length === 0 ? <p className="text-sm text-muted">No row closed in the period.</p> : (
             <Box height={Math.max(140, 24 + lt.byProduct.length * 34)}>
               <BarChart data={lt.byProduct} layout="vertical" margin={{ top: 0, right: 56, left: 8, bottom: 0 }} barCategoryGap="30%">
@@ -118,7 +118,7 @@ export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; col
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <ChartCard title="Close rate" sub="Of the rows logged in the period, how many are Done by now" table={{ rows: tables.funnel, filename: file("close-rate"), sheet: "Close rate" }}>
+        <ChartCard title="Close rate" sub="Of the rows logged in the period, how many are Done by now" table={{ rows: tables.funnel }}>
           <Gauge value={ins.closeRate} label="Close rate" sub={`${fmt(f.done)} of ${fmt(f.logged)} rows Done`} />
           <div className="mt-3 grid grid-cols-3 text-center text-xs">
             <div><div className="text-lg font-semibold">{fmt(f.logged)}</div><div className="text-muted">logged</div></div>
@@ -129,7 +129,7 @@ export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; col
 
         <ChartCard title="Burn-up: logged against closed"
           sub={lastBurn ? `Running totals of rows · the gap is the open backlog — ${fmt(lastBurn.open)} at the end` : "Nothing in the period"}
-          table={{ rows: tables.burn, filename: file("burn-up"), sheet: "Burn-up" }}>
+          table={{ rows: tables.burn }}>
           <Box height={240} minWidth={Math.max(360, Math.min(ins.burnUp.length, 45) * 12)}>
             <LineChart data={ins.burnUp} margin={{ top: 10, right: 16, left: -4, bottom: 0 }}>
               <CartesianGrid vertical={false} />
@@ -153,7 +153,7 @@ export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; col
 
       {bomData.length > 0 && (
         <ChartCard title="Quantity per BOM, by product" sub={`The ${bomData.length} heaviest BOM(s) logged in the period — each bar split by product`}
-          table={{ rows: tables.bom, filename: file("bom-mix"), sheet: "BOM mix" }}>
+          table={{ rows: tables.bom }}>
           <Box height={Math.max(160, 30 + bomData.length * 34)} minWidth={420}>
             <BarChart data={bomData} layout="vertical" margin={{ top: 0, right: 48, left: 8, bottom: 0 }} barCategoryGap="28%">
               <CartesianGrid horizontal={false} />

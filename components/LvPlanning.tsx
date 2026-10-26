@@ -62,7 +62,7 @@ export function LvPlanning({ data, floor = true }: { data: LvPlanningData; floor
           className="xl:col-span-4"
           title="Is the month on pace?"
           sub={`${m.monthLabel}: each stage's panels done of the month's ${fmt(m.panels)}, the tick where an even pace stands today (${m.monthWd - m.leftWd} of ${m.monthWd} working days behind us). The panel is finished when painted; delivery is the customer's pace.`}
-          table={{ filename: `lv-month-${data.todayISO}.xlsx`, rows: m.byStage.map((b) => ({ Stage: LV_STAGE_LABEL[b.stage], Planned: b.required, Done: b.done, "Done %": b.required > 0 ? Math.round((b.done / b.required) * 100) : "", "Even pace %": Math.round(pace.expectedShare * 100) })) }}
+          table={{ rows: m.byStage.map((b) => ({ Stage: LV_STAGE_LABEL[b.stage], Planned: b.required, Done: b.done, "Done %": b.required > 0 ? Math.round((b.done / b.required) * 100) : "", "Even pace %": Math.round(pace.expectedShare * 100) })) }}
         >
           {m.panels === 0 ? (
             <EmptyState compact icon={Info} title={`No panels on ${m.monthLabel}'s plan`} hint="Import the panels' monthly plan on the Orders Registry (with the LV toggle on) — the month's pace is read from it." />
@@ -81,7 +81,7 @@ export function LvPlanning({ data, floor = true }: { data: LvPlanningData; floor
           className="xl:col-span-4"
           title="Where does the work wait?"
           sub={`Panels between the stages over the ${w.orders} open order${w.orders === 1 ? "" : "s"}, netted order by order (punched − bent is waiting for bending) — never a stage's output added to the next's. The records say where a panel stands, not since when.`}
-          table={{ filename: `lv-wip-${data.todayISO}.xlsx`, rows: wipRows.map(([label, pcs]) => ({ Where: label, Panels: pcs })) }}
+          table={{ rows: wipRows.map(([label, pcs]) => ({ Where: label, Panels: pcs })) }}
         >
           {w.orders === 0 ? (
             <EmptyState compact icon={Info} title="No open panel order" hint="Every panel order is closed." />
@@ -99,7 +99,7 @@ export function LvPlanning({ data, floor = true }: { data: LvPlanningData; floor
           className="xl:col-span-4"
           title="Do we have the people?"
           sub={`What is left of ${m.monthLabel}'s panels in standard hours (the timings sheet's LV tab) over the ${m.leftWd} working days left × ${fmt(mp.hoursPerPersonDay, 1)} h a person.${floor ? " The bar is who comes on an average recorded day; the tick is who is needed from today." : " The tick is who is needed from today."}${unpriced > 0 ? ` ${unpriced} of ${mp.coverage.orders} orders have no row on the sheet and ask no hours here — partial coverage.` : ""}`}
-          table={{ filename: `lv-people-${data.todayISO}.xlsx`, rows: mp.rows.map((r) => ({ Department: LV_FLOOR_DEPT_LABEL[r.centre], "Plan h": r.requiredH, "Done h": r.doneH, "Left h": r.leftH, "Needed (month)": r.needed ?? "", "Needed from today": r.neededNow ?? "", ...(floor ? { Present: r.present ?? "", Gap: r.gap ?? "" } : {}) })) }}
+          table={{ rows: mp.rows.map((r) => ({ Department: LV_FLOOR_DEPT_LABEL[r.centre], "Plan h": r.requiredH, "Done h": r.doneH, "Left h": r.leftH, "Needed (month)": r.needed ?? "", "Needed from today": r.neededNow ?? "", ...(floor ? { Present: r.present ?? "", Gap: r.gap ?? "" } : {}) })) }}
         >
           {m.panels === 0 ? (
             <EmptyState compact icon={Info} title={`No panels on ${m.monthLabel}'s plan`} hint="The people the month needs are read from the panels' monthly plan." />
@@ -124,7 +124,7 @@ export function LvPlanning({ data, floor = true }: { data: LvPlanningData; floor
           className="xl:col-span-5"
           title="Urgent orders still short"
           sub="Every urgent open order with panels still to make, the most short first, and the first stage that has not cleared it. The panels carry no delivery date, so nothing here is called late — urgency is the planner's flag."
-          table={{ filename: `lv-urgent-${data.todayISO}.xlsx`, rows: data.urgentStuck.map((u) => ({ MO: u.mo, BOM: u.bom, Product: u.product ?? "", Short: u.remaining, "Stuck at": u.stage ?? "not started" })) }}
+          table={{ rows: data.urgentStuck.map((u) => ({ MO: u.mo, BOM: u.bom, Product: u.product ?? "", Short: u.remaining, "Stuck at": u.stage ?? "not started" })) }}
         >
           {data.urgentStuck.length === 0 ? (
             <EmptyState compact icon={Info} title="No urgent order is short" hint="Every urgent panel order is painted, or none is flagged." />

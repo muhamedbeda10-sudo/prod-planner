@@ -20,7 +20,6 @@ import { LineSection } from "@/components/LineSection";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { LoadFailed } from "@/components/DataTable";
 import { PageHead } from "@/components/ui";
-import { PrintButton } from "@/components/PrintButton";
 import { PrintHeader } from "@/components/PrintHeader";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 
@@ -61,11 +60,11 @@ export default async function ProductionDashboardPage({ searchParams }: { search
       <RememberLastVisit storageKey="dashboards:production" />
       <PrintHeader title="Production — whole plant" subtitle={`How the floor worked · ${range}`} date={formatDate(todayISO)} />
       <PageHead title="Production" sub={`Both lines over ${range}: the plant's figures, then the transformers and the LV panels`} />
-      {/* the page's one bar: the period, then its buttons */}
+      {/* the page's one bar: the period, then its Interventions button */}
       <UrlDateSlicer
         encoding="fromTo" from={req.fromISO} to={req.toISO} min={addDaysISO(todayISO, -(FLOOR_HISTORY_DAYS - 1))} max={todayISO} today={todayISO} marks={marks} label="Period"
         presets={["yesterday", "thisWeek", "last14", "thisMonth", "lastMonth", "last30", "last90"]} defaultRange={floorDefault(todayISO)}
-        end={<><CockpitDecisions actions={actions} kind="intervention" /><PrintButton /></>}
+        end={<CockpitDecisions actions={actions} kind="intervention" />}
       />
       <PrintDecisions actions={actions} kind="intervention" />
 

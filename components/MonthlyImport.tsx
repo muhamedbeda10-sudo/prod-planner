@@ -7,7 +7,7 @@ import type { MonthlyImportResult, QtyProposal } from "@/lib/server/importMonthl
 import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
 import { LV_FAMILIES, LV_FAMILY_LABEL } from "@/lib/domain/lv";
 
-/** The plan import for the product line on screen (the page head's switch).
+/** The plan import for the product line on screen (the switch on the orders' bar).
  *  The two lines' sheets differ (a transformer sheet carries KVA and rating, a panel sheet
  *  its Product and OSP Encloser columns) but both are read by header name,
  *  so this one form serves either — it just has to say which it is. */
@@ -90,7 +90,7 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
           {pending ? "Importing…" : `Import ${LINE_LABEL[line]} orders`}
         </button>
         <span className="text-xs text-muted">
-          The sheet is filed under <b>{LINE_LABEL[line]}</b> — pick the other line at the top of the page first if it is the other product&apos;s plan.
+          The sheet is filed under <b>{LINE_LABEL[line]}</b> — switch the line on the orders&apos; bar below first if it is the other product&apos;s plan.
           New MOs are added; re-importing the SAME month applies the revision: raised quantities, urgency, BOMs… are updated and every change is listed below. Orders of the month that the sheet does not list are left exactly as they are. A quantity that differs from the registry&apos;s is never changed by the import — it is flagged with the old and the new figure, and you choose which one stays. Columns are read by header name — any sheet layout month to month.{line === "LV" ? " The meter boxes' sheet has no BOM column: its FG Code stands in, and its OSP column is the quantity bought outside." : ""}
         </span>
       </form>
