@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-production-dashboard-effort-output",
+    dateISO: "2026-10-26",
+    title: "Production: what we made, at what efficiency, and where the effort and the output parted",
+    where: "Dashboards → Production",
+    href: "/dashboards/production",
+    body: "The Production dashboard is rebuilt around one bar: All | TR | LV first, then a department (and on Fabrication a work centre) and the period — every card follows them, and a link opens exactly as sent. Six tiles: earned standard hours, booked man-hours, efficiency, std-h a person-day, attendance and overtime share, each against the same number of days before (N/A where there is nothing to compare with). Click a tile, or a day on the chart, for the rows behind it, with links to that day on Shifts. Then earned against booked day by day, each centre's efficiency day by day (grey where nobody booked hours, ⚠ where it is unusually high), what each stage made each day by component in its own unit, who came with the day and night shifts and who is not set, and Where did the hours go? — now over the page's own period and department instead of its own 14 days. The table at the bottom is each department's recorded days, hours, overtime, earned hours, efficiency and output. Two new buttons in the bar: Data says how far the records go (days with attendance, the last recorded day, output with no attendance left out of the efficiency), and Worth a look lists where the hours and the output parted most. For an Excel of the table or of every day behind it, ask the assistant.",
+  },
+  {
     id: "2026-10-26-consumables-decisions",
     dateISO: "2026-10-26",
     title: "The Consumables dashboard answers what went out, to whom, and whether it is over the limits",

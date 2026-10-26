@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import { CAT, Legend, TipBox, fmt, pct } from "@/components/charts/kit";
 import { formatDate } from "@/lib/domain/format";
-import { OUTPUT_GROUPS, OUTPUT_GROUP_LABEL, type OutputDay, type OutputGroup } from "@/lib/domain/kpis";
+import { OUTPUT_GROUP_LABEL } from "@/lib/domain/kpis";
 import type { ProductivityPoint } from "@/lib/domain/floorKpis";
 
 // The cockpit's charts. One y-axis each (never two scales on one plot); the
@@ -146,14 +146,15 @@ export interface OutputPoint {
   values: Record<string, number>;
 }
 
-/** The transformers' days as the chart's points. */
-export const outputPoints = (days: readonly OutputDay[], groups: readonly OutputGroup[] = OUTPUT_GROUPS): OutputPoint[] =>
-  days.map((d) => ({ dateISO: d.dateISO, earnedH: d.earnedH, workedH: d.workedH, efficiency: d.efficiency, values: Object.fromEntries(groups.map((g) => [g, d[g]])) }));
-
 /** Each recorded day's output in standard hours, group by group (a
  *  department, or a line on the plant's dashboard), against the man-hours the
  *  shift log booked — one unit, one axis. A group keeps its slot of the palette. */
-export function OutputChart({ days, groups, labels = OUTPUT_GROUP_LABEL, groupWord = "department" }: { days: readonly OutputPoint[]; groups: readonly string[]; labels?: Record<string, string>; groupWord?: string }) {
+export function OutputChart({ days, groups, labels = OUTPUT_GROUP_LABEL, groupWord = "department", height = 260, onDay }: {
+  days: readonly OutputPoint[]; groups: readonly string[]; labels?: Record<string, string>; groupWord?: string;
+  height?: number;
+  /** A click on a day opens its rows (the Production dashboard's drill-down). */
+  onDay?: (dateISO: string) => void;
+}) {
   if (days.length === 0) return null;
   const color = Object.fromEntries(groups.map((g, i) => [g, CAT[i % CAT.length]])) as Record<string, string>;
   const name = (g: string) => labels[g] ?? g;
@@ -165,9 +166,10 @@ export function OutputChart({ days, groups, labels = OUTPUT_GROUP_LABEL, groupWo
         ...groups.map((g) => ({ label: name(g), color: color[g] })),
         { label: "Man-hours booked", color: "var(--foreground)", line: true },
       ]} />
-      <div className="viz w-full min-w-0" style={{ height: 260 }} role="group" aria-label={`Output over ${days.length} recorded days, in standard hours by ${groupWord}, against the man-hours booked; the numbers are under Table`}>
+      <div className={`viz w-full min-w-0 ${onDay ? "cursor-pointer" : ""}`} style={{ height }} role="group" aria-label={`Output over ${days.length} recorded days, in standard hours by ${groupWord}, against the man-hours booked`}>
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }} barCategoryGap="22%">
+          <ComposedChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }} barCategoryGap="22%"
+            onClick={onDay ? (st) => { const i = Number(st.activeTooltipIndex); if (Number.isInteger(i) && data[i]) onDay(data[i].dateISO); } : undefined}>
             <CartesianGrid vertical={false} />
             <XAxis dataKey="label" tick={TICK} axisLine={AXIS} tickLine={false} interval="preserveStartEnd" minTickGap={12} />
             <YAxis tick={TICK} axisLine={false} tickLine={false} width={44} tickFormatter={(v: number) => fmt(v, 0)} />

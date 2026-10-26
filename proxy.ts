@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { LINE_HEADER, LINE_PARAM, lineParam, lineSection, pinnedLine, showsBothLines } from "@/lib/domain/lines";
+import { LINE_HEADER, LINE_PARAM, bothLinesAddress, lineParam, pinnedLine, showsBothLines } from "@/lib/domain/lines";
 
 // Optimistic gate (Next 16 proxy — no DB here): no session cookie means
 // straight to /login. Real validation happens server-side in lib/server/auth.
@@ -18,13 +18,10 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(login);
   }
   // a screen that shows both lines takes none: an address naming one (an
-  // older link, a bookmark) opens at that line's section instead
+  // older link, a bookmark) opens at that line's section instead — on the
+  // Production dashboard, its own line switch (?scope=)
   if (showsBothLines(pathname) && searchParams.has(LINE_PARAM) && request.method === "GET") {
-    const to = request.nextUrl.clone();
-    const named = lineParam(to.searchParams.get(LINE_PARAM));
-    to.searchParams.delete(LINE_PARAM);
-    if (named && !to.hash) to.hash = lineSection(named);
-    return NextResponse.redirect(to);
+    return NextResponse.redirect(bothLinesAddress(request.nextUrl, lineParam(searchParams.get(LINE_PARAM))));
   }
   const pinned = pinnedLine(pathname);
   const asked = lineParam(searchParams.get(LINE_PARAM));

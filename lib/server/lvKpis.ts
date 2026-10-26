@@ -12,6 +12,7 @@ import {
   type FloorAttendance, type FloorStat, type HeatRow, type ProductivityPoint,
 } from "@/lib/domain/floorKpis";
 import { gapDays, productionActions, type GapDay } from "@/lib/domain/productionActions";
+import { emptyShift, type LineFacts, type ShiftPart, type UnitDay, type VolumeRecord } from "@/lib/domain/productionDashboard";
 import {
   LV_DEPT_STAGE_OF, LV_FLOOR_DEPTS, LV_FLOOR_DEPT_LABEL, lvDeptOfStage, lvDeptsOf, lvManpowerInputs, lvMonthProgress, lvPlanningActions, lvRateAt, lvWip, zeroLvDepts, zeroLvStages,
   type LvBefore, type LvDeptPace, type LvFloorDept, type LvFloorFilter, type LvManpowerCoverage, type LvMonthProgress, type LvWip,
@@ -38,6 +39,8 @@ interface LvRead {
   /** Each department's recorded days with the panels' earned hours. */
   all: CentreDay<LvFloorDept>[];
   attendance: FloorAttendance<LvFloorDept>[];
+  /** Each department-day's people, hours and overtime by shift, and the shift hours of those absent. */
+  split: Map<string, { day: ShiftPart; night: ShiftPart; absentH: number }>;
   /** Panels moved per stage per day, their order, and whether it is priced. */
   moves: { dateISO: string; stage: LvStage; qty: number; priced: boolean; mo: string | null }[];
 }
@@ -63,6 +66,7 @@ async function readLvDeptDays(fromISO: string, toISO: string): Promise<LvRead> {
     return days.get(k)!;
   };
   const attendance = new Map<string, FloorAttendance<LvFloorDept>>();
+  const split: LvRead["split"] = new Map();
   for (const r of shiftRows) {
     const d = r.dept as LvFloorDept;
     const iso = toISODate(r.date);
@@ -71,10 +75,22 @@ async function readLvDeptDays(fromISO: string, toISO: string): Promise<LvRead> {
     if (!r.present) a.absent += 1;
     else if (r.overtimeH > 0) a.overtimeH += r.overtimeH;
     attendance.set(`${iso}|${d}`, a);
-    if (!r.present) continue;
+    const shift = isShiftCode(r.shift) ? r.shift : DEFAULT_SHIFT;
+    const sp = split.get(`${iso}|${d}`) ?? { day: emptyShift(), night: emptyShift(), absentH: 0 };
+    split.set(`${iso}|${d}`, sp);
+    if (!r.present) {
+      // the hours an absent worker's shift would have given
+      sp.absentH += lineHours({ present: true, shift, overtimeH: 0 }, hrs);
+      continue;
+    }
+    const h = lineHours({ present: true, shift, overtimeH: r.overtimeH }, hrs);
     const c = cell(iso, d);
-    c.workedH += lineHours({ present: true, shift: isShiftCode(r.shift) ? r.shift : DEFAULT_SHIFT, overtimeH: r.overtimeH }, hrs);
+    c.workedH += h;
     c.people += 1;
+    const part = shift === "S11" ? sp.night : sp.day;
+    part.people += 1;
+    part.hours += h;
+    if (r.overtimeH > 0) part.overtimeH += r.overtimeH;
   }
   const moves: LvRead["moves"] = [];
   for (const e of ledger) {
@@ -87,7 +103,40 @@ async function readLvDeptDays(fromISO: string, toISO: string): Promise<LvRead> {
     const dept = lvDeptOfStage(stage);
     if (dept) cell(iso, dept).earnedH += lvRateAt(rate, dept) * e.qty;
   }
-  return { all: [...days.values()], attendance: [...attendance.values()], moves };
+  return { all: [...days.values()], attendance: [...attendance.values()], moves, split };
+}
+
+/** The panels' unit-days of a read (a department is its own unit), and the
+ *  panels moved per stage — `componentOf` names a move's plan. The panels
+ *  have no machines of their own: no machine hours and no stops here. */
+function lvFactsOf(read: LvRead, fromISO: string, toISO: string, componentOf: (mo: string | null) => string): Pick<LineFacts, "days" | "volume"> {
+  const inRange = (iso: string) => iso >= fromISO && iso <= toISO;
+  const att = new Map(read.attendance.map((a) => [`${a.dateISO}|${a.centre}`, a]));
+  const at = new Map(read.all.map((d) => [`${d.dateISO}|${d.centre}`, d]));
+  const keys = new Set([...at.keys(), ...att.keys()].filter((k) => inRange(k.slice(0, 10))));
+  const days: UnitDay[] = [...keys].map((k) => {
+    const [dateISO, dept] = k.split("|") as [string, LvFloorDept];
+    const d = at.get(k), a = att.get(k), sp = read.split.get(k);
+    return {
+      line: "LV", dept, unit: dept, dateISO,
+      workedH: d?.workedH ?? 0, earnedH: d?.earnedH ?? 0, people: d?.people ?? 0,
+      overtimeH: a?.overtimeH ?? 0, rows: a?.rows ?? 0, absent: a?.absent ?? 0, absentH: sp?.absentH ?? 0,
+      day: sp?.day ?? emptyShift(), night: sp?.night ?? emptyShift(),
+      machineH: 0, downtimeH: 0, stops: {}, notSet: null,
+    };
+  });
+  const volume: VolumeRecord[] = read.moves.filter((m) => inRange(m.dateISO)).map((m) => {
+    const dept = lvDeptOfStage(m.stage);
+    return { line: "LV", dateISO: m.dateISO, stage: m.stage, depts: dept ? [dept] : [], component: componentOf(m.mo), qty: m.qty, priced: m.priced };
+  });
+  return { days, volume };
+}
+
+/** The panels' unit-days and moves over a stretch, alone — the Production
+ *  dashboard's stretch before, and its figures without the cards around them
+ *  (the moves unnamed by plan: only whether they are priced counts there). */
+export async function getLvFloorFacts(fromISO: string, toISO: string): Promise<Pick<LineFacts, "days" | "volume">> {
+  return lvFactsOf(await readLvDeptDays(fromISO, toISO), fromISO, toISO, () => "LV panels");
 }
 
 // ------------------------------------------------------------- production
@@ -137,6 +186,12 @@ export interface LvFloorPeriod {
 /** The panels' floor over a period and a department — the Production
  *  dashboard's LV side and the assistant's period question, from one read. */
 export async function getLvFloorPeriod(q: { fromISO: string; toISO: string; dept: LvFloorFilter; clamped?: boolean }, now = new Date()): Promise<LvFloorPeriod> {
+  return (await getLvFloorPeriodWithFacts(q, now)).period;
+}
+
+/** getLvFloorPeriod with the period's unit-days and panels moved from the
+ *  same read — the Production dashboard's figures (every department). */
+export async function getLvFloorPeriodWithFacts(q: { fromISO: string; toISO: string; dept: LvFloorFilter; clamped?: boolean }, now = new Date()): Promise<{ period: LvFloorPeriod; facts: Pick<LineFacts, "days" | "volume"> }> {
   const { fromISO, toISO, clamped } = floorRange(q.fromISO, q.toISO, factoryDayISO(now));
   const depts = lvDeptsOf(q.dept);
   const [read, tracker] = await Promise.all([readLvDeptDays(fromISO, toISO), getLvTracker()]);
@@ -201,7 +256,7 @@ export async function getLvFloorPeriod(q: { fromISO: string; toISO: string; dept
     pricedShare,
     hrefs: { stops: "/shifts", shifts: "/shifts", standardTimes: "/admin/standard-times", dailyLog: "/handover" },
   });
-  return {
+  const period: LvFloorPeriod = {
     fromISO, toISO, dept: q.dept, clamped: clamped || !!q.clamped, dates,
     grid: efficiencyGrid(days, depts, dates),
     summary: floorStat(days),
@@ -215,6 +270,8 @@ export async function getLvFloorPeriod(q: { fromISO: string; toISO: string; dept
     actions,
     byType,
   };
+  // each panel moved under its order's plan — the plan the output card names it by
+  return { period, facts: lvFactsOf(read, fromISO, toISO, (mo) => lvItemType(mo ? orderOf.get(mo) : undefined).item) };
 }
 
 // --------------------------------------------------------------- planning

@@ -1,17 +1,19 @@
 import "server-only";
-import { getCockpit, getFloorPeriod, getLossWaterfall, withoutFloor, type CockpitData, type FloorPeriod } from "@/lib/server/kpis";
-import { getLvFloorPeriod, getLvPlanning, lvWithoutFloor, type LvFloorPeriod, type LvPlanningData } from "@/lib/server/lvKpis";
-import { loadPlanningAll, loadProductionAll } from "@/lib/server/dashboards";
-import { WORK_CENTRES, WORK_CENTRE_LABEL, type WorkCentre } from "@/lib/domain/shifts";
+import { getCockpit, withoutFloor, type CockpitData, type FloorPeriod } from "@/lib/server/kpis";
+import { getLvPlanning, lvWithoutFloor, type LvFloorPeriod, type LvPlanningData } from "@/lib/server/lvKpis";
+import { loadPlanningAll } from "@/lib/server/dashboards";
+import { loadProductionDashboard, loadProductionFigures, type ProductionDashboard } from "@/lib/server/productionDashboard";
+import { productionRequest } from "@/lib/domain/productionDashboard";
+import { addDaysISO } from "@/lib/domain/dateSlicer";
+import { WORK_CENTRES, type WorkCentre } from "@/lib/domain/shifts";
 import { LOSS_DAYS } from "@/lib/domain/losses";
 import { OUTPUT_GROUPS, STAGES, dailyOutput, isFloorAction, monthPace, weekChange, type KpiSnapshotData, type OutputDay } from "@/lib/domain/kpis";
-import { FLOOR_DEFAULT_DAYS, FLOOR_HISTORY_DAYS, FLOOR_MAX_DAYS, FLOOR_TREND_WINDOW, floorRequest } from "@/lib/domain/floorKpis";
-import { LV_FLOOR_DEPTS, isLvFloorDept, lvFloorDeptOf, type LvFloorFilter } from "@/lib/domain/lvKpis";
+import { FLOOR_DEFAULT_DAYS, FLOOR_HISTORY_DAYS, FLOOR_MAX_DAYS, FLOOR_TREND_WINDOW } from "@/lib/domain/floorKpis";
+import { LV_FLOOR_DEPTS } from "@/lib/domain/lvKpis";
 import { planningHref, productionHref } from "@/lib/domain/dashboardLinks";
 import { DEFAULT_LINE, lineParam as namedLine, lineSection, showsBothLines } from "@/lib/domain/lines";
 import type { OutputByTypeData, TypeRow } from "@/lib/domain/outputByType";
 import { LV_STAGES } from "@/lib/domain/lv";
-import { linePart, plantEfficiency } from "@/lib/domain/plantKpis";
 import { factoryDayISO } from "@/lib/domain/dates";
 import type { DowntimeCause } from "@/lib/domain/downtime";
 import type { ReadTool, ToolCtx } from "./types";
@@ -321,60 +323,85 @@ export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dep
   status: (i) => `Reading the floor's performance${i?.line ? ` (${i.line})` : ""}`,
   async run(input, ctx) {
     const scope = scopeOf(input.line, ctx);
-    const req = floorRequest(input, factoryDayISO(ctx.now));
-    // the section's own period needs no dates, so the link does not pin the page to a past week
+    // the page's own reading of the request (a department names its line, as on the page)
+    const req = productionRequest({ from: input.from, to: input.to, scope, dept: input.dept, lvDept: input.lvDept }, factoryDayISO(ctx.now));
+    const d = await loadProductionDashboard(req, ctx.now);
+    if (d.failed.length > 0) return { ok: false, text: `The ${d.failed.map((l) => SCOPE_NAME[l]).join(" and ")} figures could not load — try again shortly.` };
+    // the page's own default period needs no dates, so the link does not pin it to a past week
     const period = !req.isDefault || req.clamped ? { from: req.fromISO, to: req.toISO } : {};
-    // each line's department in its own parameter, as the page keeps them; the link opens at the line's section
-    const href = (s: Scope, o: { dept?: string; lvDept?: string } = {}) => productionHref({ ...period, ...o, section: sectionOf(s) });
-    // the panels' department: its own parameter; on the panels' line also the stage names in dept; under all, a panels' department dept names
-    const lvDept: LvFloorFilter = input.lvDept !== undefined ? lvFloorDeptOf(input.lvDept)
-      : scope === "LV" ? lvFloorDeptOf(input.dept)
-      : isLvFloorDept(input.dept) ? input.dept : "all";
-    if (scope === "LV") {
-      const f = await getLvFloorPeriod({ ...req, dept: lvDept }, ctx.now);
-      return { ok: true, text: JSON.stringify(lvFloorView(f)), links: [{ label: "Production dashboard (LV panels)", href: href("LV", { lvDept: f.dept }) }] };
-    }
-    if (scope === "TR") {
-      const f = await getFloorPeriod(req, ctx.now);
-      return { ok: true, text: JSON.stringify(trFloorView(f)), links: [{ label: "Production dashboard (transformers)", href: href("TR", { dept: f.dept }) }] };
-    }
-    // the plant as the page assembles it (lib/server/dashboards.ts): the department read on each line that has it
-    const { tr, lv, actions } = await loadProductionAll(req, lvDept, ctx.now);
-    const plant = plantEfficiency([linePart("TR", tr), linePart("LV", lv)]);
+    const link = { label: `Production dashboard (${d.view.scopeName})`, href: productionHref({ ...period, scope: req.scope, dept: req.trDept, lvDept: req.lvDept }) };
+    const dashboard = dashboardView(d);
+    if (!d.tr && d.lv) return { ok: true, text: JSON.stringify({ ...lvFloorView(d.lv), dashboard }), links: [link] };
+    if (d.tr && !d.lv) return { ok: true, text: JSON.stringify({ ...trFloorView(d.tr), dashboard }), links: [link] };
+    const tr = d.tr!, lv = d.lv!;
     return {
       ok: true,
       text: JSON.stringify({
         line: "all",
-        from: tr.fromISO, to: tr.toISO, periodAdjusted: tr.clamped || lv.clamped,
-        dept: { asked: typeof input.dept === "string" ? input.dept : "all", TR: tr.dept, LV: lv.dept, askedLv: typeof input.lvDept === "string" ? input.lvDept : null, note: "Each line keeps its own department, as the page does: dept the transformers' (or the panels' when it names one of theirs), lvDept the panels'." },
-        interventions: actions.map((a) => `${a.line} ${a.tone}: ${a.text}`),
+        from: req.fromISO, to: req.toISO, periodAdjusted: req.clamped,
+        dept: { TR: req.trDept, LV: req.lvDept, note: "A department names its line, as on the page: one alone narrows the dashboard to its line; lvDept beside a transformers' dept keeps each line its own." },
+        interventions: d.actions.map((a) => `${a.line} ${a.tone}: ${a.text}`),
+        dashboard,
         plant: {
-          efficiency: r2(plant.efficiency), earnedH: plant.earnedH, bookedH: plant.workedH, personDays: plant.personDays, stdHPerPersonDay: r1(plant.stdPerPersonDay),
           machineStops: { unplannedH: tr.losses.unplannedH, plannedMaintenanceH: tr.losses.plannedH, availability: r2(tr.summary.availability), byCause: tr.losses.causes.map(lossRow), stoppedNow: tr.stops.open, mostStopped: tr.stops.byMachine, note: "Recorded by department on shared machines — the plant's, counted once." },
-          coverage: plant.notes,
           notes: PLANT_NOTES,
         },
         transformers: trFloorView(tr),
         lvPanels: lvFloorView(lv),
       }),
-      links: [{ label: "Production dashboard (whole plant)", href: href("all", { dept: tr.dept, lvDept: lv.dept }) }],
+      links: [link],
     };
   },
 };
 
+/** The dashboard's own figures as the page shows them: the six tiles with
+ *  their change, the coverage, the departments' table, the gaps and where the
+ *  hours went — so an answer quotes the page's numbers. */
+function dashboardView(d: ProductionDashboard) {
+  const v = d.view;
+  return {
+    showing: v.scopeName,
+    comparedWith: d.before,
+    tiles: v.kpis.map((k) => {
+      // hours to a tenth, ratios to a hundredth
+      const round = k.key === "earned" || k.key === "booked" || k.key === "stdpd" ? r1 : r2;
+      return { figure: k.key, value: round(k.value), before: round(k.before), change: k.delta ? `${k.delta.value > 0 ? "+" : ""}${k.delta.value}${k.delta.kind === "pts" ? " pts" : "%"}` : "N/A" };
+    }),
+    coverage: {
+      attendanceRecordedDays: v.coverage.recordedDays, workingDays: v.coverage.workingDays, share: r2(v.coverage.share), lastRecorded: v.coverage.lastRecordISO,
+      outputPriced: Object.fromEntries(Object.entries(v.coverage.priced).map(([l, x]) => [l, r2(x)])),
+      outputWithNoAttendance: v.coverage.unmatched, beforeTracking: v.coverage.beforeTracking, todayStillLogged: v.coverage.todayOpen,
+    },
+    departments: v.table.map((r) => ({ line: r.line, dept: r.label, recordedDays: r.recordedDays, workingDays: r.workingDays, personDays: r.personDays, bookedH: r.workedH, overtimeH: r.overtimeH, earnedH: r.earnedH, efficiency: r2(r.efficiency), output: r.output, unit: r.outputUnit })),
+    attendance: v.attendance.map((r) => ({ line: r.line, dept: r.label, present: r.present, absent: r.absent, notSet: r.notSet, day: r.day, night: r.night, overtimeH: r.overtimeH })),
+    worthALook: v.gaps.map((g) => ({ line: g.line, unit: g.unit, day: g.dateISO, bookedH: g.workedH, earnedH: g.earnedH, efficiency: r2(g.efficiency), notEarnedH: g.gapH, kind: g.kind })),
+    whereTheHoursWent: { steps: v.hours.now.steps.map((s) => ({ name: s.label, value: s.hours, total: s.total })), stopsByCause: v.hours.now.stops, change: v.hours.change?.text ?? null, biggest: v.hours.biggest },
+    notAvailable: [
+      "Output or efficiency by shift: the Daily log records no shift — Day / Night splits the attendance and the hours only.",
+      "Not set is read against today's workers list (it keeps no history), each worker from the day they were added.",
+      "Machine stops in man-hours are an estimate: the shift log does not say who stood at a stopped machine.",
+    ],
+    rules: "Efficiency = Σ earned ÷ Σ booked over the unit-days that booked hours, never capped; output on a day with no attendance is left out of it (outputWithNoAttendance). Pieces never add across stages or lines. A change is relative for amounts and in points for ratios; N/A with no valid base.",
+  };
+}
+
 /** Why a centre (or the floor) earned less than it worked — and what moved it. */
-export const explainEfficiencyTool: ReadTool<{ centre?: WorkCentre; days?: number }> = {
+export const explainEfficiencyTool: ReadTool<{ centre?: WorkCentre; days?: number; from?: string; to?: string; dept?: string; line?: Scope }> = {
   kind: "read",
   name: "explain_efficiency",
   title: "Finding where the hours went",
   description:
-    "Why a transformer work centre (or the whole transformer floor) earned fewer standard hours than its people were rostered for, over the last 7, 14 or 30 days: the walk from rostered man-hours down to earned standard hours — absence, overtime added, worked hours, the man-hours idled by machine stops (by cause: breakdowns, no material, no operator, setup, planned maintenance …), and what is left (work slower than the standard, or work not on the Daily log) — and, against the same number of days before, which of those moved the efficiency and by how many points. " +
-    "Read it for any \"why\" about efficiency, output falling short, lost hours or where to act first; draw the steps as a waterfall chart. The transformers' centres only: the panels' departments have no machines of their own, so their shortfall is read on get_floor_performance (line LV) as attendance, overtime and the share of panels priced.",
+    "Why a line, a department or a transformers' work centre earned fewer standard hours than its people were rostered for, over a period — the Production dashboard's \"Where did the hours go?\" card for the same choice: the walk from rostered man-hours down to earned standard hours — absence, overtime added, worked hours, the man-hours idled by machine stops (by cause: breakdowns, no material, no operator, setup, planned maintenance …; machine-hours turned into man-hours, an estimate) and the unexplained rest (work slower than the standard, or work not on the Daily log) — and, against the equal stretch before, which of those moved the efficiency and by how many points. " +
+    "Give from / to for a period, or days (7, 14 or 30 whole days up to yesterday; 14 when neither is given). Read it for any \"why\" about efficiency, output falling short, lost hours or where to act first; draw the steps as a waterfall chart. The panels have no machines of their own, so no stop counts on their side.",
   schema: {
     type: "object",
     properties: {
-      centre: { type: "string", enum: [...WORK_CENTRES], description: "One work centre; leave out for the whole floor." },
-      days: { type: "integer", minimum: 7, maximum: 30, description: "The stretch, in calendar days up to today — 7, 14 (default) or 30 — compared with the same number of days before it." },
+      centre: { type: "string", enum: [...WORK_CENTRES], description: "One transformers' work centre; leave out for the whole choice." },
+      days: { type: "integer", minimum: 7, maximum: 30, description: "The stretch in whole days up to yesterday — 7, 14 (default) or 30 — when no from / to is given." },
+      from: { type: "string", description: "First day, YYYY-MM-DD." },
+      to: { type: "string", description: "Last day, YYYY-MM-DD." },
+      dept: { type: "string", enum: ["all", ...OUTPUT_GROUPS, ...LV_FLOOR_DEPTS], description: "One department (it names its line)." },
+      line: lineParam,
     },
     additionalProperties: false,
   },
@@ -382,28 +409,34 @@ export const explainEfficiencyTool: ReadTool<{ centre?: WorkCentre; days?: numbe
   tabs: ["shifts"],
   status: () => "Finding where the hours went",
   async run(i, ctx) {
-    // to the nearest of the stretches the Production dashboard offers
+    const todayISO = factoryDayISO(ctx.now);
+    // no period named: whole days only, up to yesterday — today is still being logged and would read as slow
     const days = i.days ? [...LOSS_DAYS].sort((a, b) => Math.abs(a - i.days!) - Math.abs(b - i.days!))[0] : 14;
-    const w = await getLossWaterfall({ centre: i.centre ?? null, days, now: ctx.now });
+    const to = i.to ?? (i.from ? undefined : addDaysISO(todayISO, -1));
+    const from = i.from ?? (i.to ? undefined : addDaysISO(todayISO, -days));
+    const scope = i.centre ? "TR" : i.line ? scopeOf(i.line, ctx) : "TR";
+    const req = productionRequest({ from, to, scope, dept: i.dept, centre: i.centre }, todayISO);
+    // the dashboard's figures alone — the card's own walk, without the page's other reads
+    const d = await loadProductionFigures(req, ctx.now);
+    const w = d.view.hours;
     const view = (x: typeof w.now) => ({
       recordedDays: x.days, rosteredH: x.rosteredH, absentH: x.absentH, overtimeH: x.overtimeH, workedH: x.workedH,
-      stopsManH: x.stopsH, slowerOrNotLoggedH: x.performanceH, earnedStdH: x.earnedH, efficiency: x.efficiency === null ? null : Math.round(x.efficiency * 1000) / 10,
+      stopsManH: x.stopsH, unexplainedH: x.performanceH, earnedStdH: x.earnedH, efficiency: x.efficiency === null ? null : Math.round(x.efficiency * 1000) / 10,
     });
     return {
       ok: true,
       text: JSON.stringify({
-        centre: i.centre ? WORK_CENTRE_LABEL[i.centre] : "the whole transformer floor",
-        from: w.fromISO, to: w.toISO, comparedWithFrom: w.beforeFromISO,
+        showing: d.view.scopeName,
+        from: req.fromISO, to: req.toISO, comparedWith: d.before,
         now: view(w.now),
-        before: view(w.before),
+        before: w.before ? view(w.before) : null,
         waterfall: w.now.steps.map((s) => ({ name: s.label, value: s.hours, total: s.total })),
         stopsByCause: w.now.stops.map((s) => ({ cause: s.label, planned: s.planned, machineH: s.machineH, manH: s.manH })),
-        whatMoved: w.change.drivers,
-        summary: [w.change.text, w.biggest].filter(Boolean).join(" "),
-        note: "Stops are machine-hours turned into the man-hours they idled (the centre's people's hours against its machines'), never more than the hours not earned. 'Slower or not logged' is what remains — slower than the standard, or work done but not on the Daily log; it is not, by itself, the people's fault.",
+        whatMoved: w.change?.drivers ?? [],
+        summary: [w.change?.text, w.biggest].filter(Boolean).join(" "),
+        note: "Stops are machine-hours turned into the man-hours they idled (the centre's people's hours against its machines') — an estimate, never more than the hours not earned. The unexplained rest is slower than the standard, or work done but not on the Daily log; it is not, by itself, the people's fault.",
       }),
-      // the card lives on the transformers' Production dashboard
-      links: [{ label: "Production dashboard (transformers)", href: productionHref({ section: "tr" }) }],
+      links: [{ label: `Production dashboard (${d.view.scopeName})`, href: productionHref({ from: req.fromISO, to: req.toISO, scope: req.scope, dept: req.trDept, lvDept: req.lvDept, centre: req.centre }) }],
     };
   },
 };

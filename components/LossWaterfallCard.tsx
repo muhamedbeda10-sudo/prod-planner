@@ -1,108 +1,75 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
-import { ArrowDownRight, ArrowUpRight, Info, Loader2 } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Info } from "lucide-react";
 import { ChartCard } from "@/components/charts/kit";
 import { WaterfallFigure } from "@/components/AiChartForms";
 import { FramelessChart } from "@/components/AiChartFrame";
 import { EmptyState } from "@/components/primitives";
-import { ErrorState } from "@/components/DataTable";
-import { loadLossWaterfall, type LossWaterfallData } from "@/app/kpis/actions";
 import { parseAiChart, type AiWaterfallSpec } from "@/lib/domain/aiChart";
-import { LOSS_DAYS } from "@/lib/domain/losses";
-import { formatDate } from "@/lib/domain/format";
-import { WORK_CENTRES, WORK_CENTRE_LABEL } from "@/lib/domain/shifts";
+import type { HoursWalk } from "@/lib/domain/productionDashboard";
 
-// "Where did the hours go?" — the Production dashboard's answer to why: a centre's (or
-// the floor's) rostered man-hours walked down to the standard hours earned,
-// and which loss moved the efficiency against the days before.
+// "Where did the hours go?" — the Production dashboard's answer to why, over
+// the page's own period, line, department and centre (both shifts: the Daily
+// log has none): the booked man-hours walked from the rostered ones down to
+// the standard hours earned — what absence took, what overtime added, what
+// the machine stops idled (machine-hours turned into man-hours: an estimate,
+// the shift log does not say who stood at a stopped machine) and what is left
+// unexplained — against the equal stretch before. Its ends meet the tiles.
 
 const pctText = (e: number | null) => (e === null ? "—" : `${Math.round(e * 100)}%`);
 
-export function LossWaterfallCard({ className = "" }: { className?: string }) {
-  const [centre, setCentre] = useState<string>("all");
-  const [days, setDays] = useState<number>(14);
-  const [data, setData] = useState<LossWaterfallData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [seq, setSeq] = useState(0);
-  // what is shown came from these choices; anything else is still loading
-  const key = `${centre}|${days}|${seq}`;
-  const [shownKey, setShownKey] = useState<string | null>(null);
-  const loading = shownKey !== key;
-
-  useEffect(() => {
-    let live = true;
-    loadLossWaterfall(centre, days)
-      .then((r) => {
-        if (!live) return;
-        if (r.ok) {
-          setData(r);
-          setError(null);
-        } else setError(r.error);
-      })
-      .catch(() => live && setError("Could not load — check the connection and try again."))
-      .finally(() => live && setShownKey(`${centre}|${days}|${seq}`));
-    return () => {
-      live = false;
-    };
-  }, [centre, days, seq]);
-
+export function LossWaterfallCard({ walk, scope, range, beforeRange, notPriced = false, className = "" }: {
+  walk: HoursWalk;
+  /** None of the output carries standard hours: there is no earned end to walk down to. */
+  notPriced?: boolean;
+  /** What the page shows — "The whole plant", "Welding (TR)". */
+  scope: string;
+  range: string;
+  /** The stretch the change is read against, or null with none. */
+  beforeRange: string | null;
+  className?: string;
+}) {
+  const w = walk.now;
   const spec = useMemo(() => {
-    if (!data) return null;
-    const parsed = parseAiChart(JSON.stringify({ type: "waterfall", title: "Rostered man-hours to earned standard hours", unit: "h", data: data.now.steps.map((s) => ({ name: s.label, value: s.hours, total: s.total })) }));
+    const parsed = parseAiChart(JSON.stringify({ type: "waterfall", title: "Rostered man-hours to earned standard hours", unit: "h", data: w.steps.map((s) => ({ name: s.label, value: s.hours, total: s.total })) }));
     return "error" in parsed ? null : (parsed as AiWaterfallSpec);
-  }, [data]);
+  }, [w]);
+  const change = walk.change;
 
-  const controls = (
-    <div className="flex flex-wrap items-center gap-2">
-      <select value={centre} onChange={(e) => setCentre(e.target.value)} aria-label="Work centre" className="py-1 text-sm">
-        <option value="all">The whole floor</option>
-        {WORK_CENTRES.map((c) => <option key={c} value={c}>{WORK_CENTRE_LABEL[c]}</option>)}
-      </select>
-      <nav className="seg" aria-label="Days">
-        {LOSS_DAYS.map((d) => <button key={d} type="button" className={days === d ? "on" : ""} aria-pressed={days === d} onClick={() => setDays(d)}>{d} d</button>)}
-      </nav>
-    </div>
-  );
-
-  const w = data?.now;
   return (
     <ChartCard
       className={className}
       title="Where did the hours go?"
-      about={data ? `${formatDate(data.fromISO)} – ${formatDate(data.toISO)}, against the ${days} days before (whole days, up to yesterday). Rostered hours walked down to the standard hours earned: what absence took, what overtime added, what machine stops idled, and what is left — slower than the standard, or work not on the Daily log.` : "Rostered hours walked down to the standard hours earned."}
-      right={controls}
-      data={w ? [
+      sub={`${scope} · ${range} · both shifts`}
+      about={`${scope} over ${range} — the page's own period and filters, both shifts (the Daily log records no shift)${beforeRange ? `, against ${beforeRange}` : ""}. Rostered man-hours (booked − overtime + the shift hours of those absent) walked down to the standard hours earned: what absence took, what overtime added, what the machine stops idled — machine-hours turned into man-hours at the centre's people-to-machine hours that day, an estimate since the shift log does not say who stood at a stopped machine, and never more than the hours not earned — and the unexplained rest: slower than the standard, or work not on the Daily log. The panels have no machines of their own, so no stop counts on their side. Detail of the stops: Shifts → Machine stops.`}
+      data={[
         ...w.steps.map((s) => ({ Step: s.label, Hours: s.hours, Total: s.total ? "yes" : "" })),
         ...w.stops.map((s) => ({ Step: `Stop — ${s.label}`, Hours: -s.manH, Total: "", "Machine h": s.machineH })),
-      ] : undefined}
+      ]}
     >
-      {error ? (
-        <ErrorState title="Could not read the hours" detail={error} onRetry={() => { setError(null); setSeq((n) => n + 1); }} />
-      ) : !data || !w ? (
-        <div className="h-40 grid place-items-center text-sm text-muted"><span className="inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden /> Reading the shift log…</span></div>
+      {notPriced ? (
+        <EmptyState compact icon={Info} title="The output carries no standard hours" hint={<>Its earned hours are not known, so the hours cannot be walked down to them. Price it on <Link href="/admin/standard-times" className="text-brand-ink font-semibold hover:underline">Admin → Standard Times</Link>.</>} />
       ) : w.days === 0 ? (
-        <EmptyState compact icon={Info} title="No shift day recorded in these days" hint={<>Record the day&apos;s attendance on <Link href="/shifts" className="text-brand-ink font-semibold hover:underline">Shifts</Link> — the hours are measured from it.</>} />
+        <EmptyState compact icon={Info} title="No shift day recorded in this period" hint={<>Record the day&apos;s attendance on <Link href="/shifts" className="text-brand-ink font-semibold hover:underline">Shifts</Link> — the hours are measured from it.</>} />
       ) : (
-        <div className={`grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)] ${loading ? "opacity-60" : ""}`} aria-busy={loading}>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(14rem,2fr)]">
           <div className="min-w-0">{spec && <FramelessChart.Provider value={true}><WaterfallFigure spec={spec} /></FramelessChart.Provider>}</div>
           <div className="space-y-3 text-sm min-w-0">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="kpi-value">{pctText(w.efficiency)}</span>
               <span className="text-muted">efficiency, earned ÷ worked</span>
-              {data.change.change !== null && (
-                <span className={`inline-flex items-center gap-0.5 font-semibold tabnum ${data.change.change < 0 ? "text-bad-fg" : data.change.change > 0 ? "text-ok-fg" : "text-muted"}`}>
-                  {data.change.change < 0 ? <ArrowDownRight size={14} aria-hidden /> : data.change.change > 0 ? <ArrowUpRight size={14} aria-hidden /> : null}
-                  {data.change.change > 0 ? "+" : ""}{data.change.change} pts
+              {change && change.change !== null && (
+                <span className={`inline-flex items-center gap-0.5 font-semibold tabnum ${change.change < 0 ? "text-bad-fg" : change.change > 0 ? "text-ok-fg" : "text-muted"}`} title={beforeRange ? `Against ${beforeRange}` : undefined}>
+                  {change.change < 0 ? <ArrowDownRight size={14} aria-hidden /> : change.change > 0 ? <ArrowUpRight size={14} aria-hidden /> : null}
+                  {change.change > 0 ? "+" : ""}{change.change} pts
                 </span>
               )}
             </div>
-            <p>{data.change.text}</p>
-            {data.biggest && <p className="font-semibold">{data.biggest}</p>}
             {w.stops.length > 0 && (
               <div>
-                <h3 className="text-sm font-bold text-muted mb-1">Machine stops — the man-hours they idled</h3>
+                <h3 className="text-sm font-bold text-muted mb-1">Machine stops — the man-hours they idled (est.)</h3>
                 <ul className="space-y-0.5">
                   {w.stops.slice(0, 5).map((s) => (
                     <li key={s.code} className="flex items-baseline justify-between gap-2">
@@ -111,9 +78,9 @@ export function LossWaterfallCard({ className = "" }: { className?: string }) {
                     </li>
                   ))}
                 </ul>
+                <Link href="/shifts?view=downtime" className="text-xs text-brand-ink font-semibold hover:underline">Every stop on Shifts → Machine stops</Link>
               </div>
             )}
-            <p className="text-sm text-muted">{w.days} recorded day{w.days === 1 ? "" : "s"} · {w.workedH} h worked · {w.earnedH} std-h earned. Ask the assistant “why” for more.</p>
           </div>
         </div>
       )}
