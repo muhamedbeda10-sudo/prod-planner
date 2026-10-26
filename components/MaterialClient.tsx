@@ -930,10 +930,8 @@ function FilterBar({ lines, filters, onChange, shown, extra }: { lines: Material
   );
 }
 
-export function MaterialClient({ lines, totals, month, knownBoms, canEdit, product = "TR", lvOrders = [], lvTemplates = {}, odooByMo = {}, exportButton, lineSwitch }: {
+export function MaterialClient({ lines, totals, month, knownBoms, canEdit, product = "TR", lvOrders = [], lvTemplates = {}, odooByMo = {}, lineSwitch }: {
   lines: MaterialLineView[]; totals: MaterialTotal[]; month: string; knownBoms: string[]; canEdit: boolean;
-  /** The page's Export Excel, set in the action toolbar beside upload and add. */
-  exportButton?: React.ReactNode;
   /** The page's Transformers | LV Panels switch, first in its toolbar. */
   lineSwitch?: React.ReactNode;
   /** MO (upper case) → its status on the ODOO log. */
@@ -965,7 +963,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
   return (
     <div className="space-y-4">
       <div className="toolbar !mb-0">
-        {(canEdit || exportButton || lineSwitch) && (
+        {(canEdit || lineSwitch) && (
           <div className="toolbar-row no-print">
             {lineSwitch}
             {canEdit && (
@@ -974,7 +972,6 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                 {lv ? <AddLvOrder orders={lvOrders} templates={lvTemplates} /> : <AddLine knownBoms={knownBoms} knownCodes={knownCodes} product={product} />}
               </>
             )}
-            {exportButton}
           </div>
         )}
         {lines.length > 0 && (

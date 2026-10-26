@@ -23,7 +23,7 @@ export function LvStageTable({ d, today }: { d: LvDashboardData; today: string }
           presets={["today", "yesterday", "last7", "thisMonth", "lastMonth", "last30"]} defaultRange={last14} label="Days shown"
         />
       }
-      table={{ filename: `lv-stages-${d.toISO}.xlsx`, rows: [
+      table={{ rows: [
         ...d.days.map((day) => ({ Day: day.dateISO, ...Object.fromEntries(LV_CHAIN.map((s) => [LV_STAGE_LABEL[s], day.byStage[s]])) })),
         { Day: d.ranged ? "Period" : `Last ${d.days.length} days`, ...Object.fromEntries(LV_CHAIN.map((s) => [LV_STAGE_LABEL[s], d.period[s]])) },
         { Day: d.monthLabel, ...Object.fromEntries(LV_CHAIN.map((s) => [LV_STAGE_LABEL[s], d.month[s]])) },

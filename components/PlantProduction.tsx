@@ -83,7 +83,7 @@ export function PlantProduction({ tr, lv, todayISO, defaultRange, actions }: {
 
       <div className="grid gap-3 xl:grid-cols-12">
         <ChartCard className="xl:col-span-7" title="The two lines side by side" sub="Each line's own figures over the same period. Standard hours, man-hours and people add up to the plant's; efficiency is the plant's sums' ratio; pieces are shown per line and never added."
-          table={{ filename: `plant-production-${tr.fromISO}_${tr.toISO}.xlsx`, rows: rows.map((r) => ({ Figure: r.label, Transformers: r.TR, "LV panels": r.LV })) }}>
+          table={{ rows: rows.map((r) => ({ Figure: r.label, Transformers: r.TR, "LV panels": r.LV })) }}>
           <TableFrame className="!max-h-none">
             <table className="w-full text-sm">
               <thead><tr><Th label="" /><Th label={LINE_LABEL.TR} /><Th label={LINE_LABEL.LV} /></tr></thead>
@@ -110,7 +110,7 @@ export function PlantProduction({ tr, lv, todayISO, defaultRange, actions }: {
       </div>
 
       <ChartCard title="What did the plant turn out each day?" sub="Standard hours earned by each line against the man-hours both booked — one unit, so the lines stack. The shot-blast crew's hours are on the transformers' side, the panels' blasting included."
-        table={noDays ? undefined : { filename: `plant-output-${tr.fromISO}_${tr.toISO}.xlsx`, rows: output.map((d) => ({ Day: d.dateISO, "TR h": Math.round(d.values.TR * 10) / 10, "LV h": Math.round(d.values.LV * 10) / 10, "Earned h": Math.round(d.earnedH * 10) / 10, "Booked h": Math.round(d.workedH * 10) / 10, "Efficiency %": d.efficiency === null ? "" : Math.round(d.efficiency * 100) })) }}>
+        table={noDays ? undefined : { rows: output.map((d) => ({ Day: d.dateISO, "TR h": Math.round(d.values.TR * 10) / 10, "LV h": Math.round(d.values.LV * 10) / 10, "Earned h": Math.round(d.earnedH * 10) / 10, "Booked h": Math.round(d.workedH * 10) / 10, "Efficiency %": d.efficiency === null ? "" : Math.round(d.efficiency * 100) })) }}>
         {output.length === 0 ? <EmptyState compact icon={Info} title="No shift day recorded in this period" hint="Pick a longer period, or record the attendance on Shifts." /> : <OutputChart days={output} groups={["TR", "LV"]} labels={LINE_LABEL} groupWord="line" />}
       </ChartCard>
     </section>

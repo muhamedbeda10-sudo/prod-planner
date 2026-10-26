@@ -73,6 +73,11 @@ export function isMonthKey(s: string): boolean {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
 }
 
+/** The month asked for when it is a month already begun — else null. */
+export function pastMonthOf(raw: string | undefined, todayISO: string): string | null {
+  return raw && isMonthKey(raw) && raw <= todayISO.slice(0, 7) ? raw : null;
+}
+
 /** The days the report needs counted: from the first day of the year of the
  *  earliest month it grades (the trend's first month, or the month before)
  *  — where every multi-month window of those months begins, a yearly one

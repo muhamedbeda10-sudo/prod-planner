@@ -3,7 +3,7 @@ import { traceHref, trackerHref } from "@/lib/domain/links";
 import { withLine } from "@/lib/server/line";
 import { getMasterTracker } from "@/lib/server/masterTracker";
 import { getLvTracker } from "@/lib/server/lvTracker";
-import { filterLvTracker, filterMasterTracker, lvStageStats, masterProgress, summaryStage, trackerItemStats, trackerTotals, type TrackerFilters } from "@/lib/domain/trackerSummary";
+import { TRACKER_STAGE_ORDER, filterLvTracker, filterMasterTracker, lvStageStats, masterProgress, summaryStage, trackerItemStats, trackerTotals, type TrackerFilters } from "@/lib/domain/trackerSummary";
 import { lvBottleneck, rowBottleneck } from "@/lib/domain/trackerView";
 import type { ObjectSchema } from "@/lib/domain/aiInput";
 import type { ReadTool } from "./types";
@@ -36,18 +36,13 @@ export function trackerSummaryTool(loaders = { tr: getMasterTracker, lv: getLvTr
         if (ctx.line && line !== ctx.line) return { ok: false, text: "The page belongs to the other production line. Specify filters explicitly instead of mixing the two scopes." };
         filters = Object.fromEntries(Object.keys(TRACKER_FILTER_SCHEMA.properties).flatMap((key) => key in ctx.page!.filters ? [[key, ctx.page!.filters[key]]] : []));
       }
-      filters = { ...filters, ...input.filters };
-      if (filters.status && !["open", "closed", "hold", "all"].includes(filters.status)) return { ok: false, text: "Status must be open, closed, hold or all." };
-      if (filters.urgent && !["yes", "no"].includes(filters.urgent)) return { ok: false, text: "Urgency must be yes or no." };
-      if (filters.progress && !["complete", "inprogress", "notstarted", "done", "partial", "none"].includes(filters.progress)) return { ok: false, text: "Unknown progress filter." };
+      const checked = trackerFiltersFor(line, { ...filters, ...input.filters });
+      if (typeof checked === "string") return { ok: false, text: checked };
+      filters = checked;
       const limit = input.detailLimit ?? 12;
       const scope = { line, filters };
       const asOf = new Date().toISOString();
       if (line === "LV") {
-        if (filters.deptStage) return { ok: false, text: "LV shows its four making stages; the transformer department filter does not apply." };
-        if (filters.family && !["PNL", "MB"].includes(filters.family)) return { ok: false, text: "LV plan family must be PNL or MB." };
-        filters.progress = ({ complete: "done", inprogress: "partial", notstarted: "none" } as Record<string, string>)[filters.progress ?? ""] ?? filters.progress;
-        filters.status ||= "open";
         const all = await withLine("LV", () => loaders.lv());
         const rows = filterLvTracker(all, filters);
         const attention = [...rows].filter((r) => r.remaining > 0 || r.hold.onHold).sort(attentionOrder).slice(0, limit).map((r) => ({
@@ -56,10 +51,6 @@ export function trackerSummaryTool(loaders = { tr: getMasterTracker, lv: getLvTr
         }));
         return { ok: true, text: JSON.stringify({ scope, asOf, totals: trackerTotals(rows, (r) => r.state.required), stages: lvStageStats(rows), attention, attentionTruncated: rows.filter((r) => r.remaining > 0 || r.hold.onHold).length > limit, note: `${emptyScope(rows.length)}Units are panels; completion is painting, not delivery. Attention is ordered by hold, urgency, then remaining quantity. No schedule lateness or root cause is inferred.` }), links: [{ label: "LV Plan Tracker", href: trackerHref(0, undefined, "LV") }, ...attention.map((r) => ({ label: `${r.mo} · ${r.bom}`, href: r.href }))] };
       }
-      if (filters.product || filters.family || filters.urgent === "no") return { ok: false, text: "Product, plan family and non-urgent-only are LV filters. Use the transformer's search/month/status/progress/urgent filters." };
-      if (filters.deptStage?.split(",").some((s) => !["Cut", "Welding", "Painting", "Delivered"].includes(s))) return { ok: false, text: "Unknown transformer department." };
-      filters.progress = ({ done: "complete", partial: "inprogress", none: "notstarted" } as Record<string, string>)[filters.progress ?? ""] ?? filters.progress;
-      if (filters.status === "all") filters.status = "";
       const all = await withLine("TR", () => loaders.tr());
       const rows = filterMasterTracker(all, filters);
       const attention = [...rows].filter((r) => r.remaining > 0 || r.hold.onHold || r.pendingQty).sort(attentionOrder).slice(0, limit).map((r) => ({
@@ -72,6 +63,28 @@ export function trackerSummaryTool(loaders = { tr: getMasterTracker, lv: getLvTr
   };
 }
 export const getTrackerSummary = trackerSummaryTool();
+
+/** A tracker's filters checked for its line and put as its screen reads
+ *  them (the other line's words for progress, its default status) — or what
+ *  is wrong with them. */
+export function trackerFiltersFor(line: "TR" | "LV", raw: TrackerFilters): TrackerFilters | string {
+  const f = { ...raw };
+  if (f.status && !["open", "closed", "hold", "all"].includes(f.status)) return "Status must be open, closed, hold or all.";
+  if (f.urgent && !["yes", "no"].includes(f.urgent)) return "Urgency must be yes or no.";
+  if (f.progress && !["complete", "inprogress", "notstarted", "done", "partial", "none"].includes(f.progress)) return "Unknown progress filter.";
+  if (line === "LV") {
+    if (f.deptStage) return "LV shows its four making stages; the transformer department filter does not apply.";
+    if (f.family && !["PNL", "MB"].includes(f.family)) return "LV plan family must be PNL or MB.";
+    f.progress = ({ complete: "done", inprogress: "partial", notstarted: "none" } as Record<string, string>)[f.progress ?? ""] ?? f.progress;
+    f.status ||= "open";
+    return f;
+  }
+  if (f.product || f.family || f.urgent === "no") return "Product, plan family and non-urgent-only are LV filters. Use the transformer's search/month/status/progress/urgent filters.";
+  if (f.deptStage?.split(",").some((s) => !(TRACKER_STAGE_ORDER as readonly string[]).includes(s))) return "Unknown transformer department.";
+  f.progress = ({ done: "complete", partial: "inprogress", none: "notstarted" } as Record<string, string>)[f.progress ?? ""] ?? f.progress;
+  if (f.status === "all") f.status = "";
+  return f;
+}
 
 /** Zero orders is an empty scope, not finished work — said in so many words,
  *  so "0 remaining" is never read as "all done". */

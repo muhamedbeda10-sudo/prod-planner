@@ -329,7 +329,7 @@ function RankedBars({ data, unit, color = CAT[0] }: { data: { name: string; valu
 
 // ---------------------------------------------------------------- page
 
-export function ConsumablesDashboard({ s, periodLabel, period }: { s: ConsumablesStats; periodLabel: string; period: string }) {
+export function ConsumablesDashboard({ s, periodLabel }: { s: ConsumablesStats; periodLabel: string }) {
   if (s.totals.issues === 0) {
     return (
       <div className="bg-surface border rounded-xl p-10 text-center">
@@ -350,7 +350,6 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
   const k = s.kpis;
   const singleDay = s.timeline.unit === "hour";
   const days = s.daily.length;
-  const file = (name: string) => `consumables-${name}-${period}.xlsx`;
 
   // ---- table twins
   const trendRows: TableRow[] = singleDay
@@ -389,11 +388,11 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
         <ChartCard className="xl:col-span-2"
           title={singleDay ? "Hand-outs by hour" : "Hand-outs per day"}
           sub={singleDay ? "When in the day the store was busy" : `Area = the day's hand-outs · line = the trailing 7-day average${days < 7 ? " (from a week on)" : ""}`}
-          table={{ rows: trendRows, filename: file("trend"), sheet: "Trend" }}>
+          table={{ rows: trendRows }}>
           <TrendChart s={s} />
         </ChartCard>
         <ChartCard title="Share by department" sub={s.departments.length > 5 ? "The top five; the rest folded into Other" : "Of all hand-outs in the period"}
-          table={{ rows: shareRows, filename: file("departments"), sheet: "Departments" }}>
+          table={{ rows: shareRows }}>
           <DepartmentDonut s={s} colorOf={colorOf} />
         </ChartCard>
       </div>
@@ -403,7 +402,7 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
       {!singleDay && (
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
           <ChartCard title="When the store is busy" sub="Hand-outs by weekday and hour — the darker, the busier"
-            table={{ rows: weekRows, filename: file("weekday-hour"), sheet: "Weekday x hour" }}>
+            table={{ rows: weekRows }}>
             <Heatmap compactCells rowHead="" rows={WEEK_ORDER.map((d) => WEEKDAYS[d])} cols={s.weekHour.hours.map((h) => String(h).padStart(2, "0"))}
               values={WEEK_ORDER.map((d) => s.weekHour.counts[d])}
               cellTitle={(i, j, v) => `${WEEKDAYS[WEEK_ORDER[i]]} ${hh(s.weekHour.hours[j])}: ${fmt(v)} hand-out${v === 1 ? "" : "s"}`} />
@@ -411,7 +410,7 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
           </ChartCard>
           <ChartCard title={`Departments ${s.departmentTrend.unit === "week" ? "week by week" : "day by day"}`}
             sub="Hand-outs, stacked by department"
-            table={{ rows: stackRows, filename: file("departments-over-time"), sheet: "Departments over time" }}>
+            table={{ rows: stackRows }}>
             <DepartmentStack s={s} colorOf={colorOf} />
           </ChartCard>
         </div>
@@ -421,11 +420,11 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <ChartCard title="Items — the 80/20 view"
           sub={`${k.vitalFew} of ${s.totals.items} item${s.totals.items === 1 ? "" : "s"} make up 80% of hand-outs${s.pareto.rows.length > 15 ? " · top 15 shown" : ""}`}
-          table={{ rows: paretoRows, filename: file("pareto"), sheet: "Pareto" }}>
+          table={{ rows: paretoRows }}>
           <ParetoChart s={s} />
         </ChartCard>
         <ChartCard title="Every item at a glance" sub={`Tile size = hand-outs · colour = the department that takes it most${s.itemTiles.length > 40 ? " · top 40" : ""}`}
-          table={{ rows: itemRows, filename: file("items"), sheet: "Items" }}>
+          table={{ rows: itemRows }}>
           <ItemTreemap s={s} colorOf={colorOf} inkOf={inkOf} />
         </ChartCard>
       </div>
@@ -433,19 +432,19 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
       {/* ---- departments: how they draw on it, and for their size */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <ChartCard title="How departments draw on the store" sub="Each bubble: how often × how many different items"
-          table={{ rows: workerRows, filename: file("departments-draw"), sheet: "Departments" }}>
+          table={{ rows: workerRows }}>
           <WorkerScatter s={s} />
         </ChartCard>
         <ChartCard title="Hand-outs per worker, by department"
           sub={perHead.length ? "A department's hand-outs over its workers on the workers list — a big crew is not a big spender" : "No department on the workers list took anything in the period"}
-          table={{ rows: perHeadRows, filename: file("per-worker"), sheet: "Per worker" }}>
+          table={{ rows: perHeadRows }}>
           <RankedBars unit="Hand-outs per worker" color="var(--viz-2)" data={perHead.map((d) => ({ name: d.label, value: Math.round(d.perPerson! * 10) / 10, note: `${fmt(d.issues)} hand-outs · ${d.people} worker${d.people === 1 ? "" : "s"}` }))} />
         </ChartCard>
       </div>
 
       {/* ---- where each item goes */}
       <ChartCard title="Where each item goes" sub="Quantity handed out, item by department"
-        table={{ rows: matrixRows, filename: file("item-by-department"), sheet: "Item x department" }}>
+        table={{ rows: matrixRows }}>
         <Heatmap totals="rows" scale="row" rowHead="Item" rows={s.matrix.items} cols={s.matrix.departments.map((d) => d.label)} values={s.matrix.qty} />
       </ChartCard>
 

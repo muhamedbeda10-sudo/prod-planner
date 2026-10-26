@@ -58,3 +58,14 @@ export function splitDowntimeDays(row: StopPeriod, fromISO: string, toISO: strin
 export function downtimeWindowWhere(fromISO: string, toISO: string) {
   return { date: { lte: parseISODate(toISO)! }, OR: [{ date: { gte: parseISODate(fromISO)! } }, { isOpen: true }, { endDate: { gte: parseISODate(fromISO)! } }] };
 }
+
+/** A recorded stop as it stands at `now`: its hours so far, and those that
+ *  fall on `dayISO` — what the Shifts screen and the assistant's sheet show. */
+export function liveStopHours(
+  r: { dateISO?: string; storedHours?: number; hours: number; startTime?: string | null; endTime?: string | null; endsNextDay?: boolean; isOpen?: boolean; endDateISO?: string | null },
+  dayISO: string,
+  now: Date,
+): { hours: number; dayHours: number } {
+  const p: StopPeriod = { date: r.dateISO ?? dayISO, hours: r.storedHours ?? r.hours, startTime: r.startTime, endTime: r.endTime, endsNextDay: r.endsNextDay, isOpen: r.isOpen, endDate: r.endDateISO };
+  return { hours: elapsedStopHours(p, now), dayHours: downtimeHoursInRange(p, dayISO, dayISO, now) };
+}

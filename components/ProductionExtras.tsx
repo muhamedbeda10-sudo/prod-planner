@@ -22,7 +22,6 @@ const cycleSub = (c: { n: number; maxDays: number | null }) => `median · ${c.n}
 
 export function ProductionExtras({ period }: { period: FloorPeriod }) {
   const { stops, quality: q } = period;
-  const stamp = `${period.fromISO}_${period.toISO}`;
   const t = q.tanks;
   return (
     <>
@@ -32,7 +31,7 @@ export function ProductionExtras({ period }: { period: FloorPeriod }) {
           className="xl:col-span-6"
           title="Which machines stand still?"
           sub="The stops still open now, with the time stopped so far, and the machines that lost the most unplanned hours in the period. A stop is recorded on the machine, by department — the punches carry the panels too, so a stop is never one line's."
-          table={{ filename: `machines-stopped-${stamp}.xlsx`, rows: [
+          table={{ rows: [
             ...stops.open.map((s) => ({ Row: "Open now", Machine: s.machine, Department: s.dept, Since: s.sinceISO, Hours: s.hours, Cause: s.cause, Stops: 1 })),
             ...stops.byMachine.map((m) => ({ Row: "Most stopped", Machine: m.machine, Department: m.dept, Since: "", Hours: m.hours, Cause: "", Stops: m.stops })),
           ] }}
@@ -74,7 +73,7 @@ export function ProductionExtras({ period }: { period: FloorPeriod }) {
           sub={t
             ? `The tanks, tracked one by one: where the open ones stand, the leak test passed first time over the tanks first tested in the period (every attempt is kept, so a re-test never flatters it), and the days a tank waited — the median over the tanks that reached the step in the period. Then the pieces sent back upstream.`
             : "The pieces sent back upstream (Welding to Fabrication, Painting to Welding): open now, filed in the period, by reason. Tanks are recorded as quantities — turn on per-piece tank tracking in Settings for the leak-test figures."}
-          table={{ filename: `quality-${stamp}.xlsx`, rows: [
+          table={{ rows: [
             ...(t ? [
               { Figure: "Tanks waiting for the leak test", Value: t.waitingTest, Note: "now" },
               { Figure: "Tanks in repair", Value: t.inRepair, Note: "now" },

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { prisma } from "@/lib/db";
+import { orderRowOf } from "@/lib/domain/registryView";
 import { PageHead } from "@/components/ui";
 import { MonthlyImport } from "@/components/MonthlyImport";
 import { OrdersTable } from "@/components/OrdersTable";
@@ -28,27 +29,7 @@ export default async function OrdersPage() {
         <OrdersTable
           line={line}
           lineSwitch={<LineSwitch />}
-          rows={orders.map((o) => ({
-            id: o.id,
-            mo: o.mo,
-            soi: o.soi,
-            urgent: o.urgent,
-            customer: o.customer,
-            fgCode: o.fgCode,
-            bom: o.bom,
-            kva: o.kva,
-            rating: o.rating,
-            planQty: o.planQty,
-            colorRal: o.colorRal,
-            remarks: o.remarks,
-            source: o.source,
-            createdAt: o.createdAt.toISOString(),
-            updatedAt: o.updatedAt.toISOString(),
-            product: o.product,
-            secItem: o.secItem,
-            ospEncloser: o.ospEncloser,
-            materialsRemarks: o.materialsRemarks,
-          }))}
+          rows={orders.map(orderRowOf)}
         />
       </div>
     </div>

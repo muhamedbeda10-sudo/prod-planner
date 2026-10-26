@@ -56,9 +56,8 @@ function AlarmLine({ a }: { a: AlarmRow }) {
   );
 }
 
-export function ConsumableAlarms({ d, periodLabel, period }: { d: LimitDashboard; periodLabel: string; period: string }) {
+export function ConsumableAlarms({ d, periodLabel }: { d: LimitDashboard; periodLabel: string }) {
   const overNow = d.board.filter(isOver);
-  const file = (name: string) => `consumables-${name}-${period}.xlsx`;
   // the past card looks back over the last finished months, whatever the slicer
   const pastLabel = `${monthShort(d.exceedanceSpan.from.slice(0, 7))} – ${monthShort(d.exceedanceSpan.to.slice(0, 7))}`;
 
@@ -87,7 +86,7 @@ export function ConsumableAlarms({ d, periodLabel, period }: { d: LimitDashboard
       <ChartCard
         title="Alarms now"
         sub={overNow.length ? "Every limit past its number in its current window — this month, or its months so far — the mark on each bar is the limit" : "No limit is past its number this month"}
-        table={{ rows: boardRows, filename: file("limits-now"), sheet: "Limits now" }}
+        table={{ rows: boardRows }}
       >
         {overNow.length === 0 ? <p className="text-sm text-ok-fg">✓ Every item is within its limits.</p> : (
           <ul className="divide-y">{overNow.map((a) => <AlarmLine key={a.ruleId} a={a} />)}</ul>
@@ -100,7 +99,7 @@ export function ConsumableAlarms({ d, periodLabel, period }: { d: LimitDashboard
           sub={d.exceedances.length
             ? `The last finished months (${pastLabel}) whatever the slicer — each month (or longer limit) that ended over its number, per-worker limits with that month's workers. The running month is under Alarms now.`
             : `No month went over a limit ${pastLabel}`}
-          table={d.exceedances.length ? { rows: exRows, filename: `consumables-exceeded-${d.exceedanceSpan.from}_to_${d.exceedanceSpan.to}.xlsx`, sheet: "Exceeded" } : undefined}
+          table={d.exceedances.length ? { rows: exRows } : undefined}
         >
           {d.exceedances.length > 0 ? (
             <TableFrame className="max-h-[420px]">
@@ -135,7 +134,7 @@ export function ConsumableAlarms({ d, periodLabel, period }: { d: LimitDashboard
         <ChartCard
           title="Recorded over a limit"
           sub={d.overLimitIssues.length ? "The recorder was warned and gave the reason" : `No hand-out was recorded over a limit ${periodLabel}`}
-          table={d.overLimitIssues.length ? { rows: issueRows, filename: file("over-limit-hand-outs"), sheet: "Over limit" } : undefined}
+          table={d.overLimitIssues.length ? { rows: issueRows } : undefined}
         >
           {d.overLimitIssues.length > 0 ? (
             <ul className="divide-y max-h-[420px] overflow-auto">

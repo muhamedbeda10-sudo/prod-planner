@@ -6,7 +6,7 @@ import { formatDate } from "@/lib/domain/format";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
-  ATTENDANCES, ATTENDANCE_LABEL, ATTENDANCE_TIME, DEFAULT_SHIFT_HOURS, DEPT_CENTRES, OVERTIME_TIME, NIGHT_OVERTIME_TIME, overtimeHoursFor, overtimeTime, UNSET_LINE, WORK_CENTRE_LABEL, attendanceLine, attendanceOf, centreOf, lineHours, round1, shiftSplit,
+  ATTENDANCES, ATTENDANCE_LABEL, ATTENDANCE_TIME, DEFAULT_SHIFT_HOURS, DEPT_CENTRES, OVERTIME_TIME, NIGHT_OVERTIME_TIME, overtimeHoursFor, overtimeTime, UNSET_LINE, WORK_CENTRE_LABEL, attendanceLine, attendanceOf, centreOf, lineHours, rosterLineReading, round1, shiftSplit,
   type Attendance, type RosterDept, type WorkCentre,
 } from "@/lib/domain/shifts";
 import { WORKER_DEPT_LABEL, WORKER_GROUPS } from "@/lib/domain/tanks";
@@ -16,9 +16,7 @@ import { clearShiftDay, saveShiftRoster } from "@/app/shifts/actions";
 import { ShiftBoard, type BoardLine } from "@/components/ShiftBoard";
 import { FilterSelect, SearchBox } from "@/components/FilterControls";
 import { TableFrame, Th, useConfirm } from "@/components/DataTable";
-import { ExportButton } from "@/components/ExportButton";
 import { SAVE_UNCONFIRMED } from "@/components/ui";
-import { PrintButton } from "@/components/PrintButton";
 import { PrintHeader, PrintScope } from "@/components/PrintHeader";
 import { reconcileShiftDrafts, replaceShiftDepartment, shiftDepartmentDirty, type ShiftDraft } from "@/lib/domain/shiftDraft";
 
@@ -246,27 +244,11 @@ export function ShiftRoster({ data, editableDepts, filter }: {
   // section and search, every attendance
   const boardLines: BoardLine[] = searched.map((d) => {
     const w = byKey.get(keyOf(d))!;
-    const a = attendanceOf(d);
     return {
       key: keyOf(d), dept: d.dept, empId: w.empId, name: w.name, jobTitle: w.jobTitle, sectionLabels: w.sectionLabels, onVacation: w.onVacation,
-      attendance: a, overtimeH: a === "day" || a === "night" ? d.overtimeH : 0, hours: a === "unset" ? 0 : lineHours(d, hrs), note: d.note,
-      centre: d.dept === "Cut" && d.center ? WORK_CENTRE_LABEL[d.center] : null,
+      ...rosterLineReading(d, hrs), note: d.note,
     };
   });
-  const exportRows = boardLines.map((l) => ({
-    Date: data.dateISO,
-    Badge: l.empId,
-    Name: l.name,
-    "Job title": l.jobTitle ?? "",
-    Department: WORKER_DEPT_LABEL[l.dept],
-    Section: l.sectionLabels.join(", "),
-    "Work centre": l.centre ?? "",
-    Attendance: l.attendance === "unset" ? "Not set" : ATTENDANCE_LABEL[l.attendance],
-    Time: l.attendance === "day" || l.attendance === "night" ? ATTENDANCE_TIME[l.attendance] : "",
-    "Overtime h": l.overtimeH || "",
-    Hours: l.attendance === "unset" ? "" : l.hours,
-    Note: l.note,
-  }));
 
   const printed = needle ? shiftSplit(searched, hrs) : split;
   const statusPill = allRecorded
@@ -343,8 +325,6 @@ export function ShiftRoster({ data, editableDepts, filter }: {
           <div className="ms-auto flex flex-wrap items-center gap-2">
             {statusPill}
             {(view === "record" ? departmentDirty : dirty) && <span className="pill pill-warn">unsaved changes</span>}
-            <PrintButton />
-            <ExportButton rows={exportRows} filename={`shift-attendance-${data.dateISO}.xlsx`} sheetName="Attendance" />
             {view === "record" && recordedHere.some(canEdit) && (
               <button type="button" className="btn btn-sm btn-ghost text-bad-fg" disabled={busy} onClick={clearDay}>
                 Clear {departmentName}

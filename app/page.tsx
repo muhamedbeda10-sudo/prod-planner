@@ -7,7 +7,6 @@ import { loadPlanningAll } from "@/lib/server/dashboards";
 import { getActiveLine } from "@/lib/server/line";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { PageHead } from "@/components/ui";
-import { PrintButton } from "@/components/PrintButton";
 import { PrintHeader } from "@/components/PrintHeader";
 import { Cockpit } from "@/components/Cockpit";
 import { CockpitDecisions } from "@/components/CockpitDecisions";
@@ -45,7 +44,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   // the panels' stage table reads a period of its own
   const period = { from: dayOf(sp.from), to: dayOf(sp.to) };
   const head = (sub: string, decisions: readonly CockpitAction[]) => (
-    <PageHead title="Planning" sub={sub} actions={<><CockpitDecisions actions={decisions} /><PrintButton /></>}>
+    <PageHead title="Planning" sub={sub} actions={<CockpitDecisions actions={decisions} />}>
       <LineScopeTabs scope={scope} />
     </PageHead>
   );

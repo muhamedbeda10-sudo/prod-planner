@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type SVGProps } from "react";
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { ChartCard, Legend, TipBox, fmt, type TableRow } from "@/components/charts/kit";
+import { ExportButton } from "@/components/ExportButton";
 import type { AiTone } from "@/lib/domain/aiChart";
 
 // The frame every chart in an AI answer sits in — the dashboards' card, its
@@ -48,7 +49,10 @@ export function ChartFrame({
     );
   }
   return (
-    <ChartCard title={title || "Chart"} sub={sub ? <span dir="auto">{sub}</span> : undefined} className="my-3 not-prose ai-chart" table={{ rows, filename: fileOf(title), sheet: "Data" }}>
+    <ChartCard
+      title={title || "Chart"} sub={sub ? <span dir="auto">{sub}</span> : undefined} className="my-3 not-prose ai-chart" table={{ rows }}
+      right={<ExportButton rows={rows} filename={fileOf(title)} sheetName="Data" label="Export" />}
+    >
       {children}
       {legend && legend.length > 1 && (
         <div className="mt-2">

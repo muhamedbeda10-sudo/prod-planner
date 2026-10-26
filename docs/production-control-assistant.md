@@ -12,6 +12,7 @@ The assistant supports decisions using the app's live data and existing tools. I
 | End of day | «قارن الفعلي بالخطة، ووضح المتبقي وأولويات بكرة ونواقص البيانات» | Matching periods, units and recorded production |
 | Weekly review | «قارن إنتاج آخر 7 أيام بالفترة اللي قبلها واقترح تحسين قابل للقياس» | Comparable workdays, product mix and capacity changes |
 | Follow-up | «راجع آخر الإجراءات اللي اتفقنا عليها على البيانات الحالية» | Refreshed facts; conversation history alone is not a task register |
+| A file or a printout | «اعملي إكسيل بالتراكر لشهر أكتوبر» · «اطبعلي حضور النهارده» | The sheet named in the answer, its scope and row count (`make_excel`); the screens no longer carry Export or Print buttons, the Floor aside |
 
 These are on-demand reviews. Existing automation tools can prepare schedules only after the exact timing, scope and recipients are specified. This update creates no schedules or outgoing messages. Tasks, run-order changes and production records still use the app's existing permission and approval rules.
 
@@ -67,7 +68,7 @@ A provisional resilience ordering minimises worst blocked orders, then worst lat
 
 The assistant can run the same shared calculations through three read-only tools:
 
-- `compare_scenarios`: one common start (plant, saved scenario or the current simulator) plus up to four labeled alternatives. Variants inherit the start independently. Optional queue optimization has a bounded search and reports whether it completed.
+- `compare_scenarios`: one common start (plant, saved scenario or the chat's working scenario) plus up to four labeled alternatives. Variants inherit the start independently. Optional queue optimization has a bounded search and reports whether it completed.
 - `stress_test_plan`: plant baseline and up to four alternatives against up to three explicit independent disruptions. Without alternatives it includes the selected starting scenario.
 - `get_simulation_readiness`: coverage, data gaps and assumptions from current live inputs.
 

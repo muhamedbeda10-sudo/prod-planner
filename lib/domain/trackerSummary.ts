@@ -59,9 +59,14 @@ export function filterLvTracker<T extends LvSummaryRow>(rows: readonly T[], f: T
 }
 
 export const TRACKER_STAGE_ORDER = ["Cut", "Welding", "Painting", "Delivered"] as const;
-export function summaryStage(picked = ""): string {
+/** The departments picked in the tracker's filter ("Painting,Cut"), in
+ *  pipeline order whatever order they were picked in. */
+export function trackerStagesOf(picked = ""): string[] {
   const selected = new Set(picked.split(","));
-  return TRACKER_STAGE_ORDER.filter((stage) => selected.has(stage)).at(-1) ?? "";
+  return TRACKER_STAGE_ORDER.filter((stage) => selected.has(stage));
+}
+export function summaryStage(picked = ""): string {
+  return trackerStagesOf(picked).at(-1) ?? "";
 }
 
 export function trackerItemStats(rows: readonly MasterSummaryRow[], stage = "") {

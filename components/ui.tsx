@@ -32,7 +32,7 @@ export function PageHeader({
  * the title and the line under it are read to a screen reader only (the
  * page's one <h1>). What shows is ONE toolbar row, and only when there is
  * something for it: anything that belongs at its start (a picker, the line
- * switch), then on the right the page's actions (Print …) and — always last,
+ * switch), then on the right the page's actions (a decisions button …) and — always last,
  * in the same place on every view of a tab — the switch to the tab's OTHER
  * views. A screen with a filter bar puts these in that bar instead. Off the
  * paper: the printed sheets carry their own masthead.
@@ -48,7 +48,7 @@ export function PageHead({
   sub?: ReactNode;
   /** The tab's view switch (<ViewTabs>), pinned to the right end. */
   views?: ReactNode;
-  /** The page's actions (an <ExportMenu>, a back link), right-aligned before the views. */
+  /** The page's actions (a decisions button, a download), right-aligned before the views. */
   actions?: ReactNode;
   /** Anything that belongs beside the title (a window picker, a badge). */
   children?: ReactNode;
@@ -155,21 +155,6 @@ export function Soi({
       </div>
     </details>
   );
-}
-
-/** The SOI behind a row: its MO's, falling back to its BOM's when the row is
- *  BOM-level (the worklists group that way). */
-export function soiOf(
-  lookup: { byMo: Record<string, string>; byBom: Record<string, string> } | undefined,
-  mo: string | null | undefined,
-  bom?: string | null
-): string | null {
-  if (!lookup) return null;
-  const m = (mo ?? "").trim();
-  if (m && lookup.byMo[m]) return lookup.byMo[m];
-  const b = (bom ?? "").trim();
-  if (b && lookup.byBom[b]) return lookup.byBom[b];
-  return null;
 }
 
 /**
