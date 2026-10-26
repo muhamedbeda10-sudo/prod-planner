@@ -335,3 +335,20 @@ export function HeatScale({ max, format = (v: number) => fmt(v) }: { max: number
     </div>
   );
 }
+
+/** One row of a bullet chart: the bar is what there is, the tick is where it should be. */
+export function Bullet({ label, value, target, max, text, tone }: { label: string; value: number; target: number | null; max: number; text: React.ReactNode; tone?: "ok" | "warn" | "bad" | null }) {
+  const w = (v: number) => `${Math.max(0, Math.min(1, max > 0 ? v / max : 0)) * 100}%`;
+  return (
+    <div>
+      <div className="flex flex-wrap justify-between gap-x-3 text-sm mb-1">
+        <span className="font-semibold">{label}</span>
+        <span className={`tabnum ${tone ? TONE_TEXT[tone] : ""}`}>{text}</span>
+      </div>
+      <div className="relative h-3 rounded-full" style={{ background: TRACK }} role="img" aria-label={`${label}: ${typeof text === "string" ? text : ""}`}>
+        <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: w(value), background: "var(--viz-1)" }} />
+        {target !== null && <div className="absolute -inset-y-1 w-0.5 rounded bg-foreground" style={{ left: `calc(${w(target)} - 1px)` }} aria-hidden />}
+      </div>
+    </div>
+  );
+}

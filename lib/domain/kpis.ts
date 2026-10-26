@@ -547,7 +547,9 @@ export function loadSeries(l: Pick<LoadAhead, "days">): { dayISO: string; dueH: 
 export const OUTPUT_GROUPS = ["Fabrication", "Welding", "ShotBlast", "Painting"] as const;
 export type OutputGroup = (typeof OUTPUT_GROUPS)[number];
 export const OUTPUT_GROUP_LABEL: Record<OutputGroup, string> = { Fabrication: "Fabrication", Welding: "Welding", ShotBlast: "Shot blast", Painting: "Painting" };
-const groupOf = (c: WorkCentre): OutputGroup => ((DEPT_CENTRES.Cut as readonly WorkCentre[]).includes(c) ? "Fabrication" : (c as OutputGroup));
+/** The department a centre's output and people count under — laser / punch,
+ *  bending and fin folding are Fabrication. */
+export const groupOfCentre = (c: WorkCentre): OutputGroup => ((DEPT_CENTRES.Cut as readonly WorkCentre[]).includes(c) ? "Fabrication" : (c as OutputGroup));
 
 export interface OutputDay extends Record<OutputGroup, number> {
   dateISO: string;
@@ -565,7 +567,7 @@ export function dailyOutput(centres: readonly { centre: WorkCentre; trend: reado
   for (const c of centres) {
     for (const t of c.trend) {
       const d = days.get(t.dateISO) ?? { dateISO: t.dateISO, Fabrication: 0, Welding: 0, ShotBlast: 0, Painting: 0, earnedH: 0, workedH: 0, efficiency: null };
-      d[groupOf(c.centre)] += t.earnedH;
+      d[groupOfCentre(c.centre)] += t.earnedH;
       d.earnedH += t.earnedH;
       d.workedH += t.workedH;
       days.set(t.dateISO, d);

@@ -2,11 +2,11 @@ import { describe, it, expect, vi } from "vitest";
 
 // ---- the assistant reads the cockpit through the very loader the page uses ----
 
-const h = vi.hoisted(() => ({ getCockpit: vi.fn() }));
+const h = vi.hoisted(() => ({ getCockpit: vi.fn(), getFloorPeriod: vi.fn() }));
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/server/kpis", () => ({ getCockpit: h.getCockpit }));
+vi.mock("@/lib/server/kpis", () => ({ getCockpit: h.getCockpit, getFloorPeriod: h.getFloorPeriod }));
 
-import { getKpisTool } from "@/lib/server/ai/tools/kpis";
+import { getFloorPerformanceTool, getKpisTool } from "@/lib/server/ai/tools/kpis";
 
 const stat = (o = {}) => ({ centre: "Welding", days: 4, workedH: 100, earnedH: 90, efficiency: 0.9, downtimeH: 2, availability: null, people: 12, ...o });
 
@@ -73,5 +73,43 @@ describe("get_kpis", () => {
     expect(j.weeklyPlan.behind).toHaveLength(20);
     expect(j.weeklyPlan.behind[0]).toMatchObject({ day: "2026-10-01", bom: "B0", stuckAt: "weld" });
     expect(j.weeklyPlan.behind[19].bom).toBe("B19");
+  });
+});
+
+describe("get_floor_performance", () => {
+  const period = {
+    fromISO: "2026-10-01", toISO: "2026-10-25", dept: "Welding", dates: ["2026-10-24"],
+    grid: [{ centre: "Welding", total: 0.9123, days: 1, cells: [{ dateISO: "2026-10-23", workedH: 0, earnedH: 0, efficiency: null }, { dateISO: "2026-10-24", workedH: 100, earnedH: 91.2, efficiency: 0.912 }] }],
+    summary: { days: 1, workedH: 100, earnedH: 91.2, efficiency: 0.912, personDays: 12, people: 12, stdPerPersonDay: 7.6, overtimeH: 4, overtimeShare: 0.04, attendance: 0.9231, downtimeH: 2, availability: 0.95 },
+    groups: [{ group: "Welding", days: 1, workedH: 100, earnedH: 91.2, efficiency: 0.912, personDays: 12, people: 12, stdPerPersonDay: 7.6, overtimeH: 4, overtimeShare: 0.04, attendance: 0.9231, downtimeH: 2, availability: 0.95, pieces: 30, piecesPerPersonDay: 2.5 }],
+    trend: [{ dateISO: "2026-10-24", workedH: 100, earnedH: 91.2, efficiency: 0.912, rolling: 0.912, stdPerPersonDay: 7.6 }],
+    output: [{ dateISO: "2026-10-24", Fabrication: 0, Welding: 91.2, ShotBlast: 0, Painting: 0, earnedH: 91.2, workedH: 100, efficiency: 0.912 }],
+    losses: { causes: [{ code: "MECH", label: "Breakdown", hours: 2, stops: 1, share: 1, planned: false }], unplannedH: 2, plannedH: 0 },
+    pricedShare: 1,
+  };
+
+  it("reads the period and department asked for, through the page's own loader, with a link to that view", async () => {
+    h.getFloorPeriod.mockResolvedValue(period);
+    const now = new Date("2026-10-25T08:00:00Z");
+    const out = await getFloorPerformanceTool.run({ from: "2026-10-01", dept: "Welding" }, { now, hidden: new Set() } as never);
+    expect(h.getFloorPeriod).toHaveBeenCalledWith({ fromISO: "2026-10-01", toISO: "2026-10-25", dept: "Welding" }, now);
+    const j = JSON.parse(out.text);
+    expect(j).toMatchObject({ from: "2026-10-01", to: "2026-10-25", dept: "Welding", recordedDays: 1 });
+    expect(j.summary).toMatchObject({ efficiency: 0.91, stdHPerPersonDay: 7.6, attendance: 0.92 });
+    expect(j.departments[0]).toMatchObject({ dept: "Welding", pieces: 30, piecesPerPersonDay: 2.5 });
+    // a day without booked hours is left out of a centre's days
+    expect(j.centres[0].days).toEqual([{ day: "2026-10-24", efficiency: 0.91, earnedH: 91.2, bookedH: 100 }]);
+    expect(out.links).toEqual([{ label: "Floor performance", href: "/?from=2026-10-01&to=2026-10-25&dept=Welding" }]);
+  });
+
+  it("falls back to the last 7 days and every department on a bad or missing input", async () => {
+    h.getFloorPeriod.mockResolvedValue({ ...period, dept: "all" });
+    const now = new Date("2026-10-25T08:00:00Z");
+    await getFloorPerformanceTool.run({ from: "soon", dept: "Cutting" }, { now, hidden: new Set() } as never);
+    expect(h.getFloorPeriod).toHaveBeenLastCalledWith({ fromISO: "2026-10-19", toISO: "2026-10-25", dept: "all" }, now);
+  });
+
+  it("is closed with the Shifts screen", () => {
+    expect(getFloorPerformanceTool.tabs).toEqual(["dashboard", "shifts"]);
   });
 });

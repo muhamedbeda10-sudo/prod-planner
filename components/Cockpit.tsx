@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Info } from "lucide-react";
-import { ChartCard, Meter, StatTile, TONE_TEXT, TRACK, fmt, pct } from "@/components/charts/kit";
-import { BurnUpChart, LoadChart, OutputChart, PaceMultiples } from "@/components/LazyCharts";
+import { Bullet, ChartCard, Meter, StatTile, TONE_TEXT, fmt, pct } from "@/components/charts/kit";
+import { BurnUpChart, LoadChart } from "@/components/LazyCharts";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/primitives";
 import { TableFrame, Th } from "@/components/DataTable";
@@ -14,7 +14,7 @@ import { stopDurationLabel } from "@/lib/domain/downtime";
 import { ITEM_NAME, isItem } from "@/lib/domain/constants";
 import { WORK_CENTRE_LABEL, type WorkCentre } from "@/lib/domain/shifts";
 import {
-  OUTPUT_GROUPS, OUTPUT_GROUP_LABEL, STAGE_LABEL, burnUp, dailyOutput, loadSeries, monthPace, paretoOf, weekChange,
+  STAGE_LABEL, burnUp, loadSeries, monthPace, weekChange,
   type KpiSnapshotData,
 } from "@/lib/domain/kpis";
 import type { CockpitData } from "@/lib/server/kpis";
@@ -55,23 +55,6 @@ function WeekChange({ trend, todayISO, pick, rate, unit = "", up }: {
   );
 }
 
-/** One row of a bullet chart: the bar is what there is, the tick is where it should be. */
-function Bullet({ label, value, target, max, text, tone }: { label: string; value: number; target: number | null; max: number; text: React.ReactNode; tone?: "ok" | "warn" | "bad" | null }) {
-  const w = (v: number) => `${Math.max(0, Math.min(1, max > 0 ? v / max : 0)) * 100}%`;
-  return (
-    <div>
-      <div className="flex flex-wrap justify-between gap-x-3 text-sm mb-1">
-        <span className="font-semibold">{label}</span>
-        <span className={`tabnum ${tone ? TONE_TEXT[tone] : ""}`}>{text}</span>
-      </div>
-      <div className="relative h-3 rounded-full" style={{ background: TRACK }} role="img" aria-label={`${label}: ${typeof text === "string" ? text : ""}`}>
-        <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: w(value), background: "var(--viz-1)" }} />
-        {target !== null && <div className="absolute -inset-y-1 w-0.5 rounded bg-foreground" style={{ left: `calc(${w(target)} - 1px)` }} aria-hidden />}
-      </div>
-    </div>
-  );
-}
-
 /** `floor`: whether the account sees the Shifts screen — the shift log's
  *  figures (each centre's pace, the losses, who is present) are shown only then. */
 export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boolean }) {
@@ -80,15 +63,11 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
   const actions = data.actions;
   // the card shows the oldest lines behind; the export carries them all
   const lateShown = data.week.late.slice(0, 20);
-  const recentDays = Math.max(...data.centres.map((c) => c.recent.days), 0);
   const mp = data.manpower;
   // the centres short by half a person or more — the ones the card colours red
   const peopleShort = mp.rows.reduce((s, r) => s + (r.tone === "bad" ? -(r.gap ?? 0) : 0), 0);
   const burn = useMemo(() => burnUp(data.week.days).map((d, i) => ({ ...d, isPast: data.week.days[i].isPast })), [data.week.days]);
   const pace = useMemo(() => monthPace(mp.rows, mp), [mp]);
-  const output = useMemo(() => dailyOutput(data.centres), [data.centres]);
-  const pareto = useMemo(() => paretoOf(data.losses.causes), [data.losses.causes]);
-  const plannedStops = data.losses.causes.filter((c) => c.planned);
 
   // the load card opens on the centre worst off: short at the end, then furthest behind
   const worst = useMemo(() => [...data.load].sort((a, b) => b.shortH - a.shortH || b.behindH - a.behindH)[0]?.centre ?? null, [data.load]);
@@ -219,10 +198,10 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
         )}
       </ChartCard>
 
-      {/* 3 — the month: its pace, and the people it needs */}
+      {/* 3 — the month: its pace, the people it needs, and welding's parts */}
       <div className="grid gap-3 xl:grid-cols-12">
         <ChartCard
-          className="xl:col-span-6"
+          className="xl:col-span-4"
           title="Are we on the month's pace?"
           sub={`${mp.monthLabel}: each centre's share of the month's plan done, the tick where an even pace stands today (${mp.monthWd - mp.leftWd} of ${mp.monthWd} working days behind us).`}
           table={{ filename: `month-pace-${data.todayISO}.xlsx`, rows: pace.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Done %": r.doneShare === null ? "" : Math.round(r.doneShare * 100), "Even pace %": Math.round(r.expectedShare * 100), "Ahead (+) / behind (−) h": r.aheadH })) }}
@@ -239,7 +218,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           )}
         </ChartCard>
         <ChartCard
-          className="xl:col-span-6"
+          className="xl:col-span-4"
           title="Do we have the people?"
           sub={`What is left of ${mp.monthLabel}'s plan over the ${mp.leftWd} working days left × ${fmt(mp.hoursPerPersonDay, 1)} h a person.${floor ? " The bar is who comes on an average recorded day; the tick is who is needed from today." : " The tick is who is needed from today."}`}
           table={{ filename: `people-${data.todayISO}.xlsx`, rows: mp.rows.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Left h": r.leftH, "Needed (month)": r.needed ?? "", "Needed from today": r.neededNow ?? "", ...(floor ? { Present: r.present ?? "", Gap: r.gap ?? "" } : {}) })) }}
@@ -257,26 +236,8 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
             </div>
           )}
         </ChartCard>
-      </div>
-
-      {/* 4 — what the floor turned out, and welding's parts */}
-      <div className="grid gap-3 xl:grid-cols-12">
-        {floor && (
-          <ChartCard
-            className="xl:col-span-7"
-            title="What did we turn out each day?"
-            sub="Standard hours the output was worth, by department, against the man-hours the shift log booked — the gap between the bars and the line is the pace lost (or won)."
-            table={{ filename: `output-${data.todayISO}.xlsx`, rows: output.map((d) => ({ Day: d.dateISO, ...Object.fromEntries(OUTPUT_GROUPS.map((g) => [`${OUTPUT_GROUP_LABEL[g]} h`, d[g]])), "Earned h": d.earnedH, "Booked h": d.workedH, "Efficiency %": d.efficiency === null ? "" : Math.round(d.efficiency * 100) })) }}
-          >
-            {output.length === 0 ? (
-              <EmptyState compact icon={Info} title="No shift day recorded yet" hint={<>Record the day&apos;s attendance on <Link href="/shifts" className="text-brand-ink font-semibold hover:underline">Shifts</Link> — each day&apos;s output is set against the hours booked.</>} />
-            ) : (
-              <OutputChart days={output} />
-            )}
-          </ChartCard>
-        )}
         <ChartCard
-          className={floor ? "xl:col-span-5" : "xl:col-span-12"}
+          className="xl:col-span-4"
           title="Is welding covered?"
           sub={data.coverage.days === null
             ? "No recent welding to measure against."
@@ -295,52 +256,6 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
         </ChartCard>
       </div>
 
-      {/* 5 — the shift log's side: each centre's pace over the days, and what stopped the machines */}
-      {floor && (
-        <div className="grid gap-3 xl:grid-cols-12">
-          <ChartCard
-            className="xl:col-span-7"
-            title="Did each centre work at the standard?"
-            sub={data.lastDayISO
-              ? `Efficiency each recorded day (earned standard hours ÷ the man-hours booked there); the line across is the standard pace, 100%. The figure is the last ${recentDays} recorded days together.`
-              : "No shift day recorded yet."}
-            table={data.lastDayISO === null ? undefined : { filename: `centres-${data.todayISO}.xlsx`, rows: data.centres.map((c) => ({ Centre: centreName(c.centre), "Last day earned h": c.last.earnedH, "Last day worked h": c.last.workedH, "Last day %": c.last.efficiency === null ? "" : Math.round(c.last.efficiency * 100), "Recent earned h": c.recent.earnedH, "Recent worked h": c.recent.workedH, "Recent %": c.recent.efficiency === null ? "" : Math.round(c.recent.efficiency * 100), "People a day": c.recent.people, "Availability %": c.recent.availability === null ? "" : Math.round(c.recent.availability * 100), "Stopped h": c.recent.downtimeH })) }}
-          >
-            {data.lastDayISO === null ? (
-              <EmptyState compact icon={Info} title="No shift day recorded yet" hint={<>Record the day&apos;s attendance on <Link href="/shifts" className="text-brand-ink font-semibold hover:underline">Shifts</Link> — each centre&apos;s pace is measured against the hours booked there.</>} />
-            ) : (
-              <PaceMultiples panels={data.centres.map((c) => ({ centre: centreName(c.centre), recent: c.recent.efficiency, points: c.trend.map((t) => ({ dateISO: t.dateISO, efficiency: t.efficiency })) }))} />
-            )}
-            {data.pricedShare !== null && data.pricedShare < 0.95 && (
-              <p className="text-xs text-muted mt-2">
-                {Math.round(data.pricedShare * 100)}% of the recent output carries standard hours — the rest earns nothing and reads as slow.{" "}
-                <Link href="/admin/standard-times" className="text-brand-ink font-semibold hover:underline">Type its hours a piece →</Link>
-              </p>
-            )}
-          </ChartCard>
-          <ChartCard
-            className="xl:col-span-5"
-            title="What stopped us?"
-            sub={`${stopDurationLabel(data.losses.unplannedH)} machine time lost${data.losses.fromISO ? ` since ${formatDate(data.losses.fromISO)}` : ""}, biggest cause first; Σ is the share it and the causes above make up. Absent ${pctOrDash(data.losses.absentRate)} of the recorded rows · overtime ${stopDurationLabel(data.losses.overtimeH)}.`}
-            table={{ filename: `losses-${data.todayISO}.xlsx`, rows: data.losses.causes.map((c) => ({ Cause: c.label, Duration: stopDurationLabel(c.hours), Hours: c.hours, Stops: c.stops, "Share of lost %": c.share === null ? "" : Math.round(c.share * 100), Planned: c.planned ? "yes" : "" })) }}
-          >
-            {pareto.length === 0 ? (
-              <EmptyState compact icon={Info} title="No unplanned stop recorded" hint={<>Record stops on <Link href="/shifts" className="text-brand-ink font-semibold hover:underline">Shifts → Machine stops</Link> to see what costs the most.</>} />
-            ) : (
-              // a Pareto as rows: biggest cause first, its share and (Σ) the share it and the causes above make up
-              <div className="space-y-3">
-                {pareto.map((c) => (
-                  <Bullet key={c.code} label={c.label} value={c.hours} target={null} max={pareto[0].hours}
-                    text={`${stopDurationLabel(c.hours)} · ${c.stops} stop${c.stops === 1 ? "" : "s"} · ${Math.round(c.share * 100)}%${pareto.length > 1 ? ` (Σ ${Math.round(c.cumShare * 100)}%)` : ""}`} />
-                ))}
-              </div>
-            )}
-            {plannedStops.length > 0 && (
-              <p className="text-sm text-muted mt-2">Planned maintenance, kept apart: {plannedStops.map((c) => `${stopDurationLabel(c.hours)} (${c.stops} stop${c.stops === 1 ? "" : "s"})`).join(", ")}.</p>
-            )}
-          </ChartCard>
-        </div>
-      )}
     </div>
   );
 }

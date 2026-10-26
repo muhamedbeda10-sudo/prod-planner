@@ -1,6 +1,9 @@
 import "server-only";
-import { getCockpit, type CockpitData } from "@/lib/server/kpis";
-import { dailyOutput, isFloorAction, monthPace, weekChange, type KpiSnapshotData } from "@/lib/domain/kpis";
+import { getCockpit, getFloorPeriod, type CockpitData } from "@/lib/server/kpis";
+import { OUTPUT_GROUPS, dailyOutput, isFloorAction, monthPace, weekChange, type KpiSnapshotData } from "@/lib/domain/kpis";
+import { isFloorDept } from "@/lib/domain/floorKpis";
+import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
+import { addDaysISO } from "@/lib/domain/dateSlicer";
 import type { ReadTool } from "./types";
 
 // The planner's KPIs for the assistant — exactly what the Cockpit
@@ -95,4 +98,62 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
   },
 };
 
-export const KPI_TOOLS = [getKpisTool] as const;
+const r1 = (n: number | null | undefined) => (n === null || n === undefined ? null : Math.round(n * 10) / 10);
+
+/** The floor's performance over a period and a department — the Cockpit's
+ *  Floor performance section, from the same loader. */
+export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dept?: string }> = {
+  kind: "read",
+  name: "get_floor_performance",
+  title: "Reading the floor's performance",
+  description:
+    "How the transformer floor worked over a period the person names (a week, a month, from one date to another — at most 92 days; the last 7 days if none is named), for every department or one (Fabrication = laser / punch, bending and fin folding; Welding; ShotBlast; Painting) — the Cockpit's Floor performance section, all in STANDARD HOURS: " +
+    "efficiency (earned std-hours ÷ the man-hours the shift log booked; 100% = the standard pace), each centre's efficiency day by day and over the period, " +
+    "productivity — standard hours and pieces one person turned out on a recorded day, people a day, attendance, overtime share, machine availability — by department, " +
+    "the floor's efficiency each day with its rolling 7-recorded-day figure, each day's output by department against the hours booked, and the machine stops by cause. " +
+    "Use it for any question about productivity, efficiency or output over a period other than the last few days (\"last month\", \"since the 1st\", \"welding in September\"); get_kpis has today's cockpit.",
+  schema: {
+    type: "object",
+    properties: {
+      from: { type: "string", description: "First day, YYYY-MM-DD (the factory's calendar)." },
+      to: { type: "string", description: "Last day, YYYY-MM-DD; today when left out." },
+      dept: { type: "string", enum: ["all", ...OUTPUT_GROUPS], description: "One department, or all (the default)." },
+    },
+    additionalProperties: false,
+  },
+  // the shift log's figures: closed to a person the Shifts screen is closed to
+  tabs: ["dashboard", "shifts"],
+  status: () => "Reading the floor's performance",
+  async run(input, ctx) {
+    const today = factoryDayISO(ctx.now);
+    const to = input.to && parseISODate(input.to) ? input.to : today;
+    const from = input.from && parseISODate(input.from) ? input.from : addDaysISO(to, -6);
+    const dept = isFloorDept(input.dept) ? input.dept : "all";
+    const f = await getFloorPeriod({ fromISO: from, toISO: to, dept }, ctx.now);
+    const s = f.summary;
+    return {
+      ok: true,
+      text: JSON.stringify({
+        from: f.fromISO, to: f.toISO, dept: f.dept, recordedDays: f.dates.length,
+        summary: {
+          efficiency: r2(s.efficiency), earnedH: s.earnedH, bookedH: s.workedH, personDays: s.personDays, peopleADay: s.people,
+          stdHPerPersonDay: r1(s.stdPerPersonDay), attendance: r2(s.attendance), overtimeH: s.overtimeH, overtimeShare: r2(s.overtimeShare),
+          machineAvailability: r2(s.availability), stoppedH: s.downtimeH,
+        },
+        departments: f.groups.map((g) => ({
+          dept: g.group, recordedDays: g.days, peopleADay: g.people, bookedH: g.workedH, earnedH: g.earnedH, efficiency: r2(g.efficiency),
+          stdHPerPersonDay: r1(g.stdPerPersonDay), pieces: g.pieces, piecesPerPersonDay: r1(g.piecesPerPersonDay),
+          overtimeShare: r2(g.overtimeShare), attendance: r2(g.attendance), machineAvailability: r2(g.availability), stoppedH: g.downtimeH,
+        })),
+        centres: f.grid.map((r) => ({ centre: r.centre, efficiency: r2(r.total), days: r.cells.filter((c) => c.efficiency !== null).map((c) => ({ day: c.dateISO, efficiency: r2(c.efficiency), earnedH: c.earnedH, bookedH: c.workedH })) })),
+        trend: f.trend.map((p) => ({ day: p.dateISO, efficiency: r2(p.efficiency), rolling7: r2(p.rolling), stdHPerPerson: r1(p.stdPerPersonDay) })),
+        dailyOutput: f.output.map((d) => ({ day: d.dateISO, fabricationH: d.Fabrication, weldingH: d.Welding, shotBlastH: d.ShotBlast, paintingH: d.Painting, earnedH: d.earnedH, bookedH: d.workedH })),
+        stops: { unplannedH: f.losses.unplannedH, plannedMaintenanceH: f.losses.plannedH, byCause: f.losses.causes.map((x) => ({ cause: x.label, planned: x.planned, hours: x.hours, stops: x.stops })) },
+        shareOfPiecesPriced: r2(f.pricedShare),
+      }),
+      links: [{ label: "Floor performance", href: `/?from=${f.fromISO}&to=${f.toISO}${f.dept === "all" ? "" : `&dept=${f.dept}`}` }],
+    };
+  },
+};
+
+export const KPI_TOOLS = [getKpisTool, getFloorPerformanceTool] as const;

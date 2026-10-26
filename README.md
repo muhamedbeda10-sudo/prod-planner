@@ -522,14 +522,23 @@ mobile drawer still lists every view flat, since it has the vertical room.
    the load as one centre's running totals (owed so far against what it could have worked, the short days shaded)
    beside every centre's status; **the month's pace** — each centre's share of the month's plan done against where an
    even pace through its working days stands today; the people as bullets (who comes against who is needed from
-   today); **each day's output** in standard hours by department against the man-hours booked; each centre's
-   efficiency day by day, one small chart a centre against the standard; and the stops as a Pareto, biggest cause
-   first with the share it and the causes above make up. The headline figures each read against a week ago. The page
-   prints. An account the Shifts screen is closed to sees neither the centres'
-   efficiency, nor the losses, nor who is present (questions 2 and 5, and the people card's Present and Gap) — on the page or through the assistant. The day's figures are kept for their trend
+   today); and welding's coverage beside them. The headline figures each read against a week ago. Under them,
+   **Floor performance** — the shift log's side over the period and the department picked in its toolbar (the app's
+   date slicer, the last 7 days by default, up to 92 days; All, Fabrication, Welding, Shot blast or Painting; kept
+   in the URL as `?from=&to=&dept=` and reopened as it was left): the period's efficiency, standard hours and pieces
+   a person a day, people a day, attendance, overtime share and machine availability; each centre's efficiency day by
+   day as a heatmap (green at the standard, 90% and up; amber 70–90%; red under 70%; the period at the end); what
+   stopped the machines as a Pareto; each department's productivity in one table (people, hours booked and earned,
+   efficiency, std-h and pieces a person a day, overtime, attendance, machines up, stopped hours); each day's output
+   in standard hours by department against the man-hours booked; and the floor's efficiency each day with its rolling
+   7-recorded-day line. The page prints. An account the Shifts screen is closed to sees neither the centres'
+   efficiency, nor the losses, nor who is present (questions 2 and 5, the Floor performance section, and the people
+   card's Present and Gap) — on the page or through the assistant. The day's figures are kept for their trend
    (`KpiSnapshot`): after the page is served, and each hour by the automations' housekeeping. The
-   pure arithmetic is `lib/domain/kpis.ts` (tested); the loader `lib/server/kpis.ts` is the one both the page and
-   the assistant's `get_kpis` read — the morning review starts from it. The calibration reads the ledger through
+   pure arithmetic is `lib/domain/kpis.ts` and `lib/domain/floorKpis.ts` (tested); the loader `lib/server/kpis.ts` is
+   the one both the page and the assistant read — `get_kpis` for the cockpit (the morning review starts from it),
+   `get_floor_performance` for a period and a department. The trend keeps the cockpit's own figures, whatever period
+   the Floor performance section shows. The calibration reads the ledger through
    the same `earnedOfRecord`. Admin → Standard Times shows, under each hours-a-piece cell,
    what the floor really took there over the calibration's window and limits (the centre's measured pace), to take
    with a click.
