@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-worklists-one-bar",
+    dateISO: "2026-10-26",
+    title: "Worklists and the Orders Registry lose their extra rows",
+    where: "Floor → Welding · Painting · Punching · Bending · Admin → Orders Registry",
+    href: "/worklist/welding",
+    body: "The welding and painting worklists — both lines' — carry the Transformers | LV Panels switch first in their filter bar instead of a row of its own above it, and the panels' worklists drop their row of Punching / Bending / Welding / Painting tabs: every stage is in the Floor tab's menu. The Orders Registry keeps its line switch in the orders' filter bar, and the weekly plan import is its own entry in the Admin menu.",
+  },
+  {
     id: "2026-10-26-simulator-through-assistant",
     dateISO: "2026-10-26",
     title: "What-ifs are the assistant's now: the Simulator screen is gone",

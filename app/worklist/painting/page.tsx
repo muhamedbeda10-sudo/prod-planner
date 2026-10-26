@@ -62,8 +62,9 @@ export default async function PaintingWorklistPage() {
   return (
     <>
       <PrintHeader title="Painting Worklist" date={formatDate(today)} />
-      <PageHead title="Painting Worklist" sub={formatDate(today)}><LineSwitch /></PageHead>
+      <PageHead title="Painting Worklist" sub={formatDate(today)} />
       <WeldingQueueTable
+        lineSwitch={<LineSwitch />}
         soi={soi}
         rows={queue}
         day={dayISO}

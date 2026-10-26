@@ -4,10 +4,8 @@ import { prisma } from "@/lib/db";
 import { PageHead } from "@/components/ui";
 import { MonthlyImport } from "@/components/MonthlyImport";
 import { OrdersTable } from "@/components/OrdersTable";
-import { ViewTabs, PLANS_VIEWS } from "@/components/ViewTabs";
 import { LineSwitch } from "@/components/LineSwitch";
 import { getActiveLine } from "@/lib/server/line";
-import { LINE_LABEL } from "@/lib/domain/lines";
 
 export const dynamic = "force-dynamic";
 
@@ -17,26 +15,19 @@ export default async function OrdersPage() {
   const me = await getCurrentUser();
   if (!me?.isAdmin) redirect("/");
 
-  // one product line at a time — the page head's switch decides which
+  // one product line at a time — the switch in the orders' bar decides which
   const line = await getActiveLine();
   const orders = await prisma.masterOrder.findMany({ where: { line }, orderBy: [{ createdAt: "desc" }, { mo: "asc" }] });
   const totalQty = orders.reduce((s, o) => s + o.planQty, 0);
 
   return (
     <div className="space-y-6">
-      {/* the weekly delivery schedule is the transformers' — the panels have the monthly plan only */}
-      <PageHead
-        title="Orders Registry"
-        sub={`Monthly plan · ${orders.length} orders · ${totalQty} pcs planned · tick rows to take a wrong import back out`}
-        views={<ViewTabs views={line === "LV" ? PLANS_VIEWS.filter((v) => v.href === "/orders") : PLANS_VIEWS} current="/orders" label="Plans view" />}
-      >
-        <LineSwitch />
-      </PageHead>
+      <PageHead title="Orders Registry" sub={`Monthly plan · ${orders.length} orders · ${totalQty} pcs planned`} />
       <MonthlyImport line={line} />
       <div>
-        <h2>All {LINE_LABEL[line]} orders</h2>
         <OrdersTable
           line={line}
+          lineSwitch={<LineSwitch />}
           rows={orders.map((o) => ({
             id: o.id,
             mo: o.mo,

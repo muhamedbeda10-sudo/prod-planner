@@ -2,13 +2,11 @@ import { PageHead } from "@/components/ui";
 import { formatDate } from "@/lib/domain/format";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { getLvWorklist } from "@/lib/server/lvWorklist";
-import { LV_WORKLISTS, lvDeptPermKey, type LvStage } from "@/lib/domain/lv";
+import { lvDeptPermKey, type LvStage } from "@/lib/domain/lv";
 import { factoryToday, toISODate } from "@/lib/domain/dates";
 import { LvWorklist } from "@/components/LvWorklist";
 import { PrintHeader } from "@/components/PrintHeader";
-import { ViewTabs } from "@/components/ViewTabs";
 import { LineSwitch } from "@/components/LineSwitch";
-import { hrefWithLine } from "@/lib/domain/lines";
 
 // The LV panels' worklist page for one stage — what the four worklist routes
 // render when the panels are on screen (?line=LV; punching and bending always). A server component so the four
@@ -26,13 +24,9 @@ export async function LvWorklistPage({ stage }: { stage: LvStage }) {
   return (
     <>
       <PrintHeader title={`${stage} Worklist — LV Panels`} date={formatDate(today)} />
-      <PageHead
-        title={`${stage} Worklist`} sub={shared ? formatDate(today) : `LV Panels · ${formatDate(today)}`}
-        views={<ViewTabs views={LV_WORKLISTS.map((w) => ({ href: hrefWithLine(w.href, "LV"), label: w.label, title: `${w.label} — what the panels owe this stage` }))} current={LV_WORKLISTS.find((w) => w.stage === stage)!.href} label="LV stage" />}
-      >
-        {shared && <LineSwitch />}
-      </PageHead>
-      <LvWorklist data={data} canEdit={canEdit} todayISO={todayISO} />
+      {/* the other stages are in the Floor tab's menu, so the page has no row of tabs */}
+      <PageHead title={`${stage} Worklist`} sub={shared ? formatDate(today) : `LV Panels · ${formatDate(today)}`} />
+      <LvWorklist data={data} canEdit={canEdit} todayISO={todayISO} lineSwitch={shared ? <LineSwitch /> : undefined} />
     </>
   );
 }
