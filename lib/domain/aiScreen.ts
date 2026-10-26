@@ -1,4 +1,4 @@
-import type { ProductLine } from "./lines";
+import { showsBothLines, type ProductLine } from "./lines";
 import { tabForPath } from "./tabs";
 
 const LABELS: Record<string, string> = {
@@ -6,7 +6,9 @@ const LABELS: Record<string, string> = {
   status: "Status", progress: "Progress", urgent: "Urgency", deptStage: "Departments",
   view: "View", from: "From date", to: "To date", bom: "BOM", machine: "Machine",
   dept: "Department", plan: "Plan", date: "Date",
-  // the dashboards' All | TR | LV — a filter of the page, not the nav's toggle
+  // the Production dashboard keeps the panels' department apart from the transformers'
+  lvDept: "LV department",
+  // the line a page's address names (its Transformers | LV Panels switch)
   line: "Line shown",
 };
 
@@ -25,6 +27,8 @@ export function aiPageContext(raw: unknown, hidden: ReadonlySet<string> = new Se
   const filters: Record<string, string> = {};
   if (page.filters && typeof page.filters === "object" && !Array.isArray(page.filters)) {
     for (const key of Object.keys(LABELS)) {
+      // a page that shows both lines has none, whatever an older address carried
+      if (key === "line" && showsBothLines(page.path)) continue;
       const value = (page.filters as Record<string, unknown>)[key];
       if (typeof value === "string" && value.trim()) filters[key] = value.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 160);
     }

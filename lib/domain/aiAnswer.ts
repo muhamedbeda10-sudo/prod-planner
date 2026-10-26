@@ -154,7 +154,7 @@ export const AI_PAGE_SUGGESTIONS: Record<string, string[]> = {
     "أنهي مركز محتاج عمالة لنهاية الشهر؟",
     "Where does the work wait between the stages, and which queue is the biggest?",
     "قارن التزام TR وLV بالخطة، كل خط بمقياسه",
-    "اعملي مراجعة بداية اليوم للخط المختار واقترح أهم 3 أولويات بالأسباب",
+    "اعملي مراجعة بداية اليوم للخطين واقترح أهم 3 أولويات بالأسباب",
   ],
   tracker: [
     "لخصلي الخطة الشهرية حسب الفلاتر الظاهرة، بالإنجاز والمتبقي ومصادر الأرقام",
@@ -180,6 +180,8 @@ export const AI_PAGE_SUGGESTIONS: Record<string, string[]> = {
   shifts: [
     "ليه كفاءة اللحام قلت؟",
     "قارن أداء TR وLV بالساعات المعيارية آخر 7 أيام",
+    "كام تانك 630 kVA اتلحم الشهر ده مقابل الخطة؟",
+    "How many USS and LSS panels were painted this month against the plan?",
     "Which machine stops cost the most hours this week, by cause — and which machines are stopped now?",
     "إيه الأيام اللي فيها إنتاج من غير ساعات عمالة أو العكس؟",
     "مين غايب النهارده في كل قسم؟",

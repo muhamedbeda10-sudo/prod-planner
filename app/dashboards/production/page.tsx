@@ -1,24 +1,24 @@
 import { redirect } from "next/navigation";
-import type { ReactNode } from "react";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { getFloorPeriod } from "@/lib/server/kpis";
 import { getLvFloorPeriod } from "@/lib/server/lvKpis";
-import { loadProductionAll } from "@/lib/server/dashboards";
-import { getActiveLine } from "@/lib/server/line";
-import { floorDefault, floorRequest } from "@/lib/domain/floorKpis";
+import { loadOrNull } from "@/lib/server/dashboards";
+import { FLOOR_HISTORY_DAYS, floorDefault, floorRequest } from "@/lib/domain/floorKpis";
+import { productionLegacyRedirect } from "@/lib/domain/dashboardLinks";
 import { lvFloorDeptOf } from "@/lib/domain/lvKpis";
 import { factoryDayISO } from "@/lib/domain/dates";
+import { addDaysISO, slicerRangeLabel } from "@/lib/domain/dateSlicer";
 import { formatDate } from "@/lib/domain/format";
-import { DASH_SCOPE_NAME, resolveDashScope } from "@/lib/domain/dashboardScope";
-import type { CockpitAction } from "@/lib/domain/kpis";
+import { mergeActions } from "@/lib/domain/plantKpis";
 import { FloorPerformance } from "@/components/FloorPerformance";
 import { LvFloorPerformance } from "@/components/LvFloorPerformance";
 import { PlantProduction } from "@/components/PlantProduction";
 import { ProductionExtras } from "@/components/ProductionExtras";
 import { LossWaterfallCard } from "@/components/LossWaterfallCard";
-import { CockpitDecisions } from "@/components/CockpitDecisions";
-import { LineScopeTabs } from "@/components/LineScopeTabs";
-import { ErrorState } from "@/components/DataTable";
+import { CockpitDecisions, PrintDecisions } from "@/components/CockpitDecisions";
+import { LineSection } from "@/components/LineSection";
+import { UrlDateSlicer } from "@/components/UrlDateSlicer";
+import { LoadFailed } from "@/components/DataTable";
 import { PageHead } from "@/components/ui";
 import { PrintHeader } from "@/components/PrintHeader";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
@@ -28,86 +28,68 @@ export const dynamic = "force-dynamic";
 
 type Search = Record<string, string | string[] | undefined>;
 
-const failed = (
-  <section className="bg-surface border rounded-xl" aria-label="Floor performance">
-    <ErrorState title="The floor's figures could not load" detail="Reload the page to try again." />
-  </section>
-);
-/** A loader's failure is logged and shown as the error state, never a crash of the page. */
-const tryLoad = <T,>(what: string, p: Promise<T>) => p.catch((e: unknown) => { console.error(`production: ${what} could not load`, e); return null; });
-
 // The Production dashboard, in the Dashboards tab: what did we make, at what
-// efficiency, where did we lose time, what needs intervention — over the
-// period and the department picked (?from=&to=&dept=), for one line or the
-// whole plant (?line=all|TR|LV; with none named, the line the person's
-// screens open on). The shift log's figures: seen with the Shifts screen (the
-// "shifts" tab id). The transformers' side carries the machines and the
-// tanks' quality; the panels' side its own four departments; the plant's the
-// two lines' sums where they add, side by side where they do not.
+// efficiency, where did we lose time, what needs intervention — both lines
+// on one page, over one period (?from=&to=, the date bar at the top). The
+// plant's figures first (the two lines' sums where they add, what was made
+// item by item against the month's plan, both lines' interventions), then
+// each line's section with its own department (?dept= the transformers',
+// ?lvDept= the panels'). The shift log's figures: seen with the Shifts
+// screen (the "shifts" tab id).
 export default async function ProductionDashboardPage({ searchParams }: { searchParams: Promise<Search> }) {
   await guardTab("/dashboards/production");
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   const sp = await searchParams;
-  // with no line named, the one the person's screens open on (the proxy's header)
-  const scope = resolveDashScope(sp.line, await getActiveLine());
+  // an older link that named the panels' department in `dept` keeps its view
+  const legacy = productionLegacyRedirect(sp);
+  if (legacy) redirect(legacy);
   const todayISO = factoryDayISO(new Date());
   const req = floorRequest(sp, todayISO);
-  const lvDept = lvFloorDeptOf(sp.dept);
-  const defaultRange = floorDefault(todayISO);
-  const shell = (o: { printTitle: string; sub: string; actions: readonly CockpitAction[]; children: ReactNode }) => (
+  // each line on its own: one that fails to load leaves the other on screen
+  const [tr, lv] = await Promise.all([
+    loadOrNull("production", "the transformers' period", getFloorPeriod(req)),
+    loadOrNull("production", "the panels' period", getLvFloorPeriod({ ...req, dept: lvFloorDeptOf(sp.lvDept) })),
+  ]);
+  const actions = mergeActions(tr?.actions ?? [], lv?.actions ?? []);
+  const range = slicerRangeLabel(req.fromISO, req.toISO);
+  const marks = [...new Set([...(tr?.dates ?? []), ...(lv?.dates ?? [])])].sort();
+
+  return (
     <div className="space-y-3">
       <RememberLastVisit storageKey="dashboards:production" />
-      <PrintHeader title={o.printTitle} subtitle="How the floor worked" date={formatDate(todayISO)} />
-      <PageHead title="Production" sub={o.sub} actions={<CockpitDecisions actions={o.actions} kind="intervention" />}>
-        <LineScopeTabs scope={scope} />
-      </PageHead>
-      {o.children}
-    </div>
-  );
+      <PrintHeader title="Production — whole plant" subtitle={`How the floor worked · ${range}`} date={formatDate(todayISO)} />
+      <PageHead title="Production" sub={`Both lines over ${range}: the plant's figures, then the transformers and the LV panels`} />
+      {/* the page's one bar: the period, then its Interventions button */}
+      <UrlDateSlicer
+        encoding="fromTo" from={req.fromISO} to={req.toISO} min={addDaysISO(todayISO, -(FLOOR_HISTORY_DAYS - 1))} max={todayISO} today={todayISO} marks={marks} label="Period"
+        presets={["yesterday", "thisWeek", "last14", "thisMonth", "lastMonth", "last30", "last90"]} defaultRange={floorDefault(todayISO)}
+        end={<CockpitDecisions actions={actions} kind="intervention" />}
+      />
+      <PrintDecisions actions={actions} kind="intervention" />
 
-  if (scope === "LV") {
-    const period = await tryLoad("the panels' period", getLvFloorPeriod({ ...req, dept: lvDept }));
-    return shell({
-      printTitle: "Production — LV Panels",
-      sub: `Dashboard · ${DASH_SCOPE_NAME.LV} · how the panels' floor worked, in the panels' standard hours`,
-      actions: period?.actions ?? [],
-      children: period === null ? failed : <LvFloorPerformance period={period} todayISO={todayISO} defaultRange={defaultRange} />,
-    });
-  }
-
-  if (scope === "all") {
-    const all = await tryLoad("the plant's period", loadProductionAll(req, lvDept));
-    return shell({
-      printTitle: "Production — whole plant",
-      sub: `Dashboard · ${DASH_SCOPE_NAME.all} · the two lines' sums where they add, side by side where they do not`,
-      actions: all?.actions ?? [],
-      // the browser gets what the plant's page shows, not the whole of both lines
-      children: all === null ? failed : (
+      {tr && lv ? (
         <PlantProduction
-          tr={{ fromISO: all.tr.fromISO, toISO: all.tr.toISO, clamped: all.tr.clamped, dates: all.tr.dates, summary: all.tr.summary, groups: all.tr.groups, output: all.tr.output, losses: all.tr.losses, pricedShare: all.tr.pricedShare }}
-          lv={{ clamped: all.lv.clamped, dates: all.lv.dates, summary: all.lv.summary, groups: all.lv.groups, output: all.lv.output, moved: all.lv.moved, pricedShare: all.lv.pricedShare }}
-          todayISO={todayISO} defaultRange={defaultRange} actions={all.actions}
+          // the browser gets what the plant's figures show; each section gets its own line's
+          tr={{ fromISO: tr.fromISO, toISO: tr.toISO, summary: tr.summary, output: tr.output, losses: tr.losses, pricedShare: tr.pricedShare, byType: tr.byType }}
+          lv={{ summary: lv.summary, output: lv.output, pricedShare: lv.pricedShare, byType: lv.byType }}
+          actions={actions}
         />
-      ),
-    });
-  }
+      ) : <LoadFailed what="The plant's figures" />}
 
-  const period = await tryLoad("the floor's period", getFloorPeriod(req));
-  return shell({
-    printTitle: "Production — Transformers",
-    sub: `Dashboard · ${DASH_SCOPE_NAME.TR} · how the floor worked, in standard hours`,
-    actions: period?.actions ?? [],
-    children: (
-      <>
-        {period === null ? failed : (
+      <LineSection id="tr" page="production" title="Transformers" sub="floor performance, the machines, quality and rework — in standard hours">
+        {tr === null ? <LoadFailed what="The transformers' figures" /> : (
           <>
-            <FloorPerformance period={period} todayISO={todayISO} defaultRange={defaultRange} />
-            <ProductionExtras period={period} />
+            <FloorPerformance period={tr} />
+            <ProductionExtras period={tr} />
           </>
         )}
         <LossWaterfallCard />
-      </>
-    ),
-  });
+      </LineSection>
+
+      <LineSection id="lv" page="production" title="LV panels" sub="floor performance in the panels' standard hours">
+        {lv === null ? <LoadFailed what="The panels' figures" /> : <LvFloorPerformance period={lv} />}
+      </LineSection>
+    </div>
+  );
 }

@@ -23,6 +23,14 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "A chart's title now carries a small ⓘ: rest the pointer on it (or tap it on a phone, or reach it with Tab) and a card opens saying what the chart shows and how it is counted. Its Ask AI about these numbers button has the assistant explain what the chart says right now. The card stays open while you move onto it, and closes when you move away, click elsewhere or press Escape.",
   },
   {
+    id: "2026-10-26-dashboards-both-lines-items",
+    dateISO: "2026-10-26",
+    title: "Planning and Production show both lines on one page, and Production tracks every item and type",
+    where: "Dashboards → Planning · Production",
+    href: "/dashboards/production",
+    body: "No more All | TR | LV switch: Planning and Production now show the transformers and the LV panels together. Each page opens on the plant's figures — both lines' headline, their decisions in one list, who is needed where — then a Transformers section and an LV panels section. Hide a section you don't follow with its header; the page remembers it. On Production one date bar at the top sets the period for both lines, and each section keeps its own department filter. New on Production: What did we make, item by item? — each line's pieces at every stage in the period, the transformers by component and KVA class (Tank 630 kVA, Top Cover 1000 kVA…) and the panels by plan and type (USS, LSS, meter boxes), against this month's plan: planned, finished, left and the share done. Switch between items only and items with their types; for an Excel of it, ask the assistant. The assistant answers the same questions, for example \"How many 630 kVA tanks did we weld this month against the plan?\".",
+  },
+  {
     id: "2026-10-26-ask-ai-right-click",
     dateISO: "2026-10-26",
     title: "Right-click anything and Ask AI: the cards say less, the assistant explains",

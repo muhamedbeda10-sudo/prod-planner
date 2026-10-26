@@ -27,11 +27,16 @@ describe("AI page context", () => {
   });
 });
 
-describe("the dashboards' line scope in the page context", () => {
-  it("is carried as the Line shown, from the dashboard's address", async () => {
-    const { aiPageContext, aiPageNote, captureAiPage } = await import("./aiScreen");
-    const page = captureAiPage("/dashboards/production", "TR", "?line=all&from=2026-10-01&to=2026-10-25", () => null);
-    expect(page?.filters).toEqual({ line: "all", from: "2026-10-01", to: "2026-10-25" });
-    expect(aiPageNote(aiPageContext({ path: "/", filters: { line: "LV" } })!)).toContain('"Line shown":"LV"');
+describe("the Production dashboard's filters in the page context", () => {
+  it("carries the period and each line's department, the panels' under its own name", async () => {
+    const { aiPageNote, captureAiPage } = await import("./aiScreen");
+    const page = captureAiPage("/dashboards/production", "TR", "?from=2026-10-01&to=2026-10-25&dept=Welding&lvDept=PaintingLV", () => null);
+    expect(page?.filters).toEqual({ from: "2026-10-01", to: "2026-10-25", dept: "Welding", lvDept: "PaintingLV" });
+    expect(aiPageNote(page!)).toContain('"LV department":"PaintingLV"');
+  });
+  it("names the line a page's address shows, never on a page that shows both lines", async () => {
+    const { aiPageContext, aiPageNote } = await import("./aiScreen");
+    expect(aiPageNote(aiPageContext({ path: "/tracker", filters: { line: "LV" } })!)).toContain('"Line shown":"LV"');
+    expect(aiPageContext({ path: "/dashboards/production", filters: { line: "LV", from: "2026-10-01" } })?.filters).toEqual({ from: "2026-10-01" });
   });
 });

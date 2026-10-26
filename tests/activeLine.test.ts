@@ -85,6 +85,13 @@ describe("the proxy hands the address's line to the page", () => {
     expect(res.headers.get("location")).toBe("http://plant.test/import?plan=12&line=TR");
   });
 
+  it("opens a screen that shows both lines at the section an older address names, the rest kept", () => {
+    expect(proxy(req("/dashboards/production?from=2026-10-01&line=LV")).headers.get("location")).toBe("http://plant.test/dashboards/production?from=2026-10-01#lv");
+    expect(proxy(req("/?line=all")).headers.get("location")).toBe("http://plant.test/");
+    // with none named, the page is served as it is, with no line handed on
+    expect(forwarded(proxy(req("/dashboards/production?from=2026-10-01")))).toBeNull();
+  });
+
   it("clears the cookie the old top-bar switch left behind", () => {
     const res = proxy(req("/tracker", { cookie: "atc_session=x; line=LV" }));
     expect(res.headers.get("set-cookie")).toMatch(/^line=;/);

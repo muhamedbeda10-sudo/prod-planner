@@ -9,10 +9,9 @@ import { BurnUpChart, LoadChart } from "@/components/LazyCharts";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/primitives";
 import { TableFrame, Th } from "@/components/DataTable";
-import { PrintDecisions } from "@/components/CockpitDecisions";
 import { formatDate } from "@/lib/domain/format";
 import { stopDurationLabel } from "@/lib/domain/downtime";
-import { ITEM_NAME, isItem } from "@/lib/domain/constants";
+import { trItemName } from "@/lib/domain/outputByType";
 import { WORK_CENTRE_LABEL, type WorkCentre } from "@/lib/domain/shifts";
 import {
   STAGE_LABEL, burnUp, loadSeries, monthPace, peopleShort, weekChange,
@@ -31,7 +30,6 @@ import type { CockpitData } from "@/lib/server/kpis";
 // The page is a 12-column grid: a short card sits beside a long one, so no
 // card leaves a hole under it, and every row fills the width.
 
-const itemName = (it: string) => (isItem(it) ? ITEM_NAME[it] : it);
 const centreName = (c: WorkCentre) => WORK_CENTRE_LABEL[c];
 
 /** Today's figure against a week ago, in the tile's own unit: points for a
@@ -53,8 +51,6 @@ function WeekChange({ trend, todayISO, pick, rate, unit = "", up }: {
  *  figures (each centre's pace, the losses, who is present) are shown only then. */
 export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boolean }) {
   const finish = data.week.adherence.find((a) => a.stage === "finish");
-  // already without the shift log's decisions for an account Shifts is closed to (withoutFloor)
-  const actions = data.actions;
   // the card shows the oldest lines behind; the assistant reads them all (get_kpis)
   const lateShown = data.week.late.slice(0, 20);
   const mp = data.manpower;
@@ -71,8 +67,8 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
   const tile = { trend: data.trend, todayISO: data.todayISO };
   // the work between the stages, one list for the bullets and "Ask AI"
   const wipRows: { where: string; pcs: number; href: string; detail: string }[] = [
-    { where: "Cut, waiting for welding", pcs: data.wip.cutNotWelded.reduce((s, b) => s + b.pcs, 0), href: "/worklist/welding", detail: data.wip.cutNotWelded.map((b) => `${itemName(b.item)} ${b.pcs}`).join(" · ") },
-    { where: "Welded, waiting for finishing", pcs: data.wip.weldedNotFinished.reduce((s, b) => s + b.pcs, 0), href: "/worklist/painting", detail: data.wip.weldedNotFinished.map((b) => `${itemName(b.item)} ${b.pcs}`).join(" · ") },
+    { where: "Cut, waiting for welding", pcs: data.wip.cutNotWelded.reduce((s, b) => s + b.pcs, 0), href: "/worklist/welding", detail: data.wip.cutNotWelded.map((b) => `${trItemName(b.item)} ${b.pcs}`).join(" · ") },
+    { where: "Welded, waiting for finishing", pcs: data.wip.weldedNotFinished.reduce((s, b) => s + b.pcs, 0), href: "/worklist/painting", detail: data.wip.weldedNotFinished.map((b) => `${trItemName(b.item)} ${b.pcs}`).join(" · ") },
     { where: "Sent back, not re-delivered", pcs: data.wip.returnsOpen.qty, href: "/worklist/cut", detail: `${data.wip.returnsOpen.count} return${data.wip.returnsOpen.count === 1 ? "" : "s"}` },
     { where: "On hold — out of every queue", pcs: data.wip.held.pieces, href: "/tracker?status=hold", detail: `${data.wip.held.orders} order${data.wip.held.orders === 1 ? "" : "s"} (plan pieces)` },
   ];
@@ -80,10 +76,6 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
 
   return (
     <div className="space-y-3">
-      {/* today's decisions sit behind the Decisions button in the page head
-          (CockpitDecisions); the paper carries them here */}
-      <PrintDecisions actions={actions} />
-
       {/* the headline figures, each against a week ago */}
       <div className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
         <StatTile hero label="Plan delivered on its day" value={pctOrDash(finish?.rate)} meter={finish?.rate ?? undefined}
@@ -143,7 +135,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
             className="xl:col-span-6"
             title="Behind — where each line is stuck"
             about={data.week.lateCount > lateShown.length ? `The oldest ${lateShown.length} of ${data.week.lateCount} lines behind (get_kpis has them all); the first stage that is short` : "Oldest first; the first stage that is short"}
-            data={data.week.late.map((l) => ({ Day: l.dayISO, Project: l.bom, SOI: l.soi ?? "", Item: itemName(l.item), "Stuck at": STAGE_LABEL[l.stage], Owed: l.owed, Short: l.short }))}
+            data={data.week.late.map((l) => ({ Day: l.dayISO, Project: l.bom, SOI: l.soi ?? "", Item: trItemName(l.item), "Stuck at": STAGE_LABEL[l.stage], Owed: l.owed, Short: l.short }))}
           >
             {lateShown.length === 0 ? (
               <EmptyState compact icon={Info} title="Nothing behind" hint="Every line is at or ahead of its stage date." />
@@ -157,7 +149,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
                       <tr key={i}>
                         <td className="px-2 tabnum whitespace-nowrap">{formatDate(l.dayISO)}</td>
                         <td className="px-2 whitespace-nowrap"><Link href={traceHref({ bom: l.bom, line: "TR" })} className="font-semibold hover:underline">{l.bom}</Link>{l.soi && <span className="text-muted ms-1">{l.soi}</span>}</td>
-                        <td className="px-2">{itemName(l.item)}</td>
+                        <td className="px-2">{trItemName(l.item)}</td>
                         <td className="px-2"><Badge tone={l.stage === "cut" ? "danger" : "warning"}>{STAGE_LABEL[l.stage]}</Badge></td>
                         <td className="px-2 text-right tabnum font-bold">{l.short} <span className="text-muted font-normal">/ {l.owed}</span></td>
                       </tr>
@@ -249,14 +241,14 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           about={data.coverage.days === null
             ? "No recent welding to measure against."
             : `${fmt(data.coverage.days, 1)} days of cut parts in front of the welders: ${fmt(data.coverage.wipH, 1)} welding std-h waiting, against ${fmt(data.coverage.ratePerDay, 1)} std-h earned on a recorded day. Under 1 day they may wait; over 4, parts pile up.`}
-          data={data.coverage.byItem.map((b) => ({ Item: itemName(b.item), "Pieces waiting": b.pcs, "Welding std-h": b.weldH }))}
+          data={data.coverage.byItem.map((b) => ({ Item: trItemName(b.item), "Pieces waiting": b.pcs, "Welding std-h": b.weldH }))}
         >
           {data.coverage.byItem.length === 0 ? (
             <EmptyState compact icon={Info} title="Nothing cut and waiting" hint="Every cut piece has been welded." />
           ) : (
             <div className="space-y-3">
               {data.coverage.byItem.map((b) => (
-                <Bullet key={b.item} label={itemName(b.item)} value={b.weldH} target={null} max={data.coverage.byItem[0].weldH} text={`${fmt(b.weldH, 1)} h · ${b.pcs} pcs`} />
+                <Bullet key={b.item} label={trItemName(b.item)} value={b.weldH} target={null} max={data.coverage.byItem[0].weldH} text={`${fmt(b.weldH, 1)} h · ${b.pcs} pcs`} />
               ))}
             </div>
           )}

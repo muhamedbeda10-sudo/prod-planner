@@ -37,11 +37,12 @@ is the next shortfall, what does it take; feature 13), **Production**
 feature 13), **Material** (`/dashboards/material`, feature 5), **Consumables**
 (`/dashboards/consumables`) and **ODOO** (`/dashboards/odoo`). Each is seen with the screen it reads (its
 tab id: the Production dashboard with Shifts), and no dashboard is anywhere else; the old addresses
-(`/analytics`, `?view=dashboard`) land on them. Planning and Production each show **one line or the whole
-plant** — an **All | TR | LV** switch in their head (`?line=`, `lib/domain/dashboardScope.ts`, the same parameter
-the other screens' line switch writes, plus `all`); opened with none named, a dashboard shows the line the person's
-screens open on, and All is the dashboards' alone: the recording screens still work one line at a time. Links
-between the two dashboards, and the assistant's, always name the scope and carry the period. **Material** holds the nesting sheets, Physical Material
+(`/analytics`, `?view=dashboard`) land on them. Planning and Production each show **both lines on one page**: the
+plant's figures first, then a section for the transformers and one for the LV panels (`components/LineSection.tsx`;
+each folds away, remembered in the browser, and a link opens it at `#tr` or `#lv`). They have no line switch and
+take no line (`BOTH_LINES` in `lib/domain/lines.ts`): the proxy sends an older address naming one to that line's
+section, no line is carried onto them, and the assistant reads both lines there (`lib/domain/dashboardLinks.ts`
+builds their addresses). The recording screens still work one line at a time. **Material** holds the nesting sheets, Physical Material
 and Consumables; **Plan Tracker** carries the tracker, the **Daily log** it
 adds up and the
 **ODOO log** (`/odoo`, whose alerts' badge rides on the Plan Tracker tab). The rule: the tab's panel moves
@@ -589,8 +590,8 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      through the assistant.
 
 13. **Planning and Production dashboards** (`/` and `/dashboards/production`, the first two places of the Dashboards
-   tab; each for the transformers, the LV panels or the whole plant — All | TR | LV). On the transformers, Planning is the
-   **cockpit** — the planner's one page, every figure in **standard hours**
+   tab; each shows both lines on one page — the plant's figures, then the transformers' section and the LV panels'). On the
+   transformers, Planning is the **cockpit** — the planner's one page, every figure in **standard hours**
    (what the work is worth, from the hours a piece per work centre — typed, else the estimate), so Fabrication's
    ten projects a day add up and departments compare. The **Decisions** button in its head (icon: the worst news; badge: how many) opens what needs a decision today (lines behind, a centre
    short at the end of the horizon or falling behind in it and when it catches up, thin or heavy welding coverage, a slow centre, the
@@ -616,9 +617,11 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    its machines', never more than the hours not earned), and what is left: slower than the standard, or work not on the
    Daily log — as a waterfall, and says which of them moved the efficiency against the days before (the assistant's
    `explain_efficiency`; it sits on the Production dashboard). The headline figures each read against a week ago. The
-   Production dashboard (`/dashboards/production`) carries **Floor performance** — the shift log's side over the period and the department picked in its toolbar (the app's
-   date slicer, the last 7 days by default, up to 92 days within the last 180; All, Fabrication, Welding, Shot blast or Painting; kept
-   in the URL as `?from=&to=&dept=` and reopened as it was left): the period's efficiency, standard hours and pieces
+   Production dashboard (`/dashboards/production`) reads one period for both lines — the date bar at the top of the page
+   (the app's date slicer, the last 7 days by default, up to 92 days within the last 180; `?from=&to=`), with its
+   Interventions button at the end — and each line's section keeps its own department (`?dept=` All,
+   Fabrication, Welding, Shot blast or Painting on the transformers; `?lvDept=` on the panels), all reopened as left.
+   The transformers' **Floor performance**: the period's efficiency, standard hours and pieces
    a person a day (shot blast's pieces are every painted piece, as on Shifts), people a day, attendance, overtime share
    and machine availability; each centre's efficiency day by
    day as a heatmap (green at the standard, 90% and up; amber 70–90%; red under 70%; the period at the end); what
@@ -658,14 +661,24 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    in the panels' departments; a heatmap per department; standard hours and panels a person a day; attendance,
    overtime; output day by day). Not the panels': the load ahead, the lines behind a stage date and welding's coverage
    (no delivery dates, no lead days), machine stops (recorded by department on shared machines — the punches carry
-   panels too) and quality (panels are recorded as quantities). **All** (`lib/domain/plantKpis.ts`) shows the plant's
-   figures only where they add — standard hours, man-hours and people (each line's own departments; the one shot-blast
+   panels too) and quality (panels are recorded as quantities). **The plant's figures** at the top of both pages
+   (`lib/domain/plantKpis.ts`, `lib/server/dashboards.ts`; each line loads on its own, so one that fails leaves the other
+   on screen) show the plant only where it adds — standard hours, man-hours and people (each line's own departments; the one shot-blast
    crew is booked on the transformers' side and earns the panels' blasting there), efficiency as **Σ earned ÷ Σ worked,
    never the mean of the two rates**, the stops once as the plant's — and the two lines side by side for everything else:
    plan progress per line (dated promises on one, a month's pace on the other, no single percentage), pieces never added
    (a panel is not a tank), both lines' decisions tagged by line. Coverage is said, never hidden: a line with no shift
-   day, or output that mostly carries no standard hours, is noted on the card. The assistant reads the same loaders
-   with the same `line` (`get_kpis`, `get_floor_performance`), knows the page's **Line shown**, and follows the same rules.
+   day, or output that mostly carries no standard hours, is noted on the card. Production's plant figures carry **What did
+   we make, item by item?** (`lib/domain/outputByType.ts`): each line's pieces at each stage in the period by item and
+   type — the transformers by component and the order's KVA class (the class its standard hours are priced at) through
+   cut, welded and finished (painted, or shot blast for the core frame); the panels by plan (LV panels, meter boxes) and
+   panel type (USS, LSS, …) through punched, bent, welded and painted — against the plan of the month the period ends in:
+   planned, finished on the month's orders (each order counted up to what it asks, so one order's extra never covers
+   another's shortfall), left and the share done. Pieces add within an item, never across items or lines; an Items /
+   Items and types switch folds the types away, and the assistant's `make_excel` makes it a sheet (`output_by_type`,
+   every type of both lines). The assistant reads the same loaders
+   with the same `line` (`get_kpis`, `get_floor_performance`, whose `byItemAndType` is that card) — both lines when the
+   person is on a dashboard, else the line they are on — and follows the same rules.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

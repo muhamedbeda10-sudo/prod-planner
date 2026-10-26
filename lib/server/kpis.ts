@@ -16,9 +16,10 @@ import { biggestLoss, explainChange, lossWaterfall, type LossChange, type LossDa
 import { downtimeHoursInRange, downtimeWindowWhere, elapsedStopHours, splitDowntimeDays } from "@/lib/domain/downtimePeriods";
 import { gapDays, productionActions, type GapDay, type OpenStopView } from "@/lib/domain/productionActions";
 import { getQualityPeriod, type QualityPeriod } from "./quality";
+import { TR_ITEM_ORDER, kvaTypeLabel, outputByType, trItemName, trPlanLines, trTypeStageOf, type OutputByTypeData, type TypeRecord } from "@/lib/domain/outputByType";
 import { FACTOR_MAX, FACTOR_MIN, MIN_CALIBRATION_DAYS } from "@/lib/domain/calibration";
 import {
-  HISTORY_DAYS, RECENT_DAYS, centreCells, centreStat, cockpitActions, combinedStat, dailyOutput, earnedOfRecord, inMonthPlan, isFloorAction, lateLines, loadAhead, manpowerPlan, monthCalendar, parseKpiSnapshot, planAdherence, stageDueISO, weldingCoverage, workingDaysFrom, zeroCentres,
+  HISTORY_DAYS, RECENT_DAYS, STAGES, centreCells, centreStat, cockpitActions, combinedStat, dailyOutput, earnedOfRecord, inMonthPlan, isFloorAction, lateLines, loadAhead, manpowerPlan, monthCalendar, monthOf, parseKpiSnapshot, planAdherence, stageDueISO, weldingCoverage, workingDaysFrom, zeroCentres,
   type CentreDay, type CentreHours, type CentreStat, type CockpitAction, type Coverage, type CoverageInput, type KpiSnapshotData, type KpiSnapshotPoint,
   type LateLine, type LoadAhead, type ManpowerRow, type OutputDay, type OutputGroup, type PlanCell, type Stage, type StageAdherence, OUTPUT_GROUP_LABEL,
 } from "@/lib/domain/kpis";
@@ -129,7 +130,7 @@ const dayStart = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
  *  Daily log, machine hours and stops — with what the cockpit's other figures
  *  need from the same reads. Both ends bound the reads, so a past period reads
  *  only its own days. */
-async function readCentreDays(fromISO: string, toISO?: string, now = new Date()) {
+async function readCentreDays(fromISO: string, toISO?: string, now = new Date(), ordersOfTr: ReturnType<typeof loadMasterOrdersOf> = loadMasterOrdersOf("TR")) {
   const from = dayStart(fromISO);
   const stopNow = now, stopToday = toISO ?? factoryDayISO(stopNow);
   // up to the end of the last day, whatever time a row's date carries
@@ -137,7 +138,7 @@ async function readCentreDays(fromISO: string, toISO?: string, now = new Date())
   const [std, hrs, orders, shiftRows, ledger, stops, machines, lvShotBlast] = await Promise.all([
     getStdData(),
     getShiftHours(),
-    loadMasterOrdersOf("TR"),
+    ordersOfTr,
     // the transformers' four departments only: the panels' rows are read by lib/server/lvKpis.ts
     prisma.shiftEntry.findMany({ where: { date: until, dept: { in: [...SHIFT_DEPTS] } }, select: { date: true, dept: true, present: true, shift: true, overtimeH: true, center: true, worker: { select: { depts: true } } } }),
     prisma.handoverEntry.findMany({ where: { date: until, item: { not: LV_ITEM } }, select: { date: true, dept: true, mo: true, bom: true, item: true, qty: true } }),
@@ -252,7 +253,34 @@ async function readCentreDays(fromISO: string, toISO?: string, now = new Date())
     if (d.workedH > 0) d.machineH = machineH[d.centre];
     all.push(d);
   }
-  return { std, orders, stops, days, all, losses, recordedDates, tierByBom, tierOf, perPiece, absent, rowsRecent, overtimeH, pricedQty, recentQty, lvShotBlast, attendance: [...attendance.values()], pieces };
+  return { std, orders, stops, days, all, losses, recordedDates, tierByBom, tierOf, perPiece, absent, rowsRecent, overtimeH, pricedQty, recentQty, lvShotBlast, attendance: [...attendance.values()], pieces, ledger };
+}
+
+/** The transformers' orders of a month's plan, and every Daily log record
+ *  that counts on them: all of an order's own (one carried over from last
+ *  month brings its work along, as its pieces are counted whole), and a
+ *  record the Daily log's form wrote without an order number when its
+ *  project has no other open order it could belong to, from the month on.
+ *  The people's plan (getCockpit) and the item card (getFloorPeriod) read it. */
+async function readMonthPlanTr(orders: Awaited<ReturnType<typeof loadMasterOrdersOf>>, monthLabel: string, monthStartISO: string) {
+  const monthOrders = orders.filter((o) => inMonthPlan({ months: o.months, source: o.source, status: o.status, closedDayISO: o.closedAt ? factoryDayISO(o.closedAt) : null }, monthLabel, monthStartISO));
+  const monthMos = monthOrders.map((o) => o.mo);
+  const monthMoSet = new Set(monthMos);
+  const openElsewhere = new Set(orders.filter((o) => o.status === "open" && !monthMoSet.has(o.mo)).map((o) => o.bom));
+  const soleBoms = [...new Set(monthOrders.map((o) => o.bom))].filter((bom) => !openElsewhere.has(bom));
+  const ledger = monthMos.length
+    ? await prisma.handoverEntry.findMany({
+      where: {
+        item: { not: LV_ITEM },
+        OR: [
+          { mo: { in: monthMos } },
+          { date: { gte: dayStart(monthStartISO) }, bom: { in: soleBoms }, OR: [{ mo: null }, { mo: "" }] },
+        ],
+      },
+      select: { date: true, dept: true, mo: true, bom: true, item: true, qty: true },
+    })
+    : [];
+  return { monthOrders, ledger };
 }
 
 /** Where the hours went, the last `days` days against the `days` before:
@@ -461,7 +489,7 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
   // the orders of this month's plan: each one's components × its pieces, the
   // outsourced ones left out, priced at the order's class; what the ledger
   // earned on them since the month began is done
-  const monthOrders = orders.filter((o) => inMonthPlan({ months: o.months, source: o.source, status: o.status, closedDayISO: o.closedAt ? factoryDayISO(o.closedAt) : null }, monthLabel, monthStartISO));
+  const { monthOrders, ledger: monthLedger } = await readMonthPlanTr(orders, monthLabel, monthStartISO);
   const requiredH = zeroCentres();
   let monthPieces = 0;
   for (const o of monthOrders) {
@@ -473,25 +501,7 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
       for (const c of WORK_CENTRES) requiredH[c] += per[c] * qty;
     }
   }
-  // done = everything ever earned on the month's orders (an order carried over
-  // from last month brings its work along, as its pieces are counted whole);
-  // a row the Daily log's form recorded without an order number counts when
-  // its project has no other open order it could belong to, this month on
-  const monthMos = monthOrders.map((o) => o.mo);
-  const monthMoSet = new Set(monthMos);
-  const soleBoms = [...new Set(monthOrders.map((o) => o.bom))].filter((bom) => orders.every((o) => o.bom !== bom || o.status !== "open" || monthMoSet.has(o.mo)));
-  const monthLedger = monthMos.length
-    ? await prisma.handoverEntry.findMany({
-      where: {
-        item: { not: LV_ITEM },
-        OR: [
-          { mo: { in: monthMos } },
-          { date: { gte: dayStart(monthStartISO) }, bom: { in: soleBoms }, OR: [{ mo: null }, { mo: "" }] },
-        ],
-      },
-      select: { date: true, dept: true, mo: true, bom: true, item: true, qty: true },
-    })
-    : [];
+  // done = everything ever earned on the month's orders (readMonthPlanTr)
   const doneH = zeroCentres();
   const doneBeforeH = zeroCentres();
   const monthStart = dayStart(monthStartISO);
@@ -622,6 +632,10 @@ export interface FloorPeriod {
   quality: QualityPeriod;
   /** What needs intervention in production, worst first. */
   actions: CockpitAction[];
+  /** What the period made, component by component and KVA class by class,
+   *  against the plan of the month the period ends in — every department,
+   *  whatever the department picked. */
+  byType: OutputByTypeData<Stage>;
 }
 
 /** The floor's performance over a period the planner picks, one department or
@@ -632,7 +646,22 @@ export async function getFloorPeriod(q: { fromISO: string; toISO: string; dept: 
   const { fromISO, toISO, clamped } = floorRange(q.fromISO, q.toISO, factoryDayISO(now));
   const centres = centresOf(q.dept);
   const keep = new Set<WorkCentre>(centres);
-  const [read, quality] = await Promise.all([readCentreDays(fromISO, toISO, now), getQualityPeriod(fromISO, toISO)]);
+  // the item card reads the plan of the month the period ends in, beside the period's own reads
+  const month = monthOf(toISO);
+  // the orders read once for both (the assistant's calls have no request cache)
+  const orders = loadMasterOrdersOf("TR");
+  const [read, quality, { monthOrders, ledger: monthLedger }] = await Promise.all([
+    readCentreDays(fromISO, toISO, now, orders),
+    getQualityPeriod(fromISO, toISO),
+    orders.then((o) => readMonthPlanTr(o, month.monthLabel, month.monthStartISO)),
+  ]);
+  // the period's records at their order's class
+  const typeRecords: TypeRecord<Stage>[] = [];
+  for (const e of read.ledger) {
+    const stage = trTypeStageOf(e.dept, e.item);
+    if (stage) typeRecords.push({ item: trItemName(e.item), type: kvaTypeLabel(read.tierOf(e.mo, e.bom)), stage, qty: e.qty });
+  }
+  const byType = { monthLabel: month.monthLabel, groups: outputByType(STAGES, typeRecords, trPlanLines(monthOrders, monthLedger, read.tierOf), TR_ITEM_ORDER) };
   const days = floorDays(read.all, read.attendance, centres, fromISO, toISO);
   const groupList = groupsOf(q.dept);
   const { pieces, pricedShare } = floorPieces(read.pieces, groupList, fromISO, toISO);
@@ -691,5 +720,6 @@ export async function getFloorPeriod(q: { fromISO: string; toISO: string; dept: 
     pricedShare,
     quality,
     actions,
+    byType,
   };
 }

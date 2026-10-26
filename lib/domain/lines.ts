@@ -84,3 +84,18 @@ export const PINNED_LINE = {
 export function pinnedLine(path: string): ProductLine | null {
   return (PINNED_LINE as Record<string, ProductLine>)[path] ?? null;
 }
+
+/** The screens that show BOTH lines on one page — the plant dashboards,
+ *  Planning and Production, a section per line. They take no line of their
+ *  own: proxy.ts sends an address naming one to that line's section (#tr,
+ *  #lv), and no line is carried onto them or from them. */
+export const BOTH_LINES: ReadonlySet<string> = new Set(["/", "/dashboards/production"]);
+
+/** A line's section on a screen that shows both — the anchor a link opens at. */
+export type LineSection = "tr" | "lv";
+export const lineSection = (line: ProductLine): LineSection => (line === "LV" ? "lv" : "tr");
+
+/** Whether a screen (a path, or an href with its query) shows both lines. */
+export function showsBothLines(href: string): boolean {
+  return BOTH_LINES.has(href.split(/[?#]/)[0] || "/");
+}

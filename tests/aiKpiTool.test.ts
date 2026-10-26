@@ -48,7 +48,7 @@ describe("get_kpis", () => {
     expect(j.losses).toMatchObject({ unplannedH: 6.5, absentRate: 0.11, overtimeH: 126 });
     expect(j.trend[0]).toMatchObject({ day: "2026-10-25", behind: 29, efficiency: { Welding: 0.9 } });
     expect(j.workBetweenStages).toMatchObject({ cutNotWelded: [{ item: "TN", pcs: 12 }], returnsOpen: { count: 1, qty: 2 } });
-    expect(out.links).toEqual([{ label: "Planning dashboard (TR)", href: "/?line=TR" }]);
+    expect(out.links).toEqual([{ label: "Planning dashboard (transformers)", href: "/#tr" }]);
   });
 
   it("leaves the shift log's figures out for a person the Shifts screen is closed to", async () => {
@@ -106,8 +106,8 @@ describe("get_kpis on the panels and the plant", () => {
     expect(j.manpower.coverage).toEqual({ orders: 3, priced: 2, panels: 30, pricedPanels: 20 });
     expect(j.manpower.departments[0]).toMatchObject({ dept: "WeldingLV", peoplePresent: 0.5, gap: -1 });
     expect(j.notAvailable.join(" ")).toContain("no delivery dates");
-    // the app is on the panels, so the panels' link needs no line
-    expect(out.links).toEqual([{ label: "Planning dashboard (LV)", href: "/?line=LV" }]);
+    // the link opens the page at the panels' section
+    expect(out.links).toEqual([{ label: "Planning dashboard (LV panels)", href: "/#lv" }]);
     // the shift log's figures leave with the Shifts screen
     const closed = JSON.parse((await getKpisTool.run({ line: "LV" }, { now: new Date(), hidden: new Set(["shifts"]) } as never)).text);
     expect(closed.departmentsRecent).toBeUndefined();
@@ -127,13 +127,22 @@ describe("get_kpis on the panels and the plant", () => {
     expect(j.decisions[0]).toBe("TR bad: 29 plan line(s) are behind");
     expect(j.decisions).toContain("LV bad: October 2026's plan is behind its pace");
     expect(j.plant.notes.join(" ")).toContain("Pieces are never added across the lines");
-    expect((out.links ?? []).map((l) => l.href)).toEqual(["/?line=all", "/?line=TR", "/?line=LV"]);
+    expect(out.links).toEqual([{ label: "Planning dashboard (whole plant)", href: "/" }]);
   });
-  it("links the transformers' planning by name when the app is on the panels", async () => {
+  it("reads the line asked for whatever line the app is on", async () => {
     h.getCockpit.mockResolvedValue(cockpit);
     const out = await getKpisTool.run({ line: "TR" }, { now: new Date("2026-10-25T08:00:00Z"), hidden: new Set(), line: "LV" } as never);
     expect(JSON.parse(out.text).line).toBe("TR");
-    expect(out.links).toEqual([{ label: "Planning dashboard (TR)", href: "/?line=TR" }]);
+    expect(out.links).toEqual([{ label: "Planning dashboard (transformers)", href: "/#tr" }]);
+  });
+  it("reads both lines when the person is on a dashboard and the question names none — the page shows both", async () => {
+    h.getCockpit.mockResolvedValue(cockpit);
+    h.getLvPlanning.mockResolvedValue(lv);
+    const onPlanning = await getKpisTool.run({}, { now: new Date("2026-10-25T08:00:00Z"), hidden: new Set(), line: "LV", page: { path: "/", filters: {} } } as never);
+    expect(JSON.parse(onPlanning.text).line).toBe("all");
+    // elsewhere, the line the app is on
+    const onTracker = await getKpisTool.run({}, { now: new Date("2026-10-25T08:00:00Z"), hidden: new Set(), line: "LV", page: { path: "/tracker", filters: {} } } as never);
+    expect(JSON.parse(onTracker.text).line).toBe("LV");
   });
 });
 
@@ -151,6 +160,17 @@ describe("get_floor_performance", () => {
     pricedShare: 1,
     quality: { fromISO: "2026-10-01", toISO: "2026-10-25", tankTracking: true, tanks: { waitingTest: 3, inRepair: 1, readyToPaint: 2, weldedInPeriod: 10, paintedInPeriod: 8, firstPass: { units: 8, passed: 6, rate: 0.75 }, weldToTest: { n: 8, medianDays: 2, maxDays: 5 }, testToPaint: { n: 8, medianDays: 3, maxDays: 9 } }, returns: { open: { count: 1, qty: 2 }, filed: { count: 2, qty: 3 }, openOnUrgent: 0, byReason: [] }, returnsByWeek: [] },
     actions: [{ tone: "bad", text: "1 machine is still stopped", href: "/shifts", floor: true }],
+    byType: {
+      monthLabel: "October 2026",
+      groups: [{
+        item: "Tank",
+        total: { item: "Tank", type: "All types", made: { cut: 12, weld: 8, finish: 5 }, plan: { required: 40, done: { cut: 30, weld: 22, finish: 15 }, left: 25, share: 0.375 } },
+        types: [
+          { item: "Tank", type: "630 kVA", made: { cut: 10, weld: 8, finish: 5 }, plan: { required: 30, done: { cut: 25, weld: 20, finish: 15 }, left: 15, share: 0.5 } },
+          { item: "Tank", type: "1000 kVA", made: { cut: 2, weld: 0, finish: 0 }, plan: { required: 10, done: { cut: 5, weld: 2, finish: 0 }, left: 10, share: 0 } },
+        ],
+      }],
+    },
   };
   const lvPeriod = {
     fromISO: "2026-10-01", toISO: "2026-10-25", dept: "all", clamped: false, window: 7, dates: ["2026-10-24"],
@@ -162,6 +182,14 @@ describe("get_floor_performance", () => {
     moved: { Punching: 0, Bending: 0, Welding: 5, Painting: 0 },
     pricedShare: 1, gapDays: [],
     actions: [{ tone: "warn", text: "Welding (LV) worked at 50% of the standard", href: "/shifts", floor: true }],
+    byType: {
+      monthLabel: "October 2026",
+      groups: [{
+        item: "LV panels",
+        total: { item: "LV panels", type: "All types", made: { Punching: 0, Bending: 0, Welding: 5, Painting: 0 }, plan: null },
+        types: [{ item: "LV panels", type: "USS", made: { Punching: 0, Bending: 0, Welding: 5, Painting: 0 }, plan: null }],
+      }],
+    },
   };
 
   it("reads the period and department asked for, through the page's own loader, with a link to that view", async () => {
@@ -178,7 +206,7 @@ describe("get_floor_performance", () => {
     expect(j.departments[0]).toMatchObject({ dept: "Welding", pieces: 30, piecesPerPersonDay: 2.5 });
     // a day without booked hours is left out of a centre's days
     expect(j.centres[0].days).toEqual([{ day: "2026-10-24", efficiency: 0.91, earnedH: 91.2, bookedH: 100 }]);
-    expect(out.links).toEqual([{ label: "Production dashboard (TR)", href: "/dashboards/production?line=TR&from=2026-10-01&to=2026-10-25&dept=Welding" }]);
+    expect(out.links).toEqual([{ label: "Production dashboard (transformers)", href: "/dashboards/production?from=2026-10-01&to=2026-10-25&dept=Welding#tr" }]);
   });
 
   it("falls back to the last 7 days and every department on a bad or missing input, and links to the section without pinning its dates", async () => {
@@ -186,7 +214,7 @@ describe("get_floor_performance", () => {
     const now = new Date("2026-10-25T08:00:00Z");
     const out = await getFloorPerformanceTool.run({ from: "soon", dept: "Cutting" }, { now, hidden: new Set() } as never);
     expect(h.getFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ fromISO: "2026-10-19", toISO: "2026-10-25", dept: "all", isDefault: true }), now);
-    expect(out.links).toEqual([{ label: "Production dashboard (TR)", href: "/dashboards/production?line=TR" }]);
+    expect(out.links).toEqual([{ label: "Production dashboard (transformers)", href: "/dashboards/production#tr" }]);
   });
 
   it("reads the panels' side on the LV line (or when asked), through the panels' own loader, and says what is not the panels'", async () => {
@@ -197,12 +225,12 @@ describe("get_floor_performance", () => {
     const j = JSON.parse(out.text);
     expect(j).toMatchObject({ line: "LV", summary: { efficiency: 0.5 }, departments: [{ dept: "WeldingLV", panels: 5 }], panelsMovedPerStage: { Welding: 5 } });
     expect(j.notAvailable.join(" ")).toContain("Machine stops");
-    // every link names its line, so it opens the same view whatever line the reader's screens are on
-    expect(out.links).toEqual([{ label: "Production dashboard (LV)", href: "/dashboards/production?line=LV&dept=WeldingLV" }]);
+    // the panels' department in its own parameter, the page opened at the panels' section
+    expect(out.links).toEqual([{ label: "Production dashboard (LV panels)", href: "/dashboards/production?lvDept=WeldingLV#lv" }]);
     // asked for the transformers while the app is on the panels
     h.getFloorPeriod.mockResolvedValue(period);
     const tr = await getFloorPerformanceTool.run({ line: "TR" }, { now, hidden: new Set(), line: "LV" } as never);
-    expect(tr.links).toEqual([{ label: "Production dashboard (TR)", href: "/dashboards/production?line=TR&dept=Welding" }]);
+    expect(tr.links).toEqual([{ label: "Production dashboard (transformers)", href: "/dashboards/production?dept=Welding#tr" }]);
   });
 
   it("combines the whole plant from the sums, never the mean of the two rates, with the stops counted once", async () => {
@@ -210,9 +238,9 @@ describe("get_floor_performance", () => {
     h.getLvFloorPeriod.mockResolvedValue(lvPeriod);
     const now = new Date("2026-10-25T08:00:00Z");
     const out = await getFloorPerformanceTool.run({ line: "all", dept: "Welding" }, { now, hidden: new Set() } as never);
-    // the department asked for is read on each line under its own name
+    // each line keeps its own department, as the page does: the transformers' welding leaves the panels whole
     expect(h.getFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ dept: "Welding" }), now);
-    expect(h.getLvFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ dept: "WeldingLV" }), now);
+    expect(h.getLvFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ dept: "all" }), now);
     const j = JSON.parse(out.text);
     expect(j.line).toBe("all");
     expect(j.dept).toMatchObject({ asked: "Welding", TR: "Welding", LV: "all" });
@@ -222,7 +250,20 @@ describe("get_floor_performance", () => {
     expect(j.lvPanels.line).toBe("LV");
     expect(j.interventions).toEqual(["TR bad: 1 machine is still stopped", "LV warn: Welding (LV) worked at 50% of the standard"]);
     expect(j.plant.notes.join(" ")).toContain("never the mean");
-    expect(out.links?.[0]).toEqual({ label: "Production dashboard (whole plant)", href: "/dashboards/production?line=all" });
+    expect(out.links).toEqual([{ label: "Production dashboard (whole plant)", href: "/dashboards/production?dept=Welding" }]);
+  });
+
+  it("reads the panels' department from its own parameter under all, as the page keeps it", async () => {
+    h.getFloorPeriod.mockResolvedValue({ ...period, dept: "all" });
+    h.getLvFloorPeriod.mockResolvedValue({ ...lvPeriod, dept: "PaintingLV" });
+    const now = new Date("2026-10-25T08:00:00Z");
+    const out = await getFloorPerformanceTool.run({ line: "all", lvDept: "PaintingLV" }, { now, hidden: new Set() } as never);
+    expect(h.getFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ dept: "all" }), now);
+    expect(h.getLvFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ dept: "PaintingLV" }), now);
+    expect(out.links).toEqual([{ label: "Production dashboard (whole plant)", href: "/dashboards/production?lvDept=PaintingLV" }]);
+    // a panels' department named in dept is the panels'
+    await getFloorPerformanceTool.run({ line: "all", dept: "Bending" }, { now, hidden: new Set() } as never);
+    expect(h.getLvFloorPeriod).toHaveBeenLastCalledWith(expect.objectContaining({ dept: "Bending" }), now);
   });
 
   it("carries the transformers' machines and quality", async () => {
@@ -232,6 +273,20 @@ describe("get_floor_performance", () => {
     expect(j.quality.tanks.leakTestFirstPass).toMatchObject({ units: 8, passed: 6, rate: 0.75 });
     expect(j.daysWithDisagreeingRecords).toEqual([{ dateISO: "2026-10-22", kind: "output-no-hours" }]);
     expect(j.interventions).toEqual(["bad: 1 machine is still stopped"]);
+  });
+
+  it("hands the model what was made item by item and type by type, against the month's plan, on both lines", async () => {
+    h.getFloorPeriod.mockResolvedValue(period);
+    h.getLvFloorPeriod.mockResolvedValue(lvPeriod);
+    const j = JSON.parse((await getFloorPerformanceTool.run({ line: "all" }, { now: new Date("2026-10-25T08:00:00Z"), hidden: new Set() } as never)).text);
+    const tr = j.transformers.byItemAndType;
+    expect(tr).toMatchObject({ stages: ["cut", "weld", "finish"], planMonth: "October 2026" });
+    expect(tr.items[0]).toMatchObject({ item: "Tank", made: { weld: 8 }, plan: { planned: 40, left: 25, shareDone: 0.38 } });
+    expect(tr.items[0].types[0]).toMatchObject({ type: "630 kVA", made: { cut: 10 }, plan: { planned: 30, doneByStage: { finish: 15 }, shareDone: 0.5 } });
+    const lv = j.lvPanels.byItemAndType;
+    expect(lv.stages).toEqual(["Punching", "Bending", "Welding", "Painting"]);
+    // a type made off the month's plan carries no plan figures
+    expect(lv.items[0].types[0]).toEqual({ type: "USS", made: { Punching: 0, Bending: 0, Welding: 5, Painting: 0 }, plan: null });
   });
 
   it("is closed with the Shifts screen", () => {
