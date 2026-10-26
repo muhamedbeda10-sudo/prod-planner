@@ -3,13 +3,12 @@ import { prisma } from "@/lib/db";
 import { WORKER_SECTIONS } from "@/lib/domain/tanks";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { factoryDayISO, factoryDayStart, parseISODate } from "@/lib/domain/dates";
-import { consumablesStats, previousPeriod, type ConsumablesStats } from "@/lib/domain/consumablesStats";
+import { consumablesStats, previousPeriod, type ItemStat } from "@/lib/domain/consumablesStats";
 import { buildConsumablesDecisions, usesSpan, type ConsumablesDecisions, type DecisionFilters } from "@/lib/domain/consumablesDecisions";
 import { isPowderDepartment, POWDER_DEPARTMENTS } from "@/lib/domain/powderScrap";
 import {
   canEditIssue,
   departmentLabel,
-  departmentWorkers,
   describeSnapshot,
   factoryDateTimeLabel,
   groupLabel,
@@ -279,55 +278,15 @@ export async function getConsumableEdits(fromISO: string, toISO: string): Promis
   });
 }
 
-const CAIRO_HOUR = new Intl.DateTimeFormat("en-US", { timeZone: "Africa/Cairo", hour: "2-digit", hourCycle: "h23" });
-
-/** The dashboard for factory days from..to: the period's hand-outs worked
- *  into cards, charts and tables, and the count of the period just before.
- *  A group hand-out is one hand-out, to "the group" of its department — one
- *  entry among the workers, not a hand-out per man. */
-export async function getConsumablesDashboard(fromISO: string, toISO: string): Promise<ConsumablesStats> {
+/** Factory days from..to item by item — the AI's consumables_summary sheet.
+ *  Every row counts under its department (an older row's worker is not read). */
+export async function getConsumablesDashboard(fromISO: string, toISO: string): Promise<ItemStat[]> {
   const { gte, lt } = periodBounds(fromISO, toISO);
-  const prev = previousPeriod(fromISO, toISO);
-  const prevBounds = periodBounds(prev.fromISO, prev.toISO);
-  const [rows, previousCount, allWorkers, first] = await Promise.all([
-    prisma.consumableIssue.findMany({
-      where: { deletedAt: null, issuedAt: { gte, lt } },
-      select: {
-        item: true, qty: true, department: true, workerId: true, issuedAt: true,
-        worker: { select: { name: true, empId: true } },
-      },
-    }),
-    prisma.consumableIssue.count({ where: { deletedAt: null, issuedAt: { gte: prevBounds.gte, lt: prevBounds.lt } } }),
-    getAllWorkers(),
-    prisma.consumableIssue.findFirst({ where: { deletedAt: null }, orderBy: { issuedAt: "asc" }, select: { issuedAt: true } }),
-  ]);
-  // the period before is only a comparison if the log already ran for all
-  // of it — against a part of one, "▲ 400%" is the log's start, not the store
-  const previousIssues = first && factoryDayISO(first.issuedAt) <= prev.fromISO ? previousCount : null;
-  // hand-outs are the department's: every row counts under its department
-  // (an older row's worker is not read), one stand-in id per department
-  const groupIds = new Map<string, number>();
-  const groupId = (department: string) => {
-    if (!groupIds.has(department)) groupIds.set(department, -(groupIds.size + 1));
-    return groupIds.get(department)!;
-  };
-  return consumablesStats(
-    rows.map((r) => ({
-      item: r.item,
-      qty: r.qty.toNumber(),
-      department: r.department,
-      departmentLabel: departmentLabel(r.department),
-      workerId: groupId(r.department),
-      workerName: departmentLabel(r.department),
-      empId: "",
-      dayISO: factoryDayISO(r.issuedAt),
-      hour: Number(CAIRO_HOUR.format(r.issuedAt)) % 24,
-    })),
-    fromISO,
-    toISO,
-    previousIssues,
-    { headcount: departmentWorkers(allWorkers) },
-  );
+  const rows = await prisma.consumableIssue.findMany({
+    where: { deletedAt: null, issuedAt: { gte, lt } },
+    select: { item: true, qty: true, department: true },
+  });
+  return consumablesStats(rows.map((r) => ({ item: r.item, qty: r.qty.toNumber(), department: r.department })));
 }
 
 /** What the dashboard's browser parts read — the rows, cards and charts;
@@ -347,6 +306,8 @@ export interface ConsumablesDecisionsView extends ConsumablesDecisions {
    *  filtered is not a painting section. */
   powder: { scope: "painting" | "other"; kg: number; weighings: number; sections: { department: string; label: string; kg: number }[] };
 }
+
+const CAIRO_HOUR = new Intl.DateTimeFormat("en-US", { timeZone: "Africa/Cairo", hour: "2-digit", hourCycle: "h23" });
 
 /**
  * The dashboard as decisions, for factory days from..to: every live hand-out

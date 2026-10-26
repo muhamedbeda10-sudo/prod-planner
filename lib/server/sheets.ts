@@ -3,7 +3,7 @@ import { ITEMS, deptLabel, isPaintExempt, type Item } from "@/lib/domain/constan
 import { BASIS_EXPORT, PERIOD_LABEL } from "@/lib/domain/consumableLimits";
 import { MONTH_STATUS_LABEL } from "@/lib/domain/consumableMonthly";
 import { ROW_STATUS_LABEL, headcountText, limitBasisText, type DecisionRow } from "@/lib/domain/consumablesDecisions";
-import type { ConsumablesStats } from "@/lib/domain/consumablesStats";
+import type { ItemStat } from "@/lib/domain/consumablesStats";
 import type { LogRow } from "@/lib/domain/dailyLogView";
 import { downtimeLabel, stopDurationLabel } from "@/lib/domain/downtime";
 import { liveStopHours } from "@/lib/domain/downtimePeriods";
@@ -195,7 +195,7 @@ export function consumablesLogRows(entries: ConsumablesPageData["entries"]): She
 }
 
 /** What went out over a period, item by item. */
-export function consumablesSummaryRows(items: ConsumablesStats["items"]): SheetRow[] {
+export function consumablesSummaryRows(items: readonly ItemStat[]): SheetRow[] {
   return items.map((i) => ({ Item: i.item, "Hand-outs": i.issues, Qty: i.qty, Workers: i.workers }));
 }
 
