@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-chart-about-card",
+    dateISO: "2026-10-26",
+    title: "Rest the pointer on a chart's title to see what it shows",
+    where: "Dashboards → Planning · Production · Material · ODOO · Consumables · Capacity check · Machine timeline",
+    body: "A chart's title now carries a small ⓘ: rest the pointer on it (or tap it on a phone, or reach it with Tab) and a card opens saying what the chart shows and how it is counted. Its Ask AI about these numbers button has the assistant explain what the chart says right now. The card stays open while you move onto it, and closes when you move away, click elsewhere or press Escape.",
+  },
+  {
     id: "2026-10-26-ask-ai-right-click",
     dateISO: "2026-10-26",
     title: "Right-click anything and Ask AI: the cards say less, the assistant explains",
