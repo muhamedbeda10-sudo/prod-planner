@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-scan-handwritten-sheet",
+    dateISO: "2026-10-26",
+    title: "Scan a handwritten sheet: the assistant reads the paper and prepares the records",
+    where: "AI assistant → the scan button beside 📎",
+    body: "Beside the paperclip in the assistant there is now a scan button. On a phone it opens the camera: photograph a paper form — the day's output, attendance, machine stops, a checklist — and send. The assistant first copies the sheet into a table exactly as written (a cell it cannot read shows ?, never a guess), says what the sheet is and for which day and department, matches the names and orders, and asks about anything unreadable or unknown. Then it prepares the records as cards for your approval, so you check them against the paper before anything is saved.",
+  },
+  {
     id: "2026-10-26-tasks-2",
     dateISO: "2026-10-26",
     title: "Tasks 2.0: a board, a calendar and the team's load — with checklists, templates and repeating tasks",

@@ -465,7 +465,10 @@ mobile drawer still lists every view flat, since it has the vertical room.
      the question — the chat keeps a reference (`aifile_<id>`) that is turned back into the file each time the chat is
      sent: the chat's newest, while they fit (20 files, 16 MB, 250 thousand tokens — the count measured at upload is kept
      in `AiFile.tokens`), older ones named only. It takes the figures off them as asked and records them with the write
-     tools (`record_output` for production).
+     tools (`record_output` for production). **Scan a sheet** (the composer's scan button; on a phone the back camera)
+     attaches a photo of a handwritten form with `SCAN_SHEET_QUESTION`: the assistant copies the sheet into a table as
+     written (unreadable cells as ?), matches names and orders, asks about what did not read or match, then prepares the
+     records as cards to check against the paper.
      Sheets it reads with a tool, and imports through the screen's own importer — the card is the importer's dry run, and
      the import runs only while a fresh dry run reads the same. No undo for an import; key "AI — imports" plus the
      person's own import permission.

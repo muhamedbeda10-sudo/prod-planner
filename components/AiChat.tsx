@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  AlertCircle, ArrowDown, BarChart3, Bot, Brain, Boxes, Check, ChevronDown, Clock, Copy, Factory, FileSpreadsheet, FileText, Image as ImageIcon, Layers, ListChecks, Loader2, MonitorPlay, PanelLeft, Paperclip, Plus, Search, Send, Trash2, X,
+  AlertCircle, ArrowDown, BarChart3, Bot, Brain, Boxes, Check, ChevronDown, Clock, Copy, Factory, FileSpreadsheet, FileText, Image as ImageIcon, Layers, ListChecks, Loader2, MonitorPlay, PanelLeft, Paperclip, Plus, ScanLine, Search, Send, Trash2, X,
 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/primitives";
 import { deleteAiConversation, discardAiFile, loadAiConversation, uploadAiFile } from "@/app/ai/actions";
 import { AI_MAX_QUESTION, usdText, type AiChatTurn } from "@/lib/domain/ai";
 import { factoryDaysBefore } from "@/lib/domain/dates";
-import { AI_FILE_ACCEPT, AI_FILE_LIMITS, AI_IMAGE_MAX_SIDE, AI_IMAGE_QUALITY, fileSizeText } from "@/lib/domain/aiFiles";
+import { AI_FILE_ACCEPT, AI_FILE_LIMITS, AI_IMAGE_MAX_SIDE, AI_IMAGE_QUALITY, SCAN_SHEET_QUESTION, fileSizeText } from "@/lib/domain/aiFiles";
 import { isSimulatorShow, SIMULATOR_HREF, type SimulatorShow } from "@/lib/domain/simulatorScreen";
 import { compressImage } from "@/lib/imageCompress";
 import { openSimulator, stageOnSimulator } from "@/lib/simulatorBridge";
@@ -151,6 +151,7 @@ export function AiChat({
   const [showLatest, setShowLatest] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const camera = useRef<HTMLInputElement>(null);
   // deltas arrive token by token — gathered and drawn a few times a second
   const delta = useRef("");
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -292,11 +293,14 @@ export function AiChat({
     }
   }
 
-  /** Send picked files to the app, one by one — each kept as it arrives. */
-  async function attach(list: FileList | null) {
+  /** Send picked files to the app, one by one — each kept as it arrives.
+   *  How many were kept. */
+  async function attach(list: FileList | null): Promise<number> {
     const picked = [...(list ?? [])];
     if (picker.current) picker.current.value = "";
-    if (picked.length === 0) return;
+    if (camera.current) camera.current.value = "";
+    if (picked.length === 0) return 0;
+    let kept = 0;
     setFileErr(null);
     const room = AI_FILE_LIMITS.perQuestion - pending.length;
     if (picked.length > room) setFileErr(`At most ${AI_FILE_LIMITS.perQuestion} files with one question.`);
@@ -312,14 +316,27 @@ export function AiChat({
         const fd = new FormData();
         fd.set("file", f);
         const r = await uploadAiFile(fd);
-        if (r.ok) setPending((all) => [...all, r.file]);
-        else setFileErr(r.error);
+        if (r.ok) {
+          setPending((all) => [...all, r.file]);
+          kept++;
+        } else setFileErr(r.error);
       } catch {
         setFileErr(`"${f.name}" could not be sent — try again.`);
       } finally {
         setUploading((n) => n - 1);
       }
     }
+    return kept;
+  }
+
+  /** A photo of a paper sheet: attached, and the question to read it put in
+   *  the box (theirs kept when they already wrote one) — ready to send. */
+  async function scan(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    // the question only with a photo that went: never "read this sheet" with no sheet
+    if ((await attach(list)) === 0) return;
+    setInput((q) => (q.trim() ? q : SCAN_SHEET_QUESTION));
+    box.current?.focus();
   }
 
   function unattach(id: number) {
@@ -564,7 +581,7 @@ export function AiChat({
                 className="w-full min-w-0 resize-none text-base leading-relaxed"
               />
               <div className="flex items-center gap-1.5 px-2 pb-2">
-                <input ref={picker} type="file" accept={AI_FILE_ACCEPT} multiple hidden onChange={(e) => attach(e.target.files)} />
+                <input ref={picker} type="file" accept={AI_FILE_ACCEPT} multiple hidden onChange={(e) => void attach(e.target.files)} />
                 <button
                   type="button"
                   className="icon-btn"
@@ -574,6 +591,18 @@ export function AiChat({
                   title="Attach a photo, a PDF or a sheet (Excel, CSV) — to read it, take figures off it, or import it"
                 >
                   <Paperclip size={16} />
+                </button>
+                {/* on a phone, straight to the back camera; elsewhere, an image to pick */}
+                <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void scan(e.target.files)} />
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => camera.current?.click()}
+                  disabled={!canAsk || busy || pending.length >= AI_FILE_LIMITS.perQuestion}
+                  aria-label="Scan a handwritten sheet"
+                  title="Scan a handwritten sheet — take a photo of a paper form (output, attendance, stops…) and the assistant reads it and prepares the records for your approval"
+                >
+                  <ScanLine size={16} />
                 </button>
                 <div className="flex-1 min-w-0 flex flex-wrap items-center gap-1.5">
                   {pending.map((f) => (
