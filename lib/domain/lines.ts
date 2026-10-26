@@ -76,7 +76,6 @@ export function hrefWithLine(href: string, line: ProductLine): string {
 export const PINNED_LINE = {
   "/simulate": "TR",
   "/import": "TR",
-  "/dashboards/production": "TR",
   "/worklist/cut": "TR",
   "/worklist/punching": "LV",
   "/worklist/bending": "LV",

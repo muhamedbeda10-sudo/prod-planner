@@ -136,20 +136,36 @@ export function LoadChart({ points, centre }: { points: LoadPoint[]; centre: str
 
 // ---------------------------------------------------------------- output a day
 
-const GROUP_COLOR = Object.fromEntries(OUTPUT_GROUPS.map((g, i) => [g, CAT[i]])) as Record<(typeof OUTPUT_GROUPS)[number], string>;
+/** One recorded day's output as the chart draws it: the standard hours
+ *  earned by each group (a department, a line) against the man-hours booked. */
+export interface OutputPoint {
+  dateISO: string;
+  earnedH: number;
+  workedH: number;
+  efficiency: number | null;
+  values: Record<string, number>;
+}
 
-/** Each recorded day's output in standard hours, department by department,
- *  against the man-hours the shift log booked — one unit, one axis. */
-export function OutputChart({ days, groups = OUTPUT_GROUPS }: { days: OutputDay[]; groups?: readonly OutputGroup[] }) {
+/** The transformers' days as the chart's points. */
+export const outputPoints = (days: readonly OutputDay[], groups: readonly OutputGroup[] = OUTPUT_GROUPS): OutputPoint[] =>
+  days.map((d) => ({ dateISO: d.dateISO, earnedH: d.earnedH, workedH: d.workedH, efficiency: d.efficiency, values: Object.fromEntries(groups.map((g) => [g, d[g]])) }));
+
+/** Each recorded day's output in standard hours, group by group (a
+ *  department, or a line on the plant's dashboard), against the man-hours the
+ *  shift log booked — one unit, one axis. A group keeps its slot of the palette. */
+export function OutputChart({ days, groups, labels = OUTPUT_GROUP_LABEL, groupWord = "department" }: { days: readonly OutputPoint[]; groups: readonly string[]; labels?: Record<string, string>; groupWord?: string }) {
   if (days.length === 0) return null;
-  const data = days.map((d) => ({ ...d, label: ddmm(d.dateISO) }));
+  const color = Object.fromEntries(groups.map((g, i) => [g, CAT[i % CAT.length]])) as Record<string, string>;
+  const name = (g: string) => labels[g] ?? g;
+  // the groups' hours flattened for the bars, the point itself kept for the tooltip
+  const data = days.map((d) => ({ ...d.values, dateISO: d.dateISO, earnedH: d.earnedH, workedH: d.workedH, efficiency: d.efficiency, values: d.values, label: ddmm(d.dateISO) }));
   return (
     <div className="space-y-2">
       <Legend items={[
-        ...groups.map((g) => ({ label: OUTPUT_GROUP_LABEL[g], color: GROUP_COLOR[g] })),
+        ...groups.map((g) => ({ label: name(g), color: color[g] })),
         { label: "Man-hours booked", color: "var(--foreground)", line: true },
       ]} />
-      <div className="viz w-full min-w-0" style={{ height: 260 }} role="group" aria-label={`Output over ${days.length} recorded days, in standard hours by department, against the man-hours booked; the numbers are under Table`}>
+      <div className="viz w-full min-w-0" style={{ height: 260 }} role="group" aria-label={`Output over ${days.length} recorded days, in standard hours by ${groupWord}, against the man-hours booked; the numbers are under Table`}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }} barCategoryGap="22%">
             <CartesianGrid vertical={false} />
@@ -164,7 +180,7 @@ export function OutputChart({ days, groups = OUTPUT_GROUPS }: { days: OutputDay[
                   <TipBox
                     title={formatDate(r.dateISO)}
                     rows={[
-                      ...groups.map((g) => ({ label: OUTPUT_GROUP_LABEL[g], value: h1(r[g]), color: GROUP_COLOR[g] })),
+                      ...groups.map((g) => ({ label: name(g), value: h1(r.values[g] ?? 0), color: color[g] })),
                       { label: "Earned, total", value: h1(r.earnedH) },
                       { label: "Man-hours booked", value: h1(r.workedH), color: "var(--foreground)", line: true },
                       { label: "Efficiency", value: r.efficiency === null ? "—" : pct(r.efficiency) },
@@ -174,7 +190,7 @@ export function OutputChart({ days, groups = OUTPUT_GROUPS }: { days: OutputDay[
               }}
             />
             {groups.map((g, i) => (
-              <Bar key={g} dataKey={g} stackId="out" fill={GROUP_COLOR[g]} stroke="var(--surface)" strokeWidth={1} isAnimationActive={false} radius={i === groups.length - 1 ? [4, 4, 0, 0] : undefined} />
+              <Bar key={g} dataKey={g} stackId="out" fill={color[g]} stroke="var(--surface)" strokeWidth={1} isAnimationActive={false} radius={i === groups.length - 1 ? [4, 4, 0, 0] : undefined} />
             ))}
             <Line type="monotone" dataKey="workedH" stroke="var(--foreground)" strokeWidth={2} dot={{ r: 3, strokeWidth: 2, stroke: "var(--surface)", fill: "var(--foreground)" }} isAnimationActive={false} />
           </ComposedChart>

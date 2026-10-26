@@ -53,6 +53,14 @@ export function isDowntimeCode(x: string): x is DowntimeCode {
   return BY_CODE.has(x);
 }
 
+/** Whether a stop's code is planned maintenance — a row typed before the codes is not. */
+export function isPlannedCode(code: string | null | undefined): boolean {
+  return !!code && (BY_CODE.get(code)?.planned ?? false);
+}
+
+/** Hours to the minute — the precision a clock range is entered with. */
+export const minuteHours = (hours: number) => Math.round(hours * 60) / 60;
+
 /** How a stop reads: its code's label, or the words of a row typed before the codes. */
 export function downtimeLabel(code: string | null | undefined, reason?: string | null): string {
   const r = code ? BY_CODE.get(code) : undefined;
@@ -88,7 +96,6 @@ export function downtimeByCause(rows: readonly DowntimeRow[]): { causes: Downtim
     cur.stops += 1;
     acc.set(code, cur);
   }
-  const minuteHours = (hours: number) => Math.round(hours * 60) / 60;
   const all = [...acc.entries()].map(([code, v]) => ({ code, ...v, hours: minuteHours(v.hours) }));
   const unplannedH = minuteHours(all.filter((c) => !c.planned).reduce((s, c) => s + c.hours, 0));
   const plannedH = minuteHours(all.filter((c) => c.planned).reduce((s, c) => s + c.hours, 0));
@@ -96,4 +103,44 @@ export function downtimeByCause(rows: readonly DowntimeRow[]): { causes: Downtim
     .map((c) => ({ ...c, share: c.planned ? null : unplannedH > 0 ? c.hours / unplannedH : 0 }))
     .sort((a, b) => Number(a.planned) - Number(b.planned) || b.hours - a.hours);
   return { causes, unplannedH, plannedH };
+}
+
+// ---------------------------------------------------------------- by machine
+
+export interface MachineStopRow {
+  machine: string;
+  dept: string;
+  hours: number;
+  /** Planned maintenance (by its code) is kept apart from the ranking of losses. */
+  reasonCode: string | null;
+}
+
+export interface MachineStopRank {
+  machine: string;
+  dept: string;
+  hours: number;
+  stops: number;
+  /** Share of the unplanned hours ranked. */
+  share: number;
+}
+
+/** The machines that stood still the most — unplanned stops only, most
+ *  hours first, the top `top`. A machine shared by the two lines is one
+ *  machine here: a stop is recorded on the machine, never on a line. */
+export function stopsByMachine(rows: readonly MachineStopRow[], top = 5): MachineStopRank[] {
+  const acc = new Map<string, MachineStopRank>();
+  for (const r of rows) {
+    if (isPlannedCode(r.reasonCode) || !(r.hours > 0)) continue;
+    const k = `${r.dept}|${r.machine}`;
+    const cur = acc.get(k) ?? { machine: r.machine, dept: r.dept, hours: 0, stops: 0, share: 0 };
+    cur.hours += r.hours;
+    cur.stops += 1;
+    acc.set(k, cur);
+  }
+  const all = [...acc.values()];
+  const total = all.reduce((s, m) => s + m.hours, 0);
+  return all
+    .map((m) => ({ ...m, hours: minuteHours(m.hours), share: total > 0 ? m.hours / total : 0 }))
+    .sort((a, b) => b.hours - a.hours || a.machine.localeCompare(b.machine))
+    .slice(0, top);
 }

@@ -81,8 +81,8 @@ describe("the proxy hands the address's line to the page", () => {
   });
 
   it("sends an address naming the other line to the pinned screen's own, the rest kept", () => {
-    const res = proxy(req("/dashboards/production?from=2026-10-01&dept=Welding&line=LV"));
-    expect(res.headers.get("location")).toBe("http://plant.test/dashboards/production?from=2026-10-01&dept=Welding&line=TR");
+    const res = proxy(req("/simulate?plan=12&line=LV"));
+    expect(res.headers.get("location")).toBe("http://plant.test/simulate?plan=12&line=TR");
   });
 
   it("clears the cookie the old top-bar switch left behind", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clockMinutes, downtimeByCause, downtimeLabel, isDowntimeCode, stopDurationLabel, stopTiming } from "./downtime";
+import { clockMinutes, downtimeByCause, downtimeLabel, isDowntimeCode, stopDurationLabel, stopTiming, stopsByMachine } from "./downtime";
 
 describe("machine stops by cause", () => {
   it("sums the hours per code, unplanned first by hours, planned maintenance last and outside the shares", () => {
@@ -45,5 +45,20 @@ describe("machine stop clock ranges", () => {
     for (const [start, end, next] of [["", "09:00", false], ["09:00", "", false], ["24:00", "01:00", true], ["09:61", "10:00", false], ["9:00", "10:00", false], ["08:00", "08:00", false], ["23:00", "01:00", false], ["08:00", "09:00", true]] as const) expect(stopTiming(start, end, next)).toBeNull();
     expect(clockMinutes("00:00")).toBe(0);
     expect(clockMinutes("23:59")).toBe(1439);
+  });
+});
+
+describe("the machines that stood still the most", () => {
+  it("ranks unplanned hours per machine, planned maintenance left out", () => {
+    const r = stopsByMachine([
+      { machine: "B4-10", dept: "Cut", hours: 2, reasonCode: "MECH" },
+      { machine: "B4-10", dept: "Cut", hours: 3, reasonCode: null },
+      { machine: "L2", dept: "Cut", hours: 4, reasonCode: "MATERIAL" },
+      { machine: "L2", dept: "Cut", hours: 10, reasonCode: "PM" },
+      { machine: "P1", dept: "Painting", hours: 0, reasonCode: "MECH" },
+    ]);
+    expect(r.map((m) => [m.machine, m.hours, m.stops])).toEqual([["B4-10", 5, 2], ["L2", 4, 1]]);
+    expect(r[0].share).toBeCloseTo(5 / 9, 10);
+    expect(stopsByMachine([], 3)).toEqual([]);
   });
 });

@@ -26,3 +26,12 @@ describe("AI page context", () => {
     expect(aiPageNote(page)).not.toContain("secret");
   });
 });
+
+describe("the dashboards' line scope in the page context", () => {
+  it("is carried as the Line shown, from the dashboard's address", async () => {
+    const { aiPageContext, aiPageNote, captureAiPage } = await import("./aiScreen");
+    const page = captureAiPage("/dashboards/production", "TR", "?line=all&from=2026-10-01&to=2026-10-25", () => null);
+    expect(page?.filters).toEqual({ line: "all", from: "2026-10-01", to: "2026-10-25" });
+    expect(aiPageNote(aiPageContext({ path: "/", filters: { line: "LV" } })!)).toContain('"Line shown":"LV"');
+  });
+});

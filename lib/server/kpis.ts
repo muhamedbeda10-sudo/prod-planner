@@ -1,25 +1,26 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { factoryDayISO, monthLabelFromInput, toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, toISODate } from "@/lib/domain/dates";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { formatDate } from "@/lib/domain/format";
 import { LV_ITEM } from "@/lib/domain/lv";
-import { applicableItems, isPaintExempt, ospOf, type Item } from "@/lib/domain/constants";
-import { workingDaysInclusive } from "@/lib/domain/insights";
+import { applicableItems, finishDeptOf, isPaintExempt, ospOf, type Item } from "@/lib/domain/constants";
 import { itemCentreHoursFor, tierForOrder } from "@/lib/domain/stdEngine";
 import {
-  DEFAULT_SHIFT, DEPT_CENTRES, WORK_CENTRES, centreOf, deptCentre, isShiftCode, isWorkCentre, lineHours, machineWorkCentre, round1, type WorkCentre,
+  DEFAULT_SHIFT, DEPT_CENTRES, SHIFT_DEPTS, WORK_CENTRES, centreOf, deptCentre, isShiftCode, isWorkCentre, lineHours, machineWorkCentre, round1, type WorkCentre,
 } from "@/lib/domain/shifts";
 import { sectionDept } from "@/lib/domain/tanks";
 import { parseWorkerSections } from "@/lib/domain/workers";
-import { downtimeByCause, isDowntimeCode, type DowntimeCause, type DowntimeCode } from "@/lib/domain/downtime";
+import { downtimeByCause, downtimeLabel, isDowntimeCode, minuteHours, stopsByMachine, type DowntimeCause, type DowntimeCode, type MachineStopRank } from "@/lib/domain/downtime";
 import { biggestLoss, explainChange, lossWaterfall, type LossChange, type LossDay, type LossWaterfall } from "@/lib/domain/losses";
-import { downtimeHoursInRange, downtimeWindowWhere, splitDowntimeDays } from "@/lib/domain/downtimePeriods";
+import { downtimeHoursInRange, downtimeWindowWhere, elapsedStopHours, splitDowntimeDays } from "@/lib/domain/downtimePeriods";
+import { gapDays, productionActions, type GapDay, type OpenStopView } from "@/lib/domain/productionActions";
+import { getQualityPeriod, type QualityPeriod } from "./quality";
 import { FACTOR_MAX, FACTOR_MIN, MIN_CALIBRATION_DAYS } from "@/lib/domain/calibration";
 import {
-  centreCells, centreStat, cockpitActions, combinedStat, dailyOutput, earnedOfRecord, inMonthPlan, isFloorAction, lateLines, loadAhead, manpowerPlan, parseKpiSnapshot, planAdherence, stageDueISO, weldingCoverage, workingDaysFrom, zeroCentres,
+  HISTORY_DAYS, RECENT_DAYS, centreCells, centreStat, cockpitActions, combinedStat, dailyOutput, earnedOfRecord, inMonthPlan, isFloorAction, lateLines, loadAhead, manpowerPlan, monthCalendar, parseKpiSnapshot, planAdherence, stageDueISO, weldingCoverage, workingDaysFrom, zeroCentres,
   type CentreDay, type CentreHours, type CentreStat, type CockpitAction, type Coverage, type CoverageInput, type KpiSnapshotData, type KpiSnapshotPoint,
-  type LateLine, type LoadAhead, type ManpowerRow, type OutputDay, type PlanCell, type Stage, type StageAdherence,
+  type LateLine, type LoadAhead, type ManpowerRow, type OutputDay, type OutputGroup, type PlanCell, type Stage, type StageAdherence, OUTPUT_GROUP_LABEL,
 } from "@/lib/domain/kpis";
 import {
   FLOOR_TREND_WINDOW, centresOf, efficiencyGrid, floorDays, floorPieces, floorRange, floorStat, groupProductivity, groupsOf, ledgerGroups, productivityTrend, recordedDates as datesWithHours,
@@ -40,10 +41,6 @@ import { withLine } from "./line";
 // loader, so they never disagree. It only reads: today's point of the trend
 // is written apart (recordKpiSnapshot).
 
-/** Days of history the trend and the rates read. */
-const HISTORY_DAYS = 21;
-/** Recorded days the "lately" figures cover — the Shifts page's productivity window. */
-const RECENT_DAYS = 7;
 /** Days of the stored trend shown. */
 const TREND_DAYS = 28;
 /** Working days the load ahead looks over. */
@@ -108,6 +105,16 @@ export interface CockpitData {
   };
   /** Share of the recent output that carries standard hours (a class and an item with hours). */
   pricedShare: number | null;
+  /** The work between the stages, netted project by project over the open
+   *  orders: cut and not welded (welding's coverage), welded and not finished,
+   *  the pieces sent back and not re-delivered, and what the orders on hold
+   *  keep out of the queues. */
+  wip: {
+    cutNotWelded: { item: string; pcs: number }[];
+    weldedNotFinished: { item: string; pcs: number }[];
+    returnsOpen: { count: number; qty: number };
+    held: { orders: number; pieces: number };
+  };
   actions: CockpitAction[];
   /** Today's figures as the trend keeps them. */
   snapshot: KpiSnapshotData;
@@ -131,9 +138,10 @@ async function readCentreDays(fromISO: string, toISO?: string, now = new Date())
     getStdData(),
     getShiftHours(),
     loadMasterOrdersOf("TR"),
-    prisma.shiftEntry.findMany({ where: { date: until }, select: { date: true, dept: true, present: true, shift: true, overtimeH: true, center: true, worker: { select: { depts: true } } } }),
+    // the transformers' four departments only: the panels' rows are read by lib/server/lvKpis.ts
+    prisma.shiftEntry.findMany({ where: { date: until, dept: { in: [...SHIFT_DEPTS] } }, select: { date: true, dept: true, present: true, shift: true, overtimeH: true, center: true, worker: { select: { depts: true } } } }),
     prisma.handoverEntry.findMany({ where: { date: until, item: { not: LV_ITEM } }, select: { date: true, dept: true, mo: true, bom: true, item: true, qty: true } }),
-    prisma.machineDowntime.findMany({ where: downtimeWindowWhere(fromISO, stopToday), select: { date: true, hours: true, startTime: true, endTime: true, endsNextDay: true, isOpen: true, endDate: true, reasonCode: true, reason: true, customDept: true, customCentre: true, machine: { select: { dept: true, center: true } } } }),
+    prisma.machineDowntime.findMany({ where: downtimeWindowWhere(fromISO, stopToday), select: { date: true, hours: true, startTime: true, endTime: true, endsNextDay: true, isOpen: true, endDate: true, reasonCode: true, reason: true, customName: true, customDept: true, customCentre: true, machine: { select: { code: true, name: true, dept: true, center: true } } } }),
     prisma.machine.findMany({ where: { active: true }, select: { dept: true, center: true, hoursPerDay: true } }),
     // the one shot-blast crew blasts the LV panels as well — its booked hours
     // cover both, so the panels' shot-blast hours count on its side (as the calibration does)
@@ -324,12 +332,16 @@ export async function getCentrePace(now = new Date()): Promise<{ fromISO: string
 export async function getCockpit(now = new Date()): Promise<CockpitData> {
   const todayISO = factoryDayISO(now);
   const fromISO = addDaysISO(todayISO, -HISTORY_DAYS);
-  const [read, settings, holidays, plan] = await Promise.all([
+  const [read, settings, holidays, plan, returnsOpen] = await Promise.all([
     readCentreDays(fromISO), getSettings(), loadHolidays(),
     // the transformers' plan, whichever line is on screen
     withLine("TR", () => getWeeklyPlanTracker()),
+    prisma.returnEntry.aggregate({ where: { status: "open" }, _count: { _all: true }, _sum: { qty: true } }),
   ]);
   const { orders, stops, days, all, recordedDates, tierByBom, tierOf, perPiece, absent, rowsRecent, overtimeH, pricedQty, recentQty, lvShotBlast } = read;
+  const holidaySet = new Set(holidays.map((h) => toISODate(h.date)));
+  // the month's calendar — one rule with the panels' month (lib/server/lvKpis.ts)
+  const { monthLabel, monthStartISO, ...cal } = monthCalendar(todayISO, holidaySet, settings.shiftShortH);
 
   const workedDates = [...new Set(all.filter((d) => d.workedH > 0).map((d) => d.dateISO))].sort();
   const lastDayISO = workedDates.at(-1) ?? null;
@@ -363,7 +375,6 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
   const late = lateLines(cells, todayISO, leads).map((l) => ({ ...l, soi: cells.find((c) => c.dayISO === l.dayISO && c.bom === l.bom && c.item === l.item)?.soi ?? null }));
 
   // ---- the load ahead, centre by centre ----
-  const holidaySet = new Set(holidays.map((h) => toISODate(h.date)));
   const horizon = workingDaysFrom(todayISO, HORIZON, holidaySet);
   const dueByCentre = new Map<WorkCentre, { dayISO: string; dueH: number }[]>();
   const owe = (c: WorkCentre, dayISO: string, h: number) => {
@@ -402,21 +413,26 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
   const sums = openBoms.length
     ? await prisma.handoverEntry.groupBy({
       by: ["bom", "item", "dept"],
-      where: { dept: { in: ["Cut", "Welding"] }, item: { not: LV_ITEM }, bom: { in: openBoms } },
+      where: { dept: { in: ["Cut", "Welding", "Painting", "ShotBlast"] }, item: { not: LV_ITEM }, bom: { in: openBoms } },
       _sum: { qty: true },
     })
     : [];
-  const byBomItem = new Map<string, { bom: string; item: string; cut: number; weld: number }>();
+  const byBomItem = new Map<string, { bom: string; item: string; cut: number; weld: number; finish: number }>();
   for (const s of sums) {
     const k = `${s.bom}|${s.item}`;
-    const v = byBomItem.get(k) ?? { bom: s.bom, item: s.item, cut: 0, weld: 0 };
-    if (s.dept === "Cut") v.cut += s._sum.qty ?? 0;
-    else v.weld += s._sum.qty ?? 0;
+    const v = byBomItem.get(k) ?? { bom: s.bom, item: s.item, cut: 0, weld: 0, finish: 0 };
+    const qty = s._sum.qty ?? 0;
+    if (s.dept === "Cut") v.cut += qty;
+    else if (s.dept === "Welding") v.weld += qty;
+    else if (s.dept === finishDeptOf(s.item)) v.finish += qty;
     byBomItem.set(k, v);
   }
   const wip = new Map<string, CoverageInput>();
+  const weldedNotFinished = new Map<string, number>();
   for (const v of byBomItem.values()) {
     const pcs = Math.max(0, v.cut - v.weld);
+    const unfinished = Math.max(0, v.weld - v.finish);
+    if (unfinished > 0) weldedNotFinished.set(v.item, (weldedNotFinished.get(v.item) ?? 0) + unfinished);
     if (!(pcs > 0)) continue;
     const per = perPiece(tierByBom.get(v.bom) ?? null, v.item);
     const w = wip.get(v.item) ?? { item: v.item, pcs: 0, weldH: 0 };
@@ -424,6 +440,7 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
     w.weldH += pcs * (per?.Welding ?? 0);
     wip.set(v.item, w);
   }
+  const heldOrders = orders.filter((o) => o.status === "open" && o.holdAt);
   const weldRecent = centres.find((c) => c.centre === "Welding")!.trend.filter((t) => recentWorked.has(t.dateISO)).map((t) => t.earnedH);
   const coverage = weldingCoverage([...wip.values()], weldRecent);
 
@@ -444,10 +461,6 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
   // the orders of this month's plan: each one's components × its pieces, the
   // outsourced ones left out, priced at the order's class; what the ledger
   // earned on them since the month began is done
-  const monthStartISO = `${todayISO.slice(0, 7)}-01`;
-  const [y, m] = todayISO.split("-").map(Number);
-  const monthEndISO = toISODate(new Date(Date.UTC(y, m, 0)));
-  const monthLabel = monthLabelFromInput(todayISO.slice(0, 7)) ?? todayISO.slice(0, 7);
   const monthOrders = orders.filter((o) => inMonthPlan({ months: o.months, source: o.source, status: o.status, closedDayISO: o.closedAt ? factoryDayISO(o.closedAt) : null }, monthLabel, monthStartISO));
   const requiredH = zeroCentres();
   let monthPieces = 0;
@@ -490,7 +503,6 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
       if (before) doneBeforeH[c] += got[c];
     }
   }
-  const cal = { hoursPerPersonDay: settings.shiftShortH, monthWd: workingDaysInclusive(monthStartISO, monthEndISO, holidaySet), leftWd: workingDaysInclusive(todayISO, monthEndISO, holidaySet) };
   const manpower = {
     monthLabel, ...cal, pieces: monthPieces,
     rows: manpowerPlan(
@@ -542,6 +554,12 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
     manpower,
     losses,
     pricedShare: recentQty > 0 ? pricedQty / recentQty : null,
+    wip: {
+      cutNotWelded: coverage.byItem.map((b) => ({ item: b.item, pcs: b.pcs })),
+      weldedNotFinished: [...weldedNotFinished.entries()].map(([item, pcs]) => ({ item, pcs })).sort((a, b) => b.pcs - a.pcs),
+      returnsOpen: { count: returnsOpen._count._all, qty: returnsOpen._sum.qty ?? 0 },
+      held: { orders: heldOrders.length, pieces: heldOrders.reduce((s, o) => s + o.planQty, 0) },
+    },
     actions,
     snapshot,
     trend,
@@ -594,8 +612,16 @@ export interface FloorPeriod {
   window: number;
   output: OutputDay[];
   losses: { causes: DowntimeCause[]; unplannedH: number; plannedH: number };
+  /** The stops still open now, and the machines that stood still the most in the period. */
+  stops: { open: OpenStopView[]; byMachine: MachineStopRank[] };
+  /** Days whose two records disagree — output with no hours, hours with no output. */
+  gapDays: GapDay[];
   /** Share of the period's records that carry standard hours. */
   pricedShare: number | null;
+  /** Quality and rework over the period — the transformers' returns and tanks. */
+  quality: QualityPeriod;
+  /** What needs intervention in production, worst first. */
+  actions: CockpitAction[];
 }
 
 /** The floor's performance over a period the planner picks, one department or
@@ -606,13 +632,45 @@ export async function getFloorPeriod(q: { fromISO: string; toISO: string; dept: 
   const { fromISO, toISO, clamped } = floorRange(q.fromISO, q.toISO, factoryDayISO(now));
   const centres = centresOf(q.dept);
   const keep = new Set<WorkCentre>(centres);
-  const read = await readCentreDays(fromISO, toISO, now);
+  const [read, quality] = await Promise.all([readCentreDays(fromISO, toISO, now), getQualityPeriod(fromISO, toISO)]);
   const days = floorDays(read.all, read.attendance, centres, fromISO, toISO);
-  const { pieces, pricedShare } = floorPieces(read.pieces, groupsOf(q.dept), fromISO, toISO);
+  const groupList = groupsOf(q.dept);
+  const { pieces, pricedShare } = floorPieces(read.pieces, groupList, fromISO, toISO);
+  // each department's own share of priced pieces, in one pass — a slow reading on unpriced output is not judged
+  const pricedByGroup = new Map<OutputGroup, { qty: number; priced: number }>();
+  for (const p of pieces) {
+    const v = pricedByGroup.get(p.group) ?? { qty: 0, priced: 0 };
+    v.qty += p.pieces;
+    pricedByGroup.set(p.group, v);
+  }
+  for (const r of read.pieces) {
+    if (r.dateISO < fromISO || r.dateISO > toISO || !r.priced) continue;
+    for (const g of r.groups) if (pricedByGroup.has(g)) pricedByGroup.get(g)!.priced += r.pieces;
+  }
+  const pricedOf = (g: OutputGroup) => { const v = pricedByGroup.get(g); return v && v.qty > 0 ? Math.min(1, v.priced / v.qty) : null; };
   const dates = datesWithHours(days);
   const stops = read.stops.filter((s) => {
     const c = stopCentre(s);
     return c !== null && keep.has(c);
+  });
+  const machineName = (s: (typeof stops)[number]) => s.machine?.code ?? s.customName ?? "Unlisted equipment";
+  const machineDept = (s: (typeof stops)[number]) => s.machine?.dept ?? s.customDept ?? "";
+  const open: OpenStopView[] = stops
+    .filter((s) => s.isOpen)
+    .map((s) => ({ machine: machineName(s), dept: machineDept(s), cause: downtimeLabel(s.reasonCode, s.reason), hours: minuteHours(elapsedStopHours(s, now)), sinceISO: toISODate(s.date) }))
+    .sort((a, b) => b.hours - a.hours);
+  const byMachine = stopsByMachine(stops.map((s) => ({ machine: machineName(s), dept: machineDept(s), hours: downtimeHoursInRange(s, fromISO, toISO, now), reasonCode: s.reasonCode })));
+  // a day whose records disagree: output is what the Daily log recorded (pieces, priced or not), hours what the shift log booked
+  const gaps: GapDay[] = gapDays(pieces.map((p) => ({ dateISO: p.dateISO, qty: p.pieces })), days, factoryDayISO(now));
+  const groups = groupProductivity(days, pieces, groupList);
+  const actions = productionActions({
+    openStops: open,
+    depts: groups.map((g) => ({ label: OUTPUT_GROUP_LABEL[g.group], days: g.days, efficiency: g.efficiency, pricedShare: pricedOf(g.group) })),
+    gapDays: gaps,
+    returns: { open: quality.returns.open.count, onUrgent: quality.returns.openOnUrgent },
+    tanksInRepair: quality.tanks?.inRepair ?? 0,
+    pricedShare,
+    hrefs: { stops: "/shifts?view=downtime", shifts: "/shifts", returns: "/worklist/cut", repair: "/worklist/welding", standardTimes: "/admin/standard-times", dailyLog: "/handover" },
   });
   return {
     fromISO,
@@ -623,11 +681,15 @@ export async function getFloorPeriod(q: { fromISO: string; toISO: string; dept: 
     dates,
     grid: efficiencyGrid(days, centres, dates),
     summary: floorStat(days),
-    groups: groupProductivity(days, pieces, groupsOf(q.dept)),
+    groups,
     trend: productivityTrend(days, FLOOR_TREND_WINDOW),
     window: FLOOR_TREND_WINDOW,
     output: dailyOutput(centres.map((centre) => ({ centre, trend: days.filter((d) => d.centre === centre && d.workedH > 0) }))),
     losses: downtimeByCause(stops.map((s) => ({ ...s, hours: downtimeHoursInRange(s, fromISO, toISO, now) }))),
+    stops: { open, byMachine },
+    gapDays: gaps,
     pricedShare,
+    quality,
+    actions,
   };
 }

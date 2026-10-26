@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { holdView, type HoldView } from "@/lib/domain/hold";
 import { prisma } from "@/lib/db";
 import { loadMasterOrdersOf } from "./loads";
@@ -34,7 +35,8 @@ export interface LvTrackerRow {
   months: string[];
 }
 
-export async function getLvTracker(): Promise<LvTrackerRow[]> {
+/** Request-cached: the panels' dashboards and their stage table read it in one request. */
+export const getLvTracker = cache(async (): Promise<LvTrackerRow[]> => {
   const [orders, sums] = await Promise.all([
     loadMasterOrdersOf("LV"), // the panels, whatever line is on screen — the Floor draws both lines
     prisma.handoverEntry.groupBy({
@@ -68,4 +70,4 @@ export async function getLvTracker(): Promise<LvTrackerRow[]> {
       months: (o.months || o.source || "").split(",").map((s) => s.trim()).filter(Boolean),
     };
   });
-}
+});

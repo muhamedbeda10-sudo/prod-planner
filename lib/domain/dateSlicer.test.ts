@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDaysISO, daysBetweenISO, presetRange, slicerPresets, slicerRangeLabel, slicerTicks } from "./dateSlicer";
+import { addDaysISO, daysBetweenISO, presetRange, slicerPresets, slicerRangeLabel, slicerTicks, weekStartISO } from "./dateSlicer";
 
 describe("date slicer arithmetic", () => {
   const today = "2026-09-28"; // a Monday
@@ -30,5 +30,13 @@ describe("date slicer arithmetic", () => {
   it("reads a range out loud", () => {
     expect(slicerRangeLabel("2026-09-22", "2026-09-28")).toBe("Tue 22 Sep → Mon 28 Sep · 7 days");
     expect(slicerRangeLabel("2026-09-28", "2026-09-28")).toBe("Mon 28 Sep");
+  });
+});
+
+describe("the plant's week", () => {
+  it("starts on Saturday", () => {
+    expect(weekStartISO("2026-10-26")).toBe("2026-10-24"); // a Monday
+    expect(weekStartISO("2026-10-24")).toBe("2026-10-24"); // Saturday itself
+    expect(weekStartISO("2026-10-23")).toBe("2026-10-17"); // a Friday
   });
 });

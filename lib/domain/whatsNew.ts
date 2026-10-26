@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-dashboards-all-tr-lv",
+    dateISO: "2026-10-26",
+    title: "Planning and Production for both lines: All | TR | LV, the panels' own dashboards, and the plant in one view",
+    where: "Dashboards → Planning · Production",
+    href: "/?line=all",
+    body: "The two dashboards now show either line or the whole plant — an All | TR | LV switch in their head, kept in the address and carried on the links between them; a dashboard opened with no line named shows the one your screens open on, and All is the dashboards' alone: the recording screens still work one line at a time. The LV panels get their own Planning dashboard: the month's plan through the four stages against an even pace through the month's working days, the panels waiting between the stages (netted order by order), the urgent orders still short, the people each department needs against who comes, and Decisions — judged in the panels' terms (a month with no delivery dates, never the transformers' oven dates). The LV Production dashboard reads the panels' efficiency, productivity, attendance and output from the shift log's four LV departments and the timings sheet's LV tab, with a heatmap per department. The transformers' Production dashboard adds which machines stand still (the stops open now, the most stopped), quality and rework (the leak test passed first time, the days welding → test → painting, the pieces sent back by reason) and an Interventions button, and the Planning cockpit a card for where the work waits between the stages. Under All, the plant's efficiency is the two lines' sums (Σ earned ÷ Σ worked), standard hours and people add, stops are counted once, and pieces are never added — the lines sit side by side, each decision tagged with its line. Where a figure has no basis (no standard time, no shift day, no delivery date) the page says so instead of showing zero. The assistant reads the same figures with the same All | TR | LV, knows the line shown on the page, and offers the questions for it.",
+  },
+  {
     id: "2026-10-26-assistant-time-budget",
     dateISO: "2026-10-26",
     title: "Deep questions get the time they need, and always end in an answer",
@@ -29,7 +37,7 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     title: "No more TR / LV switch in the top bar — each page shows its own Transformers | LV Panels switch",
     where: "Planning · Plan Tracker · Daily log · Material · Orders Registry · Welding · Painting · Floor",
     href: "/tracker",
-    body: "The TR / LV switch is gone from the top bar. Every page whose rows depend on the line — Planning, the Material dashboard, the Plan Tracker, the Daily log, Material, the Orders Registry and the welding and painting worklists — has a Transformers | LV Panels switch beside its title, so you always see which line you are looking at. The line is part of the page's address: a bookmark or a link you send opens the same line, and the strip at the top of a tab keeps it as you move between its places. A page opens on your own line: LV Panels if you record only on the panels, Transformers for everyone else. The Floor tab lists both lines' departments together. The Plan Tracker tab now moves between the tracker, the Daily log, the Simulator and the ODOO log with a strip at the top, like Dashboards and Material. The Simulator, the weekly plan import, the Production dashboard and Fabrication always show the transformers; Punching and Bending always show the panels. A trace link opens on its order's own line.",
+    body: "The TR / LV switch is gone from the top bar. Every page whose rows depend on the line — Planning, the Material dashboard, the Plan Tracker, the Daily log, Material, the Orders Registry and the welding and painting worklists — has a Transformers | LV Panels switch beside its title, so you always see which line you are looking at. The line is part of the page's address: a bookmark or a link you send opens the same line, and the strip at the top of a tab keeps it as you move between its places. A page opens on your own line: LV Panels if you record only on the panels, Transformers for everyone else. The Floor tab lists both lines' departments together. The Plan Tracker tab now moves between the tracker, the Daily log, the Simulator and the ODOO log with a strip at the top, like Dashboards and Material. The Simulator, the weekly plan import and Fabrication always show the transformers; Punching and Bending always show the panels. A trace link opens on its order's own line.",
   },
   {
     id: "2026-10-26-titles-and-settings",

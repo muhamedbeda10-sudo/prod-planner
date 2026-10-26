@@ -103,7 +103,7 @@ export function floorDefault(todayISO: string): { label: string; from: string; t
 
 /** One centre on one day, as the shift log, the Daily log and the stops tell
  *  it — the cockpit's centre-day with who came and the overtime. */
-export interface FloorDay extends CentreDay {
+export interface FloorDay<C extends string = WorkCentre> extends CentreDay<C> {
   overtimeH: number;
   /** Rows the shift log recorded (present or not), and how many were absent. */
   rows: number;
@@ -111,9 +111,9 @@ export interface FloorDay extends CentreDay {
 }
 
 /** The shift log's rows on one centre-day. */
-export interface FloorAttendance {
+export interface FloorAttendance<C extends string = WorkCentre> {
   dateISO: string;
-  centre: WorkCentre;
+  centre: C;
   rows: number;
   absent: number;
   overtimeH: number;
@@ -121,11 +121,11 @@ export interface FloorAttendance {
 
 /** The period's centre-days of the centres kept: each recorded centre-day
  *  with its attendance, and a day the whole crew was away (rows, no hours). */
-export function floorDays(days: readonly CentreDay[], attendance: readonly FloorAttendance[], centres: readonly WorkCentre[], fromISO: string, toISO: string): FloorDay[] {
-  const keep = new Set(centres);
+export function floorDays<C extends string = WorkCentre>(days: readonly CentreDay<C>[], attendance: readonly FloorAttendance<C>[], centres: readonly C[], fromISO: string, toISO: string): FloorDay<C>[] {
+  const keep = new Set<C>(centres);
   const inRange = (iso: string) => iso >= fromISO && iso <= toISO;
   const att = new Map(attendance.map((a) => [`${a.dateISO}|${a.centre}`, a]));
-  const out: FloorDay[] = [];
+  const out: FloorDay<C>[] = [];
   const seen = new Set<string>();
   for (const d of days) {
     if (!keep.has(d.centre) || !inRange(d.dateISO)) continue;
@@ -191,7 +191,7 @@ export interface FloorStat extends Omit<CentreStat, "centre"> {
 
 /** Several centre-days as one figure — the cockpit's roll-up (hoursStat),
  *  with what a person turned out, the overtime and the attendance. */
-export function floorStat(days: readonly FloorDay[]): FloorStat {
+export function floorStat(days: readonly FloorDay<string>[]): FloorStat {
   const s = hoursStat(days);
   const overtimeH = days.reduce((t, d) => t + d.overtimeH, 0);
   const rows = days.reduce((t, d) => t + d.rows, 0);
@@ -207,7 +207,7 @@ export function floorStat(days: readonly FloorDay[]): FloorStat {
 }
 
 /** The dates of the period that hold booked hours, oldest first. */
-export function recordedDates(days: readonly CentreDay[]): string[] {
+export function recordedDates(days: readonly CentreDay<string>[]): string[] {
   return [...new Set(days.filter((d) => d.workedH > 0).map((d) => d.dateISO))].sort();
 }
 
@@ -219,8 +219,8 @@ export interface HeatCell {
   efficiency: number | null;
 }
 
-export interface HeatRow {
-  centre: WorkCentre;
+export interface HeatRow<C extends string = WorkCentre> {
+  centre: C;
   cells: HeatCell[];
   /** The whole period together. */
   total: number | null;
@@ -230,7 +230,7 @@ export interface HeatRow {
 /** Each centre's efficiency on each recorded day — the rows of the heatmap,
  *  one cell per date of `dates`, and the period's figure at the end. A centre
  *  that booked nothing in the period is left out. */
-export function efficiencyGrid(days: readonly CentreDay[], centres: readonly WorkCentre[], dates: readonly string[]): HeatRow[] {
+export function efficiencyGrid<C extends string = WorkCentre>(days: readonly CentreDay<C>[], centres: readonly C[], dates: readonly string[]): HeatRow<C>[] {
   return centres
     .map((centre) => {
       const s = hoursStat(days.filter((d) => d.centre === centre));
@@ -274,7 +274,7 @@ export interface ProductivityPoint {
 }
 
 /** The floor's efficiency day by day, with its rolling figure over `window` recorded days. */
-export function productivityTrend(days: readonly CentreDay[], window = FLOOR_TREND_WINDOW): ProductivityPoint[] {
+export function productivityTrend(days: readonly CentreDay<string>[], window = FLOOR_TREND_WINDOW): ProductivityPoint[] {
   const byDay = new Map<string, { workedH: number; earnedH: number; people: number }>();
   for (const d of days) {
     if (!(d.workedH > 0)) continue;

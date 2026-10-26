@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { dateFromDayNumber, dayNumber, factoryToday, toISODate } from "@/lib/domain/dates";
-import { LV_CHAIN, LV_ITEM, type LvChainStage } from "@/lib/domain/lv";
+import { LV_CHAIN, LV_ITEM, LV_STAGE_HISTORY_DAYS, type LvChainStage } from "@/lib/domain/lv";
 import { getLvTracker } from "./lvTracker";
 
 // The LV panels' dashboard — the panels' side of the plan's dashboard (a view of the Plan Tracker tab).
@@ -43,13 +43,14 @@ export interface LvDashboardData {
 const DAYS = 14;
 /** The longest period drawn day by day — a quarter is a chart, not a table. */
 const MAX_DAYS = 62;
+
 const zero = (): Record<LvChainStage, number> => ({ Punching: 0, Bending: 0, Welding: 0, Painting: 0, Delivered: 0 });
 
 /** The panels' dashboard for the last two weeks, or for one day or a period
  *  when `opts` names it — the same day-or-period the transformer dashboard
  *  answers, which is what makes it the panels' report too. */
-export async function getLvDashboard(opts?: { from?: Date | null; to?: Date | null }): Promise<LvDashboardData> {
-  const todayNum = dayNumber(factoryToday());
+export async function getLvDashboard(opts?: { from?: Date | null; to?: Date | null }, now = new Date()): Promise<LvDashboardData> {
+  const todayNum = dayNumber(factoryToday(now));
   let from = todayNum - (DAYS - 1);
   let today = todayNum;
   let ranged = false;
@@ -59,9 +60,13 @@ export async function getLvDashboard(opts?: { from?: Date | null; to?: Date | nu
     from = dayNumber(opts.from);
     today = dayNumber(opts.to);
     if (today < from) [from, today] = [today, from];
+    // never past today, never further back than the slicer reaches: a link cannot ask for the whole ledger
+    if (today > todayNum) { today = todayNum; clamped = true; }
+    if (from < todayNum - LV_STAGE_HISTORY_DAYS) { from = todayNum - LV_STAGE_HISTORY_DAYS; clamped = true; }
+    if (from > today) from = today;
     if (today - from >= MAX_DAYS) { today = from + MAX_DAYS - 1; clamped = true; }
   }
-  const monthStart = factoryToday();
+  const monthStart = factoryToday(now);
   monthStart.setUTCDate(1);
   const since = new Date(Math.min(dateFromDayNumber(from).getTime(), monthStart.getTime()));
 

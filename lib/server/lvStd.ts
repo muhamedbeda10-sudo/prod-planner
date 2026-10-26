@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { toISODate } from "@/lib/domain/dates";
 import { LV_ITEM } from "@/lib/domain/lv";
@@ -6,10 +7,11 @@ import { indexLvRates, lvRateFor, LV_DEPT_STAGE, type LvRate } from "@/lib/domai
 import { countsFor } from "@/lib/domain/productivity";
 import type { RosterDept } from "@/lib/domain/shifts";
 
-export async function getLvRates(): Promise<LvRate[]> {
+/** Request-cached: several loaders of one request price the panels. */
+export const getLvRates = cache(async (): Promise<LvRate[]> => {
   const rows = await prisma.lvStdTime.findMany({ orderBy: [{ kind: "desc" }, { fg: "asc" }] });
   return rows.map(({ fg, description, kind, cutH, bendH, weldH, shbH, paintH, totalH }) => ({ fg, description, kind, cutH, bendH, weldH, shbH, paintH, totalH }));
-}
+});
 
 /** Every panel order with the sheet row it is priced by (null when none). */
 export async function getLvOrderRates(rates?: LvRate[]): Promise<{ mo: string; fgCode: string | null; secItem: string | null; product: string | null; planQty: number; status: string; rate: LvRate | null; via: "fg" | "sec" | null }[]> {

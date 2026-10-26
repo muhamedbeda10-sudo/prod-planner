@@ -39,6 +39,8 @@ export const fmt = (n: number, digits = 3) => (Number.isInteger(n) ? n.toLocaleS
 export const pct = (f: number, digits = 0) => `${(f * 100).toFixed(digits)}%`;
 /** A rate, or a dash where there is none. */
 export const pctOrDash = (v: number | null | undefined) => (v === null || v === undefined ? "—" : pct(v));
+/** A difference with its sign: "+2.5" or "−1" (a plain minus is the number's own). */
+export const signed = (v: number, digits = 1) => (v > 0 ? `+${fmt(v, digits)}` : fmt(v, digits));
 /** 1,284 · 12.9K · 4.2M — for big standalone numbers. */
 const COMPACT = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 export const compact = (n: number) => (Math.abs(n) < 10_000 ? fmt(Math.round(n * 10) / 10, 1) : COMPACT.format(n));
@@ -154,6 +156,7 @@ export function StatTile({
   spark,
   meter,
   hero,
+  compact,
 }: {
   label: string;
   value: string;
@@ -163,12 +166,14 @@ export function StatTile({
   meter?: number;
   /** The one number the dashboard leads with. */
   hero?: boolean;
+  /** A small figure inside a card, not a tile of the page's own row. */
+  compact?: boolean;
 }) {
   return (
-    <div className={`bg-surface border rounded-xl px-4 py-3 min-w-[10.5rem] flex-1 flex flex-col gap-1 ${hero ? "sm:min-w-[15rem]" : ""}`}>
+    <div className={`bg-surface border ${compact ? "rounded-lg px-3 py-2 min-w-[8rem]" : "rounded-xl px-4 py-3 min-w-[10.5rem]"} flex-1 flex flex-col gap-1 ${hero ? "sm:min-w-[15rem]" : ""}`}>
       <div className="text-xs font-bold text-muted">{label}</div>
       <div className="flex min-w-0 items-end justify-between gap-3">
-        <div className={`${hero ? "text-[44px]" : "text-[28px]"} min-w-0 [overflow-wrap:anywhere] font-semibold leading-none ltr`}>{value}</div>
+        <div className={`${hero ? "text-[44px]" : compact ? "text-xl leading-tight" : "text-[28px] leading-none"} min-w-0 [overflow-wrap:anywhere] font-semibold ltr`}>{value}</div>
         {spark && <Sparkline values={spark} />}
       </div>
       {meter !== undefined && <Meter value={meter} />}

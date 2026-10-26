@@ -18,6 +18,12 @@ export function daysBetweenISO(a: string, b: string): number {
 
 export const clampISO = (iso: string, min: string, max: string) => (iso < min ? min : iso > max ? max : iso);
 
+/** The Saturday a day's work week started on — the plant's week. */
+export function weekStartISO(iso: string): string {
+  const dow = new Date(ms(iso)).getUTCDay(); // 6 = Saturday
+  return addDaysISO(iso, -((dow + 1) % 7));
+}
+
 /** The quick filters a page may offer. The plant's work week starts on Saturday. */
 export type PresetKey =
   | "today" | "yesterday" | "last3" | "last7" | "thisWeek" | "last14" | "thisMonth" | "lastMonth" | "last30" | "last90"
@@ -50,10 +56,7 @@ export function presetRange(key: PresetKey, todayISO: string, min: string = addD
     case "last3": return { from: addDaysISO(todayISO, -2), to: todayISO };
     case "last7": return { from: addDaysISO(todayISO, -6), to: todayISO };
     case "last14": return { from: addDaysISO(todayISO, -13), to: todayISO };
-    case "thisWeek": {
-      const dow = new Date(ms(todayISO)).getUTCDay(); // 6 = Saturday
-      return { from: addDaysISO(todayISO, -((dow + 1) % 7)), to: todayISO };
-    }
+    case "thisWeek": return { from: weekStartISO(todayISO), to: todayISO };
     case "thisMonth": return { from: monthStart, to: todayISO };
     case "lastMonth": { const end = addDaysISO(monthStart, -1); return { from: `${end.slice(0, 7)}-01`, to: end }; }
     case "last30": return { from: addDaysISO(todayISO, -29), to: todayISO };
