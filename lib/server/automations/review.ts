@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 import { effectiveUser, hasPerm, hiddenTabsOf } from "@/lib/server/auth";
 import { aiStatusFor, apiKeyOf, getAiSettings } from "@/lib/server/ai/access";
 import { ask, questionMessages } from "@/lib/server/ai/agent";
-import { withoutFollowups } from "@/lib/domain/aiAnswer";
 import { toolsFor } from "@/lib/server/ai/tools";
 import { getPlaybookText } from "@/lib/server/ai/playbook";
 import { deliverToInbox } from "@/lib/server/inbox";
@@ -109,7 +108,7 @@ export async function reviewFor(user: User, now: Date): Promise<void> {
     userId: user.id,
     kind: "suggestion",
     title: `Today's review — ${factoryDayISO(now)}`,
-    body: withoutFollowups(answer.text).trim() || "Nothing needs your attention this morning.",
+    body: answer.text.trim() || "Nothing needs your attention this morning.",
     fromName: "The assistant's morning review",
     actionIds,
   }]);

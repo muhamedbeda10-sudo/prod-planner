@@ -22,12 +22,17 @@ export function columnKind(head: string): ColumnKind {
   return "amount";
 }
 
+/** The units a figure in a cell may carry, as the model writes them. */
+export const FIGURE_UNITS = "pcs|pc|h|hrs|kg|mm|d|days?|يوم|أيام|قطعة|ساعة|كجم";
+
+const FIGURE = new RegExp(`^(\\s*[-−+]?)(\\d{4,})((?:\\.\\d+)?)(\\s*(?:%|${FIGURE_UNITS})?\\.?\\s*)$`, "u");
+
 /** A plain figure of four digits or more, as the model may write it
  *  ("12340", "12340.5", "-12340 pcs"), with its thousands separated — by
  *  the kind of column it sits in; null when it is left as it is. */
 export function groupedFigure(text: string, kind: ColumnKind = "unknown"): string | null {
   if (kind === "id") return null;
-  const m = /^(\s*[-−+]?)(\d{4,})((?:\.\d+)?)(\s*(?:%|pcs|pc|h|hrs|kg|mm|days?|يوم|أيام|قطعة|ساعة|كجم)?\.?\s*)$/u.exec(text);
+  const m = FIGURE.exec(text);
   if (!m) return null;
   const [, sign, digits, decimals, unit] = m;
   const bare = !decimals && !unit.trim();
@@ -38,14 +43,15 @@ export function groupedFigure(text: string, kind: ColumnKind = "unknown"): strin
 
 export type CalloutTone = "warn" | "ok" | "bad";
 
-/** The tone a callout opens with, and the line without the mark. */
-export function calloutOf(text: string): { tone: CalloutTone; text: string } | null {
+/** The marks a callout opens with, and their tone. */
+const MARKS: readonly [string, CalloutTone][] = [["⚠️", "warn"], ["⚠", "warn"], ["✅", "ok"], ["❌", "bad"], ["🚫", "bad"]];
+const MARK = new RegExp(`^\\s*(?:${MARKS.map(([m]) => m).join("|")})\\s*`, "u");
+
+/** The tone a callout opens with — null for a plain quote. */
+export function calloutOf(text: string): CalloutTone | null {
   const t = text.trimStart();
-  if (t.startsWith("⚠️") || t.startsWith("⚠")) return { tone: "warn", text: t.replace(/^⚠️?\s*/, "") };
-  if (t.startsWith("✅")) return { tone: "ok", text: t.replace(/^✅\s*/, "") };
-  if (t.startsWith("❌") || t.startsWith("🚫")) return { tone: "bad", text: t.replace(/^[❌🚫]\s*/u, "") };
-  return null;
+  return MARKS.find(([m]) => t.startsWith(m))?.[1] ?? null;
 }
 
 /** The leading callout mark off a text (the icon stands for it). */
-export const withoutCalloutMark = (text: string) => text.replace(/^\s*(?:⚠️|⚠|✅|❌|🚫)\s*/u, "");
+export const withoutCalloutMark = (text: string) => text.replace(MARK, "");

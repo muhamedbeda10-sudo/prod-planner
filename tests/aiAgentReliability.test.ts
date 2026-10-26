@@ -140,9 +140,11 @@ describe("AI reads and writes", () => {
     h.stream.mockReturnValueOnce(reply([use("a")], "tool_use")).mockReturnValueOnce(done());
     expect((await run()).added[3].content).toEqual([expect.objectContaining({ tool_use_id: "a", is_error: true, content: expect.stringContaining("Connection reset") })]);
   });
-  it("measures the first word of the answer", async () => {
-    h.stream.mockReturnValueOnce(reply([{ type: "text", text: "Answer" }], "end_turn", "Answer"));
+  it("measures the first word of the answer, and hands the text back without the follow-up block", async () => {
+    const written = "Answer\n\n```followups\n[\"Why?\"]\n```";
+    h.stream.mockReturnValueOnce(reply([{ type: "text", text: written }], "end_turn", written));
     const result = await run();
+    expect(result.text).toBe("Answer");
     expect(result.firstTokenMs).toEqual(expect.any(Number));
     expect(result.totalMs).toBeGreaterThanOrEqual(result.firstTokenMs!);
   });
@@ -197,6 +199,8 @@ describe("rows in a result", () => {
     expect(rowsOf("[1,2,3]")).toBe(3);
     expect(rowsOf("Nothing is late.")).toBeNull();
     expect(rowsOf("{not json")).toBeNull();
+    expect(rowsOf({ rowCount: 4 })).toBe(4);
+    expect(rowsOf([1])).toBe(1);
   });
 });
 

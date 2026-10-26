@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser, requirePerm } from "@/lib/server/auth";
 import { pushPublicKey, readSubscription } from "@/lib/server/push";
 import { unreadInboxCount } from "@/lib/server/inbox";
-import { MESSAGE_LIMITS, sendMessageFromPerson } from "@/lib/server/inboxMessage";
+import { sendMessageFromPerson } from "@/lib/server/inboxMessage";
 
 // A person's own inbox — what the assistant and the automations sent them —
 // and the devices they turned notifications on for. Each person reads, marks
@@ -100,7 +100,6 @@ export async function sendInboxMessage(fd: FormData): Promise<InboxActionResult 
   const to = String(fd.get("to") ?? "").split(",").map((x) => Number(x.trim())).filter((n) => Number.isInteger(n) && n > 0);
   const title = String(fd.get("title") ?? "").replace(/\s+/g, " ").trim();
   const body = String(fd.get("body") ?? "").trim();
-  if (to.length === 0 || to.length > MESSAGE_LIMITS.to) return { ok: false, error: `Name 1 to ${MESSAGE_LIMITS.to} people.` };
   if (!title || title.length > MESSAGE_TITLE) return { ok: false, error: `Give the message a title (at most ${MESSAGE_TITLE} characters).` };
   if (!body || body.length > MESSAGE_BODY) return { ok: false, error: `Write the message (at most ${MESSAGE_BODY} characters).` };
   return sendMessageFromPerson(guard.user!, { to, title, body });

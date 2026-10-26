@@ -5,7 +5,6 @@ import { prisma } from "@/lib/db";
 import { hiddenTabsOf } from "@/lib/server/auth";
 import { aiStatusFor, apiKeyOf, getAiSettings } from "@/lib/server/ai/access";
 import { ask, apiErrorText, questionMessages } from "@/lib/server/ai/agent";
-import { withoutFollowups } from "@/lib/domain/aiAnswer";
 import { toolsFor } from "@/lib/server/ai/tools";
 import { getPlaybookText } from "@/lib/server/ai/playbook";
 import { runAiQuery } from "@/lib/server/ai/reader";
@@ -74,8 +73,7 @@ async function askAndJudge(
     maxCalls: o.maxCalls,
   });
 
-  // the chat's follow-up questions are not part of the answer judged or kept
-  const written = withoutFollowups(answer.text);
+  const written = answer.text;
   let tokens = answer.tokens;
   let cost = costUsd(model, answer.tokens);
   let verdict: { pass: boolean; why: string };

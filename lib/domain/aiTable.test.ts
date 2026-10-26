@@ -33,12 +33,14 @@ describe("figures in an answer's table", () => {
     expect(groupedFigure("MO 4471", "amount")).toBeNull();
   });
   it("reads a callout's tone off its first mark only", () => {
-    expect(calloutOf("  ⚠️ Doubt this")).toEqual({ tone: "warn", text: "Doubt this" });
-    expect(calloutOf("⚠ Doubt this")).toEqual({ tone: "warn", text: "Doubt this" });
-    expect(calloutOf("✅ Fine")).toEqual({ tone: "ok", text: "Fine" });
-    expect(calloutOf("🚫 Stop")).toEqual({ tone: "bad", text: "Stop" });
-    expect(calloutOf("❌ Problem")).toEqual({ tone: "bad", text: "Problem" });
+    expect(calloutOf("  ⚠️ Doubt this")).toBe("warn");
+    expect(calloutOf("⚠ Doubt this")).toBe("warn");
+    expect(calloutOf("✅ Fine")).toBe("ok");
+    expect(calloutOf("🚫 Stop")).toBe("bad");
+    expect(calloutOf("❌ Problem")).toBe("bad");
     expect(calloutOf("Fine ✅")).toBeNull();
     expect(withoutCalloutMark("\n❌ Problem")).toBe("Problem");
+    expect(withoutCalloutMark("  ⚠️ Doubt this")).toBe("Doubt this");
+    expect(withoutCalloutMark("🚫 Stop")).toBe("Stop");
   });
 });

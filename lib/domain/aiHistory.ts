@@ -32,6 +32,7 @@ export const AI_HISTORY_FOLD = {
 /** The note a folded result leaves — the source kept where it had one. */
 export function foldedResult(content: string): string {
   const note = `(omitted: ${content.length.toLocaleString("en")} characters read earlier in this chat — read it again if this answer needs it)`;
+  if (!content.includes('"source"')) return note;
   try {
     const v = JSON.parse(content) as { source?: unknown };
     if (v && typeof v === "object" && v.source && typeof v.source === "object") return JSON.stringify({ data: note, source: v.source });

@@ -13,8 +13,8 @@
 //               inside what the owner allows.
 
 import { AI_EFFORTS, aiEffort, aiModel, AI_MODELS, type AiEffort } from "./ai";
-import { INBOX_BODY_MAX } from "./inbox";
-import { CHAT_MESSAGE_MAX } from "./chatTopic";
+import { BY_STRENGTH } from "./aiLearn";
+import { evidenceAnchor } from "./aiEvidence";
 
 export const AI_FOLLOWUPS_MAX = 3;
 const FOLLOWUP_MAX_CHARS = 160;
@@ -75,16 +75,14 @@ export function scopeLineOf(line: string): string | null {
 
 /** A chat's name in the list, at most. */
 export const AI_CONVERSATION_TITLE_MAX = 80;
-/** An answer sent to an inbox, at most (characters) — the inbox's own limit. */
-export const AI_SHARE_BODY_MAX = INBOX_BODY_MAX;
-/** The team chat's message limit. */
-export const AI_SHARE_CHAT_MAX = CHAT_MESSAGE_MAX;
+
+const SOURCE_LINK = new RegExp(`\\s*\\(?\\[[^\\]]*\\]\\(#${evidenceAnchor("")}[^)]*\\)\\)?`, "g");
 
 /** The source links an answer carries ("([Source](#ai-source-…))") — they
  *  open the chat's own source cards, which no other screen has — taken out:
  *  what a shared answer or the chat's plain text carries. */
 export function withoutSourceLinks(markdown: string): string {
-  return markdown.replace(/\s*\(?\[[^\]]*\]\(#ai-source-[^)]*\)\)?/g, "");
+  return markdown.replace(SOURCE_LINK, "");
 }
 
 /** An answer as plain text for the team chat: no chart or follow-up
@@ -118,9 +116,7 @@ export function isAiDepth(v: unknown): v is AiDepth {
 }
 
 const EFFORT_INDEX = (e: AiEffort) => AI_EFFORTS.indexOf(e);
-/** The models from the cheapest up — the ladder a chat never steps down. */
-const LADDER = [...AI_MODELS].sort((a, b) => a.inUsd - b.inUsd).map((m) => m.id);
-const rung = (id: string) => LADDER.indexOf(id);
+const rung = (id: string) => (BY_STRENGTH as readonly string[]).indexOf(id);
 
 /** The model, effort and calls for one question at a depth, inside the
  *  owner's settings. Standard is the owner's (the model routed for the
@@ -135,10 +131,10 @@ export function depthPlan(depth: AiDepth, o: { model: string; effort: string; ma
   let e: AiEffort = effort;
   let maxCalls = o.maxCalls;
   if (depth === "quick") {
-    if (o.auto) pick = LADDER[0];
+    if (o.auto) pick = BY_STRENGTH[0];
     e = AI_EFFORTS[Math.max(0, EFFORT_INDEX(effort) - 1)];
   } else if (depth === "deep") {
-    if (o.auto) pick = AI_MODELS[0].id;
+    if (o.auto) pick = BY_STRENGTH[BY_STRENGTH.length - 1];
     e = AI_EFFORTS[Math.min(AI_EFFORTS.length - 1, EFFORT_INDEX(effort) + 2)];
     maxCalls = Math.min(30, Math.ceil(o.maxCalls * 1.5));
   }

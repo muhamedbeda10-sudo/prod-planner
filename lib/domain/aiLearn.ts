@@ -160,7 +160,8 @@ export function modelChoiceLabel(id: string): string {
   return id === AI_AUTO_MODEL ? "Auto" : aiModel(id).label;
 }
 
-const BY_STRENGTH = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] as const;
+/** The models from the cheapest up — the ladder a chat never steps down. */
+export const BY_STRENGTH = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] as const;
 
 /** Analysis, plans, comparisons, reviews, forecasts — the strongest model. */
 const DEEP = /\b(why|analy[sz]e|analysis|compare|comparison|plan|schedule|simulat\w*|scenario|optimi[sz]\w*|recommend\w*|suggest\w*|forecast\w*|predict\w*|review|report|root cause|bottleneck|what if|strategy|improve\w*|trend\w*)\b|ليه|ليش|لماذا|حلل|تحليل|قارن|مقارن|خط[ةه]|جدول[ةه]|سيناريو|اقترح|اقتراح|توقع|مراجع[ةه]|تقرير|سبب|ازاي احسن|تحسين|اتجاه|عنق الزجاج/i;

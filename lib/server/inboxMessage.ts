@@ -18,9 +18,11 @@ export const MESSAGE_LIMITS = { to: 20, anHour: 60 } as const;
 export async function sendMessageFromPerson(me: { id: number; name: string }, o: { to: readonly number[]; title: string; body: string; fromName?: string }): Promise<{ ok: true; ids: number[] } | { ok: false; error: string }> {
   const to = [...new Set(o.to.filter((n) => Number.isInteger(n) && n > 0 && n !== me.id))];
   if (to.length === 0 || to.length > MESSAGE_LIMITS.to) return { ok: false, error: `Name 1 to ${MESSAGE_LIMITS.to} people.` };
-  const people = await prisma.user.findMany({ where: { id: { in: to }, active: true }, select: { id: true } });
+  const [people, lastHour] = await Promise.all([
+    prisma.user.findMany({ where: { id: { in: to }, active: true }, select: { id: true } }),
+    prisma.aiInboxItem.count({ where: { fromUserId: me.id, createdAt: { gte: new Date(Date.now() - 3_600_000) } } }),
+  ]);
   if (people.length !== to.length) return { ok: false, error: "One of them is not an active user." };
-  const lastHour = await prisma.aiInboxItem.count({ where: { fromUserId: me.id, createdAt: { gte: new Date(Date.now() - 3_600_000) } } });
   if (lastHour + people.length > MESSAGE_LIMITS.anHour) return { ok: false, error: `That is more than ${MESSAGE_LIMITS.anHour} messages in an hour — wait a while.` };
   const ids = await deliverToInbox(people.map((p) => ({ userId: p.id, kind: "message" as const, title: o.title, body: o.body, fromName: o.fromName ?? me.name, fromUserId: me.id })));
   return { ok: true, ids };

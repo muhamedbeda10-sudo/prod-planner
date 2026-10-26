@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   AlertCircle, ArrowDown, BarChart3, Bot, Brain, Boxes, Check, ChevronRight, Clock, Copy, CornerDownRight, Crosshair, Factory, FileSpreadsheet, FileText, Image as ImageIcon,
@@ -176,6 +176,8 @@ export function AiChat({
   const following = useRef(true);
   const sending = useRef(false);
   const aborter = useRef<AbortController | null>(null);
+  /** The running question's first event reached the screen (its chat is in the list). */
+  const started = useRef(false);
   const [showLatest, setShowLatest] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -318,6 +320,7 @@ export function AiChat({
 
   function handle(ev: { type: string; [k: string]: unknown }, question: string) {
     if (ev.type === "start") {
+      started.current = true;
       const id = Number(ev.conversationId);
       setActiveId(id);
       setUrl(id);
@@ -334,10 +337,7 @@ export function AiChat({
       patchLast((t) => {
         const steps = t.steps ?? [];
         const at = steps.findIndex((s) => s.id === step.id);
-        const next = at >= 0 ? steps.map((s, i) => (i === at ? { ...s, ...step } : s)) : [...steps, step];
-        // the saved form of the same line, so a reopened chat reads the same
-        const lookups = at >= 0 ? t.lookups : [...t.lookups, step.text];
-        return { ...t, steps: next, lookups };
+        return { ...t, steps: at >= 0 ? steps.map((s, i) => (i === at ? { ...s, ...step } : s)) : [...steps, step] };
       });
     } else if (ev.type === "text") {
       setLive(null);
@@ -447,15 +447,13 @@ export function AiChat({
 
   /** The chats read again — after a stop before the chat's first event
    *  reached the screen, the new chat is on the server and not in the list. */
-  async function refreshList(open: boolean) {
+  async function refreshList() {
     const r = await loadAiChat();
-    if (!r.ok) return;
+    if (!r.ok || r.conversations.length === 0) return;
     setConvs(r.conversations);
-    if (open && r.conversations.length > 0) {
-      const newest = r.conversations.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a));
-      setActiveId(newest.id);
-      setUrl(newest.id);
-    }
+    const newest = r.conversations.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a));
+    setActiveId(newest.id);
+    setUrl(newest.id);
   }
 
   /** Ask — with the files attached in the box, or (asking again) the ones
@@ -481,7 +479,7 @@ export function AiChat({
     const sim = openSimulator();
     const controller = new AbortController();
     aborter.current = controller;
-    const startedAt = Date.now();
+    started.current = false;
     try {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
@@ -500,9 +498,9 @@ export function AiChat({
     } catch (e) {
       flush();
       if (controller.signal.aborted) {
-        patchLast((t) => ({ ...t, stopped: true, ms: Date.now() - startedAt, steps: (t.steps ?? []).map((s) => (s.state === "start" ? { ...s, state: "error" as const } : s)) }));
-        // the chat is on the server with what was written; a new one joins the list
-        await refreshList(activeId === null);
+        patchLast((t) => ({ ...t, stopped: true, ms: Date.now() - (t.startedAt ?? Date.now()), steps: (t.steps ?? []).map((s) => (s.state === "start" ? { ...s, state: "error" as const } : s)) }));
+        // stopped before the chat's first event: the chat is on the server, not in the list yet
+        if (!started.current) await refreshList();
       } else patchLast((t) => ({ ...t, error: e instanceof Error ? e.message : "The request failed." }));
     } finally {
       flush();
@@ -783,6 +781,7 @@ export function ConvRow({ c, active, busy, onOpen, onRemove, onRename, onPin }: 
 
 function Welcome({ tabId, tabLabel, onPick, disabled, compact }: { tabId: string | null; tabLabel: string | null; onPick: (q: string) => void; disabled: boolean; compact: boolean }) {
   const suggestions = suggestionsFor(tabId);
+  const own = !!tabLabel && hasPageSuggestions(tabId);
   return (
     <div className={`max-w-2xl mx-auto ${compact ? "pt-6" : "pt-4 sm:pt-10 md:pt-16"}`}>
       <div className="flex flex-col items-center text-center gap-2">
@@ -792,10 +791,8 @@ function Welcome({ tabId, tabLabel, onPick, disabled, compact }: { tabId: string
         <h2 className="!text-xl !font-bold !normal-case !tracking-normal !text-foreground !mb-0">Ask about the plant</h2>
         <p className="text-sm text-muted max-w-md">Orders, output, machines, material, Odoo, shifts — answered from the live data, with its sources. Changes it prepares wait for your approval.</p>
       </div>
-      {tabLabel && hasPageSuggestions(tabId) && (
-        <p className="mt-6 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">For {tabLabel}</p>
-      )}
-      <div className={`grid grid-cols-1 ${compact ? "" : "sm:grid-cols-2"} gap-2 ${tabLabel && hasPageSuggestions(tabId) ? "" : "mt-6"}`}>
+      {own && <p className="mt-6 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">For {tabLabel}</p>}
+      <div className={`grid grid-cols-1 ${compact ? "" : "sm:grid-cols-2"} gap-2 ${own ? "" : "mt-6"}`}>
         {suggestions.map((q, i) => {
           const Icon = SUGGESTION_ICONS[i % SUGGESTION_ICONS.length];
           return (
@@ -844,7 +841,7 @@ function Steps({ steps, lookups, streaming }: { steps: AiStep[] | undefined; loo
       <button type="button" className="ai-steps-head" onClick={() => setOpen(!shown)} aria-expanded={shown}>
         <ChevronRight size={13} className={`transition-transform ${shown ? "rotate-90" : ""}`} aria-hidden />
         <Search size={12} className="opacity-70" aria-hidden />
-        <span>{streaming && !steps?.every((s) => s.state !== "start") ? "Working…" : head}</span>
+        <span>{streaming && steps?.some((s) => s.state === "start") ? "Working…" : head}</span>
       </button>
       {shown && (
         <ol className="ai-steps-list">
@@ -912,8 +909,9 @@ function Answer({
 }) {
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const followups = streaming ? [] : followupsOf(turn.text);
-  const printable = withoutFollowups(turn.text);
+  // read off the text when it changes, not on every streamed token of the chat
+  const followups = useMemo(() => (streaming ? [] : followupsOf(turn.text)), [turn.text, streaming]);
+  const printable = useMemo(() => withoutFollowups(turn.text), [turn.text]);
   const title = question.length > 90 ? `${question.slice(0, 89)}…` : question || "AI assistant";
   return (
     <div className="flex gap-3">

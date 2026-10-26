@@ -96,16 +96,17 @@ export async function POST(request: Request) {
   const auto = settings.model === AI_AUTO_MODEL;
   const routed = auto ? routeModel(question, { files: files.files.length, current: existing?.model }) : settings.model;
   const depth = isAiDepth(body.depth) ? body.depth : DEFAULT_AI_DEPTH;
-  const plan = depthPlan(depth, { model: settings.model, effort: settings.effort, maxCalls: settings.maxCalls, auto, routed, current: existing?.model ?? null });
-  const model = plan.model;
+  const { model, effort, maxCalls } = depthPlan(depth, { model: settings.model, effort: settings.effort, maxCalls: settings.maxCalls, auto, routed, current: existing?.model ?? null });
   const reservation = await reserveChatTurn({ userId: user.id, question, model, existing, now: new Date(), runningWindowMs: (maxDuration + 30) * 1000 });
   if (!reservation) return fail(429, "One question at a time — wait for the answer, then ask again.");
   const { usage } = reservation;
   let { conversation } = reservation;
   if (conversation.model !== model) {
     // stepped up to a stronger model (Auto, or a Deep question): the chat goes on with it
-    conversation = await prisma.aiConversation.update({ where: { id: conversation.id }, data: { model } });
-    await prisma.aiUsage.update({ where: { id: usage.id }, data: { model } });
+    [conversation] = await Promise.all([
+      prisma.aiConversation.update({ where: { id: conversation.id }, data: { model } }),
+      prisma.aiUsage.update({ where: { id: usage.id }, data: { model } }),
+    ]);
   }
   try {
     await linkFiles(user.id, fileIds, conversation.id);
@@ -161,8 +162,8 @@ export async function POST(request: Request) {
           // the person's Stop (the connection closed) stops the model too;
           // what was written is kept, and the question's turn is freed
           signal: request.signal,
-          effort: plan.effort,
-          maxCalls: plan.maxCalls,
+          effort,
+          maxCalls,
           history,
           question: questionMessages(
             question,

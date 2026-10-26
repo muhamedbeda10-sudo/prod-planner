@@ -4,6 +4,7 @@ import type { AiSettings } from "@prisma/client";
 import { addTokens, aiEffort, aiModel, AI_CALLS_RANGE, NO_TOKENS, type AiEffort, type AiModelDef, type AiStep, type AiTokens } from "@/lib/domain/ai";
 import { aiPageNote, type AiPageContext } from "@/lib/domain/aiScreen";
 import { readEvidence, type AiEvidence } from "@/lib/domain/aiEvidence";
+import { withoutFollowups } from "@/lib/domain/aiAnswer";
 import { canSeePath, TABS } from "@/lib/domain/tabs";
 import type { AiActionView } from "@/lib/domain/aiActions";
 import type { SimulatorShow } from "@/lib/domain/simulatorScreen";
@@ -186,7 +187,8 @@ export interface AskResult {
   /** The API refused the request itself (400) — a file it could not take,
    *  among others. */
   badRequest?: boolean;
-  /** The answer's text, joined — for an automation's report. */
+  /** The answer's text, joined, without the chat's follow-up block — for an
+   *  automation's report, a check's judge, the morning review. */
   text: string;
   /** How long until the first word of the answer reached the person (null: none did), and the whole question. */
   firstTokenMs: number | null;
@@ -194,20 +196,22 @@ export interface AskResult {
 }
 
 /** How many rows a read brought back, from its result as the tools write
- *  it ({columns, rowCount, rows} or a list) — null when it is not counted. */
-export function rowsOf(text: string): number | null {
-  const t = text.trimStart();
-  if (!(t.startsWith("{") || t.startsWith("[")) || t.length > 400_000) return null;
-  try {
-    const v: unknown = JSON.parse(t);
-    if (Array.isArray(v)) return v.length;
-    if (v && typeof v === "object") {
-      const o = v as { rowCount?: unknown; rows?: unknown; data?: unknown };
-      if (typeof o.rowCount === "number") return o.rowCount;
-      if (Array.isArray(o.rows)) return o.rows.length;
-      if (Array.isArray(o.data)) return o.data.length;
-    }
-  } catch { /* a sentence, not a result */ }
+ *  it ({columns, rowCount, rows} or a list) — the parsed result, or its
+ *  text — null when it is not counted. */
+export function rowsOf(result: unknown): number | null {
+  let v = result;
+  if (typeof v === "string") {
+    const t = v.trimStart();
+    if (!(t.startsWith("{") || t.startsWith("[")) || t.length > 400_000) return null;
+    try { v = JSON.parse(t); } catch { return null; }
+  }
+  if (Array.isArray(v)) return v.length;
+  if (v && typeof v === "object") {
+    const o = v as { rowCount?: unknown; rows?: unknown; data?: unknown };
+    if (typeof o.rowCount === "number") return o.rowCount;
+    if (Array.isArray(o.rows)) return o.rows.length;
+    if (Array.isArray(o.data)) return o.data.length;
+  }
   return null;
 }
 
@@ -574,13 +578,16 @@ export async function ask(opts: {
         if (r.ok && r.simulator) events.simulator?.({ toolUseId: u.id, ...r.simulator });
         if (r.ok && r.memory) events.memory?.(r.memory);
         let content = r.text;
+        // the result parsed once — for its source card and its row count
+        let parsed: unknown = r.text;
         if (r.ok && events.source) {
           const links = r.links ?? (tool.tabs ?? []).flatMap((id) => TABS.find((tab) => tab.id === id)?.paths.slice(0, 1).map((href) => ({ label: tool.title, href })) ?? []);
           const sourced = readEvidence(u.id, title, r.text, links.filter((link) => canSeePath(opts.ctx.hidden, link.href) && (!link.href.startsWith("/trace") || !opts.ctx.hidden.has("tracker"))));
           content = sourced.content;
+          parsed = sourced.data;
           events.source(sourced.evidence);
         }
-        const rows = r.ok ? rowsOf(r.text) : null;
+        const rows = r.ok ? rowsOf(parsed) : null;
         events.step?.({ id: u.id, kind: "read", text: title, state: r.ok ? "done" : "error", ms: Date.now() - t0, ...(rows === null ? {} : { rows }) });
         results.set(u.id, { type: "tool_result", tool_use_id: u.id, ...(r.ok ? {} : { is_error: true }), content });
       };
@@ -653,7 +660,7 @@ export async function ask(opts: {
         ? [...turn.slice(0, safeTurnLength), { role: "assistant", content: [note] }]
         : turn.slice(0, 1);
   const added = kept.map((t) => ({ role: t.role as "user" | "assistant" | "system", content: t.content as ContentBlockParam[] | string }));
-  return { added, tokens, calls, queries, changes, stop, error, ...(badRequest ? { badRequest } : {}), text: answer, firstTokenMs, totalMs: Date.now() - startedAt };
+  return { added, tokens, calls, queries, changes, stop, error, ...(badRequest ? { badRequest } : {}), text: withoutFollowups(answer), firstTokenMs, totalMs: Date.now() - startedAt };
 }
 
 /** JSON tool input, sorted so property order cannot defeat read deduplication. */

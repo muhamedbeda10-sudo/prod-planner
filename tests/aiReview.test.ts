@@ -42,7 +42,7 @@ import type { ToolCtx } from "@/lib/server/ai/tools/types";
 
 const sara = { id: 7, name: "Sara", active: true, isAdmin: false, perms: "ai.suggestions" };
 const monday0730 = new Date("2026-10-12T04:30:00Z");
-const answer = { added: [], tokens: { inputTokens: 900, outputTokens: 300, cacheReadTokens: 0, cacheWriteTokens: 0 }, calls: 3, queries: 2, changes: 1, stop: "end_turn", text: "Two orders slip today.\n\n```followups\n[\"Which?\"]\n```" };
+const answer = { added: [], tokens: { inputTokens: 900, outputTokens: 300, cacheReadTokens: 0, cacheWriteTokens: 0 }, calls: 3, queries: 2, changes: 1, stop: "end_turn", text: "Two orders slip today." };
 
 beforeEach(() => {
   vi.clearAllMocks();

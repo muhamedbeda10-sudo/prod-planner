@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 import { effectiveUser, hasPerm, hiddenTabsOf } from "@/lib/server/auth";
 import { aiStatusFor, apiKeyOf, getAiSettings } from "@/lib/server/ai/access";
 import { ask, questionMessages } from "@/lib/server/ai/agent";
-import { withoutFollowups } from "@/lib/domain/aiAnswer";
 import { expireProposals } from "@/lib/server/ai/changes";
 import { toolsFor } from "@/lib/server/ai/tools";
 import { pruneAiFiles } from "@/lib/server/ai/files";
@@ -370,7 +369,7 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
       data: { calls: answer.calls, queries: answer.queries, ...answer.tokens, costUsd: cost, error: answer.error?.slice(0, 1000) ?? null, firstTokenMs: answer.firstTokenMs, totalMs: answer.totalMs, finishedAt: new Date() },
     });
     if (answer.error) return failRun(a, run.id, o, `The assistant could not finish: ${answer.error}`, next, cost);
-    const text = withoutFollowups(answer.text).trim() || "(The assistant wrote nothing.)";
+    const text = answer.text.trim() || "(The assistant wrote nothing.)";
     const suggestion = config.action === "act" && actionIds.length > 0;
     const inboxIds = await deliverToInbox(recipients.map((userId) => ({
       userId, kind: suggestion ? ("suggestion" as const) : ("report" as const), title, body: text, fromName: from, automationId: a.id, runId: run.id,

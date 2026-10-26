@@ -59,7 +59,7 @@ describe("sharing an answer", () => {
   it("holds the inbox's caps: nobody, too many, the hour's messages, the length", async () => {
     h.perms.add("ai.automations");
     expect((await shareAiAnswer({ title: "", body: "x", userIds: [7] })).error).toBe("Pick who gets it.");
-    expect((await shareAiAnswer({ title: "", body: "x", userIds: Array.from({ length: 21 }, (_, i) => i + 10) })).error).toContain("at most 20");
+    expect((await shareAiAnswer({ title: "", body: "x", userIds: Array.from({ length: 21 }, (_, i) => i + 10) })).error).toContain("1 to 20");
     h.prisma.aiInboxItem.count.mockResolvedValue(60);
     expect((await shareAiAnswer({ title: "", body: "x", userIds: [2] })).error).toContain("in an hour");
     expect((await shareAiAnswer({ title: "", body: "x".repeat(60_001), userIds: [2] })).ok).toBe(false);

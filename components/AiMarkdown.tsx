@@ -1,6 +1,6 @@
 "use client";
 
-import { Children, cloneElement, createContext, isValidElement, useContext, useState, type ReactElement, type ReactNode } from "react";
+import { Children, cloneElement, createContext, isValidElement, memo, useContext, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -8,8 +8,8 @@ import { AlertTriangle, CheckCircle2, ChevronDown, Crosshair, FileSpreadsheet, X
 import { isChartBlock } from "@/lib/domain/aiChart";
 import { humanizeKey, looksLikeColumn, readableDate } from "@/lib/domain/fieldNames";
 import { isEvidenceAnchor, safeHref } from "@/lib/domain/aiEvidence";
-import { scopeLineOf, withoutFollowups } from "@/lib/domain/aiAnswer";
-import { calloutOf, columnKind, groupedFigure, TABLE_FOLD_AT, withoutCalloutMark } from "@/lib/domain/aiTable";
+import { scopeLineOf } from "@/lib/domain/aiAnswer";
+import { calloutOf, columnKind, FIGURE_UNITS, groupedFigure, TABLE_FOLD_AT, withoutCalloutMark } from "@/lib/domain/aiTable";
 import { downloadXlsx } from "@/components/ExportButton";
 
 // An AI answer as it reads: Markdown (tables, lists, bold) in the app's own
@@ -66,7 +66,7 @@ export function textDirection(text: string): "rtl" | "ltr" {
 
 /** A table cell holding a figure: a number, a percentage, a count with its
  *  unit, a dash — it lines up on the end side with the other figures. */
-const NUMERIC = /^[\s$€£%+\-−–—.,0-9/٪٠-٩]*(?:[0-9٠-٩][\s$€£%.,0-9/٪٠-٩]*)?(?:\s*(?:pcs|pc|h|hrs|kg|mm|d|days|day|يوم|أيام|قطعة|ساعة|كجم)\.?)?\s*$/u;
+const NUMERIC = new RegExp(`^[\\s$€£%+\\-−–—.,0-9/٪٠-٩]*(?:[0-9٠-٩][\\s$€£%.,0-9/٪٠-٩]*)?(?:\\s*(?:${FIGURE_UNITS})\\.?)?\\s*$`, "u");
 const isNumeric = (s: string) => s.trim() !== "" && NUMERIC.test(s) && /[0-9٠-٩]/.test(s);
 
 /** The heads of the table a cell sits in (set by the table), and the cell's
@@ -93,15 +93,18 @@ const CALLOUT = {
   bad: { icon: XCircle, label: "Problem" },
 } as const;
 
-/** A table's cells as rows of {column: value} — for its export. */
-function rowsOfTable(table: HastNode | undefined): Record<string, string>[] {
+/** A table read off its tree: its heads as text, its rows as {column:
+ *  value} for the export (the columns read as words). */
+function readTable(table: HastNode | undefined): { heads: string[]; rows: Record<string, string>[] } {
   const head = table?.children?.find((c) => c.tagName === "thead")?.children?.find((c) => c.tagName === "tr");
-  const columns = (head?.children ?? []).filter((c) => c.tagName === "th").map((c, i) => { const t = textOf(c).trim(); return (looksLikeColumn(t) ? humanizeKey(t) : t) || `Column ${i + 1}`; });
+  const heads = (head?.children ?? []).filter((c) => c.tagName === "th").map((c) => textOf(c).trim());
+  const columns = heads.map((t, i) => (looksLikeColumn(t) ? humanizeKey(t) : t) || `Column ${i + 1}`);
   const body = table?.children?.find((c) => c.tagName === "tbody");
-  return (body?.children ?? []).filter((r) => r.tagName === "tr").map((r) => {
+  const rows = (body?.children ?? []).filter((r) => r.tagName === "tr").map((r) => {
     const cells = (r.children ?? []).filter((c) => c.tagName === "td").map((c) => textOf(c).trim());
     return Object.fromEntries(columns.map((col, i) => [col, cells[i] ?? ""]));
   });
+  return { heads, rows };
 }
 
 /** A body cell: a figure (grouped, on the end side), a long text with room
@@ -115,23 +118,18 @@ function Td({ text, col, children }: { text: string; col: number | undefined; ch
   return <td className={isNumeric(text) ? "num ltr" : text.length > 40 ? "cell-wide" : ""} dir="auto">{children}</td>;
 }
 
-/** The heads of a table, as text. */
-function headsOf(table: HastNode | undefined): string[] {
-  const head = table?.children?.find((c) => c.tagName === "thead")?.children?.find((c) => c.tagName === "tr");
-  return (head?.children ?? []).filter((c) => c.tagName === "th").map((c) => textOf(c).trim());
-}
-
 /** A Markdown table: its export, and — past TABLE_FOLD_AT rows — folded to
  *  its first rows with a button for the rest (the printout shows them all). */
 function MdTable({ node, children, dir }: { node: HastNode | undefined; children: ReactNode; dir: "rtl" | "ltr" }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const rows = rowsOfTable(node);
+  // read once per table, not on every streamed token
+  const { heads, rows } = useMemo(() => readTable(node), [node]);
   const folded = rows.length > TABLE_FOLD_AT && !open;
   return (
     <div className={`my-3 md-table-wrap ${folded ? "md-table-folded" : ""}`} dir={dir}>
       <div className="overflow-x-auto rounded-lg border">
-        <TableHeads.Provider value={headsOf(node)}>
+        <TableHeads.Provider value={heads}>
           <table className="md-table w-full">{children}</table>
         </TableHeads.Provider>
       </div>
@@ -215,11 +213,11 @@ function components(streaming: boolean): Components {
     // nothing in an answer loads from anywhere
     img: () => null,
     blockquote: ({ children, node }) => {
-      const callout = calloutOf(textOf(node as HastNode | undefined));
-      if (!callout) return <blockquote dir="auto" className="my-2.5 border-s-2 border-[var(--border-strong)] ps-3 text-muted">{children}</blockquote>;
-      const { icon: Icon, label } = CALLOUT[callout.tone];
+      const tone = calloutOf(textOf(node as HastNode | undefined));
+      if (!tone) return <blockquote dir="auto" className="my-2.5 border-s-2 border-[var(--border-strong)] ps-3 text-muted">{children}</blockquote>;
+      const { icon: Icon, label } = CALLOUT[tone];
       return (
-        <div dir="auto" className={`ai-callout ai-callout-${callout.tone}`} role="note">
+        <div dir="auto" className={`ai-callout ai-callout-${tone}`} role="note">
           <Icon size={16} className="ai-callout-icon" aria-label={label} />
           <div className="min-w-0">{withoutMark(children)}</div>
         </div>
@@ -255,8 +253,9 @@ function components(streaming: boolean): Components {
         const source = textOf(code);
         // a chart's JSON draws as the chart, however its fence was labelled
         if (isChartBlock(lang, source)) return <AiChart source={source} streaming={streaming} />;
-        // the follow-up questions are the chat's buttons, never text here
-        if (/^follow[-_]?ups$/i.test(lang)) return null;
+        // the follow-up questions are the chat's buttons, never text here —
+        // nor while the fence's name is still being streamed ("```follo")
+        if (/^follow[-_]?ups$/i.test(lang) || (lang.length > 0 && "followups".startsWith(lang.toLowerCase()))) return null;
       }
       return <pre className="my-2.5 p-3 rounded-lg bg-surface-2 overflow-x-auto text-xs ltr">{children}</pre>;
     },
@@ -272,15 +271,14 @@ function trimStart(nodes: ReactNode[]): ReactNode[] {
 const LIVE = components(true);
 const DONE = components(false);
 
-export function AiMarkdown({ text, streaming = false, className = "" }: { text: string; streaming?: boolean; className?: string }) {
-  // the follow-up block goes out before parsing: half-written while it
-  // streams, it would show as code
-  const shown = withoutFollowups(text, streaming);
+/** Parsed again only when its text changes — not on every streamed token
+ *  of the answer after it. */
+export const AiMarkdown = memo(function AiMarkdown({ text, streaming = false, className = "" }: { text: string; streaming?: boolean; className?: string }) {
   return (
-    <div className={`ai-md min-w-0 ${className}`} dir={textDirection(shown)}>
+    <div className={`ai-md min-w-0 ${className}`} dir={textDirection(text)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={streaming ? LIVE : DONE}>
-        {shown}
+        {text}
       </ReactMarkdown>
     </div>
   );
-}
+});

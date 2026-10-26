@@ -13,9 +13,11 @@ import { answerOf, checkFeedback, type AiFeedbackRating } from "@/lib/domain/aiL
 import { forgetFor, memoriesOf, rememberFor, type AiMemoryView } from "@/lib/server/ai/memory";
 import { hasPerm, hiddenTabsOf } from "@/lib/server/auth";
 import { deliverToInbox } from "@/lib/server/inbox";
-import { MESSAGE_LIMITS, sendMessageFromPerson } from "@/lib/server/inboxMessage";
+import { sendMessageFromPerson } from "@/lib/server/inboxMessage";
 import { sendChatMessage } from "@/app/chat/actions";
-import { AI_CONVERSATION_TITLE_MAX, AI_SHARE_BODY_MAX, AI_SHARE_CHAT_MAX, chatTextOf, withoutFollowups, withoutSourceLinks } from "@/lib/domain/aiAnswer";
+import { AI_CONVERSATION_TITLE_MAX, chatTextOf, withoutFollowups, withoutSourceLinks } from "@/lib/domain/aiAnswer";
+import { INBOX_BODY_MAX, INBOX_TITLE_MAX } from "@/lib/domain/inbox";
+import { CHAT_MESSAGE_MAX } from "@/lib/domain/chatTopic";
 import { AUTOMATIONS_KEY } from "@/lib/server/automations/store";
 
 // A person's own AI conversations — read and deleted by them alone — and
@@ -138,13 +140,13 @@ export async function shareAiAnswer(o: { title: string; body: string; userIds: n
   const a = await asker();
   if (!a.user) return { ok: false, error: a.error };
   const me = a.user;
-  const title = (typeof o.title === "string" ? o.title.replace(/\s+/g, " ").trim().slice(0, 200) : "") || "From the AI assistant";
+  const title = (typeof o.title === "string" ? o.title.replace(/\s+/g, " ").trim().slice(0, INBOX_TITLE_MAX) : "") || "From the AI assistant";
   const body = sharedBody(o.question, typeof o.body === "string" ? o.body : "");
   if (!body) return { ok: false, error: "There is nothing to send." };
-  if (body.length > AI_SHARE_BODY_MAX) return { ok: false, error: "The answer is too long to send — print it instead." };
-  const to = [...new Set(Array.isArray(o.userIds) ? o.userIds.filter((x): x is number => Number.isInteger(x) && x > 0 && x !== me.id) : [])];
+  if (body.length > INBOX_BODY_MAX) return { ok: false, error: "The answer is too long to send — print it instead." };
+  // the recipients' own rules (active, at most so many, the hour's cap) are the message core's
+  const to = Array.isArray(o.userIds) ? o.userIds.filter((x): x is number => Number.isInteger(x) && x > 0 && x !== me.id) : [];
   if (to.length === 0 && !o.keep) return { ok: false, error: "Pick who gets it." };
-  if (to.length > MESSAGE_LIMITS.to) return { ok: false, error: `Send it to at most ${MESSAGE_LIMITS.to} people at once.` };
   let sent = 0;
   if (to.length > 0) {
     if (!hasPerm(me, AUTOMATIONS_KEY)) return { ok: false, error: "Sending to colleagues' inboxes is not opened for your account — ask the owner for the automations key, or keep it in your own inbox." };
@@ -165,11 +167,11 @@ export async function shareAiAnswerToChat(o: { kind: "user" | "group"; to: numbe
   if (hiddenTabsOf(a.user).has("chat")) return { ok: false, error: "The team chat is not opened for your account." };
   const text = typeof o.body === "string" ? chatTextOf(o.body) : "";
   if (!text) return { ok: false, error: "There is nothing to send." };
-  const cut = text.length > AI_SHARE_CHAT_MAX;
+  const cut = text.length > CHAT_MESSAGE_MAX;
   const fd = new FormData();
   fd.set("kind", o.kind === "group" ? "group" : "user");
   fd.set("to", String(o.to));
-  fd.set("body", cut ? `${text.slice(0, AI_SHARE_CHAT_MAX - 2).trimEnd()}…` : text);
+  fd.set("body", cut ? `${text.slice(0, CHAT_MESSAGE_MAX - 2).trimEnd()}…` : text);
   const r = await sendChatMessage(fd);
   return r.ok ? { ok: true, ...(cut ? { cut } : {}) } : { ok: false, error: r.error ?? "Could not send it." };
 }
