@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Legend, Sparkline, StatTile, TipBox, fmt, pct } from "@/components/charts/kit";
+import { DeltaChip, Legend, Sparkline, StatTile, TipBox, arrowOf, fmt, pct } from "@/components/charts/kit";
 import {
   MONTH_STATUS_LABEL, monthLong, monthShort,
   type ItemMonthRow, type LimitMonthRow, type MonthStatus,
@@ -160,7 +160,6 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
           {r.months.map((m) => <option key={m} value={m}>{monthLong(m)}</option>)}
         </select>
         {newer ? <Link href={hrefOf(newer)} className="btn btn-sm" aria-label="Next month">▶</Link> : <span className="btn btn-sm opacity-40">▶</span>}
-        <span className="text-xs text-muted">Each item against its monthly limit; a limit of several months is counted over its months so far · the limits as they stand today</span>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -169,12 +168,11 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
             <StatTile label={MONTH_STATUS_LABEL[s]} value={fmt(r.counts[s])} sub={<span style={{ color: STATUS_COLOR[s] }}>● {s === "nolimit" ? "handed out, no limit set" : "items"}</span>} />
           </button>
         ))}
-        <StatTile label="Catalogue hand-outs" value={fmt(r.handOuts.month)} sub={!r.prevComplete ? `the log does not cover ${monthShort(r.prevMonth)} — nothing to compare with` : handChange === null ? `none in ${monthShort(r.prevMonth)}` : `${handChange > 0 ? "▲" : handChange < 0 ? "▼" : "•"} ${Math.abs(handChange)}% vs ${monthShort(r.prevMonth)} (${fmt(r.handOuts.prev)})`} />
+        <StatTile label="Catalogue hand-outs" value={fmt(r.handOuts.month)} delta={r.prevComplete && handChange !== null ? <DeltaChip text={`${arrowOf(handChange)} ${Math.abs(handChange)}%`} title={`${monthShort(r.prevMonth)}: ${fmt(r.handOuts.prev)}`} /> : undefined} />
       </div>
 
-      <section className="bg-surface border rounded-xl p-4">
-        <h2 className="font-bold">The last six months</h2>
-        <p className="text-xs text-muted mb-2">How many items ended each month over, close to, under their limit, or not issued</p>
+      <section className="bg-surface border rounded-xl p-4" data-ai-title="The last six months" data-ai-about="How many items ended each month over, close to, under their limit, or not issued. Each item is read against its monthly limit; a limit of several months is counted over its months so far, with the limits as they stand today.">
+        <h2 className="font-bold mb-2">The last six months</h2>
         <div className="viz" style={{ height: 220 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={r.countsByMonth.map((c) => ({ ...c, label: monthShort(c.month) }))} margin={{ top: 8, right: 8, left: -4, bottom: 0 }} barCategoryGap="28%">
@@ -201,7 +199,7 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
         <button type="button" className="btn btn-sm ms-auto" onClick={() => setOpen(allOpen ? new Set() : new Set(shown.map((row) => row.itemId)))}>{allOpen ? "Collapse all" : "Open all"}</button>
       </div>
 
-      <section className="bg-surface border rounded-xl overflow-hidden">
+      <section className="bg-surface border rounded-xl overflow-hidden" data-ai-title={`Items against their limits — ${monthLong(r.month)}`} data-ai-about="Each item against its monthly limit. Each-department and per-worker limits are counted department by department, the way the record form and the alarms count them; a per-worker number is times the department's workers that month (kept month by month; before the record began, the list as it stands). Two limits covering the same department both hold: a hand-out must fit each, and they are not added into one monthly number. Hand-outs to departments none of an item's limits cover show apart and count against no limit.">
         {shown.length === 0 ? (
           <TableEmpty
             title={r.rows.length === 0 ? `No catalogue item has a limit or a hand-out in ${monthLong(r.month)}` : "No item matches"}
@@ -230,11 +228,6 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
           </TableFrame>
         )}
       </section>
-      <p className="text-[11px] text-muted">
-        Each-department and per-worker limits are counted department by department, the way the record form and the alarms count them — a per-worker number is times the department&apos;s workers that month (kept month by month; before the record began, the list as it stands).
-        Two limits covering the same department both hold: a hand-out must fit each, and they are not added into one monthly number.
-        Hand-outs to departments none of an item&apos;s limits cover show apart and count against no limit.
-      </p>
     </div>
   );
 }

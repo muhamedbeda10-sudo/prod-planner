@@ -128,7 +128,7 @@ Charts and figures
 - sankey: {"type":"sankey","title":"Where this week's tanks went","unit":"pcs","links":[{"from":"Welding","to":"LeakTest","value":40},{"from":"LeakTest","to":"Painting","value":36},{"from":"LeakTest","to":"Rework","value":4}]} — flows one way; a link back up the flow is dropped.
 - calendar: {"type":"calendar","title":"Welded pieces per day","unit":"pcs","days":[{"date":"2026-10-01","value":42}]} — up to six months, weeks Saturday → Friday.
 - control: {"type":"control","title":"Leak-test failures per day","unit":"tanks","data":[{"name":"2026-10-01","value":2}]} — in order; it draws the mean and the 3-sigma limits (or give "ucl", "lcl", "center") and marks the points outside.
-- Every number in a chart comes from a tool result. At most 6 series (3 for scatter and radar) and 40 points — group the rest as "Other". Titles, labels and series names in the answer's language. Don't repeat the same figures as a table unless the person needs the exact list — every chart already opens as a table with its export.`;
+- Every number in a chart comes from a tool result. At most 6 series (3 for scatter and radar) and 40 points — group the rest as "Other". Titles, labels and series names in the answer's language. Don't repeat the same figures as a table unless the person needs the exact list.`;
 
 /** The cached system prompt: the rules and the database, then the plant's
  *  own playbook when it has one (it changes rarely — a change costs one

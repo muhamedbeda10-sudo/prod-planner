@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useState } from "react";
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { CAT, ChartCard, Legend, StatTile, TipBox, fmt, pct } from "@/components/charts/kit";
+import { CAT, ChartCard, DeltaChip, Legend, StatTile, TipBox, arrowOf, fmt, pct } from "@/components/charts/kit";
 import { ActionMsg as Msg, useConsumableAction as useAction } from "@/components/consumablesUi";
 import { monthLong, monthShort } from "@/lib/domain/consumableMonthly";
 import { POWDER_DEPARTMENTS, SCRAP_LIMITS, type PowderFigures } from "@/lib/domain/powderScrap";
@@ -25,15 +25,9 @@ const RATE = "var(--foreground)";
 const rateText = (f: { rate: number | null }) => (f.rate === null ? "—" : pct(f.rate, 1));
 /** The change in the rate, in percentage points — a rate's own change. */
 function RateChange({ now, prev, prevMonth }: { now: PowderFigures; prev: PowderFigures; prevMonth: string }) {
-  if (now.rate === null) return <span className="text-xs text-muted">no powder drawn</span>;
-  if (prev.rate === null) return <span className="text-xs text-muted">no powder drawn in {monthShort(prevMonth)}</span>;
+  if (now.rate === null || prev.rate === null) return null;
   const pts = Math.round((now.rate - prev.rate) * 1000) / 10;
-  const cls = pts > 0 ? "text-bad-fg" : pts < 0 ? "text-ok-fg" : "";
-  return (
-    <span className={`text-xs font-bold ${cls}`}>
-      {pts > 0 ? "▲" : pts < 0 ? "▼" : "•"} {Math.abs(pts)} pts <span className="font-normal text-muted">vs {monthShort(prevMonth)} ({pct(prev.rate, 1)})</span>
-    </span>
-  );
+  return <DeltaChip text={`${arrowOf(pts)} ${Math.abs(pts)} pts`} good={pts === 0 ? null : pts < 0} title={`${monthShort(prevMonth)}: ${pct(prev.rate, 1)}`} />;
 }
 
 function Field({ label, className = "", children }: { label: string; className?: string; children: React.ReactNode }) {
@@ -204,19 +198,18 @@ export function PowderScrap({ r, canRecord, isAdmin, today, earliest }: { r: Pow
         {newer ? <Link href={hrefOf(newer)} className="btn btn-sm" aria-label="Next month">▶</Link> : <span className="btn btn-sm opacity-40">▶</span>}
         {canRecord && <button type="button" className="btn btn-primary" onClick={() => { setSaved(false); setRecording(true); }}>➕ Record scrap</button>}
         {saved && <span className="text-sm font-semibold text-ok-fg" role="status">✓ Saved.</span>}
-        <span className="text-xs text-muted basis-full">Scrap rate = scrap ÷ powder drawn · net used = drawn − scrap · powder = hand-outs of items named “…Powder…”, in kg</span>
       </div>
 
       {canRecord && recording && <RecordScrapDialog today={today} earliest={earliest} onClose={() => setRecording(false)} onSaved={() => { setRecording(false); setSaved(true); }} />}
 
       <div className="flex flex-wrap gap-3">
-        <StatTile hero label={`Scrap rate · ${monthShort(r.month)}`} value={rateText(t)} delta={<RateChange now={t} prev={t.prev} prevMonth={r.prevMonth} />} spark={t.trend.map((x) => (x.rate ?? 0) * 100)} />
+        <StatTile hero label={`Scrap rate · ${monthShort(r.month)}`} value={rateText(t)} about="Scrap ÷ powder drawn in the month. Powder is the hand-outs of items named “…Powder…”, in kg." delta={<RateChange now={t} prev={t.prev} prevMonth={r.prevMonth} />} spark={t.trend.map((x) => (x.rate ?? 0) * 100)} />
         <StatTile
-          label="Powder drawn" value={`${fmt(t.withdrawn)} kg`}
-          sub={withdrawnChange === null ? `none in ${monthShort(r.prevMonth)}` : `${withdrawnChange > 0 ? "▲" : withdrawnChange < 0 ? "▼" : "•"} ${Math.abs(withdrawnChange)}% vs ${monthShort(r.prevMonth)} (${fmt(t.prev.withdrawn)} kg)`}
+          label="Powder drawn" value={`${fmt(t.withdrawn)} kg`} about="Hand-outs of items named “…Powder…” in the month, in kg."
+          delta={withdrawnChange === null ? undefined : <DeltaChip text={`${arrowOf(withdrawnChange)} ${Math.abs(withdrawnChange)}%`} title={`${monthShort(r.prevMonth)}: ${fmt(t.prev.withdrawn)} kg`} />}
         />
         <StatTile label="Scrap" value={`${fmt(t.scrap)} kg`} sub={`${r.entries.length} weighing${r.entries.length === 1 ? "" : "s"}`} />
-        <StatTile label="Net used" value={`${fmt(t.net)} kg`} sub={t.net < 0 ? "more scrapped than drawn — earlier stock" : "drawn − scrap"} />
+        <StatTile label="Net used" value={`${fmt(t.net)} kg`} about={t.net < 0 ? "Powder drawn − scrap; below zero, more was scrapped than drawn (earlier stock)." : "Powder drawn − scrap."} />
       </div>
 
       {(r.notKg.length > 0 || r.elsewhere.length > 0) && (
@@ -265,7 +258,7 @@ export function PowderScrap({ r, canRecord, isAdmin, today, earliest }: { r: Pow
 
       <ChartCard
         title="The last six months"
-        sub="Powder drawn and scrapped (kg, bars) and the scrap rate (line)"
+        about="Powder drawn and scrapped (kg, bars) and the scrap rate (line)"
         right={
           <nav className="seg" aria-label="Section">
             {(["all", ...POWDER_DEPARTMENTS] as TrendKey[]).map((k) => (
@@ -273,10 +266,7 @@ export function PowderScrap({ r, canRecord, isAdmin, today, earliest }: { r: Pow
             ))}
           </nav>
         }
-        table={{
-          rows: series.map((x) => ({ Month: monthLong(x.month), "Drawn (kg)": x.withdrawn, "Scrap (kg)": x.scrap, "Net used (kg)": x.net, "Scrap rate": x.rate === null ? "—" : pct(x.rate, 1) })),
-          filename: `powder-trend-${r.month}.xlsx`, sheet: "Trend",
-        }}
+        data={series.map((x) => ({ Month: monthLong(x.month), "Drawn (kg)": x.withdrawn, "Scrap (kg)": x.scrap, "Net used (kg)": x.net, "Scrap rate": x.rate === null ? "—" : pct(x.rate, 1) }))}
       >
         <div className="viz" style={{ height: 260 }}>
           <ResponsiveContainer width="100%" height="100%">

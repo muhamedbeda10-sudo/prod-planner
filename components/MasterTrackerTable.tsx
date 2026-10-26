@@ -1099,7 +1099,7 @@ export function MasterTrackerTable({
           </tbody>
         </table>
       </div>
-      {rowMenu.menu && <ContextMenu x={rowMenu.menu.x} y={rowMenu.menu.y} entries={menuEntries(rowMenu.menu.payload)} onClose={rowMenu.close} />}
+      {rowMenu.menu && <ContextMenu x={rowMenu.menu.x} y={rowMenu.menu.y} entries={menuEntries(rowMenu.menu.payload)} ai={rowMenu.menu.ai} onClose={rowMenu.close} />}
       {confirmDialog}
     </div>
   );

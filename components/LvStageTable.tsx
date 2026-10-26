@@ -16,18 +16,18 @@ export function LvStageTable({ d, today }: { d: LvDashboardData; today: string }
   return (
     <ChartCard
       title="What moved on each stage?"
-      sub={`Panels moved per stage on the Daily log, ${d.ranged ? `${formatDate(d.fromISO)} → ${formatDate(d.toISO)}` : `the last ${d.days.length} days`}${d.clamped ? ` (cut to ${d.days.length} days)` : ""}; ${d.monthLabel}'s totals under them. No daily target is set for the panels — when one is, it goes here as the line to beat.`}
+      about={`Panels moved per stage on the Daily log, ${d.ranged ? `${formatDate(d.fromISO)} → ${formatDate(d.toISO)}` : `the last ${d.days.length} days`}${d.clamped ? ` (cut to ${d.days.length} days)` : ""}; ${d.monthLabel}'s totals under them. No daily target is set for the panels — when one is, it goes here as the line to beat.`}
       right={
         <UrlDateSlicer
           encoding="fromTo" from={d.fromISO} to={d.toISO} min={addDaysISO(today, -LV_STAGE_HISTORY_DAYS)} max={today} today={today}
           presets={["today", "yesterday", "last7", "thisMonth", "lastMonth", "last30"]} defaultRange={last14} label="Days shown"
         />
       }
-      table={{ filename: `lv-stages-${d.toISO}.xlsx`, rows: [
+      data={[
         ...d.days.map((day) => ({ Day: day.dateISO, ...Object.fromEntries(LV_CHAIN.map((s) => [LV_STAGE_LABEL[s], day.byStage[s]])) })),
         { Day: d.ranged ? "Period" : `Last ${d.days.length} days`, ...Object.fromEntries(LV_CHAIN.map((s) => [LV_STAGE_LABEL[s], d.period[s]])) },
         { Day: d.monthLabel, ...Object.fromEntries(LV_CHAIN.map((s) => [LV_STAGE_LABEL[s], d.month[s]])) },
-      ] }}
+      ]}
     >
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">

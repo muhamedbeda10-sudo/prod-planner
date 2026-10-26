@@ -3,11 +3,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useAiPanel } from "@/components/AiPanel";
+import { pageName, readAiTarget } from "@/lib/aiTarget";
+import { explainQuestion, type AiTarget } from "@/lib/domain/aiExplain";
 
 // A right-click menu for a table row. The row decides what goes in it — a
 // list of entries built at open time — so a new action is one more entry,
 // not another button squeezed into the Status cell. An entry can ask for a
 // line of text first (a reason) before it runs.
+//
+// Every menu ends with "Ask AI" for whoever has the assistant: it explains
+// the row (or whatever it was opened on) in a new chat, answered at once.
 //
 // Manners: it opens at the pointer and stays inside the viewport; Escape, a
 // click elsewhere, a scroll or a resize close it; Enter submits a prompt.
@@ -33,15 +39,17 @@ export interface MenuAt<T> {
   x: number;
   y: number;
   payload: T;
+  /** What it was opened on, for "Ask AI". */
+  ai: AiTarget | null;
 }
 
 /** The open/close state of one menu: `open(e, payload)` goes on the row's
  *  onContextMenu (or a ⋯ button's onClick), `menu` is what to render. */
 export function useContextMenu<T>() {
   const [menu, setMenu] = useState<MenuAt<T> | null>(null);
-  const open = (e: { preventDefault: () => void; clientX: number; clientY: number }, payload: T) => {
+  const open = (e: { preventDefault: () => void; clientX: number; clientY: number; target?: EventTarget | null }, payload: T) => {
     e.preventDefault();
-    setMenu({ x: e.clientX, y: e.clientY, payload });
+    setMenu({ x: e.clientX, y: e.clientY, payload, ai: e.target instanceof Element ? readAiTarget(e.target) : null });
   };
   const close = useCallback(() => setMenu(null), []);
   return { menu, open, close };
@@ -50,7 +58,18 @@ export function useContextMenu<T>() {
 const isSep = (e: MenuEntry): e is { sep: true } => "sep" in e;
 const isHeading = (e: MenuEntry): e is { heading: string } => "heading" in e;
 
-export function ContextMenu({ x, y, entries, onClose }: { x: number; y: number; entries: MenuEntry[]; onClose: () => void }) {
+/** The menu's own last entry: explain `target` in a new chat — none for
+ *  someone without the assistant, or with nothing to explain. */
+export function useAskAiEntry(target: AiTarget | null | undefined): MenuEntry[] {
+  const ai = useAiPanel();
+  if (!target || !ai?.canAsk) return [];
+  return [{ sep: true }, { key: "ask-ai", label: "Ask AI", icon: "✨", hint: "Explain this: what it is, what it says now and how it is worked out", onSelect: () => ai.ask(explainQuestion(target, pageName()), { send: true }) }];
+}
+
+export function ContextMenu({ x, y, entries: own, ai, onClose }: { x: number; y: number; entries: MenuEntry[]; ai?: AiTarget | null; onClose: () => void }) {
+  const askAi = useAskAiEntry(ai);
+  // a menu with nothing of its own is the Ask AI one — no line above it
+  const entries = own.length === 0 ? askAi.slice(1) : [...own, ...askAi];
   const box = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
   const [asking, setAsking] = useState<MenuAction | null>(null);

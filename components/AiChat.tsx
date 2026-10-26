@@ -191,13 +191,21 @@ export function AiChat({
   // a question handed over from the page (a cockpit decision's "Ask"): in a
   // new chat, in the box beside any draft, ready to send — taken when the
   // chat is made, when one is handed over, and once an answer being written
-  // ends (never into it)
+  // ends (never into it). A right-click's "Ask AI" is sent as soon as the new
+  // chat is clear — unless the box holds a draft or files of the person's
+  // own, which it would carry off: then it waits in the box like the rest.
+  const [autoAsk, setAutoAsk] = useState<string | null>(null);
   const takeHanded = useRef<() => void>(() => {});
   takeHanded.current = () => {
     if (busy || sending.current) return;
-    const q = takeHandedQuestion();
-    if (!q) return;
-    if (turns.length > 0) newChat();
+    const h = takeHandedQuestion();
+    if (!h) return;
+    const q = h.question;
+    if (turns.length > 0 || activeId !== null) newChat();
+    if (h.send && canAsk && !input.trim() && pending.length === 0 && uploading === 0) {
+      setAutoAsk(q);
+      return;
+    }
     setInput((draft) => (draft.trim() ? `${draft.trimEnd()}\n\n${q}` : q));
     // the window may still be opening: focus once it shows
     requestAnimationFrame(() => box.current?.focus());
@@ -450,7 +458,7 @@ export function AiChat({
 
   /** Ask — with the files attached in the box, or (asking again) the ones
    *  that went with the question the first time. */
-  async function askQuestion(text: string, again?: { id: number; name: string; kind: string }[]) {
+  async function askQuestion(text: string, again?: { id: number; name: string; kind: string }[], o: { explain?: boolean } = {}) {
     const question = text.trim();
     if (!question || busy || sending.current || !canAsk || uploading > 0) return;
     sending.current = true;
@@ -477,7 +485,7 @@ export function AiChat({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
-        body: JSON.stringify({ conversationId: activeId, question, fileIds: sent.map((f) => f.id), depth, page: captureAiPage(pathname, line, window.location.search, (key) => sessionStorage.getItem(key)) }),
+        body: JSON.stringify({ conversationId: activeId, question, fileIds: sent.map((f) => f.id), depth, page: captureAiPage(pathname, line, window.location.search, (key) => sessionStorage.getItem(key)), ...(o.explain ? { explain: true } : {}) }),
       });
       if (!res.ok || !res.body) {
         // refused before it began: the files wait for the next try
@@ -502,6 +510,22 @@ export function AiChat({
       setLive(null);
     }
   }
+
+  // "Ask AI": sent once the new chat it was handed into has cleared — to
+  // explain only (the reading tools alone). Something in the way by then (a
+  // cap reached, a file on its way): it waits in the box instead.
+  const askRefFn = useRef(askQuestion);
+  askRefFn.current = askQuestion;
+  useEffect(() => {
+    if (autoAsk === null || activeId !== null || turns.length > 0) return;
+    const q = autoAsk;
+    setAutoAsk(null);
+    if (busy || sending.current || !canAsk || uploading > 0 || pending.length > 0) {
+      setInput((draft) => (draft.trim() ? `${draft.trimEnd()}\n\n${q}` : q));
+      return;
+    }
+    void askRefFn.current(q, undefined, { explain: true });
+  }, [autoAsk, activeId, turns.length, busy, canAsk, uploading, pending.length]);
 
   const of = (v: number, cap: number) => (cap > 0 ? `${usdText(v)} / ${usdText(cap)}` : usdText(v));
   const meter = [

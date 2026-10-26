@@ -51,16 +51,16 @@ export function PlantPlanning({ tr, lv, floor, actions, summary }: { tr: PlantPl
       <PrintDecisions actions={actions} />
 
       <div className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
-        <StatTile hero label="TR — plan delivered on its day" value={pctOrDash(finish?.rate)} meter={finish?.rate ?? undefined} sub={finish && finish.due > 0 ? `${finish.done} of ${finish.due} pcs due so far` : "nothing due yet"} />
-        <StatTile label="TR — plan lines behind" value={String(tr.week.lateCount)} sub="past their stage date" />
-        <StatTile hero label={`LV — ${lv.month.monthLabel} painted`} value={pctOrDash(lv.month.pace.doneShare)} meter={lv.month.pace.doneShare ?? undefined} sub={lv.month.panels > 0 ? `${lv.month.complete} of ${lv.month.panels} panels · even pace ${pct(lv.month.pace.expectedShare)}` : "no panels on the month's plan"} />
+        <StatTile hero label="TR — plan delivered on its day" value={pctOrDash(finish?.rate)} meter={finish?.rate ?? undefined} sub={finish && finish.due > 0 ? `${finish.done} of ${finish.due} pcs` : undefined} about="Of the transformers' weekly plan pieces due to be finished by today, the share finished on or before their day." />
+        <StatTile label="TR — plan lines behind" value={String(tr.week.lateCount)} about="Weekly plan lines past their stage date." />
+        <StatTile hero label={`LV — ${lv.month.monthLabel} painted`} value={pctOrDash(lv.month.pace.doneShare)} meter={lv.month.pace.doneShare ?? undefined} sub={lv.month.panels > 0 ? `${lv.month.complete} of ${lv.month.panels} panels` : undefined} about={lv.month.panels > 0 ? `Panels of the month's plan painted; an even pace stands at ${pct(lv.month.pace.expectedShare)} today.` : "No panels on the month's plan."} />
         <StatTile label="LV — urgent orders short" value={String(lv.urgentStuck.length)} sub={`of ${lv.open.urgent} urgent open`} />
-        {floor && <StatTile label="People short — plant" value={String(summary.peopleShort.total)} sub={`TR ${summary.peopleShort.TR} · LV ${summary.peopleShort.LV} — distinct departments, so they add`} />}
+        {floor && <StatTile label="People short — plant" value={String(summary.peopleShort.total)} sub={`TR ${summary.peopleShort.TR} · LV ${summary.peopleShort.LV}`} about="People short on each line; the two lines' departments are distinct, so they add." />}
       </div>
 
       <div className="grid gap-3 xl:grid-cols-12">
-        <ChartCard className="xl:col-span-7" title="The two lines side by side" sub="Each line in its own terms. Standard hours and people add across the plant; pieces and plan percentages do not, so none is added here."
-          table={{ filename: `plant-planning-${tr.todayISO}.xlsx`, rows: rows.map((r) => ({ Figure: r.label, Transformers: r.TR, "LV panels": r.LV, Note: r.note ?? "" })) }}>
+        <ChartCard className="xl:col-span-7" title="The two lines side by side" about="Each line in its own terms. Standard hours and people add across the plant; pieces and plan percentages do not, so none is added here."
+          data={rows.map((r) => ({ Figure: r.label, Transformers: r.TR, "LV panels": r.LV, Note: r.note ?? "" }))}>
           <TableFrame className="!max-h-none">
             <table className="w-full text-sm">
               <thead><tr><Th label="" /><Th label="Transformers" /><Th label="LV panels" /></tr></thead>
@@ -81,14 +81,14 @@ export function PlantPlanning({ tr, lv, floor, actions, summary }: { tr: PlantPl
             <Link href={dashHref("/dashboards/production", "all")} className="text-brand-ink font-semibold inline-flex items-center gap-1 hover:underline">The plant&apos;s production <ArrowRight size={13} aria-hidden /></Link>
           </div>
         </ChartCard>
-        <ChartCard className="xl:col-span-5" title="Needs a decision today" sub="Both lines' decisions in one list, worst first, each tagged with its line.">
+        <ChartCard className="xl:col-span-5" title="Needs a decision today" about="Both lines' decisions in one list, worst first, each tagged with its line.">
           <DecisionList actions={actions} />
         </ChartCard>
       </div>
 
       {floor && (
-        <ChartCard title="Who is needed where, from today" sub={`${tr.manpower.monthLabel}: the people each department needs on each remaining working day for what is left of the month's plan, against who comes on an average recorded day. Each line prices its own plan; the shot-blast crew is the transformers' and blasts the panels too.`}
-          table={{ filename: `plant-people-${tr.todayISO}.xlsx`, rows: peopleRows.map((r) => ({ Line: r.line, Department: r.label, "Needed from today": r.neededNow ?? "", Present: r.present ?? "", Gap: r.gap ?? "" })) }}>
+        <ChartCard title="Who is needed where, from today" about={`${tr.manpower.monthLabel}: the people each department needs on each remaining working day for what is left of the month's plan, against who comes on an average recorded day. Each line prices its own plan; the shot-blast crew is the transformers' and blasts the panels too.`}
+          data={peopleRows.map((r) => ({ Line: r.line, Department: r.label, "Needed from today": r.neededNow ?? "", Present: r.present ?? "", Gap: r.gap ?? "" }))}>
           <TableFrame className="!max-h-[24rem]">
             <table className="w-full text-sm">
               <thead><tr><Th label="Line" /><Th label="Department" /><Th label="Needed from today" num className="text-right" /><Th label="Present" num className="text-right" /><Th label="Gap" num className="text-right" /></tr></thead>

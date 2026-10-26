@@ -29,7 +29,10 @@ import { memoriesOf } from "@/lib/server/ai/memory";
 //   {type:"action", action} — a change it prepared (or made), as its card
 //   {type:"done", costUsd, totalMs?, error?}
 // The question may say how deep to go (depth: quick | standard | deep —
-// lib/domain/aiAnswer depthPlan), inside the owner's settings.
+// lib/domain/aiAnswer depthPlan), inside the owner's settings. A right-click's
+// "Ask AI" (explain: true) only explains what is on the screen, and sends the
+// page's own text unread by the person — so it gets the reading tools alone:
+// nothing written on the page can have it prepare a change.
 // The chat's working what-if (keep_scenario) is read off the conversation
 // and handed to the tools. The access and the month's caps are checked before
 // anything is spent; the question, the answer and what it cost are kept when
@@ -52,7 +55,7 @@ export async function POST(request: Request) {
   if (!user) return fail(401, "You are not logged in — refresh the page.");
 
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY) return fail(413, "The request is too large.");
-  let body: { conversationId?: unknown; question?: unknown; fileIds?: unknown; page?: unknown; depth?: unknown };
+  let body: { conversationId?: unknown; question?: unknown; fileIds?: unknown; page?: unknown; depth?: unknown; explain?: unknown };
   try {
     const raw = await request.text();
     if (raw.length > MAX_BODY) return fail(413, "The request is too large.");
@@ -120,7 +123,7 @@ export async function POST(request: Request) {
     const hidden = hiddenTabsOf(user);
     const page = aiPageContext(body.page, hidden);
     const line = await getActiveLine();
-    const tools = toolsFor(user, { hidden, actionsPaused: settings.actionsPaused });
+    const tools = toolsFor(user, { hidden, actionsPaused: settings.actionsPaused || body.explain === true });
     const areas = [...new Set(tools.flatMap((t) => (t.kind === "write" ? [t.area] : [])))] as AiArea[];
     const [outcomes, playbook, memories] = await Promise.all([existing ? pendingOutcomes(conversation.id) : { ids: [], notes: [] }, getPlaybookText(), memoriesOf(user.id)]);
     // the what-if this chat is working on (read against today's jobs only

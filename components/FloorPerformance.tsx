@@ -50,7 +50,6 @@ export function FloorPerformance({ period, todayISO, defaultRange }: {
   const single = period.dept === "all" ? null : groups.find((g) => g.group === period.dept) ?? null;
   const range = slicerRangeLabel(period.fromISO, period.toISO);
   const deptLabel = period.dept === "all" ? "every department" : OUTPUT_GROUP_LABEL[period.dept];
-  const stamp = `${period.fromISO}_${period.toISO}${period.dept === "all" ? "" : `-${period.dept}`}`;
   const noDays = dates.length === 0;
   const empty = (
     <EmptyState compact icon={Info} title="No shift day recorded in this period"
@@ -95,22 +94,16 @@ export function FloorPerformance({ period, todayISO, defaultRange }: {
         <ChartCard
           className="xl:col-span-8"
           title="Did each centre work at the standard?"
-          sub="Efficiency each recorded day: the standard hours the output was worth ÷ the man-hours booked there. Green is at the standard, amber short of it, red well short; the last column is the whole period."
-          table={noDays ? undefined : { filename: `centre-efficiency-${stamp}.xlsx`, rows: grid.flatMap((r) => r.cells.filter((c) => c.workedH > 0).map((c) => ({ Centre: WORK_CENTRE_LABEL[r.centre], Day: c.dateISO, "Earned h": c.earnedH, "Booked h": c.workedH, "Efficiency %": c.efficiency === null ? "" : Math.round(c.efficiency * 100) }))) }}
+          about={`Efficiency each recorded day: the standard hours the output was worth ÷ the man-hours booked there. Green is at the standard, amber short of it, red well short; the last column is the whole period.${period.pricedShare !== null && period.pricedShare < 0.95 ? ` Only ${Math.round(period.pricedShare * 100)}% of the period's pieces carry standard hours — the rest earns nothing and reads as slow (their hours a piece are typed on Admin → Standard Times).` : ""}`}
+          data={noDays ? undefined : grid.flatMap((r) => r.cells.filter((c) => c.workedH > 0).map((c) => ({ Centre: WORK_CENTRE_LABEL[r.centre], Day: c.dateISO, "Earned h": c.earnedH, "Booked h": c.workedH, "Efficiency %": c.efficiency === null ? "" : Math.round(c.efficiency * 100) })))}
         >
           {noDays || grid.length === 0 ? empty : <EfficiencyHeatmap grid={grid} dates={dates} labels={WORK_CENTRE_LABEL} />}
-          {period.pricedShare !== null && period.pricedShare < 0.95 && (
-            <p className="text-xs text-muted mt-2">
-              {Math.round(period.pricedShare * 100)}% of the period&apos;s pieces carry standard hours — the rest earns nothing and reads as slow.{" "}
-              <Link href="/admin/standard-times" className="text-brand-ink font-semibold hover:underline">Type its hours a piece →</Link>
-            </p>
-          )}
         </ChartCard>
         <ChartCard
           className="xl:col-span-4"
           title="What stopped us?"
-          sub={`${stopDurationLabel(losses.unplannedH)} machine time lost in the period, biggest cause first; Σ is the share it and the causes above make up.`}
-          table={{ filename: `losses-${stamp}.xlsx`, rows: losses.causes.map((c) => ({ Cause: c.label, Duration: stopDurationLabel(c.hours), Hours: c.hours, Stops: c.stops, "Share of lost %": c.share === null ? "" : Math.round(c.share * 100), Planned: c.planned ? "yes" : "" })) }}
+          about={`${stopDurationLabel(losses.unplannedH)} machine time lost in the period, biggest cause first; Σ is the share it and the causes above make up.`}
+          data={losses.causes.map((c) => ({ Cause: c.label, Duration: stopDurationLabel(c.hours), Hours: c.hours, Stops: c.stops, "Share of lost %": c.share === null ? "" : Math.round(c.share * 100), Planned: c.planned ? "yes" : "" }))}
         >
           {pareto.length === 0 ? (
             <EmptyState compact icon={Info} title="No unplanned stop in this period" hint={<>Record stops on <Link href="/shifts" className="text-brand-ink font-semibold hover:underline">Shifts → Machine stops</Link> to see what costs the most.</>} />
@@ -132,8 +125,8 @@ export function FloorPerformance({ period, todayISO, defaultRange }: {
       {/* what a person turns out, department by department */}
       <ChartCard
         title="What does a person turn out?"
-        sub="Each department over the period: its people, the hours they booked, what the output was worth and what one person turned out on a recorded day."
-        table={noDays ? undefined : { filename: `productivity-${stamp}.xlsx`, rows: groups.map((g) => ({ Department: OUTPUT_GROUP_LABEL[g.group], "Recorded days": g.days, "People a day": g.people, "Booked h": g.workedH, "Earned h": g.earnedH, "Efficiency %": g.efficiency === null ? "" : Math.round(g.efficiency * 100), "Std-h a person a day": oneDecimal(g.stdPerPersonDay), Pieces: g.pieces, "Pieces a person a day": oneDecimal(g.piecesPerPersonDay), "Overtime %": whole(g.overtimeShare), "Attendance %": whole(g.attendance), "Machines up %": whole(g.availability), "Stopped h": g.downtimeH })) }}
+        about="Each department over the period: its people, the hours they booked, what the output was worth and what one person turned out on a recorded day."
+        data={noDays ? undefined : groups.map((g) => ({ Department: OUTPUT_GROUP_LABEL[g.group], "Recorded days": g.days, "People a day": g.people, "Booked h": g.workedH, "Earned h": g.earnedH, "Efficiency %": g.efficiency === null ? "" : Math.round(g.efficiency * 100), "Std-h a person a day": oneDecimal(g.stdPerPersonDay), Pieces: g.pieces, "Pieces a person a day": oneDecimal(g.piecesPerPersonDay), "Overtime %": whole(g.overtimeShare), "Attendance %": whole(g.attendance), "Machines up %": whole(g.availability), "Stopped h": g.downtimeH }))}
       >
         {noDays || groups.length === 0 ? empty : (
           <TableFrame className="!max-h-none">
@@ -185,16 +178,16 @@ export function FloorPerformance({ period, todayISO, defaultRange }: {
         <ChartCard
           className="xl:col-span-7"
           title="What did we turn out each day?"
-          sub="Standard hours the output was worth, by department, against the man-hours the shift log booked — the gap between the bars and the line is the pace lost (or won)."
-          table={noDays ? undefined : { filename: `output-${stamp}.xlsx`, rows: output.map((d) => ({ Day: d.dateISO, ...Object.fromEntries(groupsOf(period.dept).map((g) => [`${OUTPUT_GROUP_LABEL[g]} h`, d[g]])), "Earned h": d.earnedH, "Booked h": d.workedH, "Efficiency %": d.efficiency === null ? "" : Math.round(d.efficiency * 100) })) }}
+          about="Standard hours the output was worth, by department, against the man-hours the shift log booked — the gap between the bars and the line is the pace lost (or won)."
+          data={noDays ? undefined : output.map((d) => ({ Day: d.dateISO, ...Object.fromEntries(groupsOf(period.dept).map((g) => [`${OUTPUT_GROUP_LABEL[g]} h`, d[g]])), "Earned h": d.earnedH, "Booked h": d.workedH, "Efficiency %": d.efficiency === null ? "" : Math.round(d.efficiency * 100) }))}
         >
           {output.length === 0 ? empty : <OutputChart days={outputPoints(output, groupsOf(period.dept))} groups={groupsOf(period.dept)} />}
         </ChartCard>
         <ChartCard
           className="xl:col-span-5"
           title="Is the floor getting faster?"
-          sub={`The floor's efficiency each recorded day (dots) and over the last ${window} recorded days together (the line); the dashed line is the standard.`}
-          table={noDays ? undefined : { filename: `efficiency-trend-${stamp}.xlsx`, rows: trend.map((p) => ({ Day: p.dateISO, "Earned h": p.earnedH, "Booked h": p.workedH, "Efficiency %": p.efficiency === null ? "" : Math.round(p.efficiency * 100), [`Last ${window} recorded days %`]: whole(p.rolling), "Std-h a person a day": oneDecimal(p.stdPerPersonDay) })) }}
+          about={`The floor's efficiency each recorded day (dots) and over the last ${window} recorded days together (the line); the dashed line is the standard.`}
+          data={noDays ? undefined : trend.map((p) => ({ Day: p.dateISO, "Earned h": p.earnedH, "Booked h": p.workedH, "Efficiency %": p.efficiency === null ? "" : Math.round(p.efficiency * 100), [`Last ${window} recorded days %`]: whole(p.rolling), "Std-h a person a day": oneDecimal(p.stdPerPersonDay) }))}
         >
           {trend.length === 0 ? empty : <ProductivityTrendChart points={trend} window={window} />}
         </ChartCard>

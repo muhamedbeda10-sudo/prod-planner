@@ -258,14 +258,12 @@ function Tip({ active, label, payload, total }: { active?: boolean; label?: stri
   );
 }
 
-function Card({ title, sub, children, right }: { title: string; sub?: string; children: React.ReactNode; right?: React.ReactNode }) {
+/** A card: its title on screen, what it shows (`about`) for "Ask AI". */
+function Card({ title, about, children, right }: { title: string; about?: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <section className="bg-surface border rounded-xl p-4">
+    <section className="bg-surface border rounded-xl p-4" data-ai-title={title} data-ai-about={about}>
       <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
-        <div>
-          <h2 className="font-bold leading-tight">{title}</h2>
-          {sub && <p className="text-xs text-muted">{sub}</p>}
-        </div>
+        <h2 className="font-bold leading-tight">{title}</h2>
         {right}
       </div>
       {children}
@@ -479,21 +477,20 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
         <ProductCards d={d} pal={pal} />
       </section>
 
-      <Card title={`Quantity ${word} per day, by product`} sub={`Each column is a day (the day rows were ${word}); every segment carries its count, the cap the day's total. Hover a column for the full breakdown.`}>
+      <Card title={`Quantity ${word} per day, by product`} about={`Each column is a day (the day rows were ${word}); every segment carries its count, the cap the day's total. Hover a column for the full breakdown.`}>
         <DailyByProduct d={d} present={present} pal={pal} />
       </Card>
 
       <OdooInsightsSection
         ins={d.insights}
         colorOf={(product) => pal.color(product)}
-        file={(name) => `odoo-${name}-${fileScope}.xlsx`}
       />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <Card title="Totals per product" sub={`Quantity ${word} and share of the period.`}>
+        <Card title="Totals per product" about={`Quantity ${word} and share of the period.`}>
           <ProductTotals d={d} />
         </Card>
-        <Card title="Logged vs closed, per day" sub="Logged on entry · closed when Done">
+        <Card title="Logged vs closed, per day" about="Logged on entry · closed when Done">
           <LoggedVsClosed d={d} />
         </Card>
       </div>

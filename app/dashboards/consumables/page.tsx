@@ -56,8 +56,8 @@ export default async function ConsumablesDashboardPage({ searchParams }: { searc
         ]} print />}
       />
       {/* the limits first: an alarm is what the page is opened for */}
-      <ConsumableAlarms d={limits} periodLabel={periodLabel} period={period} />
-      <ConsumablesDashboard s={stats} periodLabel={periodLabel} period={period} />
+      <ConsumableAlarms d={limits} periodLabel={periodLabel} />
+      <ConsumablesDashboard s={stats} periodLabel={periodLabel} />
       <section id="monthly" className="space-y-3 scroll-mt-24 pt-2">
         <h2 className="font-bold text-lg">Monthly review · {monthLong(month)}</h2>
         <ConsumablesMonthly report={report} monthHref={`/dashboards/consumables?${monthParams.toString()}`} />

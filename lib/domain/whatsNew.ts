@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-ask-ai-right-click",
+    dateISO: "2026-10-26",
+    title: "Right-click anything and Ask AI: the cards say less, the assistant explains",
+    where: "Every page · AI assistant",
+    body: "Right-click a card, a chart, a figure, a table row or a column header — anywhere in the app — and pick Ask AI (on a phone, a long press): the assistant opens and explains it at once — what it is, what it says right now and how it is worked out, checked against the live data. The dashboards are cleaner for it: the Chart | Table switch is gone from every chart, the long notes under the cards and the warnings under the capacity check are gone too (the assistant has them), and the headline tiles show their figure with one short line and a small ▲ / ▼ chip against a week ago — nothing where there is no reading to compare with. A row's own menu (hold, close, trace…) ends with Ask AI too. In a field, on text you selected, or with Shift held, the browser's own menu still opens. Each Ask AI is one question from your AI allowance.",
+  },
+  {
     id: "2026-10-26-simulator-through-assistant",
     dateISO: "2026-10-26",
     title: "What-ifs are the assistant's now: the Simulator screen is gone",

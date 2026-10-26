@@ -56,8 +56,10 @@ interface PanelApi {
   /** Open where it was left. */
   open: () => void;
   /** Open a new chat with this question in its box, for the person to send —
-   *  nothing for someone without the chat. */
-  ask: (question: string) => void;
+   *  or, with `send`, sent at once. Nothing for someone without the chat. */
+  ask: (question: string, opts?: { send?: boolean }) => void;
+  /** The chat is open to this person. */
+  canAsk: boolean;
   close: () => void;
   setLarge: (v: boolean) => void;
   setView: (view: AiView) => void;
@@ -146,11 +148,12 @@ export function AiPanelProvider({ config, children }: { config: AiPanelConfig; c
       },
       openTab: (view) => put({ open: true, view: fix(view, state.view) }),
       open: () => put({ open: true, view: fix(undefined, state.view) }),
-      ask: (question) => {
+      ask: (question, opts) => {
         if (!tabs.includes("chat")) return;
         put({ open: true, view: "chat" });
-        handToAssistant(question);
+        handToAssistant(question, opts);
       },
+      canAsk: tabs.includes("chat"),
       close,
       setLarge: (v) => put({ large: v }),
       setView: (view) => put({ view: fix(view, state.view) }),

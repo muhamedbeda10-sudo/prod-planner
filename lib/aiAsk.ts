@@ -1,23 +1,30 @@
 "use client";
 
 // A question handed to the assistant from somewhere else on the page (a
-// cockpit decision's "Ask the assistant"): kept here until the chat takes
-// it — the chat may not be made yet (the window loads the first time it
-// opens), or may be answering — and announced to a chat already there. The
-// chat takes it into a new chat (so no what-if kept in an older one colours
-// the answer) and puts it in its box for the person to send: nothing is
-// spent until they do.
+// cockpit decision's "Ask the assistant", a right-click's "Ask AI"): kept
+// here until the chat takes it — the chat may not be made yet (the window
+// loads the first time it opens), or may be answering — and announced to a
+// chat already there. The chat takes it into a new chat (so no what-if kept
+// in an older one colours the answer). A plain hand-over is put in the box
+// for the person to send: nothing is spent until they do. One handed with
+// `send` — the person picked "Ask AI" itself — is sent as it is taken.
 
 const EVENT = "ai:ask";
-let pending: string | null = null;
 
-export function handToAssistant(question: string) {
-  pending = question;
+export interface HandedQuestion {
+  question: string;
+  send: boolean;
+}
+
+let pending: HandedQuestion | null = null;
+
+export function handToAssistant(question: string, opts: { send?: boolean } = {}) {
+  pending = { question, send: !!opts.send };
   window.dispatchEvent(new Event(EVENT));
 }
 
 /** The question waiting for the chat, taken (once). */
-export function takeHandedQuestion(): string | null {
+export function takeHandedQuestion(): HandedQuestion | null {
   const q = pending;
   pending = null;
   return q;

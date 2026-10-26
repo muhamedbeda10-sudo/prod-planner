@@ -214,7 +214,7 @@ export function useRowMenu(entries: () => MenuEntry[], label: string) {
       onClick={(e) => {
         e.stopPropagation();
         const r = e.currentTarget.getBoundingClientRect();
-        m.open({ preventDefault() {}, clientX: r.right - 224, clientY: r.bottom + 4 }, null);
+        m.open({ preventDefault() {}, clientX: r.right - 224, clientY: r.bottom + 4, target: e.currentTarget }, null);
       }}
     >
       <MoreHorizontal size={15} />
@@ -225,7 +225,7 @@ export function useRowMenu(entries: () => MenuEntry[], label: string) {
     if ((e.target as HTMLElement).closest("input, textarea, select, a")) return;
     m.open(e, null);
   };
-  const menu = m.menu ? <ContextMenu x={m.menu.x} y={m.menu.y} entries={entries()} onClose={m.close} /> : null;
+  const menu = m.menu ? <ContextMenu x={m.menu.x} y={m.menu.y} entries={entries()} ai={m.menu.ai} onClose={m.close} /> : null;
   return { button, onContextMenu, menu };
 }
 

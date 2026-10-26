@@ -6,9 +6,9 @@ import { ChartCard, Legend, TipBox, fmt, type TableRow } from "@/components/char
 import type { AiTone } from "@/lib/domain/aiChart";
 
 // The frame every chart in an AI answer sits in — the dashboards' card, its
-// numbers one click away as a table with their export (the chart is never
-// the only way to read a number), and a legend under it when it carries more
-// than one series. The tooltips' shell, and the values written on the marks,
+// numbers kept for the assistant (a right-click's "Ask AI" on a chart
+// pinned outside the chat), and a legend under it when it carries more than
+// one series. The tooltips' shell, and the values written on the marks,
 // shared by every form.
 
 export const TICK = { fontSize: 11, fill: "var(--muted)" } as const;
@@ -18,11 +18,9 @@ export const unitOf = (unit: string) => (unit ? ` ${unit}` : "");
 
 export const valueText = (v: number, unit: string) => `${fmt(v)}${unitOf(unit)}`;
 
-/** Inside a page's own card (its title, its table, its export already there),
- *  a chart draws without a frame of its own. */
+/** Inside a page's own card (its title and its numbers already there), a
+ *  chart draws without a frame of its own. */
 export const FramelessChart = createContext(false);
-
-const fileOf = (title: string) => title.replace(/[^\w؀-ۿ -]+/g, "").slice(0, 60) || "ai-chart";
 
 export function ChartFrame({
   title,
@@ -33,7 +31,7 @@ export function ChartFrame({
 }: {
   title: string;
   sub?: ReactNode;
-  /** The chart's numbers as a table — its twin and its export. */
+  /** The chart's numbers. */
   rows: TableRow[];
   legend?: { label: string; color: string; line?: boolean }[];
   children: ReactNode;
@@ -48,7 +46,7 @@ export function ChartFrame({
     );
   }
   return (
-    <ChartCard title={title || "Chart"} sub={sub ? <span dir="auto">{sub}</span> : undefined} className="my-3 not-prose ai-chart" table={{ rows, filename: fileOf(title), sheet: "Data" }}>
+    <ChartCard title={title || "Chart"} sub={sub ? <span dir="auto">{sub}</span> : undefined} className="my-3 not-prose ai-chart" data={rows}>
       {children}
       {legend && legend.length > 1 && (
         <div className="mt-2">

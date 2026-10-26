@@ -46,21 +46,27 @@ export function DeptLoadCurve({ board, horizon }: { board: MachineBoardData; hor
   const scale = Math.max(load.peakH, 1) * 1.15;
   const word = machineWord(board.dept, true);
 
+  // how the curve is read, and what it leaves out — the assistant's to tell
+  const about = [
+    `A bar is every open line whose stage falls due that day, on a ${machineWord(board.dept)} or not yet placed; the dashed line is the hours the ${word} have that day.`,
+    load.shortFromISO ? `${deptLabel(board.dept)} goes short on ${ddmm(load.shortFromISO)}: by then ${load.days.find((d) => d.dateISO === load.shortFromISO)!.shortH} h more is promised than its ${word} can work.` : `These ${days.length} working days clear: ${load.totalOwedH} h promised against ${load.totalCapH} h the ${word} can work, ${load.spareH} h to spare.`,
+    load.undatedH > 0 && `${load.undatedH} h of open work carries no date and is not on the curve.`,
+    load.beyondH > 0 && `${load.beyondH} h is owed past these days.`,
+    load.unpricedLines > 0 && `${load.unpricedLines} line(s) have no standard time, so their hours are missing (Tools → Times per Machine).`,
+    noHours > 0 && `${noHours} ${machineWord(board.dept, noHours > 1)} have no hours a day set, so they count as nothing.`,
+  ].filter(Boolean).join(" ");
+
   return (
-    <div>
+    <div data-ai-title={`${deptLabel(board.dept)} — department load`} data-ai-about={about}>
       {/* the reading that decides the week */}
       <p className="text-sm mb-2">
         {load.shortFromISO ? (
           <>
             <span className="font-extrabold text-bad-fg">⚠ {deptLabel(board.dept)} goes short on {ddmm(load.shortFromISO)}</span>
-            <span className="text-muted">
-              {" "}— by then {load.days.find((d) => d.dateISO === load.shortFromISO)!.shortH} h more is promised than its {word} can work. Move a date, add hours, or take work off the department.
-            </span>
           </>
         ) : (
           <>
             <span className="font-extrabold text-ok-fg">✓ These {days.length} working days clear</span>
-            <span className="text-muted"> — {load.totalOwedH} h promised against {load.totalCapH} h the {word} can work, {load.spareH} h to spare.</span>
           </>
         )}
       </p>
@@ -126,13 +132,6 @@ export function DeptLoadCurve({ board, horizon }: { board: MachineBoardData; hor
         </span>
       </div>
 
-      <p className="text-[11px] text-muted mt-2">
-        A bar is every open line whose stage falls due that day — on a {machineWord(board.dept)} or not yet placed.
-        {load.undatedH > 0 && <> <b className="text-foreground">{load.undatedH} h</b> of open work carries no date and is not on the curve.</>}
-        {load.beyondH > 0 && <> {load.beyondH} h is owed past these days.</>}
-        {load.unpricedLines > 0 && <> {load.unpricedLines} line(s) have no standard time, so their hours are missing here — give them one in Tools → Times per Machine.</>}
-        {noHours > 0 && <> {noHours} {machineWord(board.dept, noHours > 1)} have no hours a day set, so they count as nothing.</>}
-      </p>
     </div>
   );
 }

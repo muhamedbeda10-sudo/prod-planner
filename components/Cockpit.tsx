@@ -4,7 +4,7 @@ import { traceHref } from "@/lib/domain/links";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Info } from "lucide-react";
-import { Bullet, ChartCard, Meter, StatTile, TONE_TEXT, fmt, pct, pctOrDash, signed } from "@/components/charts/kit";
+import { Bullet, ChartCard, DeltaChip, Meter, StatTile, TONE_TEXT, arrowOf, fmt, pct, pctOrDash, signed } from "@/components/charts/kit";
 import { BurnUpChart, LoadChart } from "@/components/LazyCharts";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/primitives";
@@ -25,7 +25,8 @@ import type { CockpitData } from "@/lib/server/kpis";
 // standard hours (what the work is worth), never pieces, so Fabrication's ten
 // projects a day add up. The figures come from lib/server/kpis.ts and the
 // series from lib/domain/kpis.ts; the assistant reads the same loader. Each
-// card's numbers are one click away under its Table switch, with the export.
+// card says no more than its title on screen: what it means, how it is
+// counted and its numbers go to the assistant on a right-click's "Ask AI".
 //
 // The page is a 12-column grid: a short card sits beside a long one, so no
 // card leaves a hole under it, and every row fills the width.
@@ -34,7 +35,8 @@ const itemName = (it: string) => (isItem(it) ? ITEM_NAME[it] : it);
 const centreName = (c: WorkCentre) => WORK_CENTRE_LABEL[c];
 
 /** Today's figure against a week ago, in the tile's own unit: points for a
- *  rate, the figure's own unit otherwise; green or red where up is good or bad. */
+ *  rate, the figure's own unit otherwise; green or red where up is good or
+ *  bad. Nothing where there is no reading a week ago to compare with. */
 function WeekChange({ trend, todayISO, pick, rate, unit = "", up }: {
   trend: CockpitData["trend"]; todayISO: string; pick: (p: KpiSnapshotData) => number | null | undefined; rate?: boolean; unit?: string; up?: "good" | "bad";
 }) {
@@ -42,16 +44,11 @@ function WeekChange({ trend, todayISO, pick, rate, unit = "", up }: {
   // no figure today (the tile reads "—"): nothing to compare
   if (!today || pick(today) === null || pick(today) === undefined) return null;
   const c = weekChange(trend, todayISO, pick);
-  if (!c) return <span className="text-xs text-muted">no reading a week ago yet</span>;
+  if (!c) return null;
   const diff = rate ? Math.round((c.now - c.before) * 100) : Math.round((c.now - c.before) * 10) / 10;
-  const arrow = diff > 0 ? "▲" : diff < 0 ? "▼" : "•";
   const good = !up || diff === 0 ? null : (diff > 0) === (up === "good");
   const amount = rate ? `${Math.abs(diff)} pts` : `${fmt(Math.abs(diff), 1)}${unit}`;
-  return (
-    <span className={`text-xs font-bold ${good === null ? "" : good ? "text-ok-fg" : "text-bad-fg"}`} title={`${formatDate(c.beforeISO)}: ${rate ? pct(c.before) : `${fmt(c.before, 1)}${unit}`}`}>
-      {arrow} {amount} <span className="font-normal text-muted">since {formatDate(c.beforeISO)}</span>
-    </span>
-  );
+  return <DeltaChip text={`${arrowOf(diff)} ${amount}`} good={good} title={`Since ${formatDate(c.beforeISO)}: ${rate ? pct(c.before) : `${fmt(c.before, 1)}${unit}`}`} />;
 }
 
 /** `floor`: whether the account sees the Shifts screen — the shift log's
@@ -60,7 +57,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
   const finish = data.week.adherence.find((a) => a.stage === "finish");
   // already without the shift log's decisions for an account Shifts is closed to (withoutFloor)
   const actions = data.actions;
-  // the card shows the oldest lines behind; the export carries them all
+  // the card shows the oldest lines behind; the assistant reads them all (get_kpis)
   const lateShown = data.week.late.slice(0, 20);
   const mp = data.manpower;
   // the centres short by half a person or more — the ones the card colours red
@@ -74,7 +71,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
   const loadCentre = data.load.find((l) => l.centre === picked) ?? data.load.find((l) => l.centre === worst) ?? data.load[0];
   const peopleMax = Math.max(1, ...mp.rows.map((r) => Math.max(r.neededNow ?? 0, floor ? r.present ?? 0 : 0)));
   const tile = { trend: data.trend, todayISO: data.todayISO };
-  // the work between the stages, one list for the bullets and the export
+  // the work between the stages, one list for the bullets and "Ask AI"
   const wipRows: { where: string; pcs: number; href: string; detail: string }[] = [
     { where: "Cut, waiting for welding", pcs: data.wip.cutNotWelded.reduce((s, b) => s + b.pcs, 0), href: "/worklist/welding", detail: data.wip.cutNotWelded.map((b) => `${itemName(b.item)} ${b.pcs}`).join(" · ") },
     { where: "Welded, waiting for finishing", pcs: data.wip.weldedNotFinished.reduce((s, b) => s + b.pcs, 0), href: "/worklist/painting", detail: data.wip.weldedNotFinished.map((b) => `${itemName(b.item)} ${b.pcs}`).join(" · ") },
@@ -92,27 +89,35 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
       {/* the headline figures, each against a week ago */}
       <div className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
         <StatTile hero label="Plan delivered on its day" value={pctOrDash(finish?.rate)} meter={finish?.rate ?? undefined}
-          sub={finish && finish.due > 0 ? `${finish.done} of ${finish.due} pcs due so far` : "nothing due yet"}
+          sub={finish && finish.due > 0 ? `${finish.done} of ${finish.due} pcs` : undefined}
+          about="Of the weekly plan's pieces due to be finished by today, the share finished on or before their day."
           delta={<WeekChange {...tile} pick={(p) => p.adherence.finish} rate up="good" />} />
-        <StatTile label="Plan lines behind" value={String(data.week.lateCount)} sub="past their stage date"
+        <StatTile label="Plan lines behind" value={String(data.week.lateCount)}
+          about="Weekly plan lines past their stage date: a stage (cut, welding, finishing) has not cleared what was due by its date."
           delta={<WeekChange {...tile} pick={(p) => p.late} up="bad" />} />
         <StatTile label="Welding covered" value={data.coverage.days === null ? "—" : `${fmt(data.coverage.days, 1)} d`}
-          sub={data.coverage.band === "short" ? "short — welders may wait" : data.coverage.band === "heavy" ? "parts piling up" : "of cut parts in front of welding"}
+          sub={data.coverage.band === "short" ? "welders may wait" : data.coverage.band === "heavy" ? "parts piling up" : undefined}
+          about={data.coverage.days === null
+            ? "Days of cut parts in front of the welders — no recent welding to measure against."
+            : `Days of cut parts in front of the welders: ${fmt(data.coverage.wipH, 1)} welding std-h waiting, against ${fmt(data.coverage.ratePerDay, 1)} std-h earned on a recorded day. Under 1 day the welders may wait; over 4, parts pile up.`}
           delta={<WeekChange {...tile} pick={(p) => p.coverageDays} unit=" d" />} />
         {floor && (
           <>
-            <StatTile label="Fabrication efficiency" value={pctOrDash(data.fabrication.efficiency)} sub={`${fmt(data.fabrication.earnedH, 1)} std-h of ${fmt(data.fabrication.workedH, 1)} worked · last 7 recorded days`}
+            <StatTile label="Fabrication efficiency" value={pctOrDash(data.fabrication.efficiency)} sub={`${fmt(data.fabrication.earnedH, 1)} of ${fmt(data.fabrication.workedH, 1)} h`}
+              about={`Standard hours earned (${fmt(data.fabrication.earnedH, 1)}) over the man-hours worked (${fmt(data.fabrication.workedH, 1)}) in fabrication, over the last 7 recorded days.`}
               delta={<WeekChange {...tile} pick={(p) => p.fabEfficiency} rate up="good" />} />
-            <StatTile label="Machine time lost" value={stopDurationLabel(data.losses.unplannedH)} sub={data.losses.fromISO ? `since ${formatDate(data.losses.fromISO)}` : "recent days"}
+            <StatTile label="Machine time lost" value={stopDurationLabel(data.losses.unplannedH)} sub={data.losses.fromISO ? `since ${formatDate(data.losses.fromISO)}` : undefined}
+              about="Unplanned machine stop time recorded on the machines over the recent days."
               delta={<WeekChange {...tile} pick={(p) => p.unplannedH} unit=" h" up="bad" />} />
-            <StatTile label="People short" value={mp.leftWd > 0 && mp.rows.some((r) => r.gap !== null) ? String(short) : "—"} sub={mp.leftWd > 0 ? `to finish ${mp.monthLabel}'s plan` : "the month's working days are over"} />
+            <StatTile label="People short" value={mp.leftWd > 0 && mp.rows.some((r) => r.gap !== null) ? String(short) : "—"} sub={mp.monthLabel}
+              about={mp.leftWd > 0 ? `People missing across the work centres short by half a person or more, to finish ${mp.monthLabel}'s plan in the ${mp.leftWd} working days left at ${fmt(mp.hoursPerPersonDay, 1)} h a person.` : `${mp.monthLabel}'s working days are over.`} />
           </>
         )}
       </div>
 
       {/* 1 — the week's plan, and the lines behind */}
       {data.week.planNo === null ? (
-        <ChartCard title="Are we on this week's plan?" sub="No weekly plan imported yet">
+        <ChartCard title="Are we on this week's plan?" about="No weekly plan imported yet">
           <EmptyState compact icon={Info} title="No weekly plan yet" hint="Import the weekly delivery schedule on the Orders Registry." />
         </ChartCard>
       ) : (
@@ -120,11 +125,11 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           <ChartCard
             className="xl:col-span-6"
             title="Are we on this week's plan?"
-            sub={`Weekly plan ${data.week.planNo}: ${data.week.covered} of ${data.week.req} pcs finished. Up to today the gap between the two lines is what is behind; after it, what is still to make.`}
-            table={{ filename: `weekly-plan-${data.todayISO}.xlsx`, rows: [
+            about={`Weekly plan ${data.week.planNo}: ${data.week.covered} of ${data.week.req} pcs finished. Up to today the gap between the two lines is what is behind; after it, what is still to make.`}
+            data={[
               ...burn.map((d) => ({ Row: "Delivery day", Day: d.iso, Name: d.label, "Asked pcs": d.req, "Finished pcs": d.covered, "Asked summed": d.planCum, "Finished summed": d.doneCum })),
               ...data.week.adherence.map((a) => ({ Row: "Stage due by today", Day: data.todayISO, Name: STAGE_LABEL[a.stage], "Asked pcs": a.due, "Finished pcs": a.done, "Asked summed": "", "Finished summed": "" })),
-            ] }}
+            ]}
           >
             <BurnUpChart points={burn} />
             <div className="grid gap-x-4 gap-y-2 sm:grid-cols-3 mt-3 pt-3 border-t">
@@ -139,8 +144,8 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           <ChartCard
             className="xl:col-span-6"
             title="Behind — where each line is stuck"
-            sub={data.week.lateCount > lateShown.length ? `The oldest ${lateShown.length} of ${data.week.lateCount} — the export has them all; the first stage that is short` : "Oldest first; the first stage that is short"}
-            table={{ filename: `plan-behind-${data.todayISO}.xlsx`, rows: data.week.late.map((l) => ({ Day: l.dayISO, Project: l.bom, SOI: l.soi ?? "", Item: itemName(l.item), "Stuck at": STAGE_LABEL[l.stage], Owed: l.owed, Short: l.short })) }}
+            about={data.week.lateCount > lateShown.length ? `The oldest ${lateShown.length} of ${data.week.lateCount} lines behind (get_kpis has them all); the first stage that is short` : "Oldest first; the first stage that is short"}
+            data={data.week.late.map((l) => ({ Day: l.dayISO, Project: l.bom, SOI: l.soi ?? "", Item: itemName(l.item), "Stuck at": STAGE_LABEL[l.stage], Owed: l.owed, Short: l.short }))}
           >
             {lateShown.length === 0 ? (
               <EmptyState compact icon={Info} title="Nothing behind" hint="Every line is at or ahead of its stage date." />
@@ -170,8 +175,8 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
       {/* 2 — the load ahead: a centre's running totals, and every centre's status beside */}
       <ChartCard
         title="Where is the crunch?"
-        sub="Each centre's remaining plan hours over the next 10 working days against what it can work (the man-hours it usually has × the pace it has measured). It is short where what it owes so far passes what it could have worked so far. Pick a centre on the right."
-        table={{ filename: `load-${data.todayISO}.xlsx`, rows: data.load.flatMap((l) => loadSeries(l).map((d) => ({ Centre: centreName(l.centre), Day: d.dayISO, "Due h": d.dueH, "Owed summed h": d.owedCum, "Can work summed h": d.canCum ?? "not measured" }))) }}
+        about="Each centre's remaining plan hours over the next 10 working days against what it can work (the man-hours it usually has × the pace it has measured). It is short where what it owes so far passes what it could have worked so far. Pick a centre on the right."
+        data={data.load.flatMap((l) => loadSeries(l).map((d) => ({ Centre: centreName(l.centre), Day: d.dayISO, "Due h": d.dueH, "Owed summed h": d.owedCum, "Can work summed h": d.canCum ?? "not measured" })))}
       >
         {data.load.length === 0 || !loadCentre ? (
           <EmptyState compact icon={Info} title="No load to show" hint="The weekly plan has nothing left to make, or nothing is priced yet." />
@@ -207,8 +212,8 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
         <ChartCard
           className="xl:col-span-3"
           title="Are we on the month's pace?"
-          sub={`${mp.monthLabel}: each centre's share of the month's plan done, the tick where an even pace stands today (${mp.monthWd - mp.leftWd} of ${mp.monthWd} working days behind us).`}
-          table={{ filename: `month-pace-${data.todayISO}.xlsx`, rows: pace.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Done %": r.doneShare === null ? "" : Math.round(r.doneShare * 100), "Even pace %": Math.round(r.expectedShare * 100), "Ahead (+) / behind (−) h": r.aheadH })) }}
+          about={`${mp.monthLabel}: each centre's share of the month's plan done, the tick where an even pace stands today (${mp.monthWd - mp.leftWd} of ${mp.monthWd} working days behind us).`}
+          data={pace.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Done %": r.doneShare === null ? "" : Math.round(r.doneShare * 100), "Even pace %": Math.round(r.expectedShare * 100), "Ahead (+) / behind (−) h": r.aheadH }))}
         >
           {mp.pieces === 0 ? (
             <EmptyState compact icon={Info} title={`No orders on ${mp.monthLabel}'s plan`} hint="Import the monthly plan on the Orders Registry — the month's pace is read from it." />
@@ -224,8 +229,8 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
         <ChartCard
           className="xl:col-span-3"
           title="Do we have the people?"
-          sub={`What is left of ${mp.monthLabel}'s plan over the ${mp.leftWd} working days left × ${fmt(mp.hoursPerPersonDay, 1)} h a person.${floor ? " The bar is who comes on an average recorded day; the tick is who is needed from today." : " The tick is who is needed from today."}`}
-          table={{ filename: `people-${data.todayISO}.xlsx`, rows: mp.rows.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Left h": r.leftH, "Needed (month)": r.needed ?? "", "Needed from today": r.neededNow ?? "", ...(floor ? { Present: r.present ?? "", Gap: r.gap ?? "" } : {}) })) }}
+          about={`What is left of ${mp.monthLabel}'s plan over the ${mp.leftWd} working days left × ${fmt(mp.hoursPerPersonDay, 1)} h a person.${floor ? " The bar is who comes on an average recorded day; the tick is who is needed from today." : " The tick is who is needed from today."}`}
+          data={mp.rows.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Left h": r.leftH, "Needed (month)": r.needed ?? "", "Needed from today": r.neededNow ?? "", ...(floor ? { Present: r.present ?? "", Gap: r.gap ?? "" } : {}) }))}
         >
           {mp.pieces === 0 ? (
             <EmptyState compact icon={Info} title={`No orders on ${mp.monthLabel}'s plan`} hint="Import the monthly plan on the Orders Registry — the people it needs are read from it." />
@@ -243,10 +248,10 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
         <ChartCard
           className="xl:col-span-3"
           title="Is welding covered?"
-          sub={data.coverage.days === null
+          about={data.coverage.days === null
             ? "No recent welding to measure against."
             : `${fmt(data.coverage.days, 1)} days of cut parts in front of the welders: ${fmt(data.coverage.wipH, 1)} welding std-h waiting, against ${fmt(data.coverage.ratePerDay, 1)} std-h earned on a recorded day. Under 1 day they may wait; over 4, parts pile up.`}
-          table={{ filename: `welding-coverage-${data.todayISO}.xlsx`, rows: data.coverage.byItem.map((b) => ({ Item: itemName(b.item), "Pieces waiting": b.pcs, "Welding std-h": b.weldH })) }}
+          data={data.coverage.byItem.map((b) => ({ Item: itemName(b.item), "Pieces waiting": b.pcs, "Welding std-h": b.weldH }))}
         >
           {data.coverage.byItem.length === 0 ? (
             <EmptyState compact icon={Info} title="Nothing cut and waiting" hint="Every cut piece has been welded." />
@@ -261,8 +266,8 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
         <ChartCard
           className="xl:col-span-3"
           title="Where does the work wait?"
-          sub="Pieces between the stages over the open orders, netted project by project (cut − welded is waiting for welding) — never a stage's output added to the next's. The records say where a piece stands, not since when."
-          table={{ filename: `wip-${data.todayISO}.xlsx`, rows: wipRows.map((r) => ({ Where: r.where, Detail: r.detail, Pieces: r.pcs })) }}
+          about="Pieces between the stages over the open orders, netted project by project (cut − welded is waiting for welding) — never a stage's output added to the next's. The records say where a piece stands, not since when."
+          data={wipRows.map((r) => ({ Where: r.where, Detail: r.detail, Pieces: r.pcs }))}
         >
           {wipRows.every((r) => r.pcs === 0) ? (
             <EmptyState compact icon={Info} title="Nothing waiting between the stages" hint="Every cut piece is welded and every welded piece finished; nothing is sent back or on hold." />

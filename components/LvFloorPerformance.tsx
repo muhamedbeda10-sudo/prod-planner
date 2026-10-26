@@ -40,7 +40,6 @@ export function LvFloorPerformance({ period, todayISO, defaultRange }: { period:
   const single = period.dept === "all" ? null : groups.find((g) => g.dept === period.dept) ?? null;
   const range = slicerRangeLabel(period.fromISO, period.toISO);
   const deptLabel = period.dept === "all" ? "every department" : LV_FLOOR_DEPT_LABEL[period.dept];
-  const stamp = `lv-${period.fromISO}_${period.toISO}${period.dept === "all" ? "" : `-${period.dept}`}`;
   const noDays = dates.length === 0;
   const empty = (
     <EmptyState compact icon={Info} title="No shift day recorded on the panels in this period"
@@ -85,21 +84,15 @@ export function LvFloorPerformance({ period, todayISO, defaultRange }: { period:
         <ChartCard
           className="xl:col-span-8"
           title="Did each department work at the standard?"
-          sub="Efficiency each recorded day: the panels moved × the timings sheet's hours for that stage ÷ the man-hours booked in the department. Green is at the standard, amber short of it, red well short; the last column is the whole period."
-          table={noDays ? undefined : { filename: `efficiency-${stamp}.xlsx`, rows: grid.flatMap((r) => r.cells.filter((c) => c.workedH > 0).map((c) => ({ Department: LV_FLOOR_DEPT_LABEL[r.centre], Day: c.dateISO, "Earned h": c.earnedH, "Booked h": c.workedH, "Efficiency %": c.efficiency === null ? "" : Math.round(c.efficiency * 100) }))) }}
+          about={`Efficiency each recorded day: the panels moved × the timings sheet's hours for that stage ÷ the man-hours booked in the department. Green is at the standard, amber short of it, red well short; the last column is the whole period.${period.pricedShare !== null && period.pricedShare < 0.95 ? ` Only ${Math.round(period.pricedShare * 100)}% of the period's panels are on an order the timings sheet prices — the rest earns nothing and reads as slow (add the panel to the LV tab on Admin → Standard Times).` : ""}`}
+          data={noDays ? undefined : grid.flatMap((r) => r.cells.filter((c) => c.workedH > 0).map((c) => ({ Department: LV_FLOOR_DEPT_LABEL[r.centre], Day: c.dateISO, "Earned h": c.earnedH, "Booked h": c.workedH, "Efficiency %": c.efficiency === null ? "" : Math.round(c.efficiency * 100) })))}
         >
           {noDays || grid.length === 0 ? empty : <EfficiencyHeatmap grid={grid} dates={dates} labels={LV_FLOOR_DEPT_LABEL} rowHead="Department" />}
-          {period.pricedShare !== null && period.pricedShare < 0.95 && (
-            <p className="text-xs text-muted mt-2">
-              {Math.round(period.pricedShare * 100)}% of the period&apos;s panels are on an order the timings sheet prices — the rest earns nothing and reads as slow.{" "}
-              <Link href="/admin/standard-times" className="text-brand-ink font-semibold hover:underline">Add the panel to the LV tab →</Link>
-            </p>
-          )}
         </ChartCard>
         <ChartCard
           className="xl:col-span-4"
           title="What stopped the machines?"
-          sub="Stops are recorded on the machine, by department — the punches are shared with the transformers — so no stop is the panels' alone."
+          about="Stops are recorded on the machine, by department — the punches are shared with the transformers — so no stop is the panels' alone."
         >
           <EmptyState compact icon={Info} title="Not separable by line" hint={<>The plant&apos;s stops, counted once, are under <Link href="/dashboards/production?line=all" className="text-brand-ink font-semibold hover:underline">All</Link> and on the transformers&apos; side.</>} />
         </ChartCard>
@@ -107,8 +100,8 @@ export function LvFloorPerformance({ period, todayISO, defaultRange }: { period:
 
       <ChartCard
         title="What does a person turn out?"
-        sub="Each department over the period: its people, the hours they booked, what the panels moved were worth and what one person turned out on a recorded day."
-        table={noDays ? undefined : { filename: `productivity-${stamp}.xlsx`, rows: groups.map((g) => ({ Department: LV_FLOOR_DEPT_LABEL[g.dept], "Recorded days": g.days, "People a day": g.people, "Booked h": g.workedH, "Earned h": g.earnedH, "Efficiency %": g.efficiency === null ? "" : Math.round(g.efficiency * 100), "Std-h a person a day": oneDecimal(g.stdPerPersonDay), Panels: g.panels, "Panels a person a day": oneDecimal(g.panelsPerPersonDay), "Overtime %": whole(g.overtimeShare), "Attendance %": whole(g.attendance) })) }}
+        about="Each department over the period: its people, the hours they booked, what the panels moved were worth and what one person turned out on a recorded day."
+        data={noDays ? undefined : groups.map((g) => ({ Department: LV_FLOOR_DEPT_LABEL[g.dept], "Recorded days": g.days, "People a day": g.people, "Booked h": g.workedH, "Earned h": g.earnedH, "Efficiency %": g.efficiency === null ? "" : Math.round(g.efficiency * 100), "Std-h a person a day": oneDecimal(g.stdPerPersonDay), Panels: g.panels, "Panels a person a day": oneDecimal(g.panelsPerPersonDay), "Overtime %": whole(g.overtimeShare), "Attendance %": whole(g.attendance) }))}
       >
         {noDays || groups.length === 0 ? empty : (
           <TableFrame className="!max-h-none">
@@ -155,16 +148,16 @@ export function LvFloorPerformance({ period, todayISO, defaultRange }: { period:
         <ChartCard
           className="xl:col-span-7"
           title="What did we turn out each day?"
-          sub="Standard hours the panels moved were worth, by department, against the man-hours the shift log booked on the panels."
-          table={noDays ? undefined : { filename: `output-${stamp}.xlsx`, rows: output.map((d) => ({ Day: d.dateISO, ...Object.fromEntries(depts.map((g) => [`${LV_FLOOR_DEPT_LABEL[g]} h`, Math.round(d.byDept[g] * 10) / 10])), "Earned h": Math.round(d.earnedH * 10) / 10, "Booked h": Math.round(d.workedH * 10) / 10, "Efficiency %": d.efficiency === null ? "" : Math.round(d.efficiency * 100) })) }}
+          about="Standard hours the panels moved were worth, by department, against the man-hours the shift log booked on the panels."
+          data={noDays ? undefined : output.map((d) => ({ Day: d.dateISO, ...Object.fromEntries(depts.map((g) => [`${LV_FLOOR_DEPT_LABEL[g]} h`, Math.round(d.byDept[g] * 10) / 10])), "Earned h": Math.round(d.earnedH * 10) / 10, "Booked h": Math.round(d.workedH * 10) / 10, "Efficiency %": d.efficiency === null ? "" : Math.round(d.efficiency * 100) }))}
         >
           {output.length === 0 ? empty : <OutputChart days={points} groups={depts} labels={LV_FLOOR_DEPT_LABEL} />}
         </ChartCard>
         <ChartCard
           className="xl:col-span-5"
           title="Is the panels' floor getting faster?"
-          sub={`The panels' efficiency each recorded day (dots) and over the last ${window} recorded days together (the line); the dashed line is the standard.`}
-          table={noDays ? undefined : { filename: `efficiency-trend-${stamp}.xlsx`, rows: trend.map((p) => ({ Day: p.dateISO, "Earned h": p.earnedH, "Booked h": p.workedH, "Efficiency %": p.efficiency === null ? "" : Math.round(p.efficiency * 100), [`Last ${window} recorded days %`]: whole(p.rolling), "Std-h a person a day": oneDecimal(p.stdPerPersonDay) })) }}
+          about={`The panels' efficiency each recorded day (dots) and over the last ${window} recorded days together (the line); the dashed line is the standard.`}
+          data={noDays ? undefined : trend.map((p) => ({ Day: p.dateISO, "Earned h": p.earnedH, "Booked h": p.workedH, "Efficiency %": p.efficiency === null ? "" : Math.round(p.efficiency * 100), [`Last ${window} recorded days %`]: whole(p.rolling), "Std-h a person a day": oneDecimal(p.stdPerPersonDay) }))}
         >
           {trend.length === 0 ? empty : <ProductivityTrendChart points={trend} window={window} />}
         </ChartCard>
