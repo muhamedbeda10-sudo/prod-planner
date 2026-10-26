@@ -26,13 +26,18 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 "Done" everywhere = Welding output; Cut gates Welding.
 
 ## Navigation
-Tabs, one per QUESTION rather than per screen — Worklist · Material · ODOO · Consumables · Shifts ·
-Plan Tracker. There is no Dashboard tab: each dashboard lives with what it reads. Two tabs
-hold several views behind their own switcher (`components/ViewTabs.tsx`): **Plan Tracker** carries the
-**Cockpit** (`/`, the home page — the planner's one page across departments, feature 13; on the LV line
-it is the panels' own dashboard), the tracker, the **Daily log** it adds up and the **What-if Simulator** the
-plan is tried out on (`/simulate`, transformers only); **Material** the nesting sheets and the sheet
-**Analytics** built on them. Two things left the strip entirely: **chat** is the icon in the nav's
+Tabs, one per QUESTION rather than per screen — Worklist · Dashboards · Material · Shifts · Plan
+Tracker. **Dashboards** holds every dashboard of the app, one place each, behind a strip at the top of
+its pages (`components/DashboardSections.tsx`): **Planning** (`/`, the home page — the planner's one page
+across departments, feature 13; on the LV line the panels' own dashboard), **Production**
+(`/dashboards/production`, the floor's efficiency, productivity, output, stops and where the hours went;
+transformers only), **Material** (`/dashboards/material`, feature 5), **Consumables**
+(`/dashboards/consumables`) and **ODOO** (`/dashboards/odoo`). Each is seen with the screen it reads (its
+tab id: the Production dashboard with Shifts), and no dashboard is anywhere else; the old addresses
+(`/analytics`, `?view=dashboard`) land on them. **Material** holds the nesting sheets, Physical Material
+and Consumables behind the same kind of strip; **Plan Tracker** carries the tracker, the **Daily log** it
+adds up, the **What-if Simulator** the plan is tried out on (`/simulate`, transformers only) and the
+**ODOO** close-out log (`/odoo`, whose alerts' badge rides on the Plan Tracker tab). Two things left the strip entirely: **chat** is the icon in the nav's
 right cluster, opening a panel over whatever page you are on (a glance, not a destination — its
 bundle is fetched only on first open), and the **barcode sheet** is a button on the painting
 worklist, where the tanks it prints for finish. In Admin the two plan imports share one page. The
@@ -109,7 +114,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    job, cut and left, which machines hold the rest, every project's part on the sheets, the note and every ✓
    (when, which machine, how many, by whom), with ✓, ✎ Edit and ⧉ Duplicate beside them. Closing sheets records no
    pieces in the plan — those are recorded on the weekly plan below. A machine's load there reads in sheets.
-5. **Fabrication analytics** (`/analytics`, a view of the Material tab) — the floor read in SHEETS instead of pieces, because a piece is
+5. **Fabrication analytics** (`/dashboards/material`, the Material place of the Dashboards tab) — the floor read in SHEETS instead of pieces, because a piece is
    not a unit of work: a tank cut from four sheets and one cut from half a sheet are both "1". Every daily-log
    cut record is converted through its BOM's bill of sheets off the Material tab, over a 30/60/90-day or
    all-time window. Sheets and tonnes cut, per day and in total; the thickness mix (which decides what a job
@@ -509,8 +514,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
    - **Playbook** (`/ai/playbook`): how this plant works, told to the assistant with every question; admins keep it there or
      through the assistant.
 
-13. **Planning cockpit** (`/`, the home page, a view of the Plan Tracker tab; the transformers only — on the
-   LV line the home page is the panels' own dashboard) — the planner's one page, every figure in **standard hours**
+13. **Planning cockpit** (`/`, the home page — the Planning place of the Dashboards tab; the transformers only — on
+   the LV line the home page is the panels' own dashboard) — the planner's one page, every figure in **standard hours**
    (what the work is worth, from the hours a piece per work centre — typed, else the estimate), so Fabrication's
    ten projects a day add up and departments compare. The **Decisions** button in its head (icon: the worst news; badge: how many) opens what needs a decision today (lines behind, a centre
    short at the end of the horizon or falling behind in it and when it catches up, thin or heavy welding coverage, a slow centre, the
@@ -535,8 +540,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
    absence, overtime, the man-hours machine stops idled by cause (machine-hours × the centre's people's hours against
    its machines', never more than the hours not earned), and what is left: slower than the standard, or work not on the
    Daily log — as a waterfall, and says which of them moved the efficiency against the days before (the assistant's
-   `explain_efficiency`). The headline figures each read against a week ago. Under them,
-   **Floor performance** — the shift log's side over the period and the department picked in its toolbar (the app's
+   `explain_efficiency`; it sits on the Production dashboard). The headline figures each read against a week ago. The
+   Production dashboard (`/dashboards/production`) carries **Floor performance** — the shift log's side over the period and the department picked in its toolbar (the app's
    date slicer, the last 7 days by default, up to 92 days within the last 180; All, Fabrication, Welding, Shot blast or Painting; kept
    in the URL as `?from=&to=&dept=` and reopened as it was left): the period's efficiency, standard hours and pieces
    a person a day (shot blast's pieces are every painted piece, as on Shifts), people a day, attendance, overtime share

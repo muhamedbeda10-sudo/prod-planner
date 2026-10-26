@@ -2,18 +2,15 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { getActiveLine } from "@/lib/server/line";
 import { linePermKey } from "@/lib/domain/permissions";
-import { getOdooData, getOdooDashboard } from "@/lib/server/odoo";
-import { resolveBasis, resolveBom, resolveCompare, resolvePeriod, resolveProduct } from "@/lib/domain/odooStats";
-import { OdooBasisPicker, OdooBomPicker, OdooComparePicker } from "@/components/OdooPickers";
-import { OdooDashboard } from "@/components/LazyCharts";
+import { getOdooData } from "@/lib/server/odoo";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
-import { factoryDayISO, factoryToday } from "@/lib/domain/dates";
+import { factoryDayISO } from "@/lib/domain/dates";
 import { odooScopeKey, parseOdooScope } from "@/lib/domain/odoo";
 import { PageHead } from "@/components/ui";
 import { ExportMenu } from "@/components/ExportMenu";
-import { ViewTabs } from "@/components/ViewTabs";
 import { OdooClient } from "@/components/OdooClient";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
+import { ViewTabs, trackerViews } from "@/components/ViewTabs";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 
 export const metadata = { title: "Odoo — ATC" };
@@ -37,38 +34,12 @@ export default async function OdooPage({
   // every day by default (the log opens on the whole period), one day, or a from..to period
   const scope = parseOdooScope(sp.day ?? "all", factoryDayISO(new Date()));
   const day = odooScopeKey(scope);
-  const view = sp.view === "dashboard" ? "dashboard" : "log";
-
-  // the tab's other view, top right — the same switch every tab carries
-  const viewSwitch = (
-    <ViewTabs
-      views={[{ href: "/odoo?view=log", label: "Log", title: "The daily close-out log" }, { href: "/odoo?view=dashboard", label: "Dashboard", title: "Closed quantities per product, close-out time" }]}
-      current={`/odoo?view=${view}`}
-      label="ODOO view"
-    />
-  );
-
-  if (view === "dashboard") {
-    // the factory's day (Cairo), as the slicer and the closed-day buckets read it
-    const period = resolvePeriod(sp, factoryToday());
-    const basis = resolveBasis(sp);
-    const data = await getOdooDashboard(period, basis, resolveBom(sp), resolveCompare(sp), resolveProduct(sp));
-    const today = factoryDayISO(new Date());
-    return (
-      <div className="space-y-3">
-        <RememberLastVisit storageKey="odoo:last" view="dashboard" />
-        <PageHead title="ODOO" sub="Dashboard · both lines" views={viewSwitch}>
-          <OdooBasisPicker basis={basis} />
-          <OdooBomPicker bom={data.bom} boms={data.boms} />
-          <OdooComparePicker compare={data.compare} />
-        </PageHead>
-        <UrlDateSlicer
-          encoding="odooDash" from={period.fromISO} to={period.fromISO ? period.toISO : null} min={addDaysISO(today, -120)} max={today} today={today}
-          presets={["today", "yesterday", "last7", "thisMonth", "lastMonth", "last30", "last90"]} allLabel="All time"
-        />
-        <OdooDashboard data={data} />
-      </div>
-    );
+  // the dashboard lives in the Dashboards tab now — an old ?view=dashboard link
+  // lands there with its period, basis and picks
+  if (sp.view === "dashboard") {
+    const q = new URLSearchParams();
+    for (const k of ["range", "from", "to", "basis", "bom", "compare", "product"] as const) if (sp[k]) q.set(k, sp[k]!);
+    redirect(`/dashboards/odoo${q.size ? `?${q}` : ""}`);
   }
 
   const { entries, days, knownSois, nesting, soiBoms, soiMos, lv, totalRows, openRows } = await getOdooData(scope);
@@ -96,11 +67,11 @@ export default async function OdooPage({
 
   return (
     <div className="space-y-3">
-      <RememberLastVisit storageKey="odoo:last" forget={["day"]} view="log" />
+      <RememberLastVisit storageKey="odoo:log" forget={["day"]} />
       <PageHead
         title="ODOO"
         sub="Close-out log · both lines"
-        views={viewSwitch}
+        views={<ViewTabs views={trackerViews(line)} current="/odoo" label="Tracker view" />}
         actions={<ExportMenu excel={[{ rows: exportRows, filename: `odoo-${day.replace("..", "_to_")}.xlsx`, sheetName: "Sheet1" }]} />}
       />
       <UrlDateSlicer

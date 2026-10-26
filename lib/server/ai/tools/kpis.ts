@@ -26,13 +26,13 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
   name: "get_kpis",
   title: "Reading the planning cockpit",
   description:
-    "The planner's KPIs as the Cockpit (the home page, /, a view of Plan Tracker) shows them, all in STANDARD HOURS (what the work is worth, never pieces) — the transformers only: " +
+    "The planner's KPIs as the Planning dashboard (the home page, /, the first place of the Dashboards tab) shows them, all in STANDARD HOURS (what the work is worth, never pieces) — the transformers only: " +
     "the decisions it flags today; the newest weekly plan — each stage's pieces due by today against done (adherence), and the lines behind with the stage they are stuck at (the oldest 20 of them; behindCount counts them all); " +
     "each work centre (laser / punch, bending, fin folding, welding, shot blast, painting) — earned std-hours against the man-hours the shift log booked there (efficiency, 100% = the standard pace) on the last recorded day and over the recent recorded days, people a day, machine availability, the daily trend, and Fabrication's three centres together; " +
     "the load ahead — each centre's remaining plan hours over the next 10 working days against what it can work (falling behind and when it catches up, or short at the end; not measured without booked hours); " +
     "welding coverage — days of cut parts waiting in front of the welders; the month's pace — each centre's share of the month's plan done against an even pace through its working days; each recorded day's output in standard hours by department against the man-hours booked; each headline figure against a week ago; the month's manpower — the people each centre needs for the month's plan (its standard hours over the working days × the net hours a person works) and from today for what is left, against the people who come; the losses — machine stops by cause, absence and overtime; and the daily trend of these. " +
     "Read it first for any question about how the plant is doing, its KPIs, efficiency, capacity or the morning's priorities. " +
-    "The floor's figures here are over its last 7 recorded days, as the Cockpit's tiles read them; for another period or one department (the page's Floor performance section) use get_floor_performance. " +
+    "The floor's figures here are over its last 7 recorded days, as the Planning dashboard's tiles read them; for another period or one department (the Production dashboard) use get_floor_performance. " +
     "For a person the Shifts screen is closed to, the shift log's figures (the centres, the losses) are left out.",
   schema: { type: "object", properties: {}, additionalProperties: false },
   tabs: ["dashboard"],
@@ -99,7 +99,7 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
         },
         trend: c.trend.map(pt),
       }),
-      links: [{ label: "Cockpit", href: "/" }],
+      links: [{ label: "Planning dashboard", href: "/" }],
     };
   },
 };
@@ -111,14 +111,14 @@ const outputRow = (d: OutputDay) => ({ day: d.dateISO, fabricationH: d.Fabricati
 /** The stops by cause, as both tools give them. */
 const lossRow = (x: DowntimeCause) => ({ cause: x.label, planned: x.planned, hours: x.hours, stops: x.stops, share: r2(x.share) });
 
-/** The floor's performance over a period and a department — the Cockpit's
+/** The floor's performance over a period and a department — the Production dashboard's
  *  Floor performance section, from the same loader and the same reading of the request. */
 export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dept?: string }> = {
   kind: "read",
   name: "get_floor_performance",
   title: "Reading the floor's performance",
   description:
-    `How the transformer floor worked over a period the person names (a week, a month, from one date to another — at most ${FLOOR_MAX_DAYS} days, starting within the last ${FLOOR_HISTORY_DAYS}; the last ${FLOOR_DEFAULT_DAYS} days if none is named), for every department or one (Fabrication = laser / punch, bending and fin folding; Welding; ShotBlast; Painting) — the Cockpit's Floor performance section, all in STANDARD HOURS: ` +
+    `How the transformer floor worked over a period the person names (a week, a month, from one date to another — at most ${FLOOR_MAX_DAYS} days, starting within the last ${FLOOR_HISTORY_DAYS}; the last ${FLOOR_DEFAULT_DAYS} days if none is named), for every department or one (Fabrication = laser / punch, bending and fin folding; Welding; ShotBlast; Painting) — the Production dashboard (Dashboards → Production), all in STANDARD HOURS: ` +
     "efficiency (earned std-hours ÷ the man-hours the shift log booked; 100% = the standard pace), each centre's efficiency day by day and over the period, " +
     "productivity — standard hours and pieces one person turned out on a recorded day, people a day, attendance, overtime share, machine availability — by department (shot blast's pieces are every painted piece, as on Shifts), " +
     `the floor's efficiency each day with its rolling ${FLOOR_TREND_WINDOW}-recorded-day figure, each day's output by department against the hours booked, and the machine stops by cause. ` +
@@ -164,8 +164,8 @@ export const getFloorPerformanceTool: ReadTool<{ from?: string; to?: string; dep
         losses: { unplannedH: f.losses.unplannedH, plannedMaintenanceH: f.losses.plannedH, byCause: f.losses.causes.map(lossRow) },
         shareOfPiecesPriced: r2(f.pricedShare),
       }),
-      // the home page is the transformers' cockpit only on that line
-      links: ctx.line === "LV" ? [] : [{ label: "Floor performance", href: `/${q ? `?${q}` : ""}#floor-head` }],
+      // the Production dashboard is the transformers' only
+      links: ctx.line === "LV" ? [] : [{ label: "Production dashboard", href: `/dashboards/production${q ? `?${q}` : ""}` }],
     };
   },
 };

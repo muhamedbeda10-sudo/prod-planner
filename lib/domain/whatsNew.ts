@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-dashboards-tab",
+    dateISO: "2026-10-26",
+    title: "Every dashboard in one tab: Dashboards — and ODOO moves into Plan Tracker",
+    where: "Dashboards → Planning · Production · Material · Consumables · ODOO",
+    href: "/",
+    body: "The new Dashboards tab, first in the top bar, holds every dashboard, each in one place only. A strip at its top switches between Planning (the plan, the load, the month and its people — the home page, as before), Production (Floor performance and “Where did the hours go?”), Material, Consumables and ODOO. They have left their old places: Material, Consumables and ODOO no longer carry a Dashboard view, and Plan Tracker no longer carries the Cockpit. The ODOO close-out log is now a view of Plan Tracker, after the Daily log and the Simulator, and the Plan Tracker tab carries its badge. Old links still work and open the dashboard where it lives now. Who can see each dashboard hasn't changed: it goes with the screen it reads, and Production goes with Shifts.",
+  },
+  {
     id: "2026-10-26-material-tab-holds-store",
     dateISO: "2026-10-26",
     title: "Physical Material and Consumables are now inside the Material tab",
