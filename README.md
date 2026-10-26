@@ -48,19 +48,18 @@ adds up and the
 between its PLACES; the switch in a page's bar moves between VIEWS of one place's rows (`components/ViewTabs.tsx`). Two things are not tabs at all: **chat** is the icon in the nav's
 right cluster, opening a panel over whatever page you are on (a glance, not a destination — its
 bundle is fetched only on first open), and the **barcode sheet** is a button on the painting
-worklist, where the tanks it prints for finish. In Admin the two plan imports share one page. The
+worklist, where the tanks it prints for finish. In Admin the Orders Registry (with the monthly plan import) and the weekly plan import are two entries of the tools menu. The
 mobile drawer still lists every view flat, since it has the vertical room.
 
 **Product lines (Transformers / LV Panels).** There is no line switch in the top bar. A screen whose rows
 depend on the line (Planning, the Material dashboard, the Plan Tracker, the Daily log, Material, the Orders
-Registry, the welding and painting worklists) carries a **Transformers | LV Panels** switch in its page head
-(`components/LineSwitch.tsx`), and the line is part of the address (`?line=LV`): the proxy copies it into a
+Registry) carries a **Transformers | LV Panels** switch first in its filter bar (`components/LineSwitch.tsx`);
+the worklists carry none — the Floor tab's menu lists each line's departments, and its links name the line. And the line is part of the address (`?line=LV`): the proxy copies it into a
 request header that `getActiveLine` (`lib/server/line.ts`) reads, so the page's loaders and every server
 action posted from the page agree on it. With no line in the address a screen opens on the person's own line
 (`defaultLineOf`, `lib/domain/permissions.ts`): LV Panels for someone who records only on the panels, Transformers for
 everyone else. A screen that belongs to one line always shows it (`PINNED_LINE`, which the proxy applies): the weekly import
-and Fabrication are the transformers', Punching and Bending the panels'. The Floor tab
-lists both lines' departments; the ODOO log shows both lines at once; a trace opens on its order's own line.
+and Fabrication are the transformers', Punching and Bending the panels'. The ODOO log shows both lines at once; a trace opens on its order's own line.
 
 ## Features
 1. **Weekly plan import** (`/import`) — grid parser from row 6, merged-BOM carry-down, `ParseBalance`

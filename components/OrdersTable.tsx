@@ -39,7 +39,12 @@ export interface OrderRow {
  *  and colour; an LV panel by its type (LSS / USS), its SEC item, the
  *  enclosures bought outside and what the sheet said about its parts — so
  *  the middle of the table is the line's, and the rest is shared. */
-export function OrdersTable({ rows, line = "TR" }: { rows: OrderRow[]; line?: ProductLine }) {
+export function OrdersTable({ rows, line = "TR", lineSwitch }: {
+  rows: OrderRow[];
+  line?: ProductLine;
+  /** The page's Transformers | LV Panels switch, first in the filter bar. */
+  lineSwitch?: React.ReactNode;
+}) {
   const lv = line === "LV";
   // filters survive navigating away and back (sessionStorage per tab)
   const [q, setQ] = useSavedFilter("orders.q");
@@ -151,7 +156,7 @@ export function OrdersTable({ rows, line = "TR" }: { rows: OrderRow[]; line?: Pr
 
   return (
     <>
-      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setUrgent(""); setSource(""); }} hasActive={hasActive}>
+      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setUrgent(""); setSource(""); }} hasActive={hasActive} head={lineSwitch}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / FG…" />
         <SelectFilter label="Urgent" value={urgent} onChange={setUrgent} options={[{ value: "yes", label: "Urgent only" }, { value: "no", label: "Not urgent" }]} />
         {sources.length > 1 && (

@@ -4,7 +4,6 @@ import { PageHead, ReadingColumn } from "@/components/ui";
 import { ImportForm } from "@/components/ImportForm";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { getPlanNos } from "@/lib/server/data";
-import { ViewTabs, PLANS_VIEWS } from "@/components/ViewTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +16,7 @@ export default async function ImportPage() {
   const plans = await getPlanNos();
   return (
     <ReadingColumn width="3xl" className="space-y-5">
-      <PageHead title="Orders Registry" sub="Weekly plan · Transformers · the delivery schedule" views={<ViewTabs views={PLANS_VIEWS} current="/import" label="Plans view" />} />
+      <PageHead title="Weekly plan import" sub="Transformers · the delivery schedule" />
       <p className="text-sm text-muted">
         <b>Delivery schedule only.</b> Dates per MO come from here; order quantities live in the monthly registry
         beside it, and progress in the daily logs.
