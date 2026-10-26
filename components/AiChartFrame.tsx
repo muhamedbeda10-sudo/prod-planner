@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode, type SVGProps } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type SVGProps } from "react";
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { ChartCard, Legend, TipBox, fmt, type TableRow } from "@/components/charts/kit";
 import type { AiTone } from "@/lib/domain/aiChart";
@@ -18,6 +18,10 @@ export const unitOf = (unit: string) => (unit ? ` ${unit}` : "");
 
 export const valueText = (v: number, unit: string) => `${fmt(v)}${unitOf(unit)}`;
 
+/** Inside a page's own card (its title, its table, its export already there),
+ *  a chart draws without a frame of its own. */
+export const FramelessChart = createContext(false);
+
 const fileOf = (title: string) => title.replace(/[^\w؀-ۿ -]+/g, "").slice(0, 60) || "ai-chart";
 
 export function ChartFrame({
@@ -34,6 +38,15 @@ export function ChartFrame({
   legend?: { label: string; color: string; line?: boolean }[];
   children: ReactNode;
 }) {
+  const frameless = useContext(FramelessChart);
+  if (frameless) {
+    return (
+      <>
+        {children}
+        {legend && legend.length > 1 && <div className="mt-2"><Legend items={legend} /></div>}
+      </>
+    );
+  }
   return (
     <ChartCard title={title || "Chart"} sub={sub ? <span dir="auto">{sub}</span> : undefined} className="my-3 not-prose ai-chart" table={{ rows, filename: fileOf(title), sheet: "Data" }}>
       {children}

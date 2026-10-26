@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-why-and-meet-deadlines",
+    dateISO: "2026-10-26",
+    title: "Why did efficiency fall? and Meet the deadlines: the answer, and what it takes",
+    where: "Plan Tracker → Cockpit · Plan Tracker → Simulator · AI assistant",
+    href: "/",
+    body: "The Cockpit has a new card at the bottom, “Where did the hours go?”: for the whole floor or one work centre over the last 7, 14 or 30 days, a waterfall from the hours people were rostered for down to the standard hours they earned — what absence took, what overtime added, the man-hours machine stops idled (by cause: breakdowns, no material, setup…), and what is left: work slower than the standard or not on the Daily log. It says which of those moved the efficiency against the days before, and the biggest loss to act on first. On the Simulator, “Meet the deadlines” finds the cheapest way to bring the late orders back on time — first the order the jobs are worked in (free), then step by step the addition that saves the most per man-hour: workers at a department or Fridays — puts it on the knobs, lists each step with what it does and costs, and Undo puts back what you had. Ask the assistant “why did welding fall this week?” or “what do we need to deliver these orders on time?” and it uses the same.",
+  },
+  {
     id: "2026-10-26-scan-handwritten-sheet",
     dateISO: "2026-10-26",
     title: "Scan a handwritten sheet: the assistant reads the paper and prepares the records",

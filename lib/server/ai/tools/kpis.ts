@@ -1,5 +1,7 @@
 import "server-only";
-import { getCockpit, type CockpitData } from "@/lib/server/kpis";
+import { getCockpit, getLossWaterfall, type CockpitData } from "@/lib/server/kpis";
+import { WORK_CENTRES, WORK_CENTRE_LABEL, type WorkCentre } from "@/lib/domain/shifts";
+import { LOSS_DAYS } from "@/lib/domain/losses";
 import { dailyOutput, isFloorAction, monthPace, weekChange, type KpiSnapshotData } from "@/lib/domain/kpis";
 import type { ReadTool } from "./types";
 
@@ -95,4 +97,48 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
   },
 };
 
-export const KPI_TOOLS = [getKpisTool] as const;
+/** Why a centre (or the floor) earned less than it worked — and what moved it. */
+export const explainEfficiencyTool: ReadTool<{ centre?: WorkCentre; days?: number }> = {
+  kind: "read",
+  name: "explain_efficiency",
+  title: "Finding where the hours went",
+  description:
+    "Why a work centre (or the whole floor) earned fewer standard hours than its people were rostered for, over the last 7, 14 or 30 days: the walk from rostered man-hours down to earned standard hours — absence, overtime added, worked hours, the man-hours idled by machine stops (by cause: breakdowns, no material, no operator, setup, planned maintenance …), and what is left (work slower than the standard, or work not on the Daily log) — and, against the same number of days before, which of those moved the efficiency and by how many points. " +
+    "Read it for any \"why\" about efficiency, output falling short, lost hours or where to act first; draw the steps as a waterfall chart.",
+  schema: {
+    type: "object",
+    properties: {
+      centre: { type: "string", enum: [...WORK_CENTRES], description: "One work centre; leave out for the whole floor." },
+      days: { type: "integer", minimum: 7, maximum: 30, description: "The stretch, in calendar days up to today — 7, 14 (default) or 30 — compared with the same number of days before it." },
+    },
+    additionalProperties: false,
+  },
+  // the shift log's figures — as on the Cockpit, only for the people who see Shifts
+  tabs: ["dashboard", "shifts"],
+  status: () => "Finding where the hours went",
+  async run(i, ctx) {
+    // to the nearest of the stretches the Cockpit offers
+    const days = i.days ? [...LOSS_DAYS].sort((a, b) => Math.abs(a - i.days!) - Math.abs(b - i.days!))[0] : 14;
+    const w = await getLossWaterfall({ centre: i.centre ?? null, days, now: ctx.now });
+    const view = (x: typeof w.now) => ({
+      recordedDays: x.days, rosteredH: x.rosteredH, absentH: x.absentH, overtimeH: x.overtimeH, workedH: x.workedH,
+      stopsManH: x.stopsH, slowerOrNotLoggedH: x.performanceH, earnedStdH: x.earnedH, efficiency: x.efficiency === null ? null : Math.round(x.efficiency * 1000) / 10,
+    });
+    return {
+      ok: true,
+      text: JSON.stringify({
+        centre: i.centre ? WORK_CENTRE_LABEL[i.centre] : "the whole floor",
+        from: w.fromISO, to: w.toISO, comparedWithFrom: w.beforeFromISO,
+        now: view(w.now),
+        before: view(w.before),
+        waterfall: w.now.steps.map((s) => ({ name: s.label, value: s.hours, total: s.total })),
+        stopsByCause: w.now.stops.map((s) => ({ cause: s.label, planned: s.planned, machineH: s.machineH, manH: s.manH })),
+        whatMoved: w.change.drivers,
+        summary: [w.change.text, w.biggest].filter(Boolean).join(" "),
+        note: "Stops are machine-hours turned into the man-hours they idled (the centre's people's hours against its machines'), never more than the hours not earned. 'Slower or not logged' is what remains — slower than the standard, or work done but not on the Daily log.",
+      }),
+    };
+  },
+};
+
+export const KPI_TOOLS = [getKpisTool, explainEfficiencyTool] as const;
