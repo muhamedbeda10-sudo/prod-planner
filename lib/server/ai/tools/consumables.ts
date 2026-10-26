@@ -56,7 +56,7 @@ export const recordConsumableIssueTool: WriteTool<RecordInput> = {
   name: "record_consumable_issue",
   title: "Record a consumables hand-out",
   description:
-    "Record a hand-out from the store, as the Consumables tab does: the item (its catalogue name or code — anything else is recorded as typed, with no limit counting it), the quantity, the department it is for (a worker section such as WeldingTX, or a department the log already uses, e.g. Maintenance), who asked for it / collected it, and notes. One over a limit needs overLimitReason.",
+    "Record a hand-out from the store, as Material → Consumables does: the item (its catalogue name or code — anything else is recorded as typed, with no limit counting it), the quantity, the department it is for (a worker section such as WeldingTX, or a department the log already uses, e.g. Maintenance), who asked for it / collected it, and notes. One over a limit needs overLimitReason.",
   area: "data",
   risk: "low",
   tabs: TABS,

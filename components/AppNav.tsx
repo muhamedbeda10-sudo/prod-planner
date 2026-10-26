@@ -57,17 +57,16 @@ const LV_WORKLIST_DEPTS = [
 // One tab per QUESTION, not per screen. Several of these hold more than one
 // view behind their own switcher (see components/ViewTabs.tsx), which is what
 // keeps the strip short enough to read:
-//   Material     → the nesting sheets, and the sheet analytics built on them
+//   Material     → the nesting sheets and their dashboard, the store's physical
+//                  count, and the consumables it hands out (components/MaterialSections.tsx)
 //   Plan Tracker → the planner's cockpit (the home page), the tracker, the daily log and the what-if simulator
 // Chat is not here at all — it is the icon in the right cluster.
 const REST: Item[] = [
-  // Material comes next: nesting is decided before a single sheet is cut.
-  { href: "/material", label: "Material", icon: Layers, also: ["/analytics"] },
-  // the store's count against Odoo's stock, code by code
-  { href: "/physical", label: "Physical Material", icon: Warehouse },
+  // Material comes next: nesting is decided before a single sheet is cut. The
+  // store's physical count against Odoo's stock and the consumables it hands
+  // out to the floor live in the same tab, each with its own screens.
+  { href: "/material", label: "Material", icon: Layers, also: ["/analytics", "/physical", "/consumables"] },
   { href: "/odoo", label: "ODOO", icon: Boxes },
-  // what the store hands out to the floor — item, qty, department, worker
-  { href: "/consumables", label: "Consumables", icon: PackageMinus },
   // who worked today, how long, on what — the supervisors' page
   { href: "/shifts", label: "Shifts", icon: Clock },
   // the home page (/) is the planner's cockpit — a view of this tab, as the simulator is
@@ -93,6 +92,8 @@ const DRAWER_VIEWS: Item[] = [
   { href: "/handover", label: "Daily log", icon: BookOpenCheck },
   { href: "/simulate", label: "Simulator", icon: FlaskConical },
   { href: "/analytics", label: "Material analytics", icon: ChartColumnBig },
+  { href: "/physical", label: "Physical Material", icon: Warehouse },
+  { href: "/consumables", label: "Consumables", icon: PackageMinus },
   { href: "/chat", label: "Chat", icon: MessagesSquare },
 ];
 

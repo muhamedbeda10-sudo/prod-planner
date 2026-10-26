@@ -359,7 +359,7 @@ export const importPhysicalStockTool = importTool<StockInput, PhysicalImportResu
   name: "import_physical_stock",
   title: "Import the store's stock sheet",
   description:
-    "Import an attached stock sheet onto the PHYSICAL MATERIAL tab, as its Import does: each product code's row is updated in place (its note kept), new codes added. prune true also removes the codes the file no longer carries.",
+    "Import an attached stock sheet onto Material → Physical Material, as its Import does: each product code's row is updated in place (its note kept), new codes added. prune true also removes the codes the file no longer carries.",
   tabs: ["physical"],
   properties: { prune: { type: "boolean", description: "Remove the codes the file no longer carries." } },
   perm: () => "stock.edit",

@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-material-tab-holds-store",
+    dateISO: "2026-10-26",
+    title: "Physical Material and Consumables are now inside the Material tab",
+    where: "Material → Material · Physical Material · Consumables",
+    href: "/material",
+    body: "The top bar is shorter: Physical Material and Consumables moved into the Material tab. A strip at the top of the tab switches between Material, Physical Material and Consumables. Each one keeps its own views — Material and its Dashboard; Consumables' Log, Dashboard, Powder and Limits. On a phone, both are still listed in the menu. Who can see each one hasn't changed.",
+  },
+  {
     id: "2026-10-26-floor-performance",
     dateISO: "2026-10-26",
     title: "Floor performance: any period, any department, with productivity",
