@@ -19,7 +19,8 @@ import { attachSimulator, clearStaged, pushAssistStep, setAssistSteps, SIM_SCENA
 import { SearchBox, FilterSelect } from "@/components/FilterControls";
 import { TableEmpty, TableFrame, Th, useAsk, useConfirm } from "@/components/DataTable";
 import { Tooltip } from "@/components/Tooltip";
-import { Bot, Check, FilterX, Minus, Pin, Plus, RotateCcw, Save, Trash2, Undo2, Wrench, Zap } from "lucide-react";
+import { Bot, Check, FilterX, Loader2, Minus, Pin, Plus, RotateCcw, Save, Target, Trash2, Undo2, Wrench, X, Zap } from "lucide-react";
+import { describePlan, planForDeadlines, type DeadlinePlan } from "@/lib/domain/deadlinePlan";
 
 /* The control room: turn the knobs — workers per stage, working Fridays, a
    hand-reordered (drag & drop) queue, split quantities, or one click of the
@@ -310,6 +311,22 @@ export function WhatIfSimulator({ inputs, isAdmin = false, canSave = false, save
     });
 
   const runOptimizer = () => setScenario((sc) => ({ ...sc, queue: optimizeQueue(inputs, sc) }));
+
+  // ---- what it takes to meet the deadlines: searched from the scenario on
+  // the screen, put on it, the scenario before one click away ----
+  const [deadline, setDeadline] = useState<{ plan: DeadlinePlan; from: Scenario } | null>(null);
+  const [planning, setPlanning] = useState(false);
+  const meetDeadlines = () => {
+    setPlanning(true);
+    // a frame first, so the button shows it is working before the search holds the page
+    window.setTimeout(() => {
+      const from = scenario;
+      const plan = planForDeadlines(inputs, from, { budgetMs: 2000 });
+      setDeadline({ plan, from });
+      if (plan.steps.length > 0) setScenario(plan.scenario);
+      setPlanning(false);
+    }, 30);
+  };
 
   // ---- confidence band: the same scenario at the plant's fast and slow days ----
   // pessimistic rates are clamped away from zero so a volatile stage degrades
@@ -627,7 +644,10 @@ export function WhatIfSimulator({ inputs, isAdmin = false, canSave = false, save
           <h2 className="!mb-0">Scenario</h2>
           <span className="text-xs text-muted min-w-0 truncate">{describeScenario(scenario, inputs)}</span>
           <span className="ms-auto flex flex-wrap items-center gap-2">
-            <button type="button" onClick={runOptimizer} className="btn btn-primary btn-sm" title="reorder the queue to rescue as many due dates as this scenario's speed allows">
+            <button type="button" onClick={meetDeadlines} disabled={planning} className="btn btn-primary btn-sm" title="find the cheapest way to bring the late orders back on time — the queue first, then more workers or Fridays — and put it on the knobs">
+              {planning ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Target size={14} aria-hidden />}Meet the deadlines
+            </button>
+            <button type="button" onClick={runOptimizer} className="btn btn-secondary btn-sm" title="reorder the queue to rescue as many due dates as this scenario's speed allows">
               <Zap size={14} aria-hidden />Optimize queue
             </button>
             <button type="button" onClick={() => setPinned(scenario)} className="btn btn-secondary btn-sm" title="freeze the current scenario as A and compare everything you try next against it">
@@ -638,6 +658,31 @@ export function WhatIfSimulator({ inputs, isAdmin = false, canSave = false, save
             </button>
           </span>
         </div>
+        {/* the plan's note stands while its scenario is the one on the knobs; turned since, it goes */}
+        {deadline && scenario === (deadline.plan.steps.length > 0 ? deadline.plan.scenario : deadline.from) && (
+          <div className="px-4 py-2.5 border-b space-y-1.5" role="status" aria-live="polite">
+            <div className="flex flex-wrap items-start gap-2">
+              <Target size={15} className={`mt-0.5 shrink-0 ${deadline.plan.met || deadline.plan.before.late === 0 ? "text-ok-fg" : "text-warn-fg"}`} aria-hidden />
+              <p className="text-sm flex-1 min-w-[14rem]">{describePlan(deadline.plan)}</p>
+              {deadline.plan.steps.length > 0 && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setScenario(deadline.from); setDeadline(null); }} title="put back the scenario you had before">
+                  <Undo2 size={14} aria-hidden />Undo
+                </button>
+              )}
+              <button type="button" className="icon-btn" onClick={() => setDeadline(null)} aria-label="Close" title="Close"><X size={14} /></button>
+            </div>
+            {deadline.plan.steps.length > 0 && (
+              <ol className="ps-6 list-decimal text-sm space-y-0.5">
+                {deadline.plan.steps.map((s, i) => (
+                  <li key={i}>
+                    <span className="font-semibold">{s.change}</span>
+                    <span className="text-muted"> — {s.after.late} late order{s.after.late === 1 ? "" : "s"} left{s.after.lateDays ? ` (${s.after.lateDays} days late in all)` : ""}{s.costMhWeek ? ` · +${Math.round(s.costMhWeek)} man-h a week` : " · no extra cost"}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 border-b bg-surface-2">
           <label className="inline-flex items-center gap-2">
             <span className="filter-label">Hours / worker / day</span>

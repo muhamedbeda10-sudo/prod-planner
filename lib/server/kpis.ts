@@ -12,7 +12,8 @@ import {
 } from "@/lib/domain/shifts";
 import { sectionDept } from "@/lib/domain/tanks";
 import { parseWorkerSections } from "@/lib/domain/workers";
-import { downtimeByCause, type DowntimeCause } from "@/lib/domain/downtime";
+import { downtimeByCause, isDowntimeCode, type DowntimeCause, type DowntimeCode } from "@/lib/domain/downtime";
+import { biggestLoss, explainChange, lossWaterfall, type LossChange, type LossDay, type LossWaterfall } from "@/lib/domain/losses";
 import { downtimeHoursInRange, downtimeWindowWhere, splitDowntimeDays } from "@/lib/domain/downtimePeriods";
 import { FACTOR_MAX, FACTOR_MIN, MIN_CALIBRATION_DAYS } from "@/lib/domain/calibration";
 import {
@@ -115,9 +116,9 @@ const dayStart = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 /** Every centre's recorded days since `fromISO` — worked man-hours from the
  *  shift log, earned standard hours from the Daily log, machine hours and
  *  stops — with what the cockpit's other figures need from the same reads. */
-async function readCentreDays(fromISO: string) {
+async function readCentreDays(fromISO: string, now = new Date()) {
   const from = dayStart(fromISO);
-  const stopNow = new Date(), stopToday = factoryDayISO(stopNow);
+  const stopNow = now, stopToday = factoryDayISO(stopNow);
   const [std, hrs, orders, shiftRows, ledger, stops, machines, lvShotBlast] = await Promise.all([
     getStdData(),
     getShiftHours(),
@@ -158,6 +159,13 @@ async function readCentreDays(fromISO: string) {
     return m.get(c)!;
   };
   let absent = 0, rowsRecent = 0, overtimeH = 0;
+  // what the loss waterfall needs beside: absence and overtime hours, stops by cause
+  const losses = new Map<string, { absentH: number; overtimeH: number; stops: Partial<Record<DowntimeCode, number>> }>();
+  const lossCell = (iso: string, c: WorkCentre) => {
+    const k = `${iso}|${c}`;
+    if (!losses.has(k)) losses.set(k, { absentH: 0, overtimeH: 0, stops: {} });
+    return losses.get(k)!;
+  };
   const recordedDates = [...new Set(shiftRows.map((r) => toISODate(r.date)))].sort();
   const recentDates = new Set(recordedDates.slice(-RECENT_DAYS));
   for (const r of shiftRows) {
@@ -173,10 +181,16 @@ async function readCentreDays(fromISO: string) {
       // Both day and night overtime contribute to resource effort.
       else if (r.overtimeH > 0) overtimeH += r.overtimeH;
     }
-    if (!r.present) continue;
+    if (!r.present) {
+      // the hours an absent worker's shift would have given (the cockpit's
+      // own days stay those with someone present)
+      lossCell(iso, c).absentH += lineHours({ present: true, shift, overtimeH: 0 }, hrs);
+      continue;
+    }
     const d = cell(iso, c);
     d.workedH += lineHours({ present: true, shift, overtimeH: r.overtimeH }, hrs);
     d.people += 1;
+    if (r.overtimeH > 0) lossCell(iso, c).overtimeH += r.overtimeH;
   }
   let pricedQty = 0, recentQty = 0;
   for (const e of ledger) {
@@ -198,14 +212,50 @@ async function readCentreDays(fromISO: string) {
   }
   for (const s of stops) {
     const c = s.machine ? machineWorkCentre(s.machine.dept, s.machine.center) : s.customCentre && isWorkCentre(s.customCentre) ? s.customCentre : null;
-    if (c) for (const day of splitDowntimeDays(s, fromISO, stopToday, stopNow)) cell(toISODate(day.date), c).downtimeH += day.hours;
+    if (!c) continue;
+    const code: DowntimeCode = s.reasonCode && isDowntimeCode(s.reasonCode) ? s.reasonCode : "OTHER";
+    for (const day of splitDowntimeDays(s, fromISO, stopToday, stopNow)) {
+      const iso = toISODate(day.date);
+      cell(iso, c).downtimeH += day.hours;
+      const l = lossCell(iso, c);
+      l.stops[code] = (l.stops[code] ?? 0) + day.hours;
+    }
   }
   const all: CentreDay[] = [];
   for (const [, m] of days) for (const [, d] of m) {
     if (d.workedH > 0) d.machineH = machineH[d.centre];
     all.push(d);
   }
-  return { std, orders, stops, days, all, recordedDates, tierByBom, tierOf, perPiece, absent, rowsRecent, overtimeH, pricedQty, recentQty, lvShotBlast };
+  return { std, orders, stops, days, all, losses, recordedDates, tierByBom, tierOf, perPiece, absent, rowsRecent, overtimeH, pricedQty, recentQty, lvShotBlast };
+}
+
+/** Where the hours went, the last `days` days against the `days` before:
+ *  one centre's (or the floor's, null) waterfall now and then, and what
+ *  moved its efficiency. */
+export async function getLossWaterfall(o: { centre: WorkCentre | null; days: number; now?: Date }): Promise<{
+  fromISO: string; toISO: string; beforeFromISO: string; now: LossWaterfall; before: LossWaterfall; change: LossChange; biggest: string | null;
+}> {
+  const at = o.now ?? new Date();
+  // whole days only: today is still being logged, and would read as slow
+  const toISO = addDaysISO(factoryDayISO(at), -1);
+  const fromISO = addDaysISO(toISO, -(o.days - 1));
+  const beforeFromISO = addDaysISO(fromISO, -o.days);
+  const { all, losses } = await readCentreDays(beforeFromISO, at);
+  const lossDays: LossDay[] = all.map((d) => {
+    const l = losses.get(`${d.dateISO}|${d.centre}`);
+    return { dateISO: d.dateISO, centre: d.centre, workedH: d.workedH, earnedH: d.earnedH, machineH: d.machineH, absentH: l?.absentH ?? 0, overtimeH: l?.overtimeH ?? 0, stops: l?.stops ?? {} };
+  });
+  // a day a centre's whole crew was absent has no cell of its own: its absence still counts
+  const seen = new Set(all.map((d) => `${d.dateISO}|${d.centre}`));
+  for (const [k, l] of losses) {
+    if (seen.has(k) || l.absentH <= 0) continue;
+    const [dateISO, centre] = k.split("|") as [string, WorkCentre];
+    lossDays.push({ dateISO, centre, workedH: 0, earnedH: 0, machineH: 0, absentH: l.absentH, overtimeH: 0, stops: {} });
+  }
+  const inNow = (d: LossDay) => d.dateISO >= fromISO && d.dateISO <= toISO;
+  const now = lossWaterfall(lossDays.filter(inNow), o.centre);
+  const before = lossWaterfall(lossDays.filter((d) => d.dateISO < fromISO), o.centre);
+  return { fromISO, toISO, beforeFromISO, now, before, change: explainChange(before, now), biggest: biggestLoss(now) };
 }
 
 /** The LV panels' shot-blast std-hours by day since `fromISO`. */

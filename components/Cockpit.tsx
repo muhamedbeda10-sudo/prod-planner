@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Info } from "lucide-react";
 import { ChartCard, Meter, StatTile, TONE_TEXT, TRACK, fmt, pct } from "@/components/charts/kit";
+import { LossWaterfallCard } from "@/components/LossWaterfallCard";
 import { BurnUpChart, LoadChart, OutputChart, PaceMultiples } from "@/components/LazyCharts";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/primitives";
@@ -341,6 +342,9 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           </ChartCard>
         </div>
       )}
+
+      {/* 6 — why: the hours walked down to what they earned */}
+      {floor && <LossWaterfallCard />}
     </div>
   );
 }
