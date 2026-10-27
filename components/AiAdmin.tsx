@@ -233,12 +233,12 @@ export function AiAdmin({ data, clock, automations }: { data: AiAdminData; clock
       </div>
 
       <div className="settings-layout">
-        <nav className="settings-nav" aria-label="AI settings sections">
+        <nav className="settings-nav tone-cycle" aria-label="AI settings sections">
           {SECTIONS.map((s) => {
             const on = s.id === section;
             return (
               <button key={s.id} type="button" onClick={() => pick(s.id)} className={`settings-nav-item ${on ? "settings-nav-active" : ""}`} aria-current={on ? "page" : undefined}>
-                <span className="settings-nav-icon"><s.icon size={15} aria-hidden /></span>
+                <span className="settings-nav-icon tone-tile"><s.icon size={15} aria-hidden /></span>
                 <span className="min-w-0">
                   <span className="settings-nav-label block">{s.label}</span>
                   <span className="settings-nav-desc block truncate">{s.desc}</span>

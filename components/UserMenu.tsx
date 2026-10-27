@@ -125,20 +125,20 @@ export function UserMenu({ user, whatsNewSeen }: {
             </div>
           </div>
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
-          <button type="button" role="menuitem" className={MENU_ROW} disabled={pending} onClick={() => fileRef.current?.click()}>
-            <Camera size={17} className="shrink-0 text-muted" />
+          <button type="button" role="menuitem" className={`${MENU_ROW} tone-2`} disabled={pending} onClick={() => fileRef.current?.click()}>
+            <span className="tone-tile tone-tile-sm" aria-hidden><Camera size={15} /></span>
             {pending ? "Saving…" : user.avatarUrl ? "Change photo" : "Add your photo"}
           </button>
           {user.avatarUrl && (
-            <button type="button" role="menuitem" className={MENU_ROW} disabled={pending} onClick={() => run(removeAvatar)}>
-              <Trash2 size={17} className="shrink-0 text-muted" />
+            <button type="button" role="menuitem" className={`${MENU_ROW} tone-8`} disabled={pending} onClick={() => run(removeAvatar)}>
+              <span className="tone-tile tone-tile-sm" aria-hidden><Trash2 size={15} /></span>
               Remove photo
             </button>
           )}
           {err && <div className="px-3 pb-1 text-xs text-bad-fg">{err}</div>}
           <div className="border-t my-1" />
-          <button type="button" role="menuitem" className={MENU_ROW} onClick={() => { setOpen(false); news.show(); }}>
-            <Sparkles size={17} className="shrink-0 text-muted" />
+          <button type="button" role="menuitem" className={`${MENU_ROW} tone-3`} onClick={() => { setOpen(false); news.show(); }}>
+            <span className="tone-tile tone-tile-sm" aria-hidden><Sparkles size={15} /></span>
             What&apos;s new
             {news.count > 0 && <span className="count-badge count-badge-alert ms-auto">{news.count}</span>}
           </button>
@@ -146,8 +146,8 @@ export function UserMenu({ user, whatsNewSeen }: {
           <InstallApp row />
           <div className="border-t my-1" />
           <form action={signOut}>
-            <button type="submit" role="menuitem" className={`${MENU_ROW} text-bad-fg`}>
-              <LogOut size={17} className="shrink-0" />
+            <button type="submit" role="menuitem" className={`${MENU_ROW} menu-row-danger`}>
+              <span className="tone-tile tone-tile-sm" aria-hidden><LogOut size={15} /></span>
               Sign out
             </button>
           </form>

@@ -2,6 +2,7 @@
 
 import { isValidElement, type ComponentType, type ReactElement, type ReactNode } from "react";
 import type { LucideProps } from "lucide-react";
+import { toneFor } from "@/lib/domain/tones";
 
 // The small shared pieces every screen is built from: an empty state, a
 // switch, a row of tabs, a settings row and a section card. One look for
@@ -111,7 +112,8 @@ export function SectionCard({ icon, title, description, end, children, className
   return (
     <section className={`section-card ${className}`}>
       <header className="section-head">
-        {icon && <span className="section-icon">{drawIcon(icon, 16)}</span>}
+        {/* a tile in the card's own colour, steady across visits */}
+        {icon && <span className={`section-icon tone-tile ${toneFor(typeof title === "string" ? title : typeof description === "string" ? description : "")}`}>{drawIcon(icon, 16)}</span>}
         <div className="min-w-0 flex-1">
           <h3 className="section-title">{title}</h3>
           {description && <p className="section-desc">{description}</p>}

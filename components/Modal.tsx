@@ -83,8 +83,8 @@ export function Modal({
 
   return createPortal(
     <div className="fixed inset-0 z-50 grid place-items-center p-3 no-print" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
-      <button type="button" aria-label="Close" tabIndex={-1} onClick={() => { if (!busy) onClose(); }} className="absolute inset-0 bg-black/45 backdrop-blur-[2px] cursor-default" />
-      <div ref={box} tabIndex={-1} className={`relative w-full ${width} max-h-[92dvh] overflow-y-auto bg-surface border rounded-xl shadow-lg outline-none`}>
+      <button type="button" aria-label="Close" tabIndex={-1} onClick={() => { if (!busy) onClose(); }} className="modal-scrim absolute inset-0 bg-black/45 backdrop-blur-[2px] cursor-default" />
+      <div ref={box} tabIndex={-1} className={`modal-box relative w-full ${width} max-h-[92dvh] overflow-y-auto bg-surface border rounded-xl shadow-lg outline-none`}>
         <div className="sticky top-0 z-10 bg-surface border-b px-4 py-3 flex items-start gap-3">
           <div className="min-w-0">
             <div role="heading" aria-level={2} className="font-extrabold text-base leading-tight">{title}</div>

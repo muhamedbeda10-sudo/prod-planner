@@ -67,9 +67,9 @@ export function InstallApp({ wide = false, row = false }: { wide?: boolean; row?
         title="Install the app on this device"
         aria-label="Install app"
         role={row ? "menuitem" : undefined}
-        className={row ? MENU_ROW : wide ? "btn btn-secondary w-full" : "shrink-0 inline-flex items-center gap-1.5 rounded-md p-2 hover:bg-white/15 transition-colors text-sm font-semibold"}
+        className={row ? `${MENU_ROW} tone-1` : wide ? "btn btn-secondary w-full" : "shrink-0 inline-flex items-center gap-1.5 rounded-md p-2 hover:bg-white/15 transition-colors text-sm font-semibold"}
       >
-        <Download size={row ? 17 : 16} className={row ? "shrink-0 text-muted" : undefined} aria-hidden />
+        {row ? <span className="tone-tile tone-tile-sm" aria-hidden><Download size={15} /></span> : <Download size={16} aria-hidden />}
         <span className={wide || row ? "" : "hidden lg:inline"}>Install app</span>
       </button>
       {hint && (

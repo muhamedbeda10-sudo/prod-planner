@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-tiles-and-motion-app-wide",
+    dateISO: "2026-10-27",
+    title: "The assistant's coloured tiles and motion, across the whole app",
+    where: "Every screen — the tabs' menus on the top bar, the phone's menu, the account and right-click menus, cards, buttons and dialogs",
+    body: "The look of the assistant's \"What it can do\" tiles is now the whole app's. Resting on a tab of the top bar opens its places as coloured tiles, each with a line saying what it holds; the admin tools, the account menu, the phone's menu and the right-click menu of a table row look the same, and each row lights up in its colour with a sweep of light and its icon tipping up under the pointer. Section cards wear a coloured tile and rise in one after another; KPI cards glow from the corner, lift under the pointer and fill their bars as they appear; buttons lift and press; tabs grow their underline from the middle; switches, segments and counts spring into place; dialogs and pages fade in. With the device set to reduce motion, everything stays still.",
+  },
+  {
     id: "2026-10-27-material-sheet-import-only",
     dateISO: "2026-10-27",
     title: "Material: the sheet changes only by uploading it",

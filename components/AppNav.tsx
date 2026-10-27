@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList, Warehouse,
   Table2, BookOpenCheck, ListChecks, ChevronDown,
@@ -24,6 +24,7 @@ import { Avatar, UserMenu } from "@/components/UserMenu";
 import { LINE_LABEL, PRODUCT_LINES, hrefWithLine, pinnedLine, type ProductLine } from "@/lib/domain/lines";
 import { signOut } from "@/lib/signOut";
 import { trapTab } from "@/components/Modal";
+import { toneAt } from "@/lib/domain/tones";
 
 type Item = {
   href: string;
@@ -136,6 +137,14 @@ const ADMIN: (Item & { desc: string; perm?: string })[] = [
   { href: "/admin/machine-times", label: "Times per Machine", desc: "What one piece of each item really takes on each machine — it outranks the standard time", icon: Timer, perm: "machines.manage" },
 ];
 
+// After ADMIN in the tools menu (and the drawer): the admins' standard times,
+// then — after a line — the owner's own two.
+const STANDARD_TIMES = { href: "/admin/standard-times", label: "Standard Times & Capacity", desc: "Man-hours per KVA class, stage capacity & FG map", icon: Timer };
+const OWNER_TOOLS = [
+  { href: "/admin/users", label: "Users & Permissions", desc: "Accounts, passwords & what each can edit", icon: Users },
+  { href: "/admin/ai", label: "AI assistant settings", desc: "The Claude key, who may use it & monthly limits", icon: Bot },
+];
+
 export interface NavUser {
   id: number;
   name: string;
@@ -155,26 +164,36 @@ const MACHINE_ONLY = new Set(["/admin/machines", "/admin/machine-times"]);
 // The two tabs that only exist while per-piece tank tracking is on.
 const TANK_ONLY = new Set(["/worklist/leak-test", "/barcode"]);
 
-/** One entry of the tools menu: its name, with what it holds as the tooltip. */
-function ToolLink({ href, label, title, icon: Icon, active }: { href: string; label: string; title?: string; icon: Item["icon"]; active: boolean }) {
+/** A row of a bar menu in the assistant's tiles' look: a tile in its own
+ *  colour, its name, and what it holds under it — read out as the row's
+ *  description, not as part of its name. */
+function MenuRow({ href, label, hint, icon: Icon, active, tone, role, className = "" }: { href: string; label: string; hint?: string; icon: Item["icon"]; active: boolean; tone: number; role?: "menuitem"; className?: string }) {
+  const id = useId();
   return (
     <Link
       href={href}
-      role="menuitem"
-      title={title}
-      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-bold transition-colors ${active ? "bg-brand-light text-brand-ink" : "hover:bg-surface-2"}`}
+      role={role}
+      aria-current={active ? "page" : undefined}
+      aria-labelledby={hint ? `${id}-l` : undefined}
+      aria-describedby={hint ? `${id}-h` : undefined}
+      className={`menu-row ${toneAt(tone)} ${active ? "menu-row-on" : ""} ${className}`}
     >
-      <Icon size={17} className={`shrink-0 ${active ? "text-brand-ink" : "text-muted"}`} />
-      {label}
+      <span className="tone-tile" aria-hidden><Icon size={16} /></span>
+      {hint ? (
+        <span className="menu-row-text">
+          <span id={`${id}-l`}>{label}</span>
+          <span id={`${id}-h`} className="menu-row-hint">{hint}</span>
+        </span>
+      ) : label}
     </Link>
   );
 }
 
-/** One row of the phone's drawer: an icon, its name, a count when it has one. */
-function DrawerLink({ href, label, icon: Icon, active, badge }: { href: string; label: string; icon: Item["icon"]; active: boolean; badge?: React.ReactNode }) {
+/** One row of the phone's drawer: a tile, its name, a count when it has one. */
+function DrawerLink({ href, label, icon: Icon, active, badge, tone }: { href: string; label: string; icon: Item["icon"]; active: boolean; badge?: React.ReactNode; tone: number }) {
   return (
-    <Link href={href} className={`drawer-link ${active ? "drawer-link-active" : ""}`}>
-      <Icon size={19} />
+    <Link href={href} className={`menu-row drawer-link ${toneAt(tone)} ${active ? "menu-row-on" : ""}`}>
+      <span className="tone-tile" aria-hidden><Icon size={17} /></span>
       {label}
       {badge}
     </Link>
@@ -252,27 +271,12 @@ function MenuTab({ ctl, id, label, icon: Icon, active, href, badge, children }: 
           aria-label={label}
           style={{ top: ctl.pos!.top, left: ctl.pos!.left }}
           onMouseEnter={ctl.onKeep}
-          className="nav-drop nav-drop-left fixed w-64 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
+          className="nav-drop nav-drop-left fixed w-max min-w-56 max-w-80 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
         >
           {children}
         </div>
       )}
     </li>
-  );
-}
-
-/** One place in a tab's panel: its icon and its name. */
-function MenuLink({ href, label, icon: Icon, title, active }: { href: string; label: string; icon: Item["icon"]; title?: string; active: boolean }) {
-  return (
-    <Link
-      href={href}
-      title={title}
-      aria-current={active ? "page" : undefined}
-      className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-bold whitespace-nowrap transition-colors ${active ? "bg-brand-light text-brand-ink" : "hover:bg-surface-2"}`}
-    >
-      <Icon size={16} className={`shrink-0 ${active ? "text-brand-ink" : "text-muted"}`} />
-      {label}
-    </Link>
   );
 }
 
@@ -381,7 +385,7 @@ export function AppNav({
     keepMenu();
     const r = el.getBoundingClientRect();
     // keep the panel on screen when the tab sits near the right edge
-    setMenuPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 268)) });
+    setMenuPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 328)) });
     setTabMenu(key);
   };
   const closeMenuSoon = () => {
@@ -470,8 +474,11 @@ export function AppNav({
   // a link with its own key follows the tick, admins included; one without
   // is an admin page
   const adminLinks = ADMIN.filter((l) => shown(l) && (l.perm ? user.perms.includes(l.perm) : user.isAdmin));
-  const showTools = adminLinks.length > 0 || (user.isAdmin && canSee("/admin/standard-times")) || !!user.isOwner;
-  const adminActive = adminLinks.some((l) => isActive(l.href, l.match, l.also)) || isActive("/admin/users") || isActive("/admin/ai") || isActive("/admin/standard-times");
+  // the whole tools menu in order — the desktop menu and the drawer list the same rows in the same colours
+  const tools = [...adminLinks, ...(user.isAdmin && canSee(STANDARD_TIMES.href) ? [STANDARD_TIMES] : [])];
+  const ownerTools = user.isOwner ? OWNER_TOOLS : [];
+  const showTools = tools.length + ownerTools.length > 0;
+  const adminActive = [...tools, ...ownerTools].some((l) => isActive(l.href));
 
   return (
     <header className="no-print sticky top-0 z-30 bg-[var(--nav-bg)] text-white border-b border-[var(--nav-border)] shadow-sm">
@@ -523,7 +530,7 @@ export function AppNav({
                     return (
                       <div key={g.line} role="group" aria-label={g.label}>
                         <p className="nav-drop-label" aria-hidden>{g.label}</p>
-                        {depts.map((d) => <MenuLink key={deptHref(d)} href={deptHref(d)} label={d.label} icon={d.icon} active={deptOn(d)} />)}
+                        {depts.map((d, i) => <MenuRow key={deptHref(d)} href={deptHref(d)} label={d.label} icon={d.icon} active={deptOn(d)} tone={i} className="whitespace-nowrap" />)}
                       </div>
                     );
                   })}
@@ -547,8 +554,8 @@ export function AppNav({
                 }
                 return (
                   <MenuTab ctl={menuCtl} key={l.href} id={l.href} label={l.label} icon={l.icon} active={active} href={active ? placeHref(l.href) : l.href} badge={badge}>
-                    {places.map((p) => (
-                      <MenuLink key={p.href} href={active ? placeHref(p.href) : p.href} label={p.label} icon={p.icon} title={p.title} active={on(p.href)} />
+                    {places.map((p, i) => (
+                      <MenuRow key={p.href} href={active ? placeHref(p.href) : p.href} label={p.label} icon={p.icon} hint={p.title} active={on(p.href)} tone={i} className="whitespace-nowrap" />
                     ))}
                   </MenuTab>
                 );
@@ -591,21 +598,15 @@ export function AppNav({
               {open && (
                 <div
                   role="menu"
-                  className="nav-drop absolute right-0 top-[calc(100%+10px)] w-64 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
+                  className="nav-drop absolute right-0 top-[calc(100%+10px)] w-80 max-h-[calc(100dvh-4.5rem)] overflow-y-auto bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
                 >
-                  {adminLinks.map((l) => (
-                    <ToolLink key={l.href} href={l.href} label={l.label} title={l.desc} icon={l.icon} active={isActive(l.href, l.match, l.also)} />
+                  {tools.map((l, i) => (
+                    <MenuRow key={l.href} role="menuitem" href={l.href} label={l.label} hint={l.desc} icon={l.icon} active={isActive(l.href)} tone={i} />
                   ))}
-                  {user.isAdmin && canSee("/admin/standard-times") && (
-                    <ToolLink href="/admin/standard-times" label="Standard Times & Capacity" title="Man-hours per KVA class, stage capacity & FG map" icon={Timer} active={isActive("/admin/standard-times")} />
-                  )}
-                  {user.isOwner && (
-                    <>
-                      <div className="border-t my-1" />
-                      <ToolLink href="/admin/users" label="Users & Permissions" title="Accounts, passwords & what each can edit" icon={Users} active={isActive("/admin/users")} />
-                      <ToolLink href="/admin/ai" label="AI assistant settings" title="The Claude key, who may use it & monthly limits" icon={Bot} active={isActive("/admin/ai")} />
-                    </>
-                  )}
+                  {ownerTools.length > 0 && <div className="border-t my-1" />}
+                  {ownerTools.map((l, i) => (
+                    <MenuRow key={l.href} role="menuitem" href={l.href} label={l.label} hint={l.desc} icon={l.icon} active={isActive(l.href)} tone={tools.length + i} />
+                  ))}
                 </div>
               )}
             </div>
@@ -667,22 +668,22 @@ export function AppNav({
                 return depts.length > 0 && (
                   <div key={g.line} role="group" aria-label={`Floor — ${g.label}`}>
                     <p className="drawer-label">Floor · {g.label}</p>
-                    {depts.map((d) => (
-                      <DrawerLink key={deptHref(d)} href={deptHref(d)} label={d.drawerLabel} icon={d.icon} active={deptOn(d)} />
+                    {depts.map((d, i) => (
+                      <DrawerLink key={deptHref(d)} href={deptHref(d)} label={d.drawerLabel} icon={d.icon} active={deptOn(d)} tone={i} />
                     ))}
                   </div>
                 );
               })}
               <p className="drawer-label">Production</p>
-              {drawerTabs.map((l) => (
-                <DrawerLink key={l.href} href={l.href} label={l.label} icon={l.icon} active={isActive(l.href, l.match)} badge={null} />
+              {drawerTabs.map((l, i) => (
+                <DrawerLink key={l.href} href={l.href} label={l.label} icon={l.icon} active={isActive(l.href, l.match)} badge={null} tone={i} />
               ))}
 
               {/* on desktop these sit behind a tab's own switcher; the drawer
                   has the room to list them, so a phone reaches them in one tap */}
               <p className="drawer-label">More</p>
-              {drawerViews.map((l) => (
-                <DrawerLink key={l.href} href={l.href} label={l.label} icon={l.icon} active={isActive(l.href, l.match)} badge={l.href === "/chat" ? <UnreadBadge count={unreadChat} /> : l.href === "/odoo" ? odooBadge() : null} />
+              {drawerViews.map((l, i) => (
+                <DrawerLink key={l.href} href={l.href} label={l.label} icon={l.icon} active={isActive(l.href, l.match)} badge={l.href === "/chat" ? <UnreadBadge count={unreadChat} /> : l.href === "/odoo" ? odooBadge() : null} tone={i} />
               ))}
               {ai && (
                 <button
@@ -691,26 +692,17 @@ export function AppNav({
                     setDrawer(false);
                     if (panel) panel.openTab("chat");
                   }}
-                  className={`drawer-link ${aiOn ? "drawer-link-active" : ""}`}
+                  className={`menu-row drawer-link ${toneAt(drawerViews.length)} ${aiOn ? "menu-row-on" : ""}`}
                 >
-                  <Bot size={19} />
+                  <span className="tone-tile" aria-hidden><Bot size={17} /></span>
                   AI assistant
                 </button>
               )}
 
               {showTools && <p className="drawer-label">Admin tools</p>}
-              {adminLinks.map((l) => (
-                <DrawerLink key={l.href} href={l.href} label={l.label} icon={l.icon} active={isActive(l.href)} />
+              {[...tools, ...ownerTools].map((l, i) => (
+                <DrawerLink key={l.href} href={l.href} label={l.label} icon={l.icon} active={isActive(l.href)} tone={i} />
               ))}
-              {user.isAdmin && canSee("/admin/standard-times") && (
-                <DrawerLink href="/admin/standard-times" label="Standard Times & Capacity" icon={Timer} active={isActive("/admin/standard-times")} />
-              )}
-              {user.isOwner && (
-                <>
-                  <DrawerLink href="/admin/users" label="Users & Permissions" icon={Users} active={isActive("/admin/users")} />
-                  <DrawerLink href="/admin/ai" label="AI assistant settings" icon={Bot} active={isActive("/admin/ai")} />
-                </>
-              )}
             </nav>
 
             {/* drawer foot */}
