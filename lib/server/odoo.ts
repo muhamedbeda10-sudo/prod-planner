@@ -6,7 +6,7 @@ import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { blockedItem, isDoneStatus, odooRowBom, odooRowBomLabel, parseOdooSheet, statusTone, type OdooEntryView, type OdooRowBom, type OdooScope } from "@/lib/domain/odoo";
 import { buildOdooDashboard, comparePeriod, type OdooBasis, type OdooCompare, type OdooDashboardData, type OdooPeriod, type OdooSeries } from "@/lib/domain/odooStats";
 import { buildOdooInsights, type OdooInsightRow, type OdooInsights } from "@/lib/domain/odooInsights";
-import { candidateBoms, candidateMos, moKey, moParent, nestingKey, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { candidateBoms, candidateMos, moKey, moParent, nestingKey, rowMaterialState, type MoMaterialState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 
 export interface OdooPageData {
   entries: OdooEntryView[];
@@ -55,16 +55,7 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
     prisma.odooEntry.groupBy({ by: ["status"], _count: { _all: true } }),
   ]);
 
-  const soiBoms: Record<string, string[]> = {};
-  const soiMos: Record<string, string[]> = {};
-  for (const o of orders) {
-    const soi = (o.soi ?? "").trim().toUpperCase();
-    const bom = o.bom.trim().toUpperCase();
-    const mo = o.mo.trim().toUpperCase();
-    if (!soi) continue;
-    if (bom) { const list = (soiBoms[soi] ??= []); if (!list.includes(bom)) list.push(bom); }
-    if (mo && o.line === "LV") { const list = (soiMos[soi] ??= []); if (!list.includes(mo)) list.push(mo); }
-  }
+  const { soiBoms, soiMos } = soiIndex(orders);
 
   // the closing a row was born from names the planner's MO — the key a
   // panel row's material sits under
@@ -72,8 +63,7 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
   const ledgers = ledgerIds.length
     ? await prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, mo: true, bom: true } })
     : [];
-  const moOfLedger = new Map(ledgers.map((l) => [l.id, (l.mo ?? "").trim().toUpperCase() || null]));
-  const bomOfLedger = new Map(ledgers.map((l) => [l.id, l.bom]));
+  const { moOfLedger, bomOfLedger } = ledgerMaps(ledgers);
 
   const entries: OdooEntryView[] = rows.map((r) => ({
     mo: r.ledgerId !== null ? (moOfLedger.get(r.ledgerId) ?? null) : null,
@@ -102,19 +92,80 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
     entries,
     days: [...new Set(dayRows.map((d) => toISODate(d.date)))],
     knownSois: uniq(orders.map((o) => o.soi)),
-    // each line's rows read their own material; the keys never collide (an
-    // MO belongs to one line)
-    nesting: Object.assign(
-      {},
-      await nestingOf(entries.filter((e) => e.line !== "LV"), "TR", soiBoms, soiMos),
-      await nestingOf(entries.filter((e) => e.line === "LV"), "LV", soiBoms, soiMos),
-    ),
+    nesting: await nestingOfBothLines(entries, soiBoms, soiMos),
     soiBoms,
     soiMos,
     lv: false,
     totalRows,
     openRows: byStatus.reduce((n, g) => n + (isDoneStatus(g.status) ? 0 : g._count._all), 0),
   };
+}
+
+/** The registry's BOM(s) per SOI, and a panel order's MO(s) per SOI. */
+function soiIndex(orders: readonly { soi: string | null; bom: string; mo: string; line: string }[]): Pick<NeedContext, "soiBoms" | "soiMos"> {
+  const soiBoms: Record<string, string[]> = {};
+  const soiMos: Record<string, string[]> = {};
+  for (const o of orders) {
+    const soi = (o.soi ?? "").trim().toUpperCase();
+    const bom = o.bom.trim().toUpperCase();
+    const mo = o.mo.trim().toUpperCase();
+    if (!soi) continue;
+    if (bom) { const list = (soiBoms[soi] ??= []); if (!list.includes(bom)) list.push(bom); }
+    if (mo && o.line === "LV") { const list = (soiMos[soi] ??= []); if (!list.includes(mo)) list.push(mo); }
+  }
+  return { soiBoms, soiMos };
+}
+
+/** The planner's MO and the BOM of each closing, by the closing's id. */
+function ledgerMaps(ledgers: readonly { id: number; mo: string | null; bom: string }[]) {
+  return {
+    moOfLedger: new Map(ledgers.map((l) => [l.id, (l.mo ?? "").trim().toUpperCase() || null])),
+    bomOfLedger: new Map(ledgers.map((l) => [l.id, l.bom])),
+  };
+}
+
+/** What these rows' BOMs and material are read from: the registry's orders of
+ *  their SOIs and the closings they were born from — one round trip each. */
+async function rowContext(rows: readonly { soi: string | null; ledgerId: number | null }[]) {
+  const sois = [...new Set(rows.map((r) => (r.soi ?? "").trim()).filter(Boolean))];
+  const ledgerIds = rows.map((r) => r.ledgerId).filter((id): id is number => id !== null);
+  const [orders, ledgers] = await Promise.all([
+    sois.length ? prisma.masterOrder.findMany({ where: { soi: { in: sois, mode: "insensitive" } }, select: { soi: true, bom: true, mo: true, line: true } }) : Promise.resolve([]),
+    ledgerIds.length ? prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, bom: true, mo: true } }) : Promise.resolve([]),
+  ]);
+  return { ...soiIndex(orders), ...ledgerMaps(ledgers) };
+}
+
+const rowBomOf = (r: { fgCode: string; soi: string | null; ledgerId: number | null }, ctx: Awaited<ReturnType<typeof rowContext>>) =>
+  odooRowBom(r.fgCode, r.ledgerId !== null ? ctx.bomOfLedger.get(r.ledgerId) : null, ctx.soiBoms[(r.soi ?? "").trim().toUpperCase()] ?? []);
+
+/** Each row's MO against the Material tab, read exactly the way the ODOO log
+ *  colours it (rowMaterialState): "missing", "partial", "ok" — "none" for a
+ *  row with no MO. */
+export async function resolveRowMaterialStates(
+  rows: readonly { line: string; fgCode: string; soi: string | null; odooMo: string; ledgerId: number | null }[],
+): Promise<MoMaterialState[]> {
+  if (!rows.some((r) => r.odooMo.trim())) return rows.map(() => "none");
+  const ctx = await rowContext(rows);
+  const entries = rows.map((r) => ({
+    line: r.line, fgCode: r.fgCode, soi: r.soi, odooMo: r.odooMo, bom: rowBomOf(r, ctx),
+    mo: r.ledgerId !== null ? (ctx.moOfLedger.get(r.ledgerId) ?? null) : null,
+  }));
+  const nesting = await nestingOfBothLines(entries.filter((e) => e.odooMo.trim()), ctx.soiBoms, ctx.soiMos);
+  return entries.map((e) => rowMaterialState(nesting, e, { lv: e.line === "LV", soiBoms: ctx.soiBoms, soiMos: ctx.soiMos }));
+}
+
+/** Both lines' material at once — each line's rows read their own; the keys
+ *  never collide (an MO belongs to one line). */
+async function nestingOfBothLines(
+  entries: readonly { line: string; fgCode: string; soi: string | null; odooMo: string; mo?: string | null; bom?: OdooRowBom }[],
+  soiBoms: Record<string, string[]>, soiMos: Record<string, string[]>,
+): Promise<NestingLookup> {
+  const [tr, lv] = await Promise.all([
+    nestingOf(entries.filter((e) => e.line !== "LV"), "TR", soiBoms, soiMos),
+    nestingOf(entries.filter((e) => e.line === "LV"), "LV", soiBoms, soiMos),
+  ]);
+  return { ...tr, ...lv };
 }
 
 /** The material lines the rows may read: panels by their orders' MOs; a
@@ -236,19 +287,8 @@ const isBackorderOf = (mo: string, prefixes: readonly string[]) => {
  *  order, else the FG code's suffix (a top cover's suffix is its drawing
  *  code). One round trip for the orders and one for the closings. */
 export async function resolveRowBoms(rows: readonly { fgCode: string; soi: string | null; ledgerId: number | null }[]): Promise<OdooRowBom[]> {
-  const sois = [...new Set(rows.map((r) => (r.soi ?? "").trim()).filter(Boolean))];
-  const ledgerIds = rows.map((r) => r.ledgerId).filter((id): id is number => id !== null);
-  const [orders, ledgers] = await Promise.all([
-    sois.length ? prisma.masterOrder.findMany({ where: { soi: { in: sois, mode: "insensitive" } }, select: { soi: true, bom: true } }) : Promise.resolve([]),
-    ledgerIds.length ? prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, bom: true } }) : Promise.resolve([]),
-  ]);
-  const soiBoms: Record<string, string[]> = {};
-  for (const o of orders) {
-    const soi = (o.soi ?? "").trim().toUpperCase();
-    if (soi) (soiBoms[soi] ??= []).push(o.bom);
-  }
-  const bomOfLedger = new Map(ledgers.map((l) => [l.id, l.bom]));
-  return rows.map((r) => odooRowBom(r.fgCode, r.ledgerId !== null ? bomOfLedger.get(r.ledgerId) : null, soiBoms[(r.soi ?? "").trim().toUpperCase()] ?? []));
+  const ctx = await rowContext(rows);
+  return rows.map((r) => rowBomOf(r, ctx));
 }
 
 // ---- dashboard: what was logged, by day and product ----

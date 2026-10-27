@@ -24,6 +24,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "Drag the edge of the list of chats to make it wider or narrower (the arrow keys work on it too, and a double-click puts it back to its usual width). The list button beside New chat at the top hides the list and shows it again (from the playbook or the automations it brings the chat back), and dragging it all the way in hides it too — the chat takes the room, and answers now use more of the width. Your choice is kept on this browser.",
   },
   {
+    id: "2026-10-27-odoo-alert-material-colours",
+    dateISO: "2026-10-27",
+    title: "Ready to close: each row is coloured by its material, as on the ODOO log",
+    where: "Odoo alerts popup → Ready to close",
+    body: "The rows in the Ready to close popup now carry the same colours as the ODOO log: red when the Material tab has nothing for the row's MO, yellow when some of its lines are not nested yet, green when every line is nested. A legend beside the heading counts the rows in each colour, and hovering a row says what its colour means.",
+  },
+  {
     id: "2026-10-27-assistant-auto-depth-effort",
     dateISO: "2026-10-27",
     title: "The assistant is always on Auto: Quick, Standard and Deep set how hard it thinks, and every answer names its model",
