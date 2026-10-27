@@ -47,12 +47,7 @@ const rows = [
 ];
 
 function render() {
-  return renderToStaticMarkup(createElement(MasterTrackerTable, { rows, odooTrackingFrom: "2026-09-01" }));
-}
-function odooCell(html: string, mo: string) {
-  const m = new RegExp(`<td[^>]*aria-label="${mo} TN Odoo closed"[^>]*>(.*?)</td>`).exec(html);
-  if (!m) throw new Error(`no TN Odoo cell for ${mo}`);
-  return m[1].replace(/<[^>]+>/g, "");
+  return renderToStaticMarkup(createElement(MasterTrackerTable, { rows }));
 }
 /** The cell in the sheet the assistant makes of the tracker, under the screen's month. */
 function sheetOdoo(mo: string) {
@@ -64,27 +59,21 @@ beforeEach(() => {
   for (const key of Object.keys(filters)) delete filters[key];
 });
 
-describe("tracker Odoo cell for an MO older than the tracking start", () => {
-  it("reads unknown, not zero, in the all-months view", () => {
+describe("Odoo closings off the Plan Tracker screen, still in the assistant's sheet", () => {
+  it("the screen has no Odoo column — its allocation was the sheet's heaviest work", () => {
     const html = render();
-    expect(odooCell(html, "OLD")).toBe("—");
-    expect(odooCell(html, "NEW")).toBe("3");
-    expect(sheetOdoo("OLD")).toBe("Not tracked");
+    expect(html).not.toContain("Odoo closed");
+    expect(html).not.toMatch(/>Odoo</);
   });
 
-  it("stays unknown under a later month it was carried into, matching the assistant's sheet", () => {
-    filters["tracker.month"] = "October 2026";
-    const html = render();
-    expect(html).toContain('aria-label="OLD TN Odoo closed"');
-    expect(odooCell(html, "OLD")).toBe("—");
-    expect(odooCell(html, "NEW")).toBe("3");
+  it("the assistant's sheet reads an MO older than the tracking start as unknown, not zero", () => {
     expect(sheetOdoo("OLD")).toBe("Not tracked");
     expect(sheetOdoo("NEW")).toBe(3);
   });
 
-  it("still shows a tracked zero as 0", () => {
-    const tracked = [row("ZERO", { odooPlanMonth: "October 2026" }, { odooTracked: true, odooClosed: 0 })];
-    const html = renderToStaticMarkup(createElement(MasterTrackerTable, { rows: tracked }));
-    expect(odooCell(html, "ZERO")).toBe("0");
+  it("stays unknown under a later month the MO was carried into", () => {
+    filters["tracker.month"] = "October 2026";
+    expect(sheetOdoo("OLD")).toBe("Not tracked");
+    expect(sheetOdoo("NEW")).toBe(3);
   });
 });

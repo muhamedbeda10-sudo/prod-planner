@@ -2,7 +2,6 @@
 
 import { formatDate } from "@/lib/domain/format";
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import type { ReturnRowDTO } from "@/lib/server/returns";
 import { redeliverReturn } from "@/app/worklist/actions";
 import { deptLabel } from "@/lib/domain/constants";
@@ -12,7 +11,6 @@ import { deptLabel } from "@/lib/domain/constants";
  *  reappears downstream, and the row leaves this screen (audit stays in the
  *  daily logs). */
 export function ReturnsTable({ rows, dept, canEdit = false }: { rows: ReturnRowDTO[]; dept: string; canEdit?: boolean }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [err, setErr] = useState("");
 
@@ -23,8 +21,7 @@ export function ReturnsTable({ rows, dept, canEdit = false }: { rows: ReturnRowD
     setErr("");
     startTransition(async () => {
       const res = await redeliverReturn(fd);
-      if (res.ok) router.refresh();
-      else setErr(res.error ?? "Failed");
+      if (!res.ok) setErr(res.error ?? "Failed");
     });
   }
 

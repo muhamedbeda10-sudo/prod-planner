@@ -3,7 +3,6 @@
 import { traceHref } from "@/lib/domain/links";
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { Soi } from "@/components/ui";
@@ -18,7 +17,6 @@ import { HeldOrdersStrip } from "@/components/HeldOrdersStrip";
 // first, then the plan's order, and the planner sequences by eye.
 
 export function LvWorklist({ data, canEdit, todayISO }: { data: LvWorklistData; canEdit: boolean; todayISO: string }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [q, setQ] = useSavedFilter(`lvwl.${data.stage}.q`);
   const [qty, setQty] = useState<Record<string, string>>({});
@@ -52,7 +50,7 @@ export function LvWorklist({ data, canEdit, todayISO }: { data: LvWorklistData; 
     startTransition(async () => {
       const res = await recordLvOutput(fd);
       setMsg({ mo: r.mo, ok: res.ok, text: res.ok ? `Recorded ${n} ${data.stage.toLowerCase()} on ${r.mo}.` : (res.error ?? "Failed") });
-      if (res.ok) { setQty((m) => ({ ...m, [r.mo]: "" })); router.refresh(); }
+      if (res.ok) { setQty((m) => ({ ...m, [r.mo]: "" })); }
     });
   }
 

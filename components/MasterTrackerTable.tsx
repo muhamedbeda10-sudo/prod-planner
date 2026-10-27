@@ -3,7 +3,6 @@
 import { traceHref } from "@/lib/domain/links";
 import { Fragment, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { decidePlanQty, setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setGroupOrderSpec, setGroupFins, setOrderPriority, setOrderHold, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
@@ -20,14 +19,13 @@ import { holdLabel } from "@/lib/domain/hold";
 import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { Modal } from "@/components/Modal";
 import { itemColor } from "@/lib/domain/productColors";
-import { AlertTriangle, Check, CheckCheck, ChevronRight, CornerDownRight, Pause, Repeat, Star } from "lucide-react";
+import { Check, CheckCheck, ChevronRight, CornerDownRight, Pause, Repeat, Star } from "lucide-react";
 import { useConfirm } from "@/components/DataTable";
 import type { UserPrefs } from "@/lib/domain/userPrefs";
 import { AchCell, ColumnMenu, FoldButton, meterStyle, stageState, stickAt, useAccountSet, useColumns, type Columns } from "@/components/TrackerColumns";
 import { itemFinishShare, rowBottleneck } from "@/lib/domain/trackerView";
 
 import { filterMasterTracker, trackerItemStats, trackerStagesOf } from "@/lib/domain/trackerSummary";
-import { trackerOdooTotal } from "@/lib/domain/trackerOdoo";
 
 /** The order's spec columns. Every one of them is the planner's own — the
  *  monthly import writes none of them, so a re-import can never blank what he
@@ -62,19 +60,18 @@ const REQ_CLS = "stick stick-end";
 
 /** Every column the reader can show or hide (Columns ▾), in the sheet's
  *  order. BOM always shows — it is what the row is. */
-type ColKey = "mo" | "soi" | "customer" | "kva" | "color" | "crc" | "sfm" | "required" | "fins" | "complete" | "left" | "achv" | "eta" | "status";
+type ColKey = "mo" | "soi" | "customer" | "kva" | "color" | "crc" | "sfm" | "required" | "fins" | "achv" | "status";
 const COLS: { key: ColKey; label: string }[] = [
   { key: "mo", label: "MO" }, { key: "soi", label: "SOI" }, { key: "customer", label: "Customer" },
   { key: "kva", label: "KVA" }, { key: "color", label: "Color" }, { key: "crc", label: "CRC" }, { key: "sfm", label: "SFM" },
   { key: "required", label: "Required" }, { key: "fins", label: "Fins" },
-  { key: "complete", label: "Complete" }, { key: "left", label: "Left" }, { key: "achv", label: "Achv." }, { key: "eta", label: "ETA" },
+  { key: "achv", label: "Achv." },
   { key: "status", label: "Status" },
 ];
 /** What a first visit shows: BOM, Required, Fins, the components, Achv., Status. */
 const DEFAULT_COLS: ColKey[] = ["required", "fins", "achv", "status"];
 const ID_GROUP: ColKey[] = ["mo", "soi", "customer"];
 const SPEC_GROUP: ColKey[] = ["kva", "color", "crc", "sfm"];
-const SUMMARY_GROUP: ColKey[] = ["complete", "left", "eta"];
 
 /** Columns ▾ — every column, each one on or off, and each component shown
  *  with its stages, folded to one "made %" column, or hidden. */
@@ -144,14 +141,6 @@ const STAGE_OPTS = [
   { value: "Delivered", label: "Delivered" },
 ] as const;
 
-
-export interface RowEta {
-  etaISO: string | null;
-  dueISO: string | null;
-  late: boolean;
-  done: boolean;
-  blockedBy: string | null;
-}
 
 /** What a right-click landed on: one MO's row, or a merged BOM's. */
 type MenuTarget = { kind: "mo"; row: MasterTrackerRow } | { kind: "group"; bom: string; members: MasterTrackerRow[] };
@@ -230,18 +219,11 @@ export function MasterTrackerTable({
   rows,
   features = [],
   editableDepts = [],
-  etas = {},
-  etaWindowDays = 0,
   prefs = {},
-  odooTrackingFrom = null,
 }: {
   /** This person's saved view settings (columns, folded / hidden components). */
   prefs?: UserPrefs;
   rows: MasterTrackerRow[];
-  odooTrackingFrom?: string | null;
-  /** Completion forecast per MO (server-computed flow-shop ETA). */
-  etas?: Record<string, RowEta>;
-  etaWindowDays?: number;
   /** The tracker feature-permission keys this user holds (admin = all):
    *  tracker.status / tracker.components / tracker.qty / tracker.priority / tracker.push */
   features?: string[];
@@ -250,7 +232,6 @@ export function MasterTrackerTable({
   editableDepts?: string[];
 }) {
   const can = (k: string) => features.includes(k);
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   // the row's right-click menu — every row action in one place, so the next
   // one is an entry here rather than another button in the Status cell
@@ -350,7 +331,6 @@ export function MasterTrackerTable({
       const res = await setGroupOrderSpec(fd);
       if (res.ok) {
         setSpecEdit(null);
-        router.refresh();
       } else setCellErr(res.error ?? "Failed", `g|${bom}|${field}`);
     });
   }
@@ -364,7 +344,6 @@ export function MasterTrackerTable({
       const res = await setOrderSpec(fd);
       if (res.ok) {
         setSpecEdit(null);
-        router.refresh();
       } else setCellErr(res.error ?? "Failed", `${mo}|${field}`);
     });
   }
@@ -378,7 +357,6 @@ export function MasterTrackerTable({
       const res = await setOrderQty(fd);
       if (res.ok) {
         setQtyEditMo(null);
-        router.refresh();
       } else {
         setQtyErr(res.error ?? "Failed");
       }
@@ -390,7 +368,6 @@ export function MasterTrackerTable({
   const [urgent, setUrgent] = useSavedFilter("tracker.urgent");
   const [status, setStatus] = useSavedFilter("tracker.status"); // lifecycle: every order shows unless the planner narrows it
   const [month, setMonth] = useSavedFilter("tracker.month"); // monthly plan (import source), "" = all months
-  const [odooDetail, setOdooDetail] = useState<{ bom: string; item: Item } | null>(null);
   // stage scope: only the picked depts' columns per item (one or SEVERAL), and
   // the summary cards report the furthest picked stage — the wide table
   // becomes readable per department. Stored as a comma-separated list.
@@ -419,7 +396,6 @@ export function MasterTrackerTable({
       const res = await setExcludedItems(out);
       if (res.ok) {
         setOpenConfig(null);
-        router.refresh();
       } else {
         alert(res.error ?? "Failed");
       }
@@ -456,7 +432,6 @@ export function MasterTrackerTable({
       const res = await closeDeliveredOrders();
       if (res.ok) {
         setCloseMsg(res.closed === 0 ? "Nothing to close — no open order is fully delivered." : `${res.closed} order(s) closed.`);
-        router.refresh();
       } else setCloseMsg(res.error ?? "Failed");
     });
   }
@@ -490,14 +465,12 @@ export function MasterTrackerTable({
   if (urgent) activeFilters.push({ key: "urgent", label: "Urgent", value: "Urgent only", onClear: () => setUrgent("") });
   for (const s of STAGE_OPTS.filter((o) => stages.includes(o.value))) activeFilters.push({ key: s.value, label: "Dept", value: s.label, onClear: () => toggleStage(s.value) });
 
-  // table shape under the stage filter: only the picked columns per item, no
-  // Complete/Left/Achv
-  // +1 for Status, +1 for the ETA forecast column
+  // table shape under the stage filter: only the picked columns per item, no Achv.
   // MO, SOI, BOM, KVA, Required lead the row before the per-item stage columns
   // MO · SOI · Customer · BOM · KVA · Fins · Color · CRC · SFM · Required, then the items
-  const itemColsOf = (it: Item) => (!itemShown(it) ? 0 : (folded(it) ? 1 : scoped ? stages.length : 4) + 1);
+  const itemColsOf = (it: Item) => (!itemShown(it) ? 0 : folded(it) ? 1 : scoped ? stages.length : 4);
   const tableCols =
-    1 + COLS.filter((c) => show(c.key) && !(scoped && (c.key === "complete" || c.key === "left" || c.key === "achv"))).length +
+    1 + COLS.filter((c) => show(c.key) && !(scoped && c.key === "achv")).length +
     ITEMS.reduce((n, it) => n + itemColsOf(it), 0);
 
   // shared BOMs: one summary row per BOM, expandable to its MOs
@@ -536,7 +509,6 @@ export function MasterTrackerTable({
       const res = await removeOrderMonth(fd);
       if (res.ok) {
         setOpenMonths(null);
-        router.refresh();
       } else {
         alert(res.error ?? "Failed");
       }
@@ -553,8 +525,7 @@ export function MasterTrackerTable({
     fd.set("priority", String(priority));
     startTransition(async () => {
       const res = await setOrderPriority(fd);
-      if (res.ok) router.refresh();
-      else alert(res.error ?? "Failed");
+      if (!res.ok) alert(res.error ?? "Failed");
     });
   }
 
@@ -591,7 +562,6 @@ export function MasterTrackerTable({
       const res = await pushOrderToWorklist(fd);
       if (res.ok) {
         setOpenPush(null);
-        router.refresh();
       } else {
         setPushErr(res.error ?? "Failed");
       }
@@ -599,7 +569,7 @@ export function MasterTrackerTable({
   }
 
   // ⏸️ hold / release — from the row's menu. A held order stays here, tinted,
-  // and leaves every worklist queue and the ETA until released.
+  // and leaves every worklist queue until released.
   function setHold(mos: string[], hold: boolean, note = "") {
     const fd = new FormData();
     fd.set("mos", mos.join(","));
@@ -607,8 +577,7 @@ export function MasterTrackerTable({
     fd.set("note", note);
     startTransition(async () => {
       const res = await setOrderHold(fd);
-      if (res.ok) router.refresh();
-      else alert(res.error ?? "Failed");
+      if (!res.ok) alert(res.error ?? "Failed");
     });
   }
 
@@ -651,7 +620,7 @@ export function MasterTrackerTable({
     const e: MenuEntry[] = [{ heading: r.mo }];
     if (can("tracker.status")) {
       if (r.hold.onHold) e.push({ key: "release", icon: "▶", label: "Release hold", hint: holdLabel(r.hold), onSelect: () => setHold([r.mo], false) });
-      else e.push({ key: "hold", icon: "⏸️", label: "Put on hold", disabled: closed, hint: closed ? "A closed order cannot be held — reopen it first" : "Pauses the order: it stays here, tinted, and leaves every worklist queue and the ETA", prompt: { placeholder: "Reason (optional) — e.g. waiting for CRC", submit: "Hold", onSubmit: (note) => setHold([r.mo], true, note) } });
+      else e.push({ key: "hold", icon: "⏸️", label: "Put on hold", disabled: closed, hint: closed ? "A closed order cannot be held — reopen it first" : "Pauses the order: it stays here, tinted, and leaves every worklist queue", prompt: { placeholder: "Reason (optional) — e.g. waiting for CRC", submit: "Hold", onSubmit: (note) => setHold([r.mo], true, note) } });
     }
     if (can("tracker.priority") && !closed) e.push({ key: "prio", icon: "⭐", label: r.priority ? "Remove priority flag" : "Flag as priority", hint: "A priority order shows in the dedicated table on top of every dept worklist", onSelect: () => togglePriority(r) });
     if (can("tracker.push") && !closed) e.push({ key: "push", icon: "📤", label: "Send to a worklist", hint: "Pick the dept, items and quantities", onSelect: () => openPushPanel(r) });
@@ -686,8 +655,7 @@ export function MasterTrackerTable({
     fd.set("status", next);
     startTransition(async () => {
       const res = await setOrderStatus(fd);
-      if (res.ok) router.refresh();
-      else alert(res.error ?? "Failed");
+      if (!res.ok) alert(res.error ?? "Failed");
     });
   }
 
@@ -708,8 +676,7 @@ export function MasterTrackerTable({
     setCloseMsg("");
     startTransition(async () => {
       const res = await setOrderStatus(fd);
-      if (res.ok) router.refresh();
-      else setCloseMsg(res.error ?? "Failed");
+      if (!res.ok) setCloseMsg(res.error ?? "Failed");
     });
   }
 
@@ -832,24 +799,6 @@ export function MasterTrackerTable({
         <ColumnChooser cols={cols} hiddenItems={hiddenItems} onHideItem={toggleHiddenItem} collapsed={collapsed} onCollapse={toggleCollapsed} />
       </FilterBar>
 
-      {odooDetail && (() => {
-        const members = rows.filter((r) => r.bom === odooDetail.bom && r.items[odooDetail.item].eligible && !r.items[odooDetail.item].excluded);
-        const total = trackerOdooTotal(members, odooDetail.item);
-        return <Modal title={`${ITEM_NAME[odooDetail.item]} · Odoo plan allocation`} sub={odooDetail.bom} onClose={() => setOdooDetail(null)} width="max-w-3xl">
-          <p className="text-sm text-muted mb-3">The BOM&apos;s On Odoo production closings are the primary source. Separate imported project rows are used only when that component has no linked closing rows. Done / Closed quantities fill the oldest matching plan first, up to each order&apos;s requirement; linked records keep their own MO. A carried MO does not create another quantity.</p>
-          <p className="text-sm text-muted mb-3">{odooTrackingFrom ? `Tracking begins on ${odooTrackingFrom}. Project entries from this day fill the oldest plans starting with its month; earlier plans do not consume them.` : "No recording start date has been set: project-only quantities remain unallocated."} A linked production closing still confirms its own MO, including an older order. “Not tracked” means the historical closing is unknown.</p>
-          <Link href={`${traceHref({ bom: odooDetail.bom, line: "TR" })}#on-odoo`} className="inline-flex text-sm text-brand-ink font-semibold hover:underline mb-3">Open this BOM&apos;s On Odoo records →</Link>
-          <div className="overflow-x-auto"><table className="w-full text-sm grid-lines" aria-label="Odoo allocation by plan month">
-            <thead><tr><th className="p-2 text-left">Original plan month</th><th className="p-2 text-left">MO</th><th className="p-2 text-right">Required</th><th className="p-2 text-right">Odoo allocated</th></tr></thead>
-            <tbody>{members.map((r) => <tr key={r.mo} className={month && r.odooPlanMonth === month ? "bg-brand-light" : ""}>
-              <td className="p-2">{r.odooPlanMonth ?? "No plan month"}{r.months.length > 1 && <span className="block text-xs text-muted">Carried into {r.months.filter((m) => m !== r.odooPlanMonth).join(", ")}</span>}</td>
-              <td className="p-2 font-semibold">{r.mo}</td><td className="p-2 text-right tabnum"><Num v={r.required} /></td><td className="p-2 text-right tabnum font-semibold">{r.items[odooDetail.item].odooTracked === false ? "Not tracked" : <Num v={r.items[odooDetail.item].odooClosed ?? 0} />}</td>
-            </tr>)}</tbody>
-          </table></div>
-          <p className="text-sm mt-3 font-semibold">Allocated across all plans: <Num v={total.qty} /> pcs.</p>
-          {total.unallocated > 0 && <p className="text-sm mt-2 text-warn-fg">{total.unallocated} additional Odoo pcs are not assigned to a plan quantity. They stay separate from the monthly figures.</p>}
-        </Modal>;
-      })()}
 
       <div className={`print-flow print-fit print-tracker ${stageCols > 12 ? "print-tight" : ""} erp-scroll bg-surface border rounded-[10px] overflow-auto md:flex-1 md:min-h-0`}>
         <table className="erp-table grid-lines w-full border-collapse">
@@ -889,29 +838,15 @@ export function MasterTrackerTable({
                   </button>
                 </th>
               ))}
-              {!scoped && show("complete") && <th rowSpan={2} className="p-2 border-r border-border-strong">Complete</th>}
-              {!scoped && show("left") && <th rowSpan={2} className="p-2">Left</th>}
-              {!scoped && show("achv") && (
-                <th rowSpan={2} className="p-1">
-                  <FoldButton open={anyOn(SUMMARY_GROUP)} onClick={() => toggleCols(SUMMARY_GROUP)} label="Achv." title={anyOn(SUMMARY_GROUP) ? "Fold Complete, Left and ETA away — Achv. stays" : "Show Complete, Left and ETA beside Achv."} />
-                </th>
-              )}
-              {show("eta") && <th
-                rowSpan={2}
-                className="p-2"
-                title={`Forecast completion date: the order's remaining work through Fabrication → Welding → Finishing at the plant's actual pace over the last ${etaWindowDays || 14} working days, queued by delivery date. Red = lands after the scheduled delivery.`}
-              >
-                ETA
-              </th>}
+              {!scoped && show("achv") && <th rowSpan={2} className="p-2">Achv.</th>}
               {show("status") && <th rowSpan={2} className="p-2 no-print">Status</th>}
             </tr>
             <tr>
               {ITEMS.filter(itemShown).map((it) => (
                 <Fragment key={it}>
-                  {folded(it) ? <th className="p-1 font-semibold on-tint" title={`${ITEM_NAME[it]} made through its final stage`}>Made %</th>
-                    : scoped ? stages.map((s) => <StageHead key={s} shp={isPaintExempt(it)} only={s} borderR={false} />)
-                    : <StageHead shp={isPaintExempt(it)} borderR={false} />}
-                  <th className="p-1 font-semibold on-tint border-r border-border-strong" aria-label={`${it} Odoo closed`} title={`Done / Closed quantities from Odoo allocated to ${month || "all plan months"}, oldest matching plan first. Click a figure for the allocation.`}>Odoo</th>
+                  {folded(it) ? <th className="p-1 font-semibold on-tint border-r border-border-strong" title={`${ITEM_NAME[it]} made through its final stage`}>Made %</th>
+                    : scoped ? stages.map((s, i) => <StageHead key={s} shp={isPaintExempt(it)} only={s} borderR={i === stages.length - 1} />)
+                    : <StageHead shp={isPaintExempt(it)} />}
                 </Fragment>
               ))}
             </tr>
@@ -928,7 +863,6 @@ export function MasterTrackerTable({
               const sum = (f: (r: MasterTrackerRow) => number) => members.reduce((s, r) => s + f(r), 0);
               const gReq = sum((r) => r.required);
               const gComplete = sum((r) => r.complete);
-              const gLeft = sum((r) => r.remaining);
               const gAch = gReq > 0 ? gComplete / gReq : null;
               const urgentCount = members.filter((m) => m.urgent).length;
               const gKva = members.find((m) => m.kva)?.kva ?? "—";
@@ -990,32 +924,23 @@ export function MasterTrackerTable({
                     {show("fins") && groupFinsCell(gBom, members)}
                     {ITEMS.filter(itemShown).map((it) =>
                       folded(it) ? (
-                        <Fragment key={it}>{groupShareCell(members, it)}{odooCell(members, it)}</Fragment>
+                        <Fragment key={it}>{groupShareCell(members, it)}</Fragment>
                       ) : scoped ? (
                         <Fragment key={it}>
-                          {stages.map((s) => (
-                            <Fragment key={s}>{groupCell(gBom, members, it, s, false)}</Fragment>
+                          {stages.map((s, i) => (
+                            <Fragment key={s}>{groupCell(gBom, members, it, s, i === stages.length - 1)}</Fragment>
                           ))}
-                          {odooCell(members, it)}
                         </Fragment>
                       ) : (
                         <Fragment key={it}>
                           {groupCell(gBom, members, it, "Cut", false)}
                           {groupCell(gBom, members, it, "Welding", false)}
                           {groupCell(gBom, members, it, "Painting", false)}
-                          {groupCell(gBom, members, it, "Delivered", false)}
-                          {odooCell(members, it)}
+                          {groupCell(gBom, members, it, "Delivered", true)}
                         </Fragment>
                       )
                     )}
-                    {!scoped && show("complete") && <td className="p-2 text-center font-bold border-r"><Num v={gComplete} /></td>}
-                    {!scoped && show("left") && (
-                      <td className="p-2 text-center font-semibold" style={{ color: gLeft > 0 ? undefined : "var(--ok-fg)" }}>
-                        <Num v={gLeft} />
-                      </td>
-                    )}
                     {!scoped && show("achv") && <AchCell ach={gAch} />}
-                    {show("eta") && etaCell(groupEta(members), members.every((m) => m.hold.onHold))}
                     {show("status") && (() => {
                       // the MO rows' status cell, for all of them: closed, a
                       // Close for the finished ones, or open
@@ -1153,7 +1078,6 @@ export function MasterTrackerTable({
         const res = await setGroupFins(fd);
         if (res.ok) {
           setEditKey(null);
-          router.refresh();
         } else setCellErr(res.error ?? "Failed", k);
       });
     }
@@ -1194,7 +1118,7 @@ export function MasterTrackerTable({
             type="button"
             onClick={() => { setEditKey(k); setEditVal(String(group!.current)); setCellErr(""); }}
             disabled={pending}
-            className="print-as-text w-full min-w-8 rounded px-1 py-0.5 tabnum hover:ring-2 hover:ring-brand/60 transition-all cursor-text"
+            className="print-as-text w-full min-w-8 rounded px-1 py-0.5 tabnum hover:ring-2 hover:ring-brand/60 transition-shadow cursor-text"
             title={`Fins on the WHOLE BOM — how many of its ${tanks} tanks carry fins. Type the group's figure: it fills each MO to its own quantity before the next, and a reduction comes off the last MOs first.`}
           >
             {group!.current > 0 ? group!.current.toLocaleString("en-US") : <span className="opacity-60">—</span>}
@@ -1218,7 +1142,7 @@ export function MasterTrackerTable({
   function stageCell(r: MasterTrackerRow, it: Item, dept: string, value: number, borderR = false, bottleneck = false) {
     const k = `${r.mo}|${it}|${dept}`;
     const target = Math.max(0, r.required - r.items[it].osp);
-    const state = stageState(value, target, !!etas[r.mo]?.late, r.urgent, r.hold.onHold);
+    const state = stageState(value, target, r.hold.onHold);
     const left = Math.max(0, target - value);
     const status = value <= 0 ? `nothing yet of ${target}` : left > 0 ? `${value} of ${target} — ${left} left` : `all ${target} done`;
     const col = `${it}|${dept}`;
@@ -1243,8 +1167,7 @@ export function MasterTrackerTable({
       fd.set("base", String(value));
       startTransition(async () => {
         const res = await recordTrackerTotal(fd);
-        if (res.ok) router.refresh();
-        else setCellErr(res.error ?? "Failed", k);
+        if (!res.ok) setCellErr(res.error ?? "Failed", k);
       });
     }
 
@@ -1284,7 +1207,7 @@ export function MasterTrackerTable({
               onKeyDown={(e) => cellKeys(e, (d) => openCell(k, d, false))}
               // print-as-text: the figure IS the cell — print CSS blanks buttons
               // inside tables, which would empty every editable stage cell
-              className={`print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold focus:ring-2 focus:ring-brand focus:outline-none transition-all cursor-text ${err ? "ring-2 ring-bad-fg" : ""}`}
+              className={`print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 focus:ring-2 focus:ring-brand focus:outline-none transition-shadow cursor-text ${err ? "ring-2 ring-bad-fg" : ""}`}
               title={`${deptLabel(dept)} · ${r.mo} · ${it}: ${status}${bottleneck ? " · the stage holding this order back" : ""} — type the NEW total (a lower one records a correction in today's Daily Log); arrows move, Escape drops it`}
               aria-label={`${deptLabel(dept)} ${it} for ${r.mo}: ${value}`}
             >
@@ -1341,7 +1264,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     const value = eligible.reduce((s, r) => s + at(r), 0);
     // what the BOM's MOs need of this component, less what is bought out
     const target = eligible.reduce((s, m) => s + Math.max(0, m.required - m.items[it].osp), 0);
-    const state = stageState(value, target, members.some((m) => etas[m.mo]?.late), members.some((m) => m.urgent), members.every((m) => m.hold.onHold));
+    const state = stageState(value, target, members.every((m) => m.hold.onHold));
     const k = `g|${gBom}|${it}|${dept}`;
     const col = `${it}|${dept}`;
     const editing = editKey === k;
@@ -1378,8 +1301,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
       fd.set("base", String(eligible.reduce((s, r) => s + at(r), 0)));
       startTransition(async () => {
         const res = await recordGroupOutput(fd);
-        if (res.ok) router.refresh();
-        else setCellErr(res.error ?? "Failed", k);
+        if (!res.ok) setCellErr(res.error ?? "Failed", k);
       });
     }
 
@@ -1419,7 +1341,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
               data-nav={col}
               onClick={() => openCell(k, String(value), true)}
               onKeyDown={(e) => cellKeys(e, (d) => openCell(k, d, false))}
-              className={`print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold focus:ring-2 focus:ring-brand focus:outline-none transition-all cursor-text ${err ? "ring-2 ring-bad-fg" : ""}`}
+              className={`print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 focus:ring-2 focus:ring-brand focus:outline-none transition-shadow cursor-text ${err ? "ring-2 ring-bad-fg" : ""}`}
               title={`${deptLabel(dept)} · ${gBom} · ${it}: ${value} of ${target}${target > value ? ` — ${target - value} left` : ""} — record on the WHOLE BOM: type the new group total, the difference is distributed over its ${eligibleMos.length} MOs in order; arrows move, Escape drops it`}
               aria-label={`${deptLabel(dept)} ${it} for every MO of ${gBom}: ${value}`}
             >
@@ -1434,27 +1356,12 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     );
   }
 
-  /** The month filter displays the fixed FIFO allocation; it never redistributes it. */
-  function odooCell(members: MasterTrackerRow[], it: Item) {
-    const applicable = members.filter((r) => r.items[it].eligible && !r.items[it].excluded);
-    if (!applicable.length) return <td className="na-cell border-r border-border-strong" aria-label={`${it} Odoo not applicable`} />;
-    const { qty, unallocated } = trackerOdooTotal(applicable, it, month);
-    // An MO older than the tracking start has no known closing. It stays unknown
-    // wherever it is listed — under its own plan month, in the all-months view,
-    // and under a later month it was carried into (where it adds nothing to the
-    // allocation) — so an unknown history never reads as a confirmed zero. The
-    // export's "Not tracked" follows the same rule.
-    const unknown = applicable.filter((r) => r.items[it].odooTracked === false).length;
-    const title = `${ITEM_NAME[it]} Odoo allocation: ${qty} pcs for ${month || "all plan months"}, oldest plan first.${unknown ? ` ${unknown} older order(s) have no tracked closing; — means unknown, not zero.` : ""}${unallocated ? ` Another ${unallocated} pcs have no allocation to a plan quantity.` : ""} Click to see the original plan month of each MO.`;
-    return <td className={`stage-cell p-1 text-center tabnum font-semibold border-r border-border-strong ${qty > 0 ? "text-ok-fg" : "text-muted"}`} aria-label={`${members.length > 1 ? "BOM " + members[0].bom : members[0].mo} ${it} Odoo closed`} title={title}><button type="button" className="w-full hover:underline" aria-label={`View ${members[0].bom} ${it} Odoo plan allocation`} onClick={(e) => { e.stopPropagation(); setOdooDetail({ bom: members[0].bom, item: it }); }}>{unknown && qty === 0 ? "—" : <Num v={qty} />}{unallocated > 0 || unknown > 0 && qty > 0 ? <span className="ms-1 text-warn-fg" aria-label="Odoo quantity has incomplete plan allocation">*</span> : null}</button></td>;
-  }
-
   /** A folded component: how much of it is made through its last stage. */
   function shareCell(share: number | null, it: Item, label: string) {
     const pct = share === null ? null : Math.round(share * 100);
     const cls = pct === null ? "" : pct >= 100 ? "stage-done" : pct > 0 ? "stage-part" : "stage-idle";
     return (
-      <td className={`stage-cell ${cls} p-1 text-center tabnum font-semibold`} title={`${label} · ${ITEM_NAME[it]}: ${pct === null ? "nothing owed" : `${pct}% made through ${isPaintExempt(it) ? "shot blast" : "painting"}`} — open the column for its stages`}>
+      <td className={`stage-cell ${cls} p-1 text-center tabnum font-semibold border-r border-border-strong`} title={`${label} · ${ITEM_NAME[it]}: ${pct === null ? "nothing owed" : `${pct}% made through ${isPaintExempt(it) ? "shot blast" : "painting"}`} — open the column for its stages`}>
         {pct === null ? "" : `${pct}%`}
       </td>
     );
@@ -1474,42 +1381,6 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     return shareCell(owed > 0 ? made / owed : null, it, `${members.length} MOs`);
   }
 
-  function etaCell(eta: RowEta | undefined, onHold = false) {
-    if (onHold) return <td className="p-2 text-center text-xs font-bold" style={{ color: "var(--warn-fg)" }} title="On hold — in no queue, so no forecast"><Pause size={13} className="inline" aria-label="On hold" /></td>;
-    if (!eta) return <td className="p-2 text-center text-muted text-xs">—</td>;
-    if (eta.done) return <td className="p-2 text-center text-ok-fg font-bold" title="Nothing left to make">✓</td>;
-    if (!eta.etaISO) {
-      return (
-        <td className="p-2 text-center text-muted text-xs" title={`No recent output at ${eta.blockedBy ?? "a needed stage"} — nothing to base a forecast on`}>
-          ?
-        </td>
-      );
-    }
-    const [, m, d] = eta.etaISO.split("-");
-    return (
-      <td
-        className={`p-2 text-center tabnum text-xs whitespace-nowrap font-bold ${eta.late ? "" : "text-muted"}`}
-        style={eta.late ? { color: "var(--bad-fg)" } : undefined}
-        title={`Forecast ${eta.etaISO}${eta.dueISO ? ` · scheduled delivery ${eta.dueISO}` : " · never scheduled in a weekly plan"}${eta.late ? " — LATE" : ""}`}
-      >
-        {eta.late && <AlertTriangle size={11} className="inline mr-0.5 -mt-0.5" aria-label="Late" />}{d}/{m}
-      </td>
-    );
-  }
-
-  /** The group row shows the LATEST member forecast — the BOM is done when its
-   *  slowest MO is done. */
-  function groupEta(members: MasterTrackerRow[]): RowEta | undefined {
-    let worst: RowEta | undefined;
-    for (const m of members) {
-      const e = etas[m.mo];
-      if (!e) continue;
-      if (!worst) { worst = e; continue; }
-      // an unforecastable member outranks a date; a later date outranks an earlier one
-      if (worst.done || (e.etaISO && worst.etaISO && e.etaISO > worst.etaISO) || (!e.etaISO && !e.done)) worst = e;
-    }
-    return worst;
-  }
 
   function renderRow(r: MasterTrackerRow, inGroup = false, lastInGroup = false) {
     // frame: open groups get a clear border so their extent is obvious
@@ -1538,7 +1409,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                         disabled={pending}
                         // prints like the read-only span a non-admin sees, so
                         // the same MO reads the same on paper for everyone
-                        className="print-as-text pill pill-warn cursor-pointer hover:ring-2 hover:ring-brand/60 transition-all"
+                        className="print-as-text pill pill-warn cursor-pointer hover:ring-2 hover:ring-brand/60 transition-shadow"
                         title={`Carried across ${r.months.length} monthly plans: ${r.months.join(" · ")} — click to fix a wrong tag`}
                       >
                         <Repeat size={10} aria-hidden />×{r.months.length}
@@ -1638,7 +1509,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                       type="button"
                       onClick={() => { setQtyEditMo(r.mo); setQtyVal(String(r.required)); setQtyErr(""); }}
                       disabled={pending}
-                      className="print-as-text w-full min-w-10 rounded px-1 py-1 tabnum font-bold hover:ring-2 hover:ring-brand/60 transition-all cursor-text"
+                      className="print-as-text w-full min-w-10 rounded px-1 py-1 tabnum font-bold hover:ring-2 hover:ring-brand/60 transition-shadow cursor-text"
                       title={`${r.mo} — click to change the required quantity (revisions that LOWER a qty are applied here manually)`}
                     >
                       <Num v={r.required} />
@@ -1670,7 +1541,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                   // every piece bought out (OSP): nothing for our departments —
                   // hatched like a component the order does not need
                   if (c.osp > 0 && c.osp >= r.required) {
-                    const n = itemColsOf(it) - 1;
+                    const n = itemColsOf(it);
                     return (
                       <Fragment key={it}>
                         {Array.from({ length: n }, (_, i) => (
@@ -1678,18 +1549,17 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                             {i === 0 && <span className="sr-only">OSP</span>}
                           </td>
                         ))}
-                        {odooCell([r], it)}
                       </Fragment>
                     );
                   }
-                  if (folded(it)) return <Fragment key={it}>{shareCell(itemFinishShare(r.required, it, c), it, r.mo)}{odooCell([r], it)}</Fragment>;
+                  if (folded(it)) return <Fragment key={it}>{shareCell(itemFinishShare(r.required, it, c), it, r.mo)}</Fragment>;
                   // stage scope: only the picked depts' columns (the core's
                   // Painting column is its SHOT BLAST — same as unfiltered)
                   if (scoped) {
                     return (
                       <Fragment key={it}>
-                        {stages.map((s) => {
-                          const last = false;
+                        {stages.map((s, i) => {
+                          const last = i === stages.length - 1;
                           return (
                             <Fragment key={s}>
                               {s === "Cut" && stageCell(r, it, "Cut", c.cut, last, isBn(it, "Cut"))}
@@ -1701,7 +1571,6 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                             </Fragment>
                           );
                         })}
-                        {odooCell([r], it)}
                       </Fragment>
                     );
                   }
@@ -1714,19 +1583,11 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                       ) : (
                         stageCell(r, it, "Painting", c.paint, false, isBn(it, "Painting"))
                       )}
-                      {stageCell(r, it, "Delivered", c.delivered, false)}
-                      {odooCell([r], it)}
+                      {stageCell(r, it, "Delivered", c.delivered, true)}
                     </Fragment>
                   );
                 })}
-                {!scoped && show("complete") && <td className="p-2 text-center font-bold border-r"><Num v={r.complete} /></td>}
-                {!scoped && show("left") && (
-                  <td className="p-2 text-center font-semibold" style={{ color: r.remaining > 0 ? undefined : "var(--ok-fg)" }}>
-                    <Num v={r.remaining} />
-                  </td>
-                )}
                 {!scoped && show("achv") && <AchCell ach={r.achievement} />}
-                {show("eta") && etaCell(etas[r.mo], r.hold.onHold)}
                 {show("status") && <td className="p-2 text-center no-print whitespace-nowrap">
                   {/* the row's actions live on right-click; the cell keeps
                       only the state, and the one call to action a finished
@@ -1885,7 +1746,6 @@ function StageHead({ shp = false, only, borderR = true }: { shp?: boolean; only?
 /** ⚠ on an order whose qty a plan import held back: the old figure stays in
  *  the plan until the planner uses the sheet's or keeps his own. */
 function PendingQty({ r, canDecide }: { r: MasterTrackerRow; canDecide: boolean }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
@@ -1900,7 +1760,6 @@ function PendingQty({ r, canDecide }: { r: MasterTrackerRow; canDecide: boolean 
       const res = await decidePlanQty(fd);
       if (!res.ok) { setErr(res.error ?? "Could not save."); return; }
       setOpen(false);
-      router.refresh();
     });
   };
   const pill = <>⚠ Qty {r.required} → {p.to}?</>;
@@ -1910,7 +1769,7 @@ function PendingQty({ r, canDecide }: { r: MasterTrackerRow; canDecide: boolean 
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="print-as-text pill pill-warn ml-1 cursor-pointer hover:ring-2 hover:ring-brand/60 transition-all"
+        className="print-as-text pill pill-warn ml-1 cursor-pointer hover:ring-2 hover:ring-brand/60 transition-shadow"
         title={`${title} — click to choose`}
         aria-expanded={open}
       >

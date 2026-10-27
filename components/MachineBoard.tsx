@@ -171,7 +171,6 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
  *  actually finished — the rest stays in the machine's queue. A sheet job
  *  is closed in SHEETS cut on this machine; any other line in pieces. */
 export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardData; q: MachineQueueLine; machineId?: number; onErr: (m: string) => void }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [val, setVal] = useState("");
   // a welded tank carries a serial and the welder's name — that recording
@@ -201,7 +200,7 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
     if (manual !== null) fd.set("id", String(manual));
     startTransition(async () => {
       const res = manual !== null ? await recordManualDone(fd) : await recordOutput(fd);
-      if (res.ok) { setVal(""); router.refresh(); } else onErr(res.error ?? "Failed");
+      if (res.ok) { setVal(""); } else onErr(res.error ?? "Failed");
     });
   };
   if (bySheet) return (

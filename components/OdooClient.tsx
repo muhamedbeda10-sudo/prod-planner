@@ -38,7 +38,6 @@ import { factoryDayISO } from "@/lib/domain/dates";
 // place — and an FG-CODE the app had to compose is flagged until it is looked at.
 
 function useAction() {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const run = useCallback(
@@ -52,7 +51,6 @@ function useAction() {
           setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
           if (res.ok) {
             after?.();
-            router.refresh();
             window.dispatchEvent(new Event(ODOO_CHANGED_EVENT)); // the ODOO log's count follows now
           }
         } catch {
@@ -60,7 +58,7 @@ function useAction() {
         }
       });
     },
-    [router]
+    []
   );
   return { pending, msg, run };
 }
@@ -821,7 +819,6 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
 // ---- import: the sheet, once — its first seven columns ----
 
 function ImportPanel({ day, lines, defaultLine }: { day: string; lines: readonly string[]; defaultLine: string }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null);
   const [issues, setIssues] = useState<string[]>([]);
@@ -836,7 +833,6 @@ function ImportPanel({ day, lines, defaultLine }: { day: string; lines: readonly
       if (!r.ok) { setRes({ ok: false, text: r.error ?? "Import failed." }); return; }
       const tail = `${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged`;
       setRes({ ok: true, text: preview ? `Preview only — nothing saved: ${tail}.` : `Imported: ${tail}.` });
-      if (!preview) router.refresh();
     });
   }
   const button = <button type="button" className="btn btn-sm" onClick={() => { setRes(null); setIssues([]); setOpen(true); }}>📥 Import Excel</button>;

@@ -22,7 +22,7 @@ import { ownLine } from "@/lib/server/line";
 import { aiVisibleFor } from "@/lib/server/ai/access";
 import { inboxState } from "@/lib/server/inbox";
 import { NO_INBOX_HEAD } from "@/lib/domain/inbox";
-import { getNeedingMo, getReadyToClose } from "@/lib/server/odooAlerts";
+import { countOdooAlerts } from "@/lib/server/odooAlerts";
 import { ODOO_ALERTS_PERM, ODOO_NEED_MO_PERM } from "@/lib/domain/odooAlerts";
 import { THEME_INIT_SCRIPT } from "@/components/themeInit";
 
@@ -54,9 +54,6 @@ export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentUser(); // null on /login (proxy guards the rest)
-  const [unreadChat, settings, prefs, ai, inbox] = user
-    ? await Promise.all([getChatUnreadCount(user.id), getSettings(), getUserPrefs(user.id, WHATS_NEW_PREF_KEYS), aiVisibleFor(user), inboxState(user.id)])
-    : [0, null, {}, false, { ...NO_INBOX_HEAD, any: false }];
   // the ODOO alerts — "ready to close" and "needs an MO" — for whoever is
   // subscribed to either
   const perms = user ? userPerms(user) : new Set<string>();
@@ -65,10 +62,14 @@ export default async function RootLayout({
   const wantClose = perms.has(ODOO_ALERTS_PERM);
   const wantMo = perms.has(ODOO_NEED_MO_PERM);
   const odooAlertsOn = wantClose || wantMo;
-  const [readyRows, moRows] = odooAlertsOn
-    ? await Promise.all([wantClose ? getReadyToClose() : [], wantMo ? getNeedingMo() : []])
-    : [[], []];
-  const odooReady = readyRows.length + moRows.length;
+  // every read the bar needs, at once; the alerts' badge is a count — the
+  // popup reads the rows themselves when it opens
+  const [unreadChat, settings, prefs, ai, inbox, odooReady] = user
+    ? await Promise.all([
+        getChatUnreadCount(user.id), getSettings(), getUserPrefs(user.id, WHATS_NEW_PREF_KEYS), aiVisibleFor(user), inboxState(user.id),
+        odooAlertsOn ? countOdooAlerts(wantClose, wantMo) : 0,
+      ])
+    : [0, null, {}, false, { ...NO_INBOX_HEAD, any: false }, 0];
   return (
     <html lang="en" dir="ltr" className={`${inter.variable} h-full`} suppressHydrationWarning>
       <head>

@@ -2,7 +2,6 @@
 
 import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { recordGroupOutput } from "@/app/worklist/actions";
 import { pctClass, Soi } from "@/components/ui";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
@@ -68,7 +67,6 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
    *  page's own filters, flowing with the page rather than filling the screen. */
   fabrication?: boolean;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editVal, setEditVal] = useState("");
@@ -103,7 +101,6 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
         if (res.ok) {
           setEditKey(null);
           setEditVal("");
-          router.refresh();
         } else {
           setCellErr(res.error ?? "Failed");
         }
@@ -424,7 +421,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
                             type="button"
                             onClick={() => rec.open(k)}
                             disabled={rec.pending}
-                            className="print-as-text w-full min-w-7 rounded px-1 py-0.5 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
+                            className="print-as-text w-full min-w-7 rounded px-1 py-0.5 tabnum hover:ring-2 hover:ring-brand/60 transition-shadow cursor-text"
                             title={`${stageWord} · ${r.bom} · ${it} — type how many pieces to ADD. They join today's Daily Log (marked: from the weekly plan)${c.mos.length > 1 ? `, split over the ${c.mos.length} orders this day owes` : ""}, and fill this project's EARLIEST unfilled promise first.`}
                           >
                             {c[s] || <span className="text-muted opacity-40">—</span>}
