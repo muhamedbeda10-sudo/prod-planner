@@ -50,7 +50,7 @@ and Consumables; **Plan Tracker** carries the tracker, the **Daily log** it
 adds up and the
 **ODOO log** (`/odoo`, whose alerts' badge rides on the Plan Tracker tab). The rule: the tab's panel moves
 between its PLACES; the switch in a page's bar moves between VIEWS of one place's rows (`components/ViewTabs.tsx`). Two things are not tabs at all: **chat** is the icon in the nav's
-right cluster, opening a panel over whatever page you are on (a glance, not a destination — its
+right cluster, docking down the right of whatever page you are on, the page moved beside it, as the assistant and the inbox do (a glance, not a destination — its
 bundle is fetched only on first open), and the **barcode sheet** is a button on the painting
 worklist, where the tanks it prints for finish. In Admin the Orders Registry (with the monthly plan import) and the weekly plan import are two entries of the tools menu. The
 mobile drawer still lists every view flat, since it has the vertical room.

@@ -269,7 +269,7 @@ export function DetailModal({ title, sub, columns, rows, total, empty = "Nothing
             </tbody>
             {total && (
               <tfoot>
-                <tr className="font-bold border-t">{total.map((cell, j) => <td key={j} className={`px-2 ${columns[j]?.num ? "text-right tabnum" : ""}`}>{cell}</td>)}</tr>
+                <tr>{total.map((cell, j) => <td key={j} className={`px-2 ${columns[j]?.num ? "text-right tabnum" : ""}`}>{cell}</td>)}</tr>
               </tfoot>
             )}
           </table>

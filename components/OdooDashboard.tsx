@@ -8,6 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList,
 } from "recharts";
 import { ChartCard, DeltaChip } from "@/components/charts/kit";
+import { segmentLabel, segmentValue, stackTotalValue, TotalLabel, type LabelBox } from "@/components/charts/labels";
 import { Badge } from "@/components/Badge";
 import { OdooInsightsSection } from "@/components/OdooInsights";
 import type { OdooInsights } from "@/lib/domain/odooInsights";
@@ -56,25 +57,7 @@ const DAY_AXIS = { interval: "preserveStartEnd", minTickGap: 14 } as const;
 
 // ---- labels written on the marks ----
 
-type LabelBox = { x?: number | string; y?: number | string; width?: number | string; height?: number | string; value?: unknown };
-
-/** The count inside a stacked segment — only when the segment is tall and wide enough to hold it. */
-function segmentLabel(ink: string) {
-  const SegLabel = (p: LabelBox) => {
-    const v = Number(p.value ?? 0);
-    const w = Number(p.width ?? 0), h = Number(p.height ?? 0);
-    // only where the number fits inside the segment, with a little air
-    if (!v || h < 13 || w < fmt(v).length * 6.5 + 4) return null;
-    return (
-      <text x={Number(p.x) + w / 2} y={Number(p.y) + h / 2} dy={3.5} textAnchor="middle" fontSize={10} fontWeight={700} fill={ink} pointerEvents="none">
-        {fmt(v)}
-      </text>
-    );
-  };
-  return SegLabel;
-}
-
-/** The column's total on its cap. */
+/** A side-by-side bar's own figure on its cap. */
 function TopLabel(p: LabelBox) {
   const v = Number(p.value ?? 0);
   if (!v) return null;
@@ -83,19 +66,6 @@ function TopLabel(p: LabelBox) {
       {fmt(v)}
     </text>
   );
-}
-
-/** The stack's total, written once per column by whichever segment is on
- *  top that day. The day is read off the label's own entry: recharts leaves
- *  a zero-height segment out of the label list, so an index would drift onto
- *  the wrong column. */
-function stackTotalAccessor(series: OdooSeries, present: readonly OdooSeries[]) {
-  return (entry: { payload?: Record<string, unknown> }) => {
-    const row = entry.payload;
-    if (!row) return "";
-    const top = [...present].reverse().find((s) => Number(row[s] ?? 0) > 0);
-    return top === series ? fmt(present.reduce((n, s) => n + Number(row[s] ?? 0), 0)) : "";
-  };
 }
 
 // ---- headline numbers and the product cards ----
@@ -270,8 +240,8 @@ function DailyByProduct({ d, present, pal }: { d: OdooDashboardData; present: Od
             radius={i === present.length - 1 ? [4, 4, 0, 0] : 0}
             isAnimationActive={false}
           >
-            <LabelList dataKey={s} content={segmentLabel(pal.ink(s))} />
-            <LabelList valueAccessor={stackTotalAccessor(s, present)} position="top" fontSize={10} fontWeight={700} fill="var(--foreground)" />
+            <LabelList valueAccessor={segmentValue(s, present)} content={segmentLabel(pal.ink(s))} />
+            <LabelList valueAccessor={stackTotalValue(s, present)} content={TotalLabel} />
           </Bar>
         ))}
       </BarChart>

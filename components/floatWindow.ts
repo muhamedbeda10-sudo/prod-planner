@@ -2,12 +2,12 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 
-// What the app's floating windows — the AI assistant and the inbox — share:
+// What the app's floating windows — the AI assistant, the inbox and the chat — share:
 // their state kept in this browser's storage (so each reopens as it was left,
 // after a reload too), the phone test, one window open at a time, and the
 // page behind a large window (or a phone's whole-screen one) held still.
 
-export type FloatName = "ai" | "inbox";
+export type FloatName = "ai" | "inbox" | "chat";
 
 const PHONE = "(max-width: 767px)";
 

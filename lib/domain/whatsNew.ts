@@ -24,6 +24,21 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The monthly Plan Tracker no longer shows the Odoo, ETA, Complete and Left columns — working them out for every order made the sheet heavy. Odoo's closings stay on the ODOO log, the BOM trace and in the assistant, and Achv. still shows each order's progress. The completion forecast (ETA) is no longer shown, so a stage cell is no longer tinted for a late forecast; it also no longer turns bold under the pointer. Saving a figure on the tracker, the worklists, the Daily log or the ODOO log now reloads the page once instead of twice.",
   },
   {
+    id: "2026-10-27-numbers-on-stacked-charts",
+    dateISO: "2026-10-27",
+    title: "Stacked charts carry their numbers, and efficiency reads at a glance",
+    where: "Dashboards → Production",
+    body: "On Earned against booked, each department's hours are written on its part of the column, the day's earned total sits on top, and the day's efficiency is under its date — green at the standard, amber short of it, red well short. On What was made each day, each component's count and its share of the day are on its part, and the day's total on top. A number is written only where it fits; the tooltip still has them all. The Efficiency column of Department by department has a short bar beside each figure in the same colour, with the 100% standard marked, and the Total row now stands apart on its own band with a line over it — the same Total row on every table in the app. The same numbers are on the stacked columns of the Odoo dashboard, the consumables' six months and the material consumed per day.",
+    href: "/dashboards/production",
+  },
+  {
+    id: "2026-10-27-chat-docked-right",
+    dateISO: "2026-10-27",
+    title: "Chat opens down the right side too, beside the page you are on",
+    where: "Chat → the speech bubble in the bar",
+    body: "The chat no longer drops down as a box under its icon. Like the assistant and the inbox, it opens down the whole right side of the screen, from the top to the bottom, and the page moves left beside it — and it stays open while you work on the page, until you close it with its ✕, the icon or Escape inside it. It opens narrow, one conversation at a time with Back to the list; drag its left edge wider and, from about 670px, the contacts and the conversation show side by side (the width is kept on this browser). Opening the chat closes the assistant's or the inbox's window, and the other way round. ⤢ still opens the full chat page.",
+  },
+  {
     id: "2026-10-27-one-progress-bar",
     dateISO: "2026-10-27",
     title: "Every progress bar looks the same, and the screens are lighter",

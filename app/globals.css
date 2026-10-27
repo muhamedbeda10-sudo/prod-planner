@@ -448,6 +448,23 @@ main table tbody td {
 main table tbody tr:last-child td {
   border-bottom: none;
 }
+/* a sheet's Total row stands apart from the rows it adds up: the header's
+   band, a firm rule over its first row, the rows' own height, in bold —
+   every sheet's the same, whatever its own utilities (unlayered, so it
+   outranks them); the weight is the row's, so a cell can still set a
+   quieter one. */
+:is(main table, .dt > table) > tfoot > tr {
+  font-weight: 700;
+}
+:is(main table, .dt > table) > tfoot > tr > :is(td, th) {
+  height: 36px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  background-color: var(--surface-2);
+}
+:is(main table, .dt > table) > tfoot > tr:first-child > :is(td, th) {
+  border-top: 1px solid var(--border-strong);
+}
 
 /* every section heading in the app: quiet uppercase label */
 main h2 {
@@ -1224,7 +1241,8 @@ main table thead tr.dt-band th + th[data-group] { border-left: 3px solid var(--s
 .erp-table tbody tr.mat-child:focus-within { background-color: var(--row-selected); }
 .erp-table tbody tr.mat-child-last > td { border-bottom: 2px solid var(--brand); }
 @media screen {
-  .erp-table tfoot.mat-total td { position: sticky; bottom: 0; z-index: 4; background-color: var(--surface-2); border-top: 1px solid var(--border-strong); font-weight: 700; padding-top: 6px; padding-bottom: 6px; }
+  /* the Total row's look is every sheet's (main table tfoot); this one stays pinned to the foot */
+  .erp-table tfoot.mat-total td { position: sticky; bottom: 0; z-index: 4; }
   .erp-table tfoot.mat-total td.stick { z-index: 14; }
 }
 
@@ -1307,8 +1325,9 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
   input, select, textarea { font-size: max(16px, 1em); }
 }
 
-/* ---- the AI assistant (components/AiPanel) and the inbox (InboxPanel): the
-   assistant's round button in the corner; either window docked down the
+/* ---- the AI assistant (components/AiPanel), the inbox (InboxPanel) and the
+   chat (ChatDock): the assistant's round button in the corner; any of the
+   windows docked down the
    right of the screen (the app moves left of it — components/FloatDock), the
    whole screen when expanded or on a phone ---- */
 .ai-fab {
@@ -1322,7 +1341,7 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 .ai-fab:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
 .ai-overlay { position: fixed; inset: 0; z-index: 36; background: rgb(0 0 0 / 0.45); backdrop-filter: blur(2px); animation: drawerfade 0.18s ease-out; }
 .ai-pop { position: fixed; z-index: 37; display: flex; flex-direction: column; background: var(--surface); color: var(--foreground); overflow: hidden; }
-/* docked (the assistant or the inbox): top to bottom on the right, as wide as dragged (--ai-dock, set
+/* docked (the assistant, the inbox or the chat): top to bottom on the right, as wide as dragged (--ai-dock, set
    on <html> with html.ai-docked). From a laptop up the app moves left of it */
 .ai-pop-dock {
   top: 0; right: 0; bottom: 0; width: var(--ai-dock);

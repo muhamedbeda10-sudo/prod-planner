@@ -13,6 +13,7 @@ import type { AiFeedbackRating } from "@/lib/domain/aiLearn";
 import { loadAiChat, loadAutomations, loadPlaybook } from "@/app/ai/panel/actions";
 import { Loading, useTabData } from "@/components/useTabData";
 import { usePhone } from "@/components/floatWindow";
+import { FloatHead, HeadBtn } from "@/components/FloatDock";
 import type { AiChatTurn } from "@/lib/domain/ai";
 import type { AiActionView } from "@/lib/domain/aiActions";
 
@@ -41,16 +42,6 @@ export interface InitialChat {
   status: Parameters<typeof AiChat>[0]["status"];
   conversations: Parameters<typeof AiChat>[0]["conversations"];
   open: { id: number; turns: AiChatTurn[]; actions: AiActionView[]; ratings?: Record<number, AiFeedbackRating> } | null;
-}
-
-/** One button of the head: an icon, its name as the tooltip, lit when its view is open. */
-export function HeadBtn({ icon: Icon, label, on = false, badge = 0, onClick, disabled }: { icon: typeof Bot; label: string; on?: boolean; badge?: number; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button type="button" onClick={onClick} disabled={disabled} className={`icon-btn icon-btn-md ai-head-btn ${on ? "icon-btn-on" : ""}`} title={label} aria-label={badge > 0 ? `${label} — ${badge} not read` : label} aria-pressed={on}>
-      <Icon size={17} />
-      {badge > 0 && <span className="count-badge count-badge-alert">{badge > 99 ? "99+" : badge}</span>}
-    </button>
-  );
 }
 
 /** A pane that is not the chat: Back to it, its name, then its content. */
@@ -128,13 +119,7 @@ export function AiWorkspace({
   return (
     <div className="flex flex-col h-full min-h-0 bg-surface">
       {memoryOpen && <MemoryDialog onClose={() => setMemoryOpen(false)} />}
-      <header className="ai-pop-head">
-        <span className={`ai-pop-logo ${chat?.busy ? "ai-pop-logo-busy" : ""}`}><Bot size={18} aria-hidden /></span>
-        <div className="min-w-0 flex-1">
-          <div className="ai-pop-title">AI assistant</div>
-          <div className="ai-pop-sub" dir="auto">{subtitle}</div>
-        </div>
-        <div className="flex items-center gap-0.5 shrink-0">
+      <FloatHead icon={Bot} title="AI assistant" sub={subtitle} busy={!!chat?.busy}>
           {hasChat && <HeadBtn icon={Plus} label="New chat" onClick={newChat} disabled={!!chat?.busy} />}
           {hasChat && !large && <HeadBtn icon={History} label="Chats" on={view === "history"} onClick={() => onView(view === "history" ? "chat" : "history")} />}
           {hasChat && large && (
@@ -163,8 +148,7 @@ export function AiWorkspace({
             <HeadBtn icon={large ? Minimize2 : Maximize2} label={large ? "Back to the side" : "Fill screen"} onClick={() => onExpand(!large)} />
           )}
           {onClose && <HeadBtn icon={X} label="Close" onClick={onClose} />}
-        </div>
-      </header>
+      </FloatHead>
 
       <div className="flex flex-1 min-h-0">
         {large && (
