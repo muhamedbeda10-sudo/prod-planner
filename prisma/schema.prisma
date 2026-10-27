@@ -1639,6 +1639,8 @@ model AiUsage {
 
   @@index([at])
   @@index([userId, at])
+  // a reopened chat reads its questions' models (lib/server/ai/chatTurns.ts)
+  @@index([conversationId, id])
 }
 
 // One change the assistant prepared — the proposal the person approves, and

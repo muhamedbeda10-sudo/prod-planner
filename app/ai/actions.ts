@@ -5,8 +5,8 @@ import { getCurrentUser } from "@/lib/server/auth";
 import { aiStatusFor, apiKeyOf, getAiSettings } from "@/lib/server/ai/access";
 import { seenMeasurer } from "@/lib/server/ai/vision";
 import { discardFile, storeAiFile, type StoreResult } from "@/lib/server/ai/files";
-import { actionsOfConversation, approveAction, rejectAction, undoAction, type DecideResult } from "@/lib/server/ai/changes";
-import { chatTurnsOf } from "@/lib/server/ai/chatTurns";
+import { approveAction, rejectAction, undoAction, type DecideResult } from "@/lib/server/ai/changes";
+import { chatTurnsOf, openedChatOf } from "@/lib/server/ai/chatTurns";
 import { AI_DENY_TEXT, DEFAULT_AI_MODEL, type AiChatTurn } from "@/lib/domain/ai";
 import type { AiActionView } from "@/lib/domain/aiActions";
 import { answerOf, checkFeedback, type AiFeedbackRating } from "@/lib/domain/aiLearn";
@@ -31,9 +31,7 @@ export async function loadAiConversation(id: number): Promise<{ ok: boolean; tur
   if (!user) return { ok: false, error: NOT_LOGGED_IN };
   const c = await prisma.aiConversation.findFirst({ where: { id, userId: user.id }, include: { messages: { orderBy: { id: "asc" } } } });
   if (!c) return { ok: false, error: "That conversation is not there any more." };
-  const [actions, feedback, turns] = await Promise.all([actionsOfConversation(c.id), prisma.aiFeedback.findMany({ where: { conversationId: c.id }, select: { turn: true, rating: true } }), chatTurnsOf(c)]);
-  const ratings = Object.fromEntries(feedback.map((f) => [f.turn, f.rating as AiFeedbackRating]));
-  return { ok: true, turns, actions, ratings };
+  return { ok: true, ...(await openedChatOf(c)) };
 }
 
 /** A thumbs up or down on one of the person's own answers (its place among

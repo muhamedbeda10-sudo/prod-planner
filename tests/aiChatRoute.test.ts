@@ -30,8 +30,6 @@ beforeEach(() => {
   h.ask.mockResolvedValue({ tokens: { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 }, calls: 1, queries: 0, added: [], text: "Answer", firstTokenMs: 420, totalMs: 3100 });
   h.transaction.mockResolvedValue([]);
   h.find.mockResolvedValue(null);
-  // the chat moved to this question's model
-  h.update.mockImplementation(async ({ data }: { data: { model?: string } }) => ({ id: 4, title: "Chat", model: data.model ?? "claude-opus-5-5" }));
 });
 const ask = (body: object) => POST(new Request("http://localhost/api/ai/chat", { method: "POST", body: JSON.stringify(body) }));
 function request() {
@@ -55,18 +53,16 @@ describe("the AI chat route", () => {
     await events(await POST(request()));
     expect(h.messages.mock.calls[0][1]).toContain("- [7] Works in Welding");
   });
-  it("on Auto, picks the model the question needs and moves the chat to it", async () => {
-    h.reserve.mockResolvedValue({ conversation: { id: 4, title: "Chat", model: "claude-opus-5-5" }, usage: { id: 5 } });
-    await events(await POST(request()));
-    // a short look-up on a new chat: the cheapest model
+  it("on Auto, picks the model the question needs and reserves the turn on it", async () => {
+    const sent = await events(await POST(request()));
+    // a short look-up: the cheapest model, which the start event names
     expect(h.reserve.mock.calls[0][0].model).toBe("claude-haiku-5-5");
-    expect(h.update).toHaveBeenCalledWith({ where: { id: 4 }, data: { model: "claude-haiku-5-5" } });
+    expect(h.ask.mock.calls[0][0].model).toBe("claude-haiku-5-5");
+    expect(sent[0]).toMatchObject({ type: "start", model: "claude-haiku-5-5" });
   });
-  it("a Deep question takes the strongest model at high effort with more calls, and the chat steps up to it", async () => {
-    h.reserve.mockResolvedValue({ conversation: { id: 4, title: "Chat", model: "claude-haiku-5-5" }, usage: { id: 5 } });
+  it("a Deep question takes the strongest model at high effort with more calls", async () => {
     await events(await ask({ question: "Hi", depth: "deep" }));
     expect(h.reserve.mock.calls[0][0].model).toBe("claude-opus-5-5");
-    expect(h.update).toHaveBeenCalledWith({ where: { id: 4 }, data: { model: "claude-opus-5-5" } });
     expect(h.ask.mock.calls[0][0]).toMatchObject({ model: "claude-opus-5-5", effort: "high", maxCalls: 21 });
   });
   it("a Quick question takes the cheapest model at low effort", async () => {
@@ -75,10 +71,8 @@ describe("the AI chat route", () => {
   });
   it("a chat moved up for a hard question comes back down for the next look-up; an unknown depth is Standard", async () => {
     h.find.mockResolvedValue({ id: 4, title: "Chat", model: "claude-opus-5-5", messages: [] });
-    h.reserve.mockResolvedValue({ conversation: { id: 4, title: "Chat", model: "claude-opus-5-5" }, usage: { id: 5 } });
     await events(await ask({ conversationId: 4, question: "How many open orders?", depth: "ultra" }));
-    expect(h.update).toHaveBeenCalledWith({ where: { id: 4 }, data: { model: "claude-haiku-5-5" } });
-    expect(h.usage).toHaveBeenCalledWith({ where: { id: 5 }, data: { model: "claude-haiku-5-5" } });
+    expect(h.reserve.mock.calls[0][0]).toMatchObject({ model: "claude-haiku-5-5", existing: { id: 4, model: "claude-opus-5-5" } });
     expect(h.ask.mock.calls[0][0]).toMatchObject({ model: "claude-haiku-5-5", effort: "medium", maxCalls: 14 });
   });
   it("folds the old look-ups of a long chat before the model reads it, and keeps the timing", async () => {

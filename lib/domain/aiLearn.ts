@@ -89,8 +89,7 @@ export function answerOf(turns: readonly { role: "user" | "assistant"; text: str
   const hit = answers[n] && matches(answers[n]) ? answers[n] : lead ? [...answers].reverse().find(matches) : undefined;
   if (!hit) return null;
   const q = [...turns.slice(0, hit.at)].reverse().find((t) => t.role === "user");
-  const model = turns[hit.at].model;
-  return { turn: hit.turn, question: (q?.text ?? "").slice(0, AI_FEEDBACK_LIMITS.question), answer: turns[hit.at].text.slice(0, AI_FEEDBACK_LIMITS.answer), ...(model ? { model } : {}) };
+  return { turn: hit.turn, question: (q?.text ?? "").slice(0, AI_FEEDBACK_LIMITS.question), answer: turns[hit.at].text.slice(0, AI_FEEDBACK_LIMITS.answer), model: turns[hit.at].model };
 }
 
 /** A playbook rule drafted from a correction — the owner edits it before saving. */

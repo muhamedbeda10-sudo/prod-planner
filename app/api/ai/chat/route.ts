@@ -103,15 +103,7 @@ export async function POST(request: Request) {
   const { model, effort, maxCalls } = depthPlan(depth, { routed, maxCalls: settings.maxCalls });
   const reservation = await reserveChatTurn({ userId: user.id, question, model, existing, now: new Date(), runningWindowMs: (maxDuration + 30) * 1000 });
   if (!reservation) return fail(429, "One question at a time — wait for the answer, then ask again.");
-  const { usage } = reservation;
-  let { conversation } = reservation;
-  if (conversation.model !== model) {
-    // this question's model (Auto, or the depth): the chat goes on with it
-    [conversation] = await Promise.all([
-      prisma.aiConversation.update({ where: { id: conversation.id }, data: { model } }),
-      prisma.aiUsage.update({ where: { id: usage.id }, data: { model } }),
-    ]);
-  }
+  const { usage, conversation } = reservation;
   try {
     await linkFiles(user.id, fileIds, conversation.id);
     // logged before the first call, finished after the last — what the caps
@@ -157,12 +149,12 @@ export async function POST(request: Request) {
             open = false; // the page went away — the answer is still kept
           }
         };
-        send({ type: "start", conversationId: conversation.id, title: conversation.title, model: conversation.model });
+        send({ type: "start", conversationId: conversation.id, title: conversation.title, model });
 
         const startedAt = Date.now();
         const result = await ask({
           apiKey,
-          model: conversation.model,
+          model,
           // the person's Stop (the connection closed) stops the model too;
           // what was written is kept, and the question's turn is freed
           signal: request.signal,
@@ -199,7 +191,7 @@ export async function POST(request: Request) {
           return null;
         });
         if (!result) return;
-        const cost = costUsd(conversation.model, result.tokens);
+        const cost = costUsd(model, result.tokens);
         // a question the model refused to read keeps its files as lines only —
         // a file it cannot take would be refused again with every later question
         const names = new Map(files.files.map((f) => [f.id, f.name]));
