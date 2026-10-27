@@ -405,8 +405,12 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    running on a machine kept on top), `get_load_profile` (load against capacity per plant week — under 85% ok, to 100%
    tight, past it overloaded), `get_io_report` (input/output and the queue, upstream or inside), `identify_bottleneck`,
    `get_delay_pareto` (machine stops by cause, the holds), `check_release_readiness` (hold, quantity, standard times,
-   nesting, Fabrication's load — the raw-material stock is a check still to do until the Odoo stock feed fills
-   `ReleaseFacts.stock`) and `simulate_rush_order`. Each has a tile under the assistant's "What it can do". Operation
+   nesting, the material, Fabrication's load), `get_material_coverage` and `simulate_rush_order`. **The material**
+   (`lib/domain/materialCoverage.ts`): the pieces Fabrication still owes × the nesting's sheets a piece (actual where
+   nested, else the BOM's rate), per Odoo product code, against the **Physical Material** table — Odoo's SF01 stock and
+   the store's count: covered, short (blocks a release), store-short, not listed, or held in KG; and contended when all
+   the open orders want more of a code than Odoo holds (stock is not reserved per order). Read only for a person with
+   both the Physical Material and Material screens. Each has a tile under the assistant's "What it can do". Operation
    start/finish times, queue/setup/move standards and order-level delay codes are not recorded, so queue time per
    operation is not measured and CR's lead time is the forecast's.
 11. **Consumables** (`/consumables`, a place of the **Material** tab beside the nesting sheets and Physical Material —

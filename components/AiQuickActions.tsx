@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowLeftRight, BarChart3, Bell, CalendarClock, ClipboardCheck, FileBarChart, FileSpreadsheet, FlaskConical, Gauge, GraduationCap, Hourglass, ListOrdered, PackagePlus, ScanLine, Sunrise, TimerOff, TrendingDown } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Boxes, BarChart3, Bell, CalendarClock, ClipboardCheck, FileBarChart, FileSpreadsheet, FlaskConical, Gauge, GraduationCap, Hourglass, ListOrdered, PackagePlus, ScanLine, Sunrise, TimerOff, TrendingDown } from "lucide-react";
 import type { AiQuickAction, AiQuickId } from "@/lib/domain/aiQuickActions";
 import { toneAt } from "@/lib/domain/tones";
 
@@ -23,6 +23,7 @@ const ICON: Record<AiQuickId, typeof Bell> = {
   rush: PackagePlus,
   late: TimerOff,
   release: ClipboardCheck,
+  stock: Boxes,
   io: ArrowLeftRight,
   learn: GraduationCap,
   scan: ScanLine,

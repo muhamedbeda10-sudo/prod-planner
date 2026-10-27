@@ -603,8 +603,8 @@ export interface ReleaseFacts {
   /** The MATERIAL tab's nesting lines for the order (or its BOM); "not_checked"
    *  when the Material screen is closed to the person asking. */
   nesting?: { lines: number; nested: number } | "not_checked";
-  /** Raw-material stock for the order — not connected yet; when the Odoo
-   *  stock feed arrives it fills this in and the checklist reads it. */
+  /** The order's sheets against the Physical Material table (Odoo's stock and
+   *  the store's count) — lib/domain/materialCoverage.ts stockCheck; null when not read. */
   stock?: { status: CheckStatus; detail: string } | null;
   /** The first station's load over the release window. */
   firstStationLoad?: { pct: number | null; status: LoadStatus; weeks: string } | null;
@@ -630,7 +630,7 @@ export function releaseChecklist(f: ReleaseFacts): { verdict: "ready" | "ready_w
   else if (n && n.lines === 0) add("Nesting / drawings", "blocked", "No line on the MATERIAL tab's nesting sheet for this order.");
   else if (n && n.nested < n.lines) add("Nesting / drawings", "warn", `${n.nested} of ${n.lines} nesting lines carry the actual nesting.`);
   else if (n) add("Nesting / drawings", "ok", `All ${n.lines} nesting lines are nested.`);
-  add("Material stock", f.stock?.status ?? "unknown", f.stock?.detail ?? "The app does not read Odoo's on-hand stock yet — check the sheets are in the store before releasing.");
+  add("Material stock", f.stock?.status ?? "unknown", f.stock?.detail ?? "Not checked against the stock — check the sheets are in the store before releasing.");
   const l = f.firstStationLoad;
   if (l && (l.status === "no_capacity" || l.pct === null)) add("Fabrication capacity", "unknown", "No capacity figure for Fabrication.");
   else if (l && l.pct !== null) add("Fabrication capacity", l.status === "overloaded" ? "warn" : "ok", `Fabrication is at ${pctText(l.pct)} of its capacity ${l.weeks} (${l.status}).`);

@@ -18,6 +18,8 @@ import { getStdData } from "@/lib/server/standardTimes";
 import { loadHolidays } from "@/lib/server/loads";
 import { getWhatIfInputs } from "@/lib/server/whatif";
 import { getControlInputs, getReleaseFacts, getStationFlows, getStationStops } from "@/lib/server/planningControl";
+import { getOpenPartNeeds, getOrderPartNeeds, getStockLines } from "@/lib/server/materialCoverage";
+import { COVER_TEXT, coverage, sheetNeeds, stockCheck, type CoverStatus } from "@/lib/domain/materialCoverage";
 import type { ReadResult, ReadTool, ToolCtx } from "./types";
 
 // The planner's production-activity-control tools: what each station should
@@ -275,7 +277,7 @@ interface ReleaseInput { mo: string; line?: "TR" }
 export const checkReleaseReadinessTool: ReadTool<ReleaseInput> = {
   kind: "read", name: "check_release_readiness", title: "Checking the order can be released", tabs: ["tracker"], cacheable: true,
   description:
-    "The release checklist of one TR order before it goes to the floor: open and not on hold, no plan quantity waiting for a decision, every component priced (standard times), a due date, the nesting / drawings on the MATERIAL tab (lines and how many are nested), the raw-material stock (not read from Odoo yet — reported as a check still to do), Fabrication's load over this week and next, and whether Fabrication has already started it. " +
+    "The release checklist of one TR order before it goes to the floor: open and not on hold, no plan quantity waiting for a decision, every component priced (standard times), a due date, the nesting / drawings on the MATERIAL tab (lines and how many are nested), the raw-material stock — the sheets its parts still to cut need (by the nesting), per Odoo product code, against Odoo's stock and the store's count on the Physical Material table, and whether all the open work wants more of a code than Odoo holds — Fabrication's load over this week and next, and whether Fabrication has already started it. " +
     "Answers ready / ready_with_checks / not_ready with each blocking item. Read it before push_to_worklist or when asked \"can we release MO …?\".",
   schema: { type: "object", additionalProperties: false, properties: { mo: { type: "string", minLength: 1, maxLength: 60 }, line: LINE }, required: ["mo"] },
   async run(i, ctx) {
@@ -285,6 +287,7 @@ export const checkReleaseReadinessTool: ReadTool<ReleaseInput> = {
     // the registry's own spelling of the order from here on
     const mo = facts.order.mo;
     const cut = windowLoad(loadProfile(inputs, 2).find((s) => s.stage === "cut")!);
+    const material = await orderMaterial(facts.order, ctx);
     const result = releaseChecklist({
       found: true,
       status: facts.order.status,
@@ -294,7 +297,7 @@ export const checkReleaseReadinessTool: ReadTool<ReleaseInput> = {
       dueISO: inputs.jobs.find((j) => j.mo === mo && j.dueISO)?.dueISO ?? facts.plannedDueISO,
       // the nesting sheet is the Material screen's: not checked for whoever it is closed to
       nesting: ctx.hidden.has("material") ? "not_checked" : facts.nesting,
-      stock: null,
+      stock: material.stock,
       firstStationLoad: { pct: cut.pct, status: cut.status, weeks: "this week and next" },
       alreadyStarted: facts.alreadyStarted,
     });
@@ -303,10 +306,74 @@ export const checkReleaseReadinessTool: ReadTool<ReleaseInput> = {
       text: toJson({
         mo, bom: facts.order.bom, kva: facts.order.kva, required: facts.order.planQty,
         ...result,
+        material: material.detail,
         inputs_used: { todayISO: inputs.todayISO, fabricationLoadStdH: cut.loadH, fabricationAvailableH: cut.availableH },
-        assumptions: ["Material stock is not verified by the app yet — the Odoo stock feed is still to come; a planner must check it.", "Drawings are read through the nesting lines of the MATERIAL tab; other documents are not tracked."],
+        assumptions: [...MATERIAL_ASSUMPTIONS, "Drawings are read through the nesting lines of the MATERIAL tab; other documents are not tracked."],
       }),
       links: orderLinks([mo]),
+    };
+  },
+};
+
+// ---------------------------------------------------------------- material against the stock
+
+const MATERIAL_ASSUMPTIONS = [
+  "Sheets needed = the pieces Fabrication still owes × the nesting's sheets a piece (the actual nesting where the job was nested, else the BOM's rate — marked estimated).",
+  "Stock = the Physical Material table: Odoo's stock (SF01) and the store's own count, per Odoo product code, as last imported; sheets are compared only with codes held in pieces.",
+  "Stock is not reserved per order: what one order takes, the next cannot.",
+];
+
+/** The material line of an order's release: its sheets against the stock, and the open work's demand for the same codes. */
+async function orderMaterial(order: Parameters<typeof getOrderPartNeeds>[0], ctx: ToolCtx) {
+  if (ctx.hidden.has("physical") || ctx.hidden.has("material")) {
+    return { stock: { status: "unknown" as const, detail: "Not checked — the Physical Material or Material screen is not opened for this person." }, detail: undefined };
+  }
+  const [needs, open, stock] = await Promise.all([getOrderPartNeeds(order), getOpenPartNeeds(), getStockLines()]);
+  const mine = sheetNeeds(needs);
+  // the open work with this order counted once — a held order is not in it, but competes once released
+  const demand = sheetNeeds([...open.parts.filter((p) => p.mo !== order.mo), ...needs]);
+  const rows = coverage(mine.byCode, stock.lines, new Map(demand.byCode.map((n) => [n.code, n])));
+  return { stock: stockCheck(rows, mine), detail: { sheets: rows, noNesting: mine.noNesting, uncoded: mine.uncoded, stockTableLastChange: stock.lastChange } };
+}
+
+interface CoverageInput { mos?: string[]; shortOnly?: boolean; limit?: number }
+
+export const getMaterialCoverageTool: ReadTool<CoverageInput> = {
+  kind: "read", name: "get_material_coverage", title: "Setting the sheets needed against Odoo's stock", tabs: ["physical", "material"], cacheable: true,
+  description:
+    "Is there enough material? The sheets the open TR orders (not on hold) still need to cut — the pieces Fabrication owes × the MATERIAL tab's nesting rate — added up per Odoo product code and set against the Physical Material table: Odoo's stock (SF01), the store's count, the balance and a status (covered, short, store_short = Odoo enough but the store counted less, not_listed, not_comparable = held in KG), with the orders behind each code. " +
+    "Also the parts with no nesting (sheets unknown) and nesting lines with no code. Give mos for named orders only (still compared with all the open work's demand). Read it for \"do we have the sheets for this month?\", material shortages, before releasing several orders or promising dates; check_release_readiness reads the same for one order.",
+  schema: { type: "object", additionalProperties: false, properties: {
+    mos: { type: "array", maxItems: 30, items: { type: "string", minLength: 1, maxLength: 60 } },
+    shortOnly: { type: "boolean", description: "Only codes that are short, store-short or contended." },
+    limit: { type: "integer", minimum: 1, maximum: 60 },
+  } },
+  async run(i, ctx) {
+    if (ctx.line === "LV") return { ok: false, text: "The material check covers the transformers' parts; the panels' nesting is filed per order and is not counted here. Say so." };
+    const [open, stock] = await Promise.all([getOpenPartNeeds(), getStockLines()]);
+    const all = sheetNeeds(open.parts);
+    const wanted = i.mos?.length ? new Set(i.mos.map((m) => m.trim().toUpperCase())) : null;
+    const scope = wanted ? sheetNeeds(open.parts.filter((p) => wanted.has(p.mo.toUpperCase()))) : all;
+    let rows = coverage(scope.byCode, stock.lines, new Map(all.byCode.map((n) => [n.code, n])));
+    const counts = Object.fromEntries((Object.keys(COVER_TEXT) as CoverStatus[]).map((k) => [k, rows.filter((r) => r.status === k).length]));
+    if (i.shortOnly) rows = rows.filter((r) => r.status === "short" || r.status === "store_short" || r.contended);
+    const limit = i.limit ?? 25;
+    return {
+      ok: true,
+      text: toJson({
+        scope: { line: "TR", orders: wanted ? [...wanted] : "every open order not on hold", stockTableLastChange: stock.lastChange },
+        formulas: { need: "sheets = pieces Fabrication still owes × sheets a piece (nesting)", balance: "balance = Odoo stock − sheets needed", contended: "all the open work needs as much of the code as Odoo holds, or more — competing lists the other orders behind it" },
+        statusText: COVER_TEXT,
+        counts,
+        sheets: rows.slice(0, limit),
+        truncated: rows.length > limit,
+        partsWithoutNesting: { count: scope.noNesting.length, examples: scope.noNesting.slice(0, 10) },
+        uncodedNestingLines: { count: scope.uncoded.length, examples: scope.uncoded.slice(0, 5) },
+        notOpen: wanted ? [...wanted].filter((mo) => ![...open.openMos].some((m) => m.toUpperCase() === mo)) : undefined,
+        nothingLeftToCut: wanted ? [...open.openMos].filter((m) => wanted.has(m.toUpperCase()) && !open.parts.some((p) => p.mo === m)) : undefined,
+        assumptions: MATERIAL_ASSUMPTIONS,
+      }),
+      links: [{ label: "Physical Material", href: "/physical" }, { label: "Material (nesting)", href: "/material" }, ...orderLinks(rows.slice(0, limit).flatMap((r) => r.jobs.map((j) => j.mo)))],
     };
   },
 };
@@ -360,4 +427,4 @@ export const simulateRushOrderTool: ReadTool<RushInput> = {
   },
 };
 
-export const PLANNING_CONTROL_TOOLS = [getDispatchListTool, getLoadProfileTool, getIoReportTool, identifyBottleneckTool, getDelayParetoTool, checkReleaseReadinessTool, simulateRushOrderTool] as const;
+export const PLANNING_CONTROL_TOOLS = [getDispatchListTool, getLoadProfileTool, getIoReportTool, identifyBottleneckTool, getDelayParetoTool, checkReleaseReadinessTool, getMaterialCoverageTool, simulateRushOrderTool] as const;

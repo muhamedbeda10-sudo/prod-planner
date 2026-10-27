@@ -62,6 +62,7 @@ describe("the planner's tiles", () => {
     expect(composeQuickQuestion("io", { station: "cut", weeks: "8" })).toContain("آخر 8 أسابيع");
     expect(composeQuickQuestion("load", { weeks: "2" })).toContain("الأسبوعين");
     expect(composeQuickQuestion("learn", { idea: "dbr" })).toContain("DBR");
+    expect(composeQuickQuestion("stock", {})).toContain("رصيد الأودو");
   });
   it("a rush order needs a rating, a whole quantity and a real date", () => {
     expect(composeQuickQuestion("rush", { kva: "1000", qty: "20", by: "2026-11-15" })).toContain("20 محول 1000 kVA");
