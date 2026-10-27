@@ -111,7 +111,7 @@ export function BreakdownChart({ rows, measure, onPick }: { rows: Breakdown[]; m
   return (
     <div className="viz w-full min-w-0" style={{ height: H }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart className="viz-rows" data={data} layout="vertical" margin={{ top: 4, right: 56, left: 0, bottom: 0 }} barCategoryGap="22%">
+        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 56, left: 0, bottom: 0 }} barCategoryGap="22%">
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
           <XAxis type="number" tick={AXIS} unit=" t" />
           <YAxis type="category" dataKey="key" tick={AXIS} width={84} />
@@ -148,7 +148,7 @@ export function OverrunChart({ rows, onPick }: { rows: Overrun[]; onPick?: (mo: 
   return (
     <div className="viz w-full min-w-0" style={{ height: H }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart className="viz-rows" data={data} layout="vertical" margin={{ top: 4, right: 56, left: 0, bottom: 0 }} barCategoryGap="22%">
+        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 56, left: 0, bottom: 0 }} barCategoryGap="22%">
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
           <XAxis type="number" tick={AXIS} />
           <YAxis type="category" dataKey="label" tick={AXIS} width={84} />

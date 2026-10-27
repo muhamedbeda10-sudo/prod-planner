@@ -10,7 +10,7 @@ import { ActionMsg as Msg, useConsumableAction as useAction } from "@/components
 import { Modal } from "@/components/Modal";
 import { TableEmpty, TableFrame, Th, useRowMenu } from "@/components/DataTable";
 import { SearchBox } from "@/components/FilterControls";
-import { StatTile } from "@/components/charts/kit";
+import { StatTile, Meter } from "@/components/charts/kit";
 
 // The CONSUMABLES tab's Limits view: the store's catalogue — code, name, unit
 // — each item with its limits, one line per limit, and where each stands
@@ -62,11 +62,7 @@ function Field({ label, className = "", children }: { label: string; className?:
  *  full and red, and the figure says by how much. */
 function Bar({ used, limit, state }: { used: number; limit: number; state: LimitState }) {
   const ratio = limit > 0 ? used / limit : 0;
-  return (
-    <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden" aria-hidden>
-      <div className="fx-fill h-full rounded-full" style={{ width: `${Math.min(100, ratio * 100)}%`, background: STATE_TONE[state] }} />
-    </div>
-  );
+  return <Meter value={ratio} color={STATE_TONE[state]} />;
 }
 
 function StatePill({ state }: { state: LimitState }) {

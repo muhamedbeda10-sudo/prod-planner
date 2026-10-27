@@ -1,6 +1,7 @@
 import type { PlanCapacityCheck } from "@/lib/server/planCapacity";
 import { deptLabel, STAGE_COLOR } from "@/lib/domain/constants";
 import { ChartAbout } from "@/components/ChartAbout";
+import { Meter } from "@/components/Meter";
 
 /* The weekly plan's feasibility, before anyone promises it to the floor:
    standard hours the plan requires per stage vs the stage's capacity over the
@@ -57,9 +58,7 @@ export function PlanCapacityCard({ check }: { check: PlanCapacityCheck | null })
                   <span className="tabnum text-muted whitespace-nowrap"><b className="text-foreground">{fmt(s.required)}</b> / {s.available === null ? "—" : fmt(s.available)} h</span>
                   <span className="ms-auto pill tabnum !h-[18px] text-[10px]" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span>
                 </div>
-                <div className="mt-1 h-1 rounded-full bg-surface-3 overflow-hidden" aria-hidden>
-                  <div className="fx-fill h-full rounded-full" style={{ width: `${f * 100}%`, background: tone.fg }} />
-                </div>
+                <Meter value={f} color={tone.fg} size="sm" className="mt-1" />
               </div>
             );
           })}

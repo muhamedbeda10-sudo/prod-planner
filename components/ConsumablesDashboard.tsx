@@ -152,7 +152,7 @@ export function ConsumablesBreakdown({ d, rank, periodLabel }: { d: ConsumablesD
         ) : undefined}>
         {itemData.length === 0 ? (byUnit ? <EmptyState icon={Package} compact title={`No item in ${byUnit} in the filters`} /> : nothing(periodLabel)) : (
           <Box height={Math.max(160, 24 + itemData.length * 28)} minWidth={320}>
-            <BarChart className="viz-rows" data={itemData} layout="vertical" margin={{ top: 0, right: 48, left: 4, bottom: 0 }} barCategoryGap="28%">
+            <BarChart data={itemData} layout="vertical" margin={{ top: 0, right: 48, left: 4, bottom: 0 }} barCategoryGap="28%">
               <CartesianGrid horizontal={false} />
               <XAxis type="number" allowDecimals={!!byUnit} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="name" width={16 + longest * 7.2} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} interval={0}

@@ -17,6 +17,7 @@ import { SHEET_COUNT_RULE, isSheetCount, jobsBySheet, manualIdOf, roundSheets, t
 import { SheetJobLine } from "@/components/SheetJobLine";
 import { SheetJobDetails } from "@/components/SheetJobDetails";
 import { factoryDayISO } from "@/lib/domain/dates";
+import { Meter } from "@/components/Meter";
 
 // 🏭 The machine load board on a department's worklist — one card per
 // machine: what it is on NOW, what waits behind it, and how many hours the
@@ -51,7 +52,7 @@ function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 }
 
-const TONE_BAR: Record<"ok" | "warn" | "bad", string> = { ok: "bg-ok-fg", warn: "bg-warn-fg", bad: "bg-bad-fg" };
+const TONE_BAR: Record<"ok" | "warn" | "bad", string> = { ok: "var(--ok-fg)", warn: "var(--warn-fg)", bad: "var(--bad-fg)" };
 const TONE_INK: Record<"ok" | "warn" | "bad", string> = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" };
 
 /** The board's sheet jobs by id — a queue line that is one is counted in sheets. */
@@ -328,9 +329,9 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
         </div>
       </div>
       {pct !== null && (
-        <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden" title={c.days === null ? "" : `${c.days} working day(s) of work ahead — the bar is five days wide`}>
-          <div className={`fx-fill h-full ${tone ? TONE_BAR[tone] : "bg-muted"}`} style={{ width: `${pct}%` }} />
-        </div>
+        <span className="block" title={c.days === null ? "" : `${c.days} working day(s) of work ahead — the bar is five days wide`}>
+          <Meter value={pct / 100} color={tone ? TONE_BAR[tone] : "var(--muted)"} />
+        </span>
       )}
       {!bySheets && roundSheets(c.unpricedPcs - counts.sheets) > 0 && <div className="text-[10px] text-warn-fg">{roundSheets(c.unpricedPcs - counts.sheets)} pcs with no standard time — hours undercounted</div>}
 

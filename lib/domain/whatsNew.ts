@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-one-progress-bar",
+    dateISO: "2026-10-27",
+    title: "Every progress bar looks the same, and the screens are lighter",
+    where: "Plan Tracker cards, machines, consumables and their limits, capacity, trace, tasks, AI settings and the dashboards",
+    body: "All the progress bars in the app are now one bar: the fill in its colour on a lighter track of the same colour, the same thickness for the same job, and a tick where it should reach (a target, a limit, an allowance). Before, each screen drew its own — some on a grey track, some thinner, some with no tick. The motion was also trimmed so it never slows a screen down: tables no longer fade in or mark the row under the pointer, the marks inside a chart no longer draw themselves, cards and lists appear faster, a box no longer animates its focus ring, a chart card no longer glows or casts a shadow under the pointer (its border still turns green), and an empty list's icon stays still.",
+  },
+  {
     id: "2026-10-27-motion-tables-charts-filters",
     dateISO: "2026-10-27",
     title: "Tables, charts and filters move like the rest of the app",

@@ -9,6 +9,7 @@ import { ITEM_NAME } from "@/lib/domain/constants";
 import { formatDate, formatDateTime } from "@/lib/domain/format";
 import { machineWord } from "@/lib/domain/shifts";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
+import { Meter } from "@/components/Meter";
 
 // 🧾 A sheet job's details, opened from its name on a machine card or on the
 // floor: how many sheets it is for, how many are cut and left and on which
@@ -109,7 +110,7 @@ function JobDetails({ job, board, children }: { job: ManualJobView; board: Machi
         <div className="kpi">
           <div className="kpi-label">Cut</div>
           <div className="kpi-value">{roundSheets(job.doneQty)}</div>
-          <div className="kpi-meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Share of the job cut"><span style={{ width: `${pct}%` }} /></div>
+          <Meter value={pct / 100} color="var(--brand)" size="sm" label="Share of the job cut" className="mt-2" />
         </div>
         <div className="kpi">
           <div className="kpi-label">Left</div>
