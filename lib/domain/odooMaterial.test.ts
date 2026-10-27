@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookText, candidateBoms, candidateMos, EMPTY_NEED_CONTEXT, entryMaterialNeed, jobLines, materialNeed, materialNeedText, moKey, moMaterialState, monthLabelOfISO, nestingKey, splitFgCode, varianceOf, varianceText, type NestingLine, type NestingLookup, linesOfMo, moParent, rowMaterialState } from "./odooMaterial";
+import { bookText, candidateBoms, candidateMos, EMPTY_NEED_CONTEXT, entryMaterialNeed, jobLines, materialNeed, materialNeedText, moKey, moMaterialState, monthLabelOfISO, nestingKey, splitFgCode, varianceOf, varianceText, type NestingLine, type NestingLookup, linesOfMo, moParent, rowMaterialState, moMaterialFlag, MO_MATERIAL_FLAG, MO_MATERIAL_STATES } from "./odooMaterial";
 
 function line(over: Partial<NestingLine> & { id: number }): NestingLine {
   return {
@@ -415,3 +415,10 @@ describe("rowMaterialState", () => {
   });
 });
 
+describe("moMaterialFlag", () => {
+  it("flags only a row whose MO was looked up", () => {
+    expect(moMaterialFlag(undefined)).toBeNull();
+    expect(moMaterialFlag("none")).toBeNull();
+    for (const st of MO_MATERIAL_STATES) expect(moMaterialFlag(st)).toBe(MO_MATERIAL_FLAG[st]);
+  });
+});

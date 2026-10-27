@@ -7,11 +7,13 @@ import { getCurrentUser, hasPerm, userPerms } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
 import { isDoneStatus } from "@/lib/domain/odoo";
 import { ODOO_ALERTS_PERM, ODOO_NEED_MO_PERM, type ReadyRow } from "@/lib/domain/odooAlerts";
-import { getNeedingMo, getReadyToClose } from "@/lib/server/odooAlerts";
+import { getNeedingMo, getReadyToClose, getRowsMaterial } from "@/lib/server/odooAlerts";
+import type { MoMaterialState } from "@/lib/domain/odooMaterial";
 import { getOdooRowMaterial } from "@/lib/server/odoo";
 
-// The alerts' calls: what is waiting now (polled), closing rows and typing an
-// MO straight from the popup.
+// The alerts' calls: what is waiting now (polled), the ready rows' material
+// colours (while the popup is open), closing rows and typing an MO straight
+// from the popup.
 
 export interface OdooAlertsPoll {
   ok: boolean;
@@ -37,6 +39,20 @@ export async function pollOdooAlerts(): Promise<OdooAlertsPoll> {
     mo,
     canEdit: { TR: hasPerm(me, linePermKey("TR", "odoo")), LV: hasPerm(me, linePermKey("LV", "odoo")) },
   };
+}
+
+/** The Material-tab state of the ready rows on screen — their colours. For
+ *  whoever gets "ready to close"; a failed lookup only leaves them uncoloured. */
+export async function odooReadyMaterial(ids: unknown): Promise<{ ok: boolean; material?: Record<number, MoMaterialState> }> {
+  const me = await getCurrentUser();
+  if (!me || !userPerms(me).has(ODOO_ALERTS_PERM)) return { ok: false };
+  if (!Array.isArray(ids)) return { ok: false };
+  const clean = [...new Set(ids.filter((id): id is number => Number.isInteger(id)))].slice(0, 200);
+  try {
+    return { ok: true, material: await getRowsMaterial(clean) };
+  } catch {
+    return { ok: false };
+  }
 }
 
 /** Mark rows Done — closed in Odoo now. Each row needs its own line's Odoo

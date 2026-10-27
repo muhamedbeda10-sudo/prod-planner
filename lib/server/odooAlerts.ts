@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db";
 import { toISODate } from "@/lib/domain/dates";
 import { FINISHED_STATUSES, isReadyToClose, needsMo, type ReadyRow } from "@/lib/domain/odooAlerts";
 import { odooRowBomLabel } from "@/lib/domain/odoo";
-import { resolveRowBoms } from "@/lib/server/odoo";
+import { resolveRowBoms, resolveRowMaterialStates } from "@/lib/server/odoo";
+import type { MoMaterialState } from "@/lib/domain/odooMaterial";
 
 const SELECT = { id: true, line: true, date: true, soi: true, fgCode: true, product: true, odooMo: true, qty: true, status: true, source: true, ledgerId: true } as const;
 
@@ -42,4 +43,14 @@ export async function getNeedingMo(): Promise<ReadyRow[]> {
     take: 400,
   });
   return view(rows.filter(needsMo).slice(0, 200));
+}
+
+/** The Material-tab state of these rows' MOs, by row id — the popup's row
+ *  colours, the ODOO log's. Asked for only while the popup is open, so the
+ *  minute's poll stays two small reads. */
+export async function getRowsMaterial(ids: readonly number[]): Promise<Record<number, MoMaterialState>> {
+  if (ids.length === 0) return {};
+  const rows = await prisma.odooEntry.findMany({ where: { id: { in: [...ids] } }, select: SELECT });
+  const states = await resolveRowMaterialStates(rows);
+  return Object.fromEntries(rows.map((r, i) => [r.id, states[i]]));
 }
