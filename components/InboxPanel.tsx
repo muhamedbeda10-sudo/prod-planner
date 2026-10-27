@@ -4,7 +4,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens, usePhone, useWindowChrome } from "@/components/floatWindow";
+import { DockEdge, useDock, useDockMax } from "@/components/FloatDock";
 import { isInboxTab, type InboxTab } from "@/lib/domain/inbox";
+import { clampDockWidth } from "@/lib/domain/aiDock";
 
 // The workspace renders its reports as Markdown with charts, which every page
 // would otherwise carry for a window most of them never open. It is split
@@ -15,10 +17,11 @@ const InboxWorkspace = dynamic(() => import("./InboxWorkspace").then((m) => m.In
   loading: () => <div className="h-full grid place-items-center text-sm text-muted" role="status">Opening the inbox…</div>,
 });
 
-// The inbox as a window of its own, opened from the bell in the bar: a card
-// under the bar on the right (the page stays usable beside it), a window in
-// the middle of the screen with Expand, the whole screen on a phone. Like the
-// assistant's window it stays as it was while the person moves between
+// The inbox as a window of its own, opened from the bell in the bar: docked
+// down the right of the screen, top to bottom, with the app moved left of it
+// and its left edge dragged to resize (components/FloatDock) — as the
+// assistant's window is; the whole screen with Expand, and on a phone. Like
+// the assistant's window it stays as it was while the person moves between
 // pages, closes on Escape, and reopens as it was left; one of the two is open
 // at a time. On the inbox's own page it stays closed — that page is the
 // window at full size.
@@ -30,6 +33,8 @@ interface InboxState {
   taskId: number | null;
   /** An item opened from its popup: unfolded and in view. */
   itemId: number | null;
+  /** Docked: how wide it was dragged (lib/domain/aiDock). */
+  width: number;
 }
 
 interface InboxApi {
@@ -69,12 +74,13 @@ export function InboxPanelProvider({ children }: { children: ReactNode }) {
       tab: s.tab && isInboxTab(s.tab) ? s.tab : "alerts",
       taskId: typeof s.taskId === "number" && s.taskId > 0 ? s.taskId : null,
       itemId: typeof s.itemId === "number" && s.itemId > 0 ? s.itemId : null,
+      width: clampDockWidth(s.width),
     };
   }, [raw, openedNow]);
   const pathname = usePathname();
   const inboxPage = onInboxPage(pathname);
 
-  // a link in it opened a page: the large window steps back to the corner, and on a phone it closes
+  // a link in it opened a page: the large window steps back to the side, and on a phone it closes
   const lastPath = useRef(pathname);
   useEffect(() => {
     if (pathname === lastPath.current) return;
@@ -119,14 +125,19 @@ export function InboxPanelProvider({ children }: { children: ReactNode }) {
 export function InboxPanel() {
   const p = useInboxPanel();
   const phone = usePhone();
+  const max = useDockMax();
   const [made, setMade] = useState(false);
+  const pop = useRef<HTMLElement>(null);
   if (p?.shown && !made) setMade(true);
+  const layout = phone ? "phone" : p?.state.large ? "large" : "compact";
+  const width = clampDockWidth(p?.state.width, max);
+  useDock("inbox", !!p?.shown && layout === "compact", width);
   if (!p || !made) return null;
-  const layout = phone ? "phone" : p.state.large ? "large" : "compact";
   return (
     <div hidden={!p.shown} className="no-print">
       {layout === "large" && p.shown && <div className="ai-overlay" onClick={p.close} aria-hidden />}
-      <section role="dialog" aria-modal={layout !== "compact"} aria-label="Inbox" className={`ai-pop ai-pop-${layout} ${layout === "compact" ? "inbox-pop" : ""}`}>
+      <section ref={pop} role="dialog" aria-modal={layout !== "compact"} aria-label="Inbox" className={`ai-pop ${layout === "compact" ? "ai-pop-dock" : `ai-pop-${layout}`}`}>
+        {layout === "compact" && <DockEdge label="Resize the inbox" width={width} max={max} pop={pop} onKeep={(w) => store.write({ ...p.state, width: w })} />}
         <InboxWorkspace
           layout={layout}
           tab={p.state.tab}

@@ -1308,9 +1308,10 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
   input, select, textarea { font-size: max(16px, 1em); }
 }
 
-/* ---- the AI assistant (components/AiPanel): a round button in the corner,
-   docked down the right of the screen (the app moves left of it), the whole
-   screen when expanded or on a phone ---- */
+/* ---- the AI assistant (components/AiPanel) and the inbox (InboxPanel): the
+   assistant's round button in the corner; either window docked down the
+   right of the screen (the app moves left of it — components/FloatDock), the
+   whole screen when expanded or on a phone ---- */
 .ai-fab {
   position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 29; /* under the bar (z-30): the phone drawer covers it */
   width: 56px; height: 56px; border-radius: 999px; display: grid; place-items: center;
@@ -1322,18 +1323,17 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 .ai-fab:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
 .ai-overlay { position: fixed; inset: 0; z-index: 36; background: rgb(0 0 0 / 0.45); backdrop-filter: blur(2px); animation: drawerfade 0.18s ease-out; }
 .ai-pop { position: fixed; z-index: 37; display: flex; flex-direction: column; background: var(--surface); color: var(--foreground); overflow: hidden; }
-.ai-pop-compact {
-  right: 20px; bottom: 20px; width: 480px; max-width: calc(100vw - 40px); height: 740px; max-height: calc(100dvh - 40px);
-  border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 24px 64px rgb(0 0 0 / 0.3), var(--shadow-lg);
-  animation: aipop-in 0.18s ease-out;
-}
-/* docked: top to bottom on the right, as wide as dragged (--ai-dock, set
-   on <html> with html.ai-docked). From a laptop up the app moves left of it;
-   on a narrower tablet it lies over the page's right */
+/* docked (the assistant or the inbox): top to bottom on the right, as wide as dragged (--ai-dock, set
+   on <html> with html.ai-docked). From a laptop up the app moves left of it */
 .ai-pop-dock {
   top: 0; right: 0; bottom: 0; width: var(--ai-dock);
   border-left: 1px solid var(--border); box-shadow: var(--shadow-lg);
   animation: aidock-in 0.18s ease-out;
+}
+/* on a narrower tablet it lies over the page under the bar, so the bar's
+   buttons (the bell that opens and closes the inbox) stay in reach */
+@media screen and (max-width: 1023px) {
+  .ai-pop-dock { top: 56px; border-top: 1px solid var(--border); border-top-left-radius: var(--r-lg); }
 }
 /* --ai-dock-push: how far what is pinned to the right of the page moves left with it */
 @media screen and (min-width: 1024px) {
@@ -1351,7 +1351,7 @@ html.ai-resizing body { cursor: col-resize; user-select: none; }
 }
 .ai-pop-phone { inset: 0; }
 @keyframes aipop-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .ai-pop-compact, .ai-pop-dock, .ai-pop-large, .ai-overlay { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ai-pop-dock, .ai-pop-large, .ai-overlay { animation: none; } }
 html.ai-modal { overflow: hidden; }
 .ai-pop-head { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
 .ai-pop-logo { position: relative; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--brand-fill) 55%, var(--viz-2))); color: #fff; flex-shrink: 0; }
@@ -1376,8 +1376,6 @@ html.ai-modal { overflow: hidden; }
 .resize-handle:focus-visible::after { background: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 30%, transparent); }
 @media (prefers-reduced-motion: reduce) { .ai-side { transition: none; } }
 .ai-pane-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-/* the inbox's card hangs under the bell, on the right, below the bar */
-.ai-pop-compact.inbox-pop { top: 56px; bottom: auto; height: min(720px, calc(100dvh - 76px)); max-height: none; }
 
 /* ---- the inbox's popups (components/InboxAlerts): under the bell until read ----
    over the page, under the bar (z-30) — its menus, the phone drawer and the

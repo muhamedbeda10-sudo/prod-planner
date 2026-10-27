@@ -102,7 +102,7 @@ export function InboxWorkspace({
         <div className="flex items-center gap-0.5 shrink-0">
           <DevicePush compact />
           {onExpand && layout !== "phone" && layout !== "page" && (
-            <HeadBtn icon={large ? Minimize2 : Maximize2} label={large ? "Back to the corner" : "Expand"} onClick={() => onExpand(!large)} />
+            <HeadBtn icon={large ? Minimize2 : Maximize2} label={large ? "Back to the side" : "Expand"} onClick={() => onExpand(!large)} />
           )}
           {onClose && <HeadBtn icon={X} label="Close" onClick={onClose} />}
         </div>

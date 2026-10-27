@@ -99,7 +99,9 @@ export function useCloseWhenOtherOpens(name: FloatName, open: boolean, close: ()
 // when none does, whichever order they open and close in
 const holding = new Set<FloatName>();
 
-/** While `modal`, the page behind does not scroll; Escape closes the window while it shows. */
+/** While `modal`, the page behind does not scroll; Escape closes the window
+ *  while it shows — a docked one only from inside it (or with nothing in
+ *  focus), so Escape in the page beside it stays the page's. */
 export function useWindowChrome(name: FloatName, shown: boolean, modal: boolean, close: () => void): void {
   useEffect(() => {
     if (modal) holding.add(name);
@@ -114,9 +116,11 @@ export function useWindowChrome(name: FloatName, shown: boolean, modal: boolean,
   useEffect(() => {
     if (!shown) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key !== "Escape") return;
+      const at = e.target instanceof Element ? e.target : null;
+      if (modal || !at || at === document.body || at.closest(".ai-pop")) close();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [shown, close]);
+  }, [shown, modal, close]);
 }

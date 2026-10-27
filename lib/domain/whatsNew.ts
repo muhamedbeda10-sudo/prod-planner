@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-inbox-docked-right",
+    dateISO: "2026-10-27",
+    title: "The inbox opens down the right side too, beside the app",
+    where: "Inbox → the bell in the bar",
+    body: "The inbox no longer hangs as a card under the bell. Like the assistant, it opens down the whole right side of the screen, from the top to the bottom, and the app moves left into the rest, so the page you are on stays in full view while you read your alerts, reports and tasks. Drag its left edge to make it wider or narrower (the arrow keys work on it too, and a double-click puts it back to its usual width); the width is kept on this browser. Expand still makes it the whole screen, and Back to the side brings it back. On a phone it still opens over the whole screen, and on a narrow tablet it opens down the right under the bar, over the page — the assistant does too now, so the bell and the bar stay in reach. Escape closes either of them from inside it; Escape in the page beside them is left to the page.",
+  },
+  {
     id: "2026-10-27-assistant-docked-right",
     dateISO: "2026-10-27",
     title: "The assistant opens down the right side, and the app moves over beside it",

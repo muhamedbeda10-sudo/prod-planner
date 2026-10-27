@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Bot } from "lucide-react";
@@ -8,8 +8,8 @@ import type { AiLayout, AiTab, AiView } from "@/components/AiWorkspace";
 import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens, usePhone, useWindowChrome } from "@/components/floatWindow";
 import { useInboxPanel } from "@/components/InboxPanel";
 import { handToAssistant } from "@/lib/aiAsk";
-import { AI_DOCK_DEFAULT, AI_DOCK_MIN, AI_DOCK_STEP, clampDockWidth, dockMax } from "@/lib/domain/aiDock";
-import { ResizeHandle } from "@/components/ResizeHandle";
+import { clampDockWidth } from "@/lib/domain/aiDock";
+import { DockEdge, useDock, useDockMax } from "@/components/FloatDock";
 
 // The workspace (the chat, its Markdown and its charts) is the heaviest thing
 // this layout could ship, and every page carries the button. So it is split
@@ -171,31 +171,6 @@ export function AiPanelProvider({ config, children }: { config: AiPanelConfig; c
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
 
-// the widest the docked assistant may be on this screen — a snapshot that
-// changes only when that does, so resizing a wide window draws nothing new
-function subscribeResize(cb: () => void) {
-  window.addEventListener("resize", cb);
-  return () => window.removeEventListener("resize", cb);
-}
-const screenMax = () => dockMax(window.innerWidth);
-const serverMax = () => dockMax();
-
-/** While docked, the app — its bar and the page — moves left of the
- *  assistant (globals.css, from a laptop up). */
-function useDock(docked: boolean, width: number) {
-  useLayoutEffect(() => {
-    if (!docked) return;
-    const html = document.documentElement;
-    // the width the person dragged it to: no token can hold it
-    html.style.setProperty("--ai-dock", `${width}px`);
-    html.classList.add("ai-docked");
-    return () => {
-      html.classList.remove("ai-docked");
-      html.style.removeProperty("--ai-dock");
-    };
-  }, [docked, width]);
-}
-
 /** The round button in the corner, and the window itself — placed inside
  *  <main>. The window is made the first time it opens, then kept (hidden
  *  when closed), so what it was doing carries on. */
@@ -203,23 +178,15 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
   const p = useAiPanel();
   const inbox = useInboxPanel();
   const phone = usePhone();
-  const max = useSyncExternalStore(subscribeResize, screenMax, serverMax);
+  const max = useDockMax();
   const [made, setMade] = useState(false);
   const pop = useRef<HTMLElement>(null);
   if (p?.shown && !made) setMade(true);
   const layout: AiLayout = phone ? "phone" : p?.state.large ? "large" : "compact";
   const width = clampDockWidth(p?.state.width, max);
-  useDock(!!p?.shown && layout === "compact", width);
+  useDock("ai", !!p?.shown && layout === "compact", width);
   if (!p || p.aiPage) return null;
   const { state } = p;
-  const keepWidth = (w: number) => store.write({ ...state, width: clampDockWidth(w, max) });
-  // while its edge is dragged the width is drawn on the window alone — the
-  // page is laid out again once, when the drag ends and the width is kept
-  const drawWidth = (w: number | null) => {
-    document.documentElement.classList.toggle("ai-resizing", w !== null);
-    if (w === null) pop.current?.style.removeProperty("--ai-dock");
-    else pop.current?.style.setProperty("--ai-dock", `${w}px`);
-  };
 
   // automations and the playbook open in the large window on a wide screen
   const onView = (v: AiView) => {
@@ -246,26 +213,7 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
             className={`ai-pop ${layout === "compact" ? "ai-pop-dock" : `ai-pop-${layout}`}`}
           >
             {layout === "compact" && (
-              <ResizeHandle
-                label="Resize the assistant"
-                width={width}
-                min={AI_DOCK_MIN}
-                max={max}
-                step={AI_DOCK_STEP}
-                grows="left"
-                className="ai-dock-handle"
-                onMove={(w) => {
-                  const to = clampDockWidth(w, max);
-                  drawWidth(to);
-                  return to;
-                }}
-                onEnd={(w) => {
-                  keepWidth(w);
-                  drawWidth(null);
-                }}
-                onSet={keepWidth}
-                onReset={() => keepWidth(AI_DOCK_DEFAULT)}
-              />
+              <DockEdge label="Resize the assistant" width={width} max={max} pop={pop} onKeep={(w) => store.write({ ...state, width: w })} />
             )}
             <AiWorkspace
               tabs={p.tabs}
