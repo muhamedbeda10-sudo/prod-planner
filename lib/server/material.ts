@@ -103,22 +103,17 @@ export interface MaterialImportResult {
   /** Rows whose "for Job" column disagrees with their own per-unit rate —
    *  kept as written, counted so the planner can look. */
   recomputed?: number;
-  /** Rows of the tab's table the file no longer carries (lines typed in the
-   *  tab before typing was closed aside) — removed when the import was asked
-   *  to, else kept. */
+  /** Lines of the tab's table the file no longer carries — removed when the
+   *  import was asked to, else kept. */
   missing?: number;
   removed?: number;
 }
 
-/** Lines typed in the tab before typing was closed sort after any sheet's
- *  rows (a sheet has fewer rows than this). */
-const MANUAL_SORT = 1_000_000;
-
-/** The sheet's rows on the tab that the file no longer carries: the ids to
- *  drop when the import mirrors the file. Lines typed in the tab before
- *  typing was closed stay — no file ever carried them. */
+/** The tab's lines that the file no longer carries: the ids to drop when the
+ *  import mirrors the file. The sheet is the tab's only source, so a line
+ *  typed in by hand before typing was closed goes like any other. */
 async function rowsGone(line: string, month: string, seen: Set<number>, prune: boolean, preview: boolean) {
-  const gone = (await prisma.materialUsage.findMany({ where: { line, month, sortOrder: { gt: 0, lt: MANUAL_SORT } }, select: { id: true } }))
+  const gone = (await prisma.materialUsage.findMany({ where: { line, month }, select: { id: true } }))
     .map((r) => r.id).filter((id) => !seen.has(id));
   let removed = 0;
   if (prune && !preview && gone.length > 0) removed = (await prisma.materialUsage.deleteMany({ where: { id: { in: gone } } })).count;
@@ -142,7 +137,8 @@ function pruneSafely(prune: boolean, skipped: number, issues: string[]): boolean
  * size, so uploading the sheet again adds the rows that are new and updates
  * the ones whose values changed — never doubles them. The sheet is the
  * tab's only source: what it says replaces what the line held (a blank note
- * aside). With `prune`, rows the file no longer carries leave the table.
+ * aside). With `prune`, every line the file no longer carries leaves the
+ * table.
  */
 export async function importNestingTracker(
   buffer: ArrayBuffer, recordedBy: string | null, preview = false, prune = false

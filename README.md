@@ -175,8 +175,8 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    Thickness · Sheet Size · Sheets in BOM for one Unit / for Job · Actual Nesting for one Unit / for Job ·
    Difference · Notes. The sheet is the tab's **only source**: nothing is typed, edited or deleted on the tab
    (nor by the assistant) — uploading the sheet again is how a line changes, its figures replacing what the
-   line held (a blank note aside), and "upload and remove the rows no longer in the file" drops the sheet's
-   rows the file no longer carries (lines typed in by hand before typing was closed stay). The panels' tab shows the units produced (the sheet's count, else the panels painted on the
+   line held (a blank note aside), and "upload and remove the rows no longer in the file" (confirmed first)
+   drops every line the file no longer carries, those typed in by hand before included. The panels' tab shows the units produced (the sheet's count, else the panels painted on the
    tracker) and the sheets they consumed. The sheets nested
    **for the job** are computed on import as the sheet's own **Actual Nesting for one Unit × Quantity of
    Units**, not read from its "for Job" column: that column is a figure somebody left behind — change the job

@@ -4,8 +4,8 @@ import * as XLSX from "xlsx";
 // The transformers' material sheet import against a stubbed database. The
 // sheet is the MATERIAL tab's only source — nothing is typed in the tab — so
 // what the sheet says replaces what a line held, a rate typed by hand before
-// included (a blank note aside), and mirroring the file drops the sheet's rows
-// it no longer carries.
+// included (a blank note aside), and mirroring the file drops every line it no
+// longer carries, one typed in by hand before included.
 
 const h = vi.hoisted(() => {
   const fn = () => vi.fn();
@@ -64,9 +64,18 @@ describe("the material sheet import", () => {
     expect(h.prisma.materialUsage.update).not.toHaveBeenCalled();
   });
 
-  it("mirroring the file asks only for the sheet's rows — a line typed in by hand before stays", async () => {
-    h.prisma.materialUsage.findMany.mockResolvedValue([held({ actualPerUnit: 0.25, actualPerUnitManual: false })]);
-    await importNestingTracker(file, "Sara", false, true);
-    expect(h.prisma.materialUsage.findMany).toHaveBeenLastCalledWith({ where: { line: "TR", month: "", sortOrder: { gt: 0, lt: 1_000_000 } }, select: { id: true } });
+  it("mirroring the file drops a line typed in by hand before like any other", async () => {
+    const typedByHand = held({ id: 9, bom: "B9", mo: "", sortOrder: 1_000_000 });
+    h.prisma.materialUsage.findMany.mockResolvedValue([held({ actualPerUnit: 0.25, actualPerUnitManual: false }), typedByHand]);
+    const r = await importNestingTracker(file, "Sara", false, true);
+    expect(r).toMatchObject({ ok: true, missing: 1, removed: 1 });
+    expect(h.prisma.materialUsage.deleteMany).toHaveBeenCalledWith({ where: { id: { in: [9] } } });
+  });
+
+  it("a plain upload keeps the lines the file does not carry", async () => {
+    h.prisma.materialUsage.findMany.mockResolvedValue([held({ actualPerUnit: 0.25, actualPerUnitManual: false }), held({ id: 9, bom: "B9", mo: "", sortOrder: 1_000_000 })]);
+    const r = await importNestingTracker(file, "Sara");
+    expect(r).toMatchObject({ ok: true, missing: 1, removed: 0 });
+    expect(h.prisma.materialUsage.deleteMany).not.toHaveBeenCalled();
   });
 });

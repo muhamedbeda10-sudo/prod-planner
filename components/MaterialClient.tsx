@@ -15,7 +15,7 @@ import {
 import { FIELD_DP, formatNumber, formatQty } from "@/lib/domain/format";
 import { FilterSelect, PhoneFold } from "@/components/FilterControls";
 import { Check, ChevronDown, ChevronRight, FilterX, Search, Upload } from "lucide-react";
-import { GroupBand, GroupLegend, TableEmpty, TableFrame, Th } from "@/components/DataTable";
+import { GroupBand, GroupLegend, TableEmpty, TableFrame, Th, useConfirm } from "@/components/DataTable";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import { importMaterialAction } from "@/app/material/actions";
 
@@ -250,14 +250,26 @@ function ImportPanel({ product }: { product: ProductLine }) {
   const [issues, setIssues] = useState<string[]>([]);
   const [showIssues, setShowIssues] = useState(false);
   const [menu, setMenu] = useState(false);
-  // picking the file IS the upload — no dialog, no preview; `prune` says
-  // whether rows no longer in the file leave the table (off unless asked)
+  // picking the file IS the upload — no preview; `prune` says whether lines
+  // no longer in the file leave the table (off unless asked, and confirmed)
   const picker = useRef<HTMLInputElement>(null);
   const prune = useRef(false);
+  const [confirm, confirmDialog] = useConfirm();
   function pick(withPrune: boolean) {
     prune.current = withPrune;
     setMenu(false);
     picker.current?.click();
+  }
+  // mirroring the file deletes for good — every line it does not carry
+  async function pickMirror() {
+    setMenu(false);
+    const ok = await confirm({
+      title: "Upload and remove the lines no longer in the file?",
+      body: <>Every line on the table that the file does not carry leaves it for good — lines typed in by hand before too. Choose the file next.</>,
+      confirmLabel: "Choose the file",
+      danger: true,
+    });
+    if (ok) pick(true);
   }
   function upload(file: File) {
     const fd = new FormData();
@@ -295,9 +307,9 @@ function ImportPanel({ product }: { product: ProductLine }) {
       </span>
       {menu && (
         <span className="absolute top-full start-0 z-30 mt-1 w-72 rounded-[10px] border bg-surface shadow-xl p-1 text-sm">
-          <button type="button" className="w-full text-start rounded-md px-2 py-1.5 hover:bg-surface-2" onClick={() => pick(true)}>
+          <button type="button" className="w-full text-start rounded-md px-2 py-1.5 hover:bg-surface-2" onClick={() => void pickMirror()}>
             Upload and remove the rows no longer in the file
-            <span className="block text-xs text-muted">Lines typed in by hand before stay.</span>
+            <span className="block text-xs text-muted">The table becomes exactly the file — asks first.</span>
           </button>
         </span>
       )}
@@ -312,6 +324,7 @@ function ImportPanel({ product }: { product: ProductLine }) {
           {issues.map((x, n) => <li key={n}>{x}</li>)}
         </ul>
       )}
+      {confirmDialog}
     </span>
   );
 }
