@@ -19,6 +19,8 @@ import { getMaterialData } from "@/lib/server/material";
 import { getMaterialDashboard } from "@/lib/server/fabAnalytics";
 import { getOdooDashboard, getOdooData } from "@/lib/server/odoo";
 import { getPhysicalStock } from "@/lib/server/physicalStock";
+import { getOpenSheetNeeds } from "@/lib/server/materialCoverage";
+import { needByStock } from "@/lib/domain/materialCoverage";
 import { getPowderReport } from "@/lib/server/powderScrap";
 import { getShiftRoster } from "@/lib/server/shifts";
 import { getSoiLookup } from "@/lib/server/soi";
@@ -88,7 +90,7 @@ const SHEETS = {
   odoo_daily: { tab: "odoo", params: ["from", "to", "basis"], about: "the ODOO dashboard by day: closed (or logged) quantity per product series — from/to (default the last 30 days), basis" },
   material: { tab: "material", params: ["line"], about: "the Material (nesting) sheet of a line, with the workbook's own columns" },
   material_dashboard: { tab: "analytics", params: ["line", "from", "to", "allTime", "view", "materialName", "thicknessMm", "sheetSize", "part", "mo", "soi"], about: "the Material dashboard's detail table: a row per MO × part × sheet spec with units, BOM / actual sheets, the difference, sheet weight, utilization, closed qty, calculated consumption and estimated scrap, coverage and rate source — view consumption (lines consumed in the period, default) or nesting (the whole current sheet), from/to (default the last 90 days) or allTime, filters materialName, thicknessMm, sheetSize, part, mo, soi" },
-  physical_stock: { tab: "physical", params: [], about: "Physical Material: the store's count against Odoo's stock, code by code" },
+  physical_stock: { tab: "physical", params: [], about: "Physical Material: the store's count against Odoo's stock, code by code, with the sheets the open orders still need and Odoo after them" },
   consumables_log: { tab: "consumables", params: ["from", "to"], about: "the consumables hand-out log — from/to (default today)" },
   consumables_limits: { tab: "consumables", params: [], about: "the consumables catalogue, its limits and where each stands now" },
   consumables_edits: { tab: "consumables", admin: true, params: ["from", "to"], about: "every change made to a recorded hand-out (admins) — from/to" },
@@ -413,8 +415,9 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       };
     }
     case "physical_stock": {
-      const { items } = await getPhysicalStock();
-      return { rows: physicalRows(items), name: `physical-material-${today}`, sheet: "Physical", scope: "Physical Material" };
+      // the open orders' need comes off the nesting — only for whoever may see the Material screen
+      const [{ items }, needs] = await Promise.all([getPhysicalStock(), ctx.hidden.has("material") ? null : getOpenSheetNeeds()]);
+      return { rows: physicalRows(items, needs ? needByStock(needs, items) : null), name: `physical-material-${today}`, sheet: "Physical", scope: needs ? "Physical Material, with the open orders' need" : "Physical Material" };
     }
     case "consumables_log": {
       const p = consumablesPeriod({ from: i.from, to: i.to }, today);

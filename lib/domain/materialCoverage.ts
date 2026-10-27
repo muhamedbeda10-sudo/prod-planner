@@ -162,3 +162,37 @@ export function stockCheck(rows: readonly CoverageRow[], gaps: Pick<NeedSummary,
   }
   return { status: "ok", detail: `Odoo holds enough of all ${rows.length} sheet code(s) this order still needs (${rows.map((r) => `${r.code}: ${r.need} of ${r.odoo}`).join(", ")}).` };
 }
+
+/** What the open work needs of one stock line — the Physical Material screen's columns. */
+export interface StockNeed {
+  need: number;
+  /** Odoo's stock after the need (negative = short); null when it cannot be set against sheets. */
+  after: number | null;
+  status: CoverStatus;
+  estimated: boolean;
+  /** How many orders and jobs need the code, and the biggest of them. */
+  orders: number;
+  jobCount: number;
+  jobs: SheetNeed["jobs"];
+}
+
+/** The open work's need beside each stock line, keyed by its code as the
+ *  stock import keys it; the codes the work needs that the table lacks; and
+ *  how many parts it could not price (no nesting, no code) — so a need shown
+ *  is never read as all of it when it is not. */
+export function needByStock(summary: NeedSummary, stock: readonly StockLine[]): {
+  byCode: Record<string, StockNeed>;
+  missing: Pick<SheetNeed, "code" | "material" | "thicknessMm" | "sheetSize" | "sheets">[];
+  unpriced: { noNesting: number; uncoded: number };
+} {
+  const needs = summary.byCode;
+  const full = new Map(needs.map((n) => [n.code, n]));
+  const byCode: Record<string, StockNeed> = {};
+  const missing: ReturnType<typeof needByStock>["missing"] = [];
+  for (const r of coverage(needs, stock)) {
+    const n = full.get(r.code)!;
+    if (r.status === "not_listed") { missing.push({ code: n.code, material: n.material, thicknessMm: n.thicknessMm, sheetSize: n.sheetSize, sheets: n.sheets }); continue; }
+    byCode[r.code] = { need: r.need, after: r.balance, status: r.status, estimated: r.estimated, orders: new Set(n.jobs.map((j) => j.mo)).size, jobCount: n.jobs.length, jobs: n.jobs.slice(0, 8) };
+  }
+  return { byCode, missing, unpriced: { noNesting: summary.noNesting.length, uncoded: summary.uncoded.length } };
+}
