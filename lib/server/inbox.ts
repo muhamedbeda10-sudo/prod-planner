@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { pushTo } from "@/lib/server/push";
 import {
-  INBOX_BODY_MAX, INBOX_POPUP_PREVIEW, INBOX_POPUP_SHOWN, INBOX_TITLE_MAX, inboxPreview, type InboxHead, type InboxKind, type InboxPopupItem,
+  INBOX_BODY_MAX, INBOX_POPUP_PREVIEW, INBOX_POPUP_SHOWN, INBOX_TITLE_MAX, NO_INBOX_HEAD, inboxPreview, type InboxHead, type InboxKind, type InboxPopupItem,
 } from "@/lib/domain/inbox";
 
 // Putting something in a person's inbox — a report, a message, a suggestion,
@@ -73,14 +73,13 @@ const popupWhere = (userId: number) => ({ userId, readAt: null, OR: [{ fromUserI
 /** The popups: the newest few, and how many in all. */
 export async function inboxPopups(userId: number): Promise<{ items: InboxPopupItem[]; total: number }> {
   const where = popupWhere(userId);
-  const [rows, total] = await Promise.all([
-    prisma.aiInboxItem.findMany({
-      where, orderBy: { id: "desc" }, take: INBOX_POPUP_SHOWN,
-      select: { id: true, kind: true, title: true, body: true, fromName: true, createdAt: true, taskId: true },
-    }),
-    prisma.aiInboxItem.count({ where }),
-  ]);
-  const items = rows.map((r) => ({
+  // one more than shown says whether there are more — only then are they counted
+  const rows = await prisma.aiInboxItem.findMany({
+    where, orderBy: { id: "desc" }, take: INBOX_POPUP_SHOWN + 1,
+    select: { id: true, kind: true, title: true, body: true, fromName: true, createdAt: true, taskId: true },
+  });
+  const total = rows.length > INBOX_POPUP_SHOWN ? await prisma.aiInboxItem.count({ where }) : rows.length;
+  const items = rows.slice(0, INBOX_POPUP_SHOWN).map((r) => ({
     id: r.id, kind: r.kind as InboxKind, title: r.title, preview: inboxPreview(r.body, INBOX_POPUP_PREVIEW), fromName: r.fromName,
     createdAt: r.createdAt.toISOString(), taskId: r.taskId,
   }));
@@ -101,6 +100,6 @@ export async function inboxState(userId: number): Promise<InboxHead & { any: boo
     return { ...head, any: !!first };
   } catch (e) {
     console.error("inbox: could not read the bell's count", e);
-    return { unread: 0, latestId: 0, any: false };
+    return { ...NO_INBOX_HEAD, any: false };
   }
 }

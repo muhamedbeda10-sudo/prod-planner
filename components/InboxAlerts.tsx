@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { BellRing, Check, CheckCheck, ExternalLink } from "lucide-react";
-import { INBOX_CHANGED, INBOX_UNREAD } from "@/components/InboxBell";
-import { useInboxPanel } from "@/components/InboxPanel";
+import { onInboxHead, tellInboxChanged } from "@/components/InboxBell";
+import { onInboxPage, useInboxPanel } from "@/components/InboxPanel";
+import { Note } from "@/components/primitives";
 import { usePhone } from "@/components/floatWindow";
 import { INBOX_KIND_LOOK } from "@/components/inboxLook";
 import { loadInboxPopups, markInboxRead } from "@/app/inbox/actions";
 import { armChime, playChime } from "@/lib/chime";
-import { INBOX_KIND_LABEL, arrivedSince, headChanged, tabOfKind, type InboxHead, type InboxPopupItem } from "@/lib/domain/inbox";
+import { INBOX_KIND_LABEL, headChanged, tabOfKind, type InboxHead, type InboxPopupItem } from "@/lib/domain/inbox";
 import { formatDateTime } from "@/lib/domain/format";
 
 // What reaches a person — an alert, a task or its news, a report or a message
@@ -23,11 +24,9 @@ import { formatDateTime } from "@/lib/domain/format";
 // which also asks at once when something is read anywhere) tells it the
 // unread count and the newest unread item, and it fetches the cards only when
 // that changes. A card newer than the page chimes, unless the sound is muted
-// in the chat. The cards step aside while the inbox's window or page is open:
-// the person is reading it there. A phone shows the newest card alone, the
-// rest counted under it, so the page stays in sight.
-
-const changed = () => window.dispatchEvent(new Event(INBOX_CHANGED));
+// in the chat. The cards step aside — and are not fetched — while the inbox's
+// window or page is open: the person is reading it there. A phone shows the
+// newest card alone, the rest counted under it, so the page stays in sight.
 
 export function InboxAlerts({ initial }: { initial: InboxHead }) {
   const [items, setItems] = useState<InboxPopupItem[]>([]);
@@ -38,43 +37,51 @@ export function InboxAlerts({ initial }: { initial: InboxHead }) {
   const phone = usePhone();
   const router = useRouter();
   const pathname = usePathname();
-  // the head the page was served with, read once
-  const served = useRef(initial);
-  // the head the cards on screen were fetched for (null: ask on the next
-  // word), and the newest item seen — what was waiting at page load does not chime
-  const fetchedFor = useRef<InboxHead | null>(null);
+  const hidden = onInboxPage(pathname) || !!inbox?.shown;
+  // the last head the poll told, the one the cards on screen were fetched for
+  // (null: fetch at the next chance), and the newest item seen — what was
+  // waiting at page load does not chime
+  const told = useRef(initial);
+  const fetchedFor = useRef<InboxHead | null>(initial.unread > 0 ? null : initial);
   const seenMax = useRef(initial.latestId);
+  const hiddenRef = useRef(hidden);
   const seq = useRef(0);
 
-  const fetchCards = useCallback(async (head: InboxHead) => {
+  /** Fetch the cards if what the poll told differs from what is on screen. */
+  const sync = useCallback(() => {
+    const head = told.current;
+    if (hiddenRef.current || (fetchedFor.current && !headChanged(fetchedFor.current, head))) return;
     const n = ++seq.current;
-    const r = await loadInboxPopups().catch(() => null);
-    if (n !== seq.current) return;
-    if (!r?.ok) {
-      // offline for a moment — the next word from the poll asks again
-      fetchedFor.current = null;
-      return;
-    }
     fetchedFor.current = head;
-    setItems(r.items);
-    setTotal(r.total);
-    const ids = r.items.map((i) => i.id);
-    if (arrivedSince(ids, seenMax.current).length > 0) playChime();
-    seenMax.current = Math.max(seenMax.current, ...ids);
+    loadInboxPopups()
+      .catch(() => null)
+      .then((r) => {
+        if (n !== seq.current) return;
+        if (!r?.ok) {
+          // offline for a moment — the next word from the poll asks again
+          fetchedFor.current = null;
+          return;
+        }
+        setItems(r.items);
+        setTotal(r.total);
+        if (r.items.some((i) => i.id > seenMax.current)) playChime();
+        seenMax.current = Math.max(seenMax.current, ...r.items.map((i) => i.id));
+      });
   }, []);
 
   useEffect(() => {
     armChime();
-    const first = served.current;
-    if (first.unread > 0) void fetchCards(first);
-    else fetchedFor.current = first;
-    const onHead = (e: Event) => {
-      const head = (e as CustomEvent<InboxHead>).detail;
-      if (!fetchedFor.current || headChanged(fetchedFor.current, head)) void fetchCards(head);
-    };
-    window.addEventListener(INBOX_UNREAD, onHead);
-    return () => window.removeEventListener(INBOX_UNREAD, onHead);
-  }, [fetchCards]);
+    return onInboxHead((head) => {
+      told.current = head;
+      sync();
+    });
+  }, [sync]);
+
+  // shown again (and at first): catch up on what the poll told meanwhile
+  useEffect(() => {
+    hiddenRef.current = hidden;
+    sync();
+  }, [hidden, sync]);
 
   const read = async (ids: number[] | "popups"): Promise<boolean> => {
     setErr(null);
@@ -94,7 +101,7 @@ export function InboxAlerts({ initial }: { initial: InboxHead }) {
     }
     // the bell asks again, and its answer brings the next cards and the
     // inbox's counts
-    changed();
+    tellInboxChanged();
     return true;
   };
 
@@ -105,8 +112,7 @@ export function InboxAlerts({ initial }: { initial: InboxHead }) {
     else router.push(it.taskId ? `/inbox?task=${it.taskId}` : `/inbox?item=${it.id}`);
   };
 
-  const onInboxPage = pathname === "/inbox" || pathname.startsWith("/inbox/");
-  if (items.length === 0 || onInboxPage || inbox?.shown) return null;
+  if (items.length === 0 || hidden) return null;
   const cards = phone ? items.slice(0, 1) : items;
   const more = total - cards.length;
 
@@ -126,7 +132,7 @@ export function InboxAlerts({ initial }: { initial: InboxHead }) {
                 <span className="ms-auto shrink-0 text-xs text-muted tabnum whitespace-nowrap">{formatDateTime(it.createdAt)}</span>
               </div>
               {it.fromName && <div className="text-xs text-muted truncate" dir="auto">{it.fromName}</div>}
-              {it.preview && <p className="inbox-alert-body" dir="auto">{it.preview}</p>}
+              {it.preview && <p className="inbox-alert-body line-clamp-2" dir="auto">{it.preview}</p>}
               <div className="inbox-alert-actions">
                 <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => void open(it)}>
                   <ExternalLink size={14} aria-hidden /> Open
@@ -142,7 +148,7 @@ export function InboxAlerts({ initial }: { initial: InboxHead }) {
       {(more > 0 || total > 1 || err) && (
         <div className="inbox-alerts-foot">
           {err ? (
-            <span className="text-xs font-semibold text-bad-fg me-auto">{err}</span>
+            <Note msg={{ ok: false, text: err }} className="me-auto" />
           ) : more > 0 ? (
             <button type="button" className="btn btn-sm btn-ghost me-auto" onClick={() => (inbox ? inbox.open({}) : router.push("/inbox"))}>
               <BellRing size={14} aria-hidden /> {more} more in the inbox

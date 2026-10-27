@@ -53,7 +53,8 @@ export function useInboxPanel(): InboxApi | null {
 const store = floatStore("inbox-panel:v1");
 const serverRaw = () => "";
 
-const onInboxPage = (path: string) => path === "/inbox" || path.startsWith("/inbox/");
+/** The inbox's own page — where its window and popups stay out of the way. */
+export const onInboxPage = (path: string) => path === "/inbox" || path.startsWith("/inbox/");
 
 export function InboxPanelProvider({ children }: { children: ReactNode }) {
   const raw = useSyncExternalStore(store.subscribe, store.read, serverRaw);

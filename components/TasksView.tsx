@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { EmptyState } from "@/components/primitives";
-import { INBOX_CHANGED } from "@/components/InboxBell";
+import { tellInboxChanged } from "@/components/InboxBell";
 import { useConfirm } from "@/components/DataTable";
 import { ChecklistEditor, StepsBar, TASK_VIEWS, TaskBoard, TaskCalendar, TaskFilterBar, TaskTeam, peopleOf, type TaskViewId } from "@/components/TasksViews";
 import {
@@ -31,7 +31,7 @@ import type { StoredFile } from "@/lib/server/uploads";
 // beside the open task; in the corner card and on a phone the task opens in
 // its place, with Back.
 
-const changed = () => window.dispatchEvent(new Event(INBOX_CHANGED));
+const changed = tellInboxChanged;
 
 type Which = "mine" | "sent";
 type Show = "open" | "closed";

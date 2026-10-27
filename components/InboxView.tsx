@@ -6,7 +6,7 @@ import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiPrintButton } from "@/components/AiPrint";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
 import { EmptyState } from "@/components/primitives";
-import { INBOX_CHANGED } from "@/components/InboxBell";
+import { tellInboxChanged } from "@/components/InboxBell";
 import { INBOX_KIND_LOOK } from "@/components/inboxLook";
 import { deleteInboxItems, markInboxRead } from "@/app/inbox/actions";
 import { pushState, turnPushOff, turnPushOn, type PushState } from "@/lib/pushClient";
@@ -30,7 +30,7 @@ const KIND_CHIP: Record<InboxKind, string> = { report: "Reports", message: "Mess
 
 type Filter = "all" | "unread" | InboxKind;
 
-const changed = () => window.dispatchEvent(new Event(INBOX_CHANGED));
+const changed = tellInboxChanged;
 
 /** This device's notifications: a switch — as a line of text and a button,
  *  or (compact) one icon button for a window's head. */

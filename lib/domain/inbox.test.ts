@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrivedSince, headChanged, inboxPreview, NO_INBOX_HEAD, tabOfKind } from "./inbox";
+import { headChanged, inboxPreview, NO_INBOX_HEAD, tabOfKind } from "./inbox";
 
 describe("headChanged", () => {
   it("is false for the same count and newest item", () => {
@@ -13,15 +13,6 @@ describe("headChanged", () => {
   });
   it("sees the first item", () => {
     expect(headChanged(NO_INBOX_HEAD, { unread: 1, latestId: 3 })).toBe(true);
-  });
-});
-
-describe("arrivedSince", () => {
-  it("keeps only the items newer than the newest seen", () => {
-    expect(arrivedSince([14, 12, 9], 12)).toEqual([14]);
-  });
-  it("is empty when nothing is newer", () => {
-    expect(arrivedSince([5, 3], 5)).toEqual([]);
   });
 });
 

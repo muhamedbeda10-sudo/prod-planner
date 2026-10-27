@@ -6,11 +6,11 @@ import { Tabs } from "@/components/primitives";
 import { DevicePush, InboxView } from "@/components/InboxView";
 import { TasksView } from "@/components/TasksView";
 import { HeadBtn } from "@/components/AiWorkspace";
-import { INBOX_CHANGED, INBOX_UNREAD } from "@/components/InboxBell";
+import { INBOX_CHANGED, onInboxHead } from "@/components/InboxBell";
 import { Loading, useTabData } from "@/components/useTabData";
 import { loadInbox } from "@/app/ai/panel/actions";
 import { loadTasks } from "@/app/tasks/actions";
-import { INBOX_TAB_LABEL, TAB_KINDS, type InboxHead, type InboxTab } from "@/lib/domain/inbox";
+import { INBOX_TAB_LABEL, TAB_KINDS, type InboxTab } from "@/lib/domain/inbox";
 
 // The inbox's window: its head — what it is, how much is not read, this
 // device's notifications, expand, close — over three tabs: Alerts (messages
@@ -69,12 +69,11 @@ export function InboxWorkspace({
       refreshInbox();
       if (tab === "tasks") refreshTasks();
     };
-    const polled = (e: Event) => setTold({ n: (e as CustomEvent<InboxHead>).detail.unread, at: Date.now() });
     window.addEventListener(INBOX_CHANGED, again);
-    window.addEventListener(INBOX_UNREAD, polled);
+    const stopHead = onInboxHead((h) => setTold({ n: h.unread, at: Date.now() }));
     return () => {
       window.removeEventListener(INBOX_CHANGED, again);
-      window.removeEventListener(INBOX_UNREAD, polled);
+      stopHead();
     };
   }, [visible, tab, refreshInbox, refreshTasks]);
 
@@ -110,7 +109,8 @@ export function InboxWorkspace({
       </header>
       <Tabs
         label="The inbox"
-        className={`shrink-0 ${wide ? "px-2" : "tab-strip-fill"}`}
+        className={`shrink-0 ${wide ? "px-2" : ""}`}
+        fill={!wide}
         items={(["alerts", "reports", "tasks"] as const).map((t) => ({ id: t, label: INBOX_TAB_LABEL[t], icon: TAB_ICON[t], count: unread?.[t] ?? 0 }))}
         value={tab}
         onChange={(id) => onTab(id as InboxTab)}

@@ -84,8 +84,3 @@ export interface InboxPopupItem {
 /** The popup cards on the screen at most — the rest is counted under them. */
 export const INBOX_POPUP_SHOWN = 3;
 export const INBOX_POPUP_PREVIEW = 140;
-
-/** The items newer than the newest one already popped — the ones that chime. */
-export function arrivedSince(ids: readonly number[], seenMax: number): number[] {
-  return ids.filter((id) => id > seenMax);
-}
