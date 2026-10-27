@@ -52,7 +52,6 @@ function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 }
 
-const TONE_BAR: Record<"ok" | "warn" | "bad", string> = { ok: "var(--ok-fg)", warn: "var(--warn-fg)", bad: "var(--bad-fg)" };
 const TONE_INK: Record<"ok" | "warn" | "bad", string> = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" };
 
 /** The board's sheet jobs by id — a queue line that is one is counted in sheets. */
@@ -330,7 +329,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
       </div>
       {pct !== null && (
         <span className="block" title={c.days === null ? "" : `${c.days} working day(s) of work ahead — the bar is five days wide`}>
-          <Meter value={pct / 100} color={tone ? TONE_BAR[tone] : "var(--muted)"} />
+          <Meter value={pct / 100} color={tone ? `var(--${tone}-fg)` : "var(--muted)"} />
         </span>
       )}
       {!bySheets && roundSheets(c.unpricedPcs - counts.sheets) > 0 && <div className="text-[10px] text-warn-fg">{roundSheets(c.unpricedPcs - counts.sheets)} pcs with no standard time — hours undercounted</div>}

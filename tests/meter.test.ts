@@ -1,17 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { Meter } from "@/components/Meter";
 
-vi.mock("server-only", () => ({}));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }), useSearchParams: () => new URLSearchParams(), usePathname: () => "/" }));
-
-const { Meter } = await import("@/components/Meter");
 const draw = (props: Parameters<typeof Meter>[0]) => renderToStaticMarkup(createElement(Meter, props));
 
 describe("Meter", () => {
   it("fills to its share on a track of its colour", () => {
     const html = draw({ value: 0.4, color: "var(--ok-fg)" });
-    expect(html).toContain('class="meter meter-md "');
+    expect(html).toContain('class="meter meter-md"');
     expect(html).toContain("--meter-color:var(--ok-fg)");
     expect(html).toContain("width:40%");
   });

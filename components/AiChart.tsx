@@ -4,7 +4,8 @@ import {
   type PieLabelRenderProps,
   Area, Bar, CartesianGrid, Cell, ComposedChart, LabelList, Line, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { INK_ON_OTHER, Meter, OTHER, Sparkline, catColor, catInk, compact, fmt, pct } from "@/components/charts/kit";
+import { INK_ON_OTHER, OTHER, Sparkline, catColor, catInk, compact, fmt, pct } from "@/components/charts/kit";
+import { Meter } from "@/components/Meter";
 import {
   ChartFrame, PlotText, TICK, Tip, ToneIcon, fits, insideLabel, perSlot, pointLabel, textWidth, tipLabel, unitOf, useWidth, valueText, type TipProps,
 } from "@/components/AiChartFrame";

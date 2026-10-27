@@ -6,7 +6,8 @@ import { formatDate } from "@/lib/domain/format";
 import {
   Bar, CartesianGrid, Cell, ComposedChart, LabelList, Line, ReferenceLine, ResponsiveContainer, Sankey, Scatter, ScatterChart, Tooltip, Treemap, XAxis, YAxis, ZAxis,
 } from "recharts";
-import { HeatScale, Heatmap, INK_ON_OTHER, OTHER, TRACK, catColor, catInk, compact, fmt, heat, pct, Meter } from "@/components/charts/kit";
+import { HeatScale, Heatmap, INK_ON_OTHER, OTHER, TRACK, catColor, catInk, compact, fmt, heat, pct } from "@/components/charts/kit";
+import { Meter } from "@/components/Meter";
 import {
   ChartFrame, PlotText, TICK, Tip, ToneIcon, fits, pointLabel, sideLabel, tipLabel, unitOf, useWidth, valueText, type TipProps,
 } from "@/components/AiChartFrame";

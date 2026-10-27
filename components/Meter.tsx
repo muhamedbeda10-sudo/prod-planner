@@ -24,7 +24,7 @@ export function Meter({ value, color, mark = null, size = "md", label, valueText
   const v = clamp(value);
   return (
     <span
-      className={`meter meter-${size} ${className}`}
+      className={["meter", `meter-${size}`, className].filter(Boolean).join(" ")}
       style={color ? ({ "--meter-color": color } as CSSProperties) : undefined}
       {...(label
         ? { role: "meter", "aria-label": label, "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": Math.round(v * 100), "aria-valuetext": valueText }

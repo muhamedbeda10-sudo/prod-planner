@@ -434,9 +434,6 @@ main table thead th.on-tint {
   color: var(--foreground) !important;
 }
 
-main table tbody tr {
-  transition: background-color 0.12s ease;
-}
 /* only rows with data cells light up: a row of only <th> is a header inside
    the body (the weekly plan's per-day heads) and keeps its own colour */
 main table tbody tr:has(> td):hover {
@@ -1033,13 +1030,13 @@ main select.ctl { padding-right: 1.6rem; }
 .kpi-code { font-size: var(--fs-body); font-weight: 750; letter-spacing: 0.02em; color: var(--foreground); }
 .kpi-name { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi-value { font-size: var(--fs-kpi); line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-/* ---- the one progress bar (Meter, components/charts/kit.tsx): the fill in
+/* ---- the one progress bar (components/Meter.tsx): the fill in
    --meter-color on a track that is a tint of the same hue, in both themes;
    an optional tick (.meter-mark) where it should be ---- */
 .meter { --meter-color: var(--viz-1); position: relative; display: block; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--meter-color) 16%, var(--surface)); }
 .meter-sm { height: 4px; }
 .meter-lg { height: 10px; }
-.meter-fill { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: inherit; background: var(--meter-color); transition: width 0.4s ease; }
+.meter-fill { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: inherit; background: var(--meter-color); }
 .meter-mark { position: absolute; top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: var(--foreground); }
 
 /* ---- dense ERP tables ----
@@ -1604,8 +1601,8 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 
 /* the empty chat: who it is, what it can do (the tiles), then questions to start from */
 .ai-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
-.ai-hero-logo { position: relative; width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; flex-shrink: 0; color: #fff; background: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--brand-fill) 45%, var(--viz-2))); box-shadow: var(--shadow-md); animation: ai-float 4s ease-in-out infinite; }
-.ai-hero-logo::after { content: ""; position: absolute; inset: -5px; border-radius: 19px; border: 2px solid color-mix(in srgb, var(--brand) 40%, transparent); animation: ai-ring 2.6s ease-out infinite; }
+.ai-hero-logo { position: relative; width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; flex-shrink: 0; color: #fff; background: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--brand-fill) 45%, var(--viz-2))); box-shadow: var(--shadow-md); animation: ai-float 4s ease-in-out 2; }
+.ai-hero-logo::after { content: ""; position: absolute; inset: -5px; border-radius: 19px; border: 2px solid color-mix(in srgb, var(--brand) 40%, transparent); animation: ai-ring 2.6s ease-out 2 forwards; }
 .ai-hero-title { font-size: var(--fs-title); font-weight: 750; line-height: 1.2; margin: 0; text-transform: none; letter-spacing: -0.01em; color: var(--foreground); background: linear-gradient(90deg, var(--brand-ink), color-mix(in srgb, var(--brand-ink) 50%, var(--info-fg))); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .ai-welcome-label { display: flex; align-items: center; gap: 6px; margin: 18px 0 8px; font-size: var(--fs-label); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .ai-welcome > .ai-hero + .ai-welcome-label { margin-top: 0; }
@@ -1881,7 +1878,6 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 
 @keyframes fx-pop { 0% { opacity: 0; transform: scale(0.5); } 70% { opacity: 1; transform: scale(1.15); } 100% { transform: none; } }
 @keyframes fx-press { 0% { transform: scale(0.92); } 60% { transform: scale(1.04); } 100% { transform: none; } }
-@keyframes fx-grow-x { from { transform: scaleX(0); } to { transform: none; } }
 @keyframes fx-sweep { from { background-position: 160% 0; } to { background-position: -60% 0; } }
 
 /* the icon square that wears a tone — the brand green when it has none;
@@ -1909,7 +1905,6 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 10px 5px 6px; border-radius: 10px;
   font-size: var(--fs-md); font-weight: 650; line-height: 1.25; text-align: start; color: var(--foreground); cursor: pointer;
   transition: background-color 0.16s ease, transform 0.12s ease;
-  animation: ai-rise 0.3s ease-out backwards;
 }
 /* the light that sweeps across a row (and an assistant tile) under the pointer */
 .ai-cap::after, .menu-row::after {
@@ -1929,15 +1924,13 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 .drawer-link { gap: 12px; width: calc(100% - 16px); margin: 0 8px 1px; padding: 6px 12px 6px 8px; font-size: 15px; font-weight: 600; }
 .menu-row-on .menu-row-hint { color: color-mix(in srgb, var(--brand-ink) 70%, var(--muted)); }
 
-/* one after another: assistant tiles, menu rows, KPIs, section cards */
-.ai-cap:nth-child(2), .menu-row:nth-child(2), .kpi:nth-child(2), .section-card:nth-child(2), .chart-card:nth-child(2), .inbox-item:nth-child(2), .col-card:nth-child(2) { animation-delay: 0.02s; }
-.ai-cap:nth-child(3), .menu-row:nth-child(3), .kpi:nth-child(3), .section-card:nth-child(3), .chart-card:nth-child(3), .inbox-item:nth-child(3), .col-card:nth-child(3) { animation-delay: 0.04s; }
-.ai-cap:nth-child(4), .menu-row:nth-child(4), .kpi:nth-child(4), .section-card:nth-child(4), .chart-card:nth-child(4), .inbox-item:nth-child(4), .col-card:nth-child(4) { animation-delay: 0.06s; }
-.ai-cap:nth-child(5), .menu-row:nth-child(5), .kpi:nth-child(5), .section-card:nth-child(5), .chart-card:nth-child(5), .inbox-item:nth-child(5), .col-card:nth-child(5) { animation-delay: 0.08s; }
-.ai-cap:nth-child(6), .menu-row:nth-child(6), .kpi:nth-child(6), .section-card:nth-child(6), .chart-card:nth-child(6), .inbox-item:nth-child(6), .col-card:nth-child(6) { animation-delay: 0.1s; }
-.ai-cap:nth-child(7), .menu-row:nth-child(7), .kpi:nth-child(7), .section-card:nth-child(7), .chart-card:nth-child(7), .inbox-item:nth-child(7), .col-card:nth-child(7) { animation-delay: 0.12s; }
-.ai-cap:nth-child(8), .menu-row:nth-child(8), .kpi:nth-child(8), .section-card:nth-child(8), .chart-card:nth-child(8), .inbox-item:nth-child(8), .col-card:nth-child(8) { animation-delay: 0.12s; }
-.ai-cap:nth-child(n+9), .menu-row:nth-child(n+9), .kpi:nth-child(n+9), .section-card:nth-child(n+9), .chart-card:nth-child(n+9), .inbox-item:nth-child(n+9), .col-card:nth-child(n+9) { animation-delay: 0.12s; }
+/* one after another: assistant tiles, KPIs, section and chart cards */
+.ai-cap:nth-child(2), .kpi:nth-child(2), .section-card:nth-child(2), .chart-card:nth-child(2), .col-card:nth-child(2) { animation-delay: 0.02s; }
+.ai-cap:nth-child(3), .kpi:nth-child(3), .section-card:nth-child(3), .chart-card:nth-child(3), .col-card:nth-child(3) { animation-delay: 0.04s; }
+.ai-cap:nth-child(4), .kpi:nth-child(4), .section-card:nth-child(4), .chart-card:nth-child(4), .col-card:nth-child(4) { animation-delay: 0.06s; }
+.ai-cap:nth-child(5), .kpi:nth-child(5), .section-card:nth-child(5), .chart-card:nth-child(5), .col-card:nth-child(5) { animation-delay: 0.08s; }
+.ai-cap:nth-child(6), .kpi:nth-child(6), .section-card:nth-child(6), .chart-card:nth-child(6), .col-card:nth-child(6) { animation-delay: 0.1s; }
+.ai-cap:nth-child(n+7), .kpi:nth-child(n+7), .section-card:nth-child(n+7), .chart-card:nth-child(n+7), .col-card:nth-child(n+7) { animation-delay: 0.12s; }
 
 /* a menu's surface — the bar's panels and a right-click — glows from its corner */
 .menu-panel { background-image: radial-gradient(120% 60% at 0% 0%, color-mix(in srgb, var(--brand) 7%, transparent), transparent 60%); }
@@ -1945,7 +1938,7 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 /* ---- section cards rise in; their icon is a tile of the card's own tone (components/primitives) ---- */
 .section-card { animation: ai-rise 0.25s ease-out backwards; }
 
-/* ---- KPI cards: a brand glow from the corner, a lift under the pointer, their bars filling in ---- */
+/* ---- KPI cards: a brand glow from the corner, a lift under the pointer ---- */
 .kpi {
   animation: ai-rise 0.25s ease-out backwards;
   background-image: radial-gradient(130% 90% at 0% 0%, color-mix(in srgb, var(--brand) 8%, transparent), transparent 60%);
@@ -1987,7 +1980,7 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 .count-badge { animation: fx-pop 0.35s ease-out backwards; }
 .empty { animation: ai-rise 0.25s ease-out backwards; }
 /* the one dimmed backdrop behind a dialog */
-.modal-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.45); backdrop-filter: blur(2px); animation: drawerfade 0.18s ease-out; }
+.modal-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.45); animation: drawerfade 0.18s ease-out; }
 .modal-box { animation: aipop-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .login-card { animation: ai-rise 0.45s ease-out backwards; }
 
@@ -2007,26 +2000,23 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 
 /* Motion — on screen only, and only for those who have not asked for less:
    paper always gets the finished card and bar */
-@media screen and (prefers-reduced-motion: no-preference) {
+@media screen and (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
   .chart-card { animation: ai-rise 0.25s ease-out backwards; transition: border-color 0.18s ease; }
-  /* a progress bar fills from its start (Meter) */
-  .meter-fill { transform-origin: left; animation: fx-grow-x 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
-  [dir="rtl"] .meter-fill { transform-origin: right; }
-  table .meter-fill { animation: none; } /* a table's bars show at once, like its figures */
   .chart-tip, .recharts-default-tooltip { animation: aipop-in 0.14s ease-out; }
   /* an active filter springs on and its ✕ pops in, turning under the pointer */
   .filter-chip-on > select.ctl, .chip-on { animation: fx-press 0.25s ease-out; }
   .filter-chip-x { animation: fx-pop 0.2s ease-out backwards; transition: rotate 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.12s ease, color 0.12s ease; }
   .filter-chip-x:hover { rotate: 90deg; }
-  .alert, .inbox-item, .col-card { animation: ai-rise 0.25s ease-out backwards; }
+  .alert, .col-card { animation: ai-rise 0.25s ease-out backwards; }
   .chip:active, .chip-toggle:active { transform: scale(0.95); }
   main input:is([type="checkbox"], [type="radio"]) { transition: transform 0.12s ease; }
   main input:is([type="checkbox"], [type="radio"]):active:not(:disabled) { transform: scale(0.85); }
 }
 
-@media (prefers-reduced-motion: reduce) {
+/* no decorative motion where it is not wanted (reduced motion) or not worth it (touch tablets on the floor) */
+@media (prefers-reduced-motion: reduce), (hover: none), (pointer: coarse) {
   .menu-row, .menu-row::after, .ai-cap::after, .nav-drop, .section-card, .kpi, .btn-primary,
-  .seg > .on, .segmented > button, .chip-toggle, .option-radio, .empty, .empty-icon, .count-badge,
+  .seg > .on, .segmented > button, .chip-toggle, .option-radio, .empty, .count-badge, .ai-cap, .alert, .col-card,
   .modal-scrim, .modal-box, .login-card { animation: none !important; }
   .tone-tile, .nav-tab, .nav-tab::after, .nav-tab > svg, .tab::after, .tab > svg, .btn, .btn svg, .icon-btn, .icon-btn svg,
   .switch-knob, .kpi, .option, .task-card, .menu-row { transition: none; }

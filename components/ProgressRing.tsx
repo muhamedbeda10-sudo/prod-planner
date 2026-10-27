@@ -32,7 +32,7 @@ export function Ring({ pct, size = 40 }: { pct: number | null; size?: number }) 
           strokeLinecap="round"
           strokeDasharray={`${f * 100} 100`}
           transform="rotate(-90 20 20)"
-          className="transition-all duration-500"
+          className="transition-[stroke-dasharray] duration-500"
         />
       )}
       <text

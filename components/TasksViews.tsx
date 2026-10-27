@@ -73,11 +73,10 @@ export function peopleOf(list: readonly TaskSummary[]): { id: number; name: stri
 /** A checklist's progress: a thin bar and "2/5". */
 export function StepsBar({ steps, wide = false }: { steps: { done: number; total: number }; wide?: boolean }) {
   if (steps.total === 0) return null;
-  const pct = Math.round((steps.done / steps.total) * 100);
   return (
     <span className={`inline-flex items-center gap-1.5 ${wide ? "w-full" : ""}`} title={`${steps.done} of ${steps.total} steps ticked`}>
       {!wide && <ListChecks size={12} className="text-muted shrink-0" aria-hidden />}
-      <Meter value={pct / 100} color={steps.done === steps.total ? "var(--ok-fg)" : "var(--brand)"} size="sm" label="Steps ticked" valueText={`${steps.done} of ${steps.total}`} className={wide ? "flex-1" : "w-14"} />
+      <Meter value={steps.done / steps.total} color={steps.done === steps.total ? "var(--ok-fg)" : "var(--brand)"} size="sm" label="Steps ticked" valueText={`${steps.done} of ${steps.total}`} className={wide ? "flex-1" : "w-14"} />
       <span className="tabnum text-[11px] text-muted">{steps.done}/{steps.total}</span>
     </span>
   );

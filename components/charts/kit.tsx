@@ -137,7 +137,6 @@ export function Sparkline({ values, width = 96, height = 28 }: { values: number[
   );
 }
 
-export { Meter };
 
 /** A tile: its name with the change beside it, the figure, then at most one
  *  short line. What it means and how it is counted (`about`) is the

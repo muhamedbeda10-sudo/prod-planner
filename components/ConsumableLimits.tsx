@@ -10,7 +10,8 @@ import { ActionMsg as Msg, useConsumableAction as useAction } from "@/components
 import { Modal } from "@/components/Modal";
 import { TableEmpty, TableFrame, Th, useRowMenu } from "@/components/DataTable";
 import { SearchBox } from "@/components/FilterControls";
-import { StatTile, Meter } from "@/components/charts/kit";
+import { StatTile } from "@/components/charts/kit";
+import { Meter } from "@/components/Meter";
 
 // The CONSUMABLES tab's Limits view: the store's catalogue — code, name, unit
 // — each item with its limits, one line per limit, and where each stands

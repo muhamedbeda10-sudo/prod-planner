@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ChartCard, DeltaChip, Legend, Sparkline, StatTile, TipBox, fmt, pct, Meter } from "@/components/charts/kit";
+import { ChartCard, DeltaChip, Legend, Sparkline, StatTile, TipBox, fmt, pct } from "@/components/charts/kit";
+import { Meter } from "@/components/Meter";
 import {
   MONTH_STATUS_LABEL, monthLong, monthShort,
   type ItemMonthRow, type LimitMonthRow, type MonthStatus,
