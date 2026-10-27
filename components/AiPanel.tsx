@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Bot } from "lucide-react";
@@ -8,6 +8,8 @@ import type { AiLayout, AiTab, AiView } from "@/components/AiWorkspace";
 import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens, usePhone, useWindowChrome } from "@/components/floatWindow";
 import { useInboxPanel } from "@/components/InboxPanel";
 import { handToAssistant } from "@/lib/aiAsk";
+import { AI_DOCK_DEFAULT, AI_DOCK_MIN, AI_DOCK_STEP, clampDockWidth, dockMax } from "@/lib/domain/aiDock";
+import { ResizeHandle } from "@/components/ResizeHandle";
 
 // The workspace (the chat, its Markdown and its charts) is the heaviest thing
 // this layout could ship, and every page carries the button. So it is split
@@ -19,12 +21,14 @@ const AiWorkspace = dynamic(() => import("./AiWorkspace").then((m) => m.AiWorksp
   loading: () => <div className="h-full grid place-items-center text-sm text-muted" role="status">Opening the assistant…</div>,
 });
 
-// The AI assistant on every page: a round button in the corner opens it as
-// a card in the corner (the page stays usable beside it); one click fills
+// The AI assistant on every page: a round button in the corner opens it
+// docked down the right of the screen, top to bottom, and the whole app —
+// its bar and the page — moves left into the rest, so both are seen at once;
+// its left edge is dragged to make it wider or narrower. One click fills
 // the viewport with the chats down its side; on a phone it is always the
 // whole screen. It stays open — and a chat being answered
 // keeps going — while the person moves between pages, steps back to the
-// corner when a link in it opens a page, closes on Escape, and reopens as it
+// side when a link in it opens a page, closes on Escape, and reopens as it
 // was left. The inbox is a window of its own (components/InboxPanel); one of
 // the two is open at a time. It sits inside <main>, where the app's control
 // and table styles live, but is fixed to the window above the bar.
@@ -41,6 +45,8 @@ interface PanelState {
   open: boolean;
   large: boolean;
   view: AiView;
+  /** Docked: how wide it was dragged (lib/domain/aiDock). */
+  width: number;
 }
 
 interface PanelApi {
@@ -100,19 +106,19 @@ export function AiPanelProvider({ config, children }: { config: AiPanelConfig; c
     const s = parseStored<PanelState>(raw);
     const allowed = (v: AiView | undefined): v is AiView => !!v && VIEWS.includes(v) && (v === "history" ? tabs.includes("chat") : tabs.includes(v));
     const view = allowed(s.view) ? s.view : tabs[0] ?? "chat";
-    return { open: !!s.open && (openedNow || !isPhone()), large: !!s.large, view };
+    return { open: !!s.open && (openedNow || !isPhone()), large: !!s.large, view, width: clampDockWidth(s.width) };
   }, [raw, tabs, openedNow]);
   const pathname = usePathname();
   const aiPage = onAiPage(pathname);
 
   // a page opened from the window (a link in an answer) is shown: the large
-  // window steps back to the corner, and on a phone it closes
+  // window steps back to the side, and on a phone it closes
   const lastPath = useRef(pathname);
   useEffect(() => {
     if (pathname === lastPath.current) return;
     lastPath.current = pathname;
     const cur = parseStored<PanelState>(store.read());
-    if (cur.open && (cur.large || isPhone())) store.write({ open: !isPhone(), large: false, view: cur.view ?? tabs[0] ?? "chat" });
+    if (cur.open && (cur.large || isPhone())) store.write({ ...cur, open: !isPhone(), large: false, view: cur.view ?? tabs[0] ?? "chat" });
   }, [pathname, tabs]);
 
   const shown = state.open && tabs.length > 0 && !aiPage;
@@ -165,6 +171,31 @@ export function AiPanelProvider({ config, children }: { config: AiPanelConfig; c
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
 
+// the widest the docked assistant may be on this screen — a snapshot that
+// changes only when that does, so resizing a wide window draws nothing new
+function subscribeResize(cb: () => void) {
+  window.addEventListener("resize", cb);
+  return () => window.removeEventListener("resize", cb);
+}
+const screenMax = () => dockMax(window.innerWidth);
+const serverMax = () => dockMax();
+
+/** While docked, the app — its bar and the page — moves left of the
+ *  assistant (globals.css, from a laptop up). */
+function useDock(docked: boolean, width: number) {
+  useLayoutEffect(() => {
+    if (!docked) return;
+    const html = document.documentElement;
+    // the width the person dragged it to: no token can hold it
+    html.style.setProperty("--ai-dock", `${width}px`);
+    html.classList.add("ai-docked");
+    return () => {
+      html.classList.remove("ai-docked");
+      html.style.removeProperty("--ai-dock");
+    };
+  }, [docked, width]);
+}
+
 /** The round button in the corner, and the window itself — placed inside
  *  <main>. The window is made the first time it opens, then kept (hidden
  *  when closed), so what it was doing carries on. */
@@ -172,11 +203,23 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
   const p = useAiPanel();
   const inbox = useInboxPanel();
   const phone = usePhone();
+  const max = useSyncExternalStore(subscribeResize, screenMax, serverMax);
   const [made, setMade] = useState(false);
+  const pop = useRef<HTMLElement>(null);
   if (p?.shown && !made) setMade(true);
+  const layout: AiLayout = phone ? "phone" : p?.state.large ? "large" : "compact";
+  const width = clampDockWidth(p?.state.width, max);
+  useDock(!!p?.shown && layout === "compact", width);
   if (!p || p.aiPage) return null;
   const { state } = p;
-  const layout: AiLayout = phone ? "phone" : state.large ? "large" : "compact";
+  const keepWidth = (w: number) => store.write({ ...state, width: clampDockWidth(w, max) });
+  // while its edge is dragged the width is drawn on the window alone — the
+  // page is laid out again once, when the drag ends and the width is kept
+  const drawWidth = (w: number | null) => {
+    document.documentElement.classList.toggle("ai-resizing", w !== null);
+    if (w === null) pop.current?.style.removeProperty("--ai-dock");
+    else pop.current?.style.setProperty("--ai-dock", `${w}px`);
+  };
 
   // automations and the playbook open in the large window on a wide screen
   const onView = (v: AiView) => {
@@ -195,7 +238,35 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
       {made && (
         <div hidden={!p.shown} className="no-print">
           {layout === "large" && p.shown && <div className="ai-overlay" onClick={p.close} aria-hidden />}
-          <section role="dialog" aria-modal={layout !== "compact"} aria-label="AI assistant" className={`ai-pop ai-pop-${layout}`}>
+          <section
+            ref={pop}
+            role="dialog"
+            aria-modal={layout !== "compact"}
+            aria-label="AI assistant"
+            className={`ai-pop ${layout === "compact" ? "ai-pop-dock" : `ai-pop-${layout}`}`}
+          >
+            {layout === "compact" && (
+              <ResizeHandle
+                label="Resize the assistant"
+                width={width}
+                min={AI_DOCK_MIN}
+                max={max}
+                step={AI_DOCK_STEP}
+                grows="left"
+                className="ai-dock-handle"
+                onMove={(w) => {
+                  const to = clampDockWidth(w, max);
+                  drawWidth(to);
+                  return to;
+                }}
+                onEnd={(w) => {
+                  keepWidth(w);
+                  drawWidth(null);
+                }}
+                onSet={keepWidth}
+                onReset={() => keepWidth(AI_DOCK_DEFAULT)}
+              />
+            )}
             <AiWorkspace
               tabs={p.tabs}
               view={state.view}

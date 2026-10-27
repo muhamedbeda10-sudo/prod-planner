@@ -130,7 +130,7 @@ export function AiChat({
   status: AiChatStatus;
   conversations: Conv[];
   initial: { id: number; turns: AiChatTurn[]; actions: AiActionView[]; ratings?: Record<number, AiFeedbackRating> } | null;
-  /** Narrow (the corner card, a phone): the tiles and questions in fewer columns. */
+  /** Narrow (the docked window, a phone): the tiles and questions in fewer columns. */
   compact?: boolean;
   /** Keep the open chat in the address bar (the /ai page). */
   syncUrl?: boolean;
@@ -787,7 +787,7 @@ function Welcome({ tabId, tabLabel, actions, onAction, onPick, disabled, compact
               disabled={disabled}
               onClick={() => onPick(q)}
               dir="auto"
-              // a phone and the corner card show the first four
+              // a phone and the docked window show the first four
               className={`ai-suggest ${i >= 4 ? (compact ? "hidden" : "hidden sm:flex") : "flex"}`}
             >
               <Icon size={14} className="ai-suggest-icon" aria-hidden />

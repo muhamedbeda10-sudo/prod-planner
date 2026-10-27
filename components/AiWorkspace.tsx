@@ -20,13 +20,13 @@ import type { AiActionView } from "@/lib/domain/aiActions";
 // buttons (new chat, chats, playbook, automations, settings, expand, close) —
 // over the chat. In the large window a sidebar lists the chats beside it —
 // dragged wider or narrower, hidden and shown from the head (AiSidebar); in
-// the corner card and on a phone the chats open in place of the chat, with
+// the docked window and on a phone the chats open in place of the chat, with
 // Back. The chat stays mounted through every switch (an answer being written
 // keeps coming, a typed question is kept); the automations read again each
 // time they are opened. The inbox is a window of its own (InboxPanel).
 
 export type AiTab = "chat" | "automations" | "playbook";
-/** What the body shows: a tab, or the list of chats (the corner card and the phone). */
+/** What the body shows: a tab, or the list of chats (the docked window and the phone). */
 export type AiView = AiTab | "history";
 export type AiLayout = "compact" | "large" | "phone";
 
@@ -87,7 +87,7 @@ export function AiWorkspace({
   /** The window is open: a hidden one loads nothing new. */
   visible?: boolean;
   isOwner: boolean;
-  /** Expand to the large window or shrink to the corner — absent on the assistant's own page. */
+  /** Expand to the large window or back to the side — absent on the assistant's own page. */
   onExpand?: (large: boolean) => void;
   onClose?: () => void;
   initialChat?: InitialChat;
@@ -96,7 +96,7 @@ export function AiWorkspace({
   const hasChat = tabs.includes("chat");
   const large = layout === "large";
   // the large window has the chats beside the chat: "history" (left open in
-  // the corner card or on a phone) is the chat there
+  // the docked window or on a phone) is the chat there
   const view: AiView = large && asked === "history" ? "chat" : asked;
   const [chat, setChat] = useState<ChatListApi | null>(null);
   const [side, setSide] = useAiSide();
@@ -160,7 +160,7 @@ export function AiWorkspace({
             </Link>
           )}
           {onExpand && layout !== "phone" && (
-            <HeadBtn icon={large ? Minimize2 : Maximize2} label={large ? "Back to the corner" : "Fill screen"} onClick={() => onExpand(!large)} />
+            <HeadBtn icon={large ? Minimize2 : Maximize2} label={large ? "Back to the side" : "Fill screen"} onClick={() => onExpand(!large)} />
           )}
           {onClose && <HeadBtn icon={X} label="Close" onClick={onClose} />}
         </div>
