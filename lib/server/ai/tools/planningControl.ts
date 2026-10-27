@@ -201,7 +201,9 @@ export const identifyBottleneckTool: ReadTool<BottleneckInput> = {
     const holidays = new Set(inputs.holidayISOs);
     const past = pastPlantWeeks(inputs.todayISO, 4, holidays);
     const lostFrom = toISODate(new Date(Date.parse(`${inputs.todayISO}T00:00:00Z`) - 14 * 86400000));
-    const [stops, { flows }] = await Promise.all([getStationStops(lostFrom, inputs.todayISO), getStationFlows(past)]);
+    // machine stops are the shift log's: left out for whoever the Shifts screen is closed to, as on the dashboard
+    const stopsOpen = !ctx.hidden.has("shifts");
+    const [stops, { flows }] = await Promise.all([stopsOpen ? getStationStops(lostFrom, inputs.todayISO) : Promise.resolve([]), getStationFlows(past)]);
     const queue = queueNow(inputs);
     const profile = loadProfile(inputs, i.weeks ?? 4);
     const evidence = CONTROL_STAGES.map((stage) => {
@@ -217,7 +219,7 @@ export const identifyBottleneckTool: ReadTool<BottleneckInput> = {
         daysOfWork: rate > 0 ? r1(openH / rate) : null,
         queueH: r1(queue[stage]), queueDays: rate > 0 ? r1(queue[stage] / rate) : null,
         nearLoadPct: loadPct(load, avail),
-        lostH: r1(stops.filter((s) => s.stage === stage && s.reasonCode !== "PM").reduce((a, s) => a + s.hours, 0)),
+        lostH: stopsOpen ? r1(stops.filter((s) => s.stage === stage && s.reasonCode !== "PM").reduce((a, s) => a + s.hours, 0)) : 0,
         backlogTrendH: first === null || last === null ? null : r1(last - first),
       };
     });
@@ -225,7 +227,7 @@ export const identifyBottleneckTool: ReadTool<BottleneckInput> = {
     return {
       ok: true,
       text: toJson({
-        scope: { line: "TR", loadWeeks: i.weeks ?? 4, stopsFrom: lostFrom, trendWeeks: past.map((w) => `${w.fromISO} – ${w.toISO}`) },
+        scope: { line: "TR", loadWeeks: i.weeks ?? 4, stopsFrom: stopsOpen ? lostFrom : "not read — the Shifts screen is not opened for this person", trendWeeks: past.map((w) => `${w.fromISO} – ${w.toISO}`) },
         inputs_used: inputsUsed(inputs),
         formulas: { daysOfWork: "days of work = open std h at the station ÷ its pace (std h a day)", queueDays: "queue days = std h already waiting ÷ pace", loadPct: "std h due in the weeks ÷ available man-hours" },
         ...ranked,
@@ -314,7 +316,8 @@ export const checkReleaseReadinessTool: ReadTool<ReleaseInput> = {
       pendingQty: facts.order.pendingPlanQty,
       missingTimes: (inputs.coverage?.missingTimes ?? []).filter((m) => m.mo === mo).map((m) => m.item),
       dueISO,
-      nesting: facts.nesting,
+      // the nesting sheet is the Material screen's: not checked for whoever it is closed to
+      nesting: ctx.hidden.has("material") ? undefined : facts.nesting,
       stock: null,
       firstStationLoad: { pct, status: loadStatus(pct), weeks: `this week and next (${cut.weeks[0].fromISO} – ${cut.weeks[cut.weeks.length - 1].toISO})` },
       alreadyStarted: facts.alreadyStarted,
@@ -325,6 +328,7 @@ export const checkReleaseReadinessTool: ReadTool<ReleaseInput> = {
         mo, bom: facts.order.bom, kva: facts.order.kva, required: facts.order.planQty,
         ...result,
         inputs_used: { todayISO: inputs.todayISO, fabricationLoadStdH: r1(load), fabricationAvailableH: avail === null ? null : r1(avail) },
+        nestingNotChecked: ctx.hidden.has("material") ? "The Material screen is not opened for this person, so the nesting was not checked." : undefined,
         assumptions: ["Material stock is not verified by the app yet — the Odoo stock feed is still to come; a planner must check it.", "Drawings are read through the nesting lines of the MATERIAL tab; other documents are not tracked."],
       }),
       links: orderLinks([mo]),

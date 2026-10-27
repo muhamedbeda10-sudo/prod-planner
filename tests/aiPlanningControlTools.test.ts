@@ -125,6 +125,12 @@ describe("the planning-control tools", () => {
     const j = json(await identifyBottleneckTool.run({}, ctx));
     expect(j.constraint).toMatchObject({ stage: "weld", openH: 40, daysOfWork: 2, lostH: 3 });
     expect(j.evidence[0]).toContain("Welding");
+    // the stops are the Shifts screen's — not read for whoever it is closed to
+    h.control.getStationStops.mockClear();
+    const closed = json(await identifyBottleneckTool.run({}, { ...ctx, hidden: new Set(["shifts"]) }));
+    expect(h.control.getStationStops).not.toHaveBeenCalled();
+    expect(closed.constraint.lostH).toBe(0);
+    expect(closed.scope.stopsFrom).toContain("not opened");
   });
 
   it("delay Pareto: unplanned causes with running shares, maintenance apart, holds listed", async () => {
@@ -153,6 +159,10 @@ describe("the planning-control tools", () => {
     expect(j.verdict).toBe("ready_with_checks");
     expect(j.checks.find((c: { check: string }) => c.check === "Material stock").status).toBe("unknown");
     expect(j.checks.find((c: { check: string }) => c.check === "Due date").detail).toContain("2026-10-29");
+    // the nesting is the Material screen's
+    const closed = json(await checkReleaseReadinessTool.run({ mo: "A" }, { ...ctx, hidden: new Set(["material"]) }));
+    expect(closed.checks.some((c: { check: string }) => c.check === "Nesting / drawings")).toBe(false);
+    expect(closed.nestingNotChecked).toContain("Material");
   });
 
   it("rush order: priced by its class, or the missing standard times named", async () => {
