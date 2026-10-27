@@ -1,4 +1,4 @@
-// A window docked down the right of the screen — the assistant or the inbox
+// A window docked down the right of the screen — the assistant, the inbox or the chat
 // (components/FloatDock): as wide as the person drags it, the page taking the
 // rest — kept on this browser, each window its own. However wide it is kept,
 // the page beside it keeps room enough to read and work in.
