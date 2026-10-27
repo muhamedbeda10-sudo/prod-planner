@@ -10,7 +10,7 @@ const h = vi.hoisted(() => {
   return {
     prisma: {
       odooEntry: { count: fn() },
-      odooNote: { findUnique: fn() },
+      odooNote: { findUnique: fn(), count: fn() },
       physicalStock: { findFirst: fn() },
       holiday: { findMany: fn(), findUnique: fn() },
       worker: { findUnique: fn(), findFirst: fn() },
@@ -189,6 +189,15 @@ describe("the ODOO log", () => {
     // and the undo writes them back exactly, the close stamp included
     await restoreOdooRowsTool.execute(checkToolInput(restoreOdooRowsTool, out.undo!.input).ok ? (out.undo!.input as { rows: string }) : { rows: "" }, ctx);
     expect(h.snap.restoreOdooRows).toHaveBeenCalledWith(rows);
+  });
+
+  it("will not propose cancelling a row before a note says why", async () => {
+    h.perms.add("odoo.edit");
+    h.snap.readOdooRows.mockResolvedValue([odooRow(1)]);
+    h.prisma.odooNote.count.mockResolvedValue(0);
+    expect(await setOdooStatusTool.describe({ ids: [1], status: "Cancelled" }, ctx)).toEqual({ error: expect.stringContaining("note") });
+    h.prisma.odooNote.count.mockResolvedValue(1);
+    expect(await setOdooStatusTool.describe({ ids: [1], status: "Cancelled" }, ctx)).toMatchObject({ title: "1 ODOO row(s) → Cancelled" });
   });
 
   it("is refused on a line the person has no ODOO permission for", async () => {

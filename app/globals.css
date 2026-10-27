@@ -535,6 +535,12 @@ main textarea:focus {
 .icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .icon-btn-danger:hover { background: var(--bad-bg); color: var(--bad-fg); border-color: color-mix(in srgb, var(--bad-fg) 30%, transparent); }
 
+/* the ODOO log's ✓ / ✗ — boxed while open, filled once ticked */
+.tick { border-color: var(--border); }
+.tick[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+.tick-ok:hover:not(:disabled), .tick-ok[aria-pressed="true"] { background: var(--ok-bg); color: var(--ok-fg); border-color: color-mix(in srgb, var(--ok-fg) 35%, transparent); }
+.tick-bad:hover:not(:disabled):not([aria-disabled="true"]), .tick-bad[aria-pressed="true"] { background: var(--bad-bg); color: var(--bad-fg); border-color: color-mix(in srgb, var(--bad-fg) 35%, transparent); }
+
 /* consistent focus rings */
 :focus-visible {
   outline: 2px solid var(--brand-ink);

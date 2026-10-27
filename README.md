@@ -188,8 +188,9 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
 7. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
    close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status, plus Notes. Two people work a row: the
    clerk types it in (or imports the sheet — its first seven columns, the same MO on the same day
-   updated, never doubled); the planner then moves the Status in place (Pending, Done, Blocked …) —
-   moving it to Done stamps the moment, shown under the pill and exported as "Done at" — and
+   updated, never doubled); the planner then ticks the Status in place — ✓ Done or ✗ Cancelled, a second click opens it
+   again; ✗ only once a note says why — marking it Done stamps the moment, shown under the marks and
+   exported as "Done at" — and
    keeps Notes on it — a list with time and author, each deletable on its own. A filter row (search across
    SOI, FG-CODE, MO, product and notes; product; status; closing; with/without notes) sticks between visits,
    as does the day. **The day's counts are themselves filters** — clicking "19 not closed" narrows to those

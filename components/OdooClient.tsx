@@ -4,7 +4,7 @@ import { traceHref } from "@/lib/domain/links";
 import Link from "next/link";
 
 import { FilterSelect, SearchBox } from "@/components/FilterControls";
-import { FilterX, MessageSquarePlus } from "lucide-react";
+import { Check, FilterX, MessageSquarePlus, X } from "lucide-react";
 import { CellEditor, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
 import { formatDate, formatDateTime } from "@/lib/domain/format";
 import { ProductSwatch } from "@/components/Badge";
@@ -12,7 +12,8 @@ import { productColor } from "@/lib/domain/productColors";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition, Fragment } from "react";
 import {
-  ODOO_PRODUCTS, ODOO_STATUSES, EMPTY_ODOO_FILTERS, filterOdooEntries, groupOdooEntries,
+  ODOO_PRODUCTS, ODOO_STATUSES, ODOO_OPEN_STATUS, ODOO_DONE_STATUS, ODOO_CANCELLED_STATUS, CANCEL_NEEDS_NOTE,
+  cancelLocked, isCancelledStatus, isDoneStatus, isOpenStatus, EMPTY_ODOO_FILTERS, filterOdooEntries, groupOdooEntries,
   odooItemTotals, odooScopeLabel, singleDayOf, type OdooItemTotal,
   type OdooEntryView, type OdooGroup, type OdooNoteView, type OdooTone, type OdooFilters,
 } from "@/lib/domain/odoo";
@@ -130,7 +131,11 @@ function RowFields({
       )}
       <Field hint="Status" label="Status" className="w-40">
         <select name="status" aria-label="Status" defaultValue={e?.status ?? "MO to be close"} disabled={disabled} className={`${F} w-full`}>
-          {statusOptions(e?.status).map((s) => <option key={s} value={s}>{s}</option>)}
+          {statusOptions(e?.status).map((s) => {
+            // cancelled only with a reason: a new row has none, an open one needs a note first
+            const locked = isCancelledStatus(s) && cancelLocked(e?.status, e?.notes.length ?? 0);
+            return <option key={s} value={s} disabled={locked}>{s}{locked ? " — add a note first" : ""}</option>;
+          })}
         </select>
       </Field>
     </>
@@ -204,9 +209,9 @@ function AddRow({ day, knownSois, lines, defaultLine }: { day: string; knownSois
   );
 }
 
-// ---- Status: the planner's column, moved in place ----
+// ---- Status: the planner's ✓ / ✗, ticked in place ----
 
-/** The dropdown's choices, plus whatever the row already says if it is not one of them. */
+/** The Add / Edit form's status choices, plus whatever the row already says if it is not one of them. */
 function statusOptions(current?: string | null): string[] {
   const cur = (current ?? "").trim();
   return cur && !(ODOO_STATUSES as readonly string[]).includes(cur) ? [...ODOO_STATUSES, cur] : [...ODOO_STATUSES];
@@ -284,9 +289,20 @@ function DoneStamp({ e }: { e: OdooEntryView }) {
   );
 }
 
+/**
+ * The planner's two marks: ✓ closes the row (Done), ✗ cancels it — only once
+ * a note says why. A second click on the lit mark opens the row again. A row
+ * carrying an older word (Pending, Blocked, the sheet's own) shows it beside them.
+ */
 function StatusCell({ e, canEdit, ids }: { e: OdooEntryView; canEdit: boolean; ids?: number[] }) {
   const a = useAction();
+  const [confirm, confirmDialog] = useConfirm();
+  // ✗ pressed before a note: said under the marks — a phone has no tooltip
+  const [needNote, setNeedNote] = useState(false);
   const targets = ids ?? [e.id];
+  const done = isDoneStatus(e.status);
+  const cancelled = isCancelledStatus(e.status);
+  const other = !done && !cancelled && !isOpenStatus(e.status);
   if (!canEdit) {
     return (
       <span className="inline-flex flex-col">
@@ -295,25 +311,63 @@ function StatusCell({ e, canEdit, ids }: { e: OdooEntryView; canEdit: boolean; i
       </span>
     );
   }
+  const locked = cancelLocked(e.status, e.notes.length);
+  async function tick(mark: typeof ODOO_DONE_STATUS | typeof ODOO_CANCELLED_STATUS) {
+    setNeedNote(false);
+    if (mark === ODOO_CANCELLED_STATUS && locked) { setNeedNote(true); return; }
+    // a second click on the lit mark opens the row again
+    const reopen = mark === ODOO_DONE_STATUS ? done : cancelled;
+    const next = reopen ? ODOO_OPEN_STATUS : mark;
+    // leaving Done forgets the moment it was closed on — the dashboard counts that day
+    if (done) {
+      const ok = await confirm({
+        title: reopen ? "Open this row again?" : "Cancel this closed row?",
+        body: <>It was closed {e.doneAtISO ? stamp(e.doneAtISO) : ""}. Ticking ✓ again closes it from that moment.</>,
+        confirmLabel: reopen ? "Open again" : "Cancel the row",
+        danger: !reopen,
+      });
+      if (!ok) return;
+    }
+    const fd = new FormData();
+    fd.set("ids", targets.join(","));
+    fd.set("status", next);
+    a.run(setOdooStatus, fd, "Saved.");
+  }
   return (
-    <span className="inline-flex flex-col">
-      <select
-        aria-label="Status"
-        value={e.status}
-        disabled={a.pending}
-        title="Move the status — saves at once"
-        className={`pill ${TONE_PILL[e.tone]} cursor-pointer pe-5 font-semibold`}
-        onChange={(ev) => {
-          const fd = new FormData();
-          fd.set("ids", targets.join(","));
-          fd.set("status", ev.target.value);
-          a.run(setOdooStatus, fd, "Saved.");
-        }}
-      >
-        {statusOptions(e.status).map((s) => <option key={s} value={s}>{s}</option>)}
-      </select>
+    <span className="inline-flex flex-col gap-0.5">
+      <span className={`pill ${TONE_PILL[e.tone]} print-only`}>{e.status}</span>
+      <span className="inline-flex items-center gap-1 no-print" role="group" aria-label="Status">
+        {other && <span className={`pill ${TONE_PILL[e.tone]}`} title="The row's earlier status — ✓ or ✗ replaces it">{e.status}</span>}
+        <button
+          type="button"
+          className="icon-btn tick tick-ok"
+          aria-pressed={done}
+          disabled={a.pending}
+          onClick={() => tick(ODOO_DONE_STATUS)}
+          // a toggle keeps one name — aria-pressed says whether it is ticked
+          aria-label="Done"
+          title={done ? "Done — click to open the row again" : "Mark Done — closed now, saves at once"}
+        >
+          <Check size={15} strokeWidth={3} aria-hidden />
+        </button>
+        <button
+          type="button"
+          className="icon-btn tick tick-bad"
+          aria-pressed={cancelled}
+          // focusable while locked, so a press says why rather than nothing
+          aria-disabled={locked || undefined}
+          disabled={a.pending}
+          onClick={() => tick(ODOO_CANCELLED_STATUS)}
+          aria-label="Cancelled"
+          title={cancelled ? "Cancelled — click to open the row again" : locked ? CANCEL_NEEDS_NOTE : "Cancel the row — the note says why"}
+        >
+          <X size={15} strokeWidth={3} aria-hidden />
+        </button>
+      </span>
       <DoneStamp e={e} />
+      {needNote && locked && <span className="text-[10px] text-bad-fg whitespace-normal max-w-[12rem]" role="alert">{CANCEL_NEEDS_NOTE}</span>}
       {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
+      {confirmDialog}
     </span>
   );
 }
@@ -710,7 +764,7 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
         </td>
         <td className="p-2 text-center tabnum font-extrabold cursor-pointer" onClick={details} title={`${parts} — the closings on this line. Click for the material behind all ${g.qty}`}>{g.qty}</td>
         <td className="p-2 whitespace-nowrap text-xs align-top">
-          <StatusCell e={head} canEdit={canEdit} ids={ids} />
+          <StatusCell e={noted} canEdit={canEdit} ids={ids} />
         </td>
         <td className="p-2 text-xs min-w-[18rem] max-w-[28rem] align-top font-normal">
           <NotesCell e={noted} canEdit={canEdit} />
@@ -744,7 +798,7 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
             }}
           >
             <div className="flex flex-wrap items-end gap-2">
-              <RowFields e={head} day={day} knownSois={knownSois} disabled={edit.pending} shared />
+              <RowFields e={noted} day={day} knownSois={knownSois} disabled={edit.pending} shared />
             </div>
             <Msg msg={edit.msg} />
             <div className="flex justify-end gap-2 pt-3 mt-3 border-t">
@@ -1114,7 +1168,7 @@ export function OdooClient({
                   <Th label="Product" />
                   <Th label="MO #" full="MO#" hint="Odoo's MO number — typed once the MO is printed from Odoo" />
                   <Th label="Qty" unit="pcs" full="QTY" center />
-                  <Th label="Status" hint="Moved in place by the planner" />
+                  <Th label="Status" hint="✓ Done · ✗ Cancelled — cancelling needs a note first" />
                   <Th label="Notes" hint="What Odoo said and what was done — one note at a time, newest first" />
                   <Th label="🧱" full="Material" hint="Click a row (or 🧱) for the material its qty consumes, ready to copy into Odoo" className="no-print" />
                 </tr>
