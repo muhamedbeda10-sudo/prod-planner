@@ -4,14 +4,15 @@ import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { aiStatusFor, apiKeyOf, getAiSettings } from "@/lib/server/ai/access";
 import { AI_SCHEMA_TEXT } from "@/lib/server/ai/schemaText.generated";
-import { CONFIG_PROPS } from "@/lib/server/ai/tools/automations";
+import { apiErrorText, usageTokens } from "@/lib/server/ai/agent";
 import { deliverToInbox } from "@/lib/server/inbox";
-import { hiddenTabsOf } from "@/lib/server/auth";
-import { configOf, offDays, ownerDenied, runCondition } from "./store";
-import { AI_DENY_TEXT, blockedTableIn, blockedTablesFor, costUsd } from "@/lib/domain/ai";
-import { APP_EVENTS, EVENT_TAB, isAppEventType } from "@/lib/domain/appEvents";
+import { conditionClosed, configOf, eventTabOpen, offDays, ownerDenied, runCondition } from "./store";
+import { AI_DENY_TEXT, costUsd } from "@/lib/domain/ai";
+import { APP_EVENTS, isAppEventType } from "@/lib/domain/appEvents";
 import { AUTOMATION_RECIPES, describeAction, describeTrigger } from "@/lib/domain/automations";
-import { IDEA_GROUPS, IDEA_LIMITS, IDEAS_AT, IDEAS_PER_ROUND, IDEAS_REMEMBERED, cleanIdea, ideaKey, ideasFor, ideaWeekISO, type IdeaDraft, type IdeaView } from "@/lib/domain/automationIdeas";
+import { IDEA_GROUPS, IDEA_LIMITS, IDEAS_AT, IDEAS_PER_ROUND, IDEAS_REMEMBERED, cleanIdea, ideaKey, ideasFor, type IdeaDraft, type IdeaView } from "@/lib/domain/automationIdeas";
+import { AUTOMATION_CONFIG_PROPS } from "@/lib/domain/automationSchema";
+import { weekStartISO } from "@/lib/domain/dateSlicer";
 import { factoryClockHHMM, factoryDayISO } from "@/lib/domain/dates";
 
 // The assistant's automation ideas (lib/domain/automationIdeas.ts): once a
@@ -27,11 +28,16 @@ const IDEAS_MODEL = "claude-haiku-5-5";
 /** Suggestions asked for — more than are kept, as some fail their checks. */
 const ASKED = 6;
 
-/** The tool the suggestions come back in. An idea's automation is written in
- *  the assistant's own automation fields, without the people (the person
- *  picks them) and never one that changes data by itself. Made when needed:
- *  the assistant's tools import the automations' runner, which imports this. */
-const suggestTool = (): Anthropic.Tool => ({
+/** The fields an idea's automation is written in: the assistant's own
+ *  automation fields, without the people (the person picks them) and never
+ *  one that changes data by itself. */
+const IDEA_CONFIG_PROPS = Object.fromEntries(
+  Object.entries(AUTOMATION_CONFIG_PROPS)
+    .filter(([k]) => !["recipients", "recipientIds", "eventActors", "eventActorIds"].includes(k))
+    .map(([k, v]) => (k === "action" ? [k, { ...v, enum: ["notify", "report", "task"] }] : [k, v])),
+);
+
+const SUGGEST_TOOL: Anthropic.Tool = {
   name: "suggest_automations",
   description: "The automations you suggest to the plant.",
   input_schema: {
@@ -47,7 +53,7 @@ const suggestTool = (): Anthropic.Tool => ({
             desc: { type: "string", maxLength: IDEA_LIMITS.desc, description: "One or two plain sentences: when it fires and what it does." },
             why: { type: "string", maxLength: IDEA_LIMITS.why, description: "What in the plant's last month makes it worth having — with the figure." },
             group: { type: "string", enum: [...IDEA_GROUPS] },
-            config: { type: "object", properties: ideaConfigProps(), required: ["name", "trigger", "action"] },
+            config: { type: "object", properties: IDEA_CONFIG_PROPS, required: ["name", "trigger", "action"] },
           },
           required: ["title", "desc", "why", "group", "config"],
         },
@@ -55,13 +61,7 @@ const suggestTool = (): Anthropic.Tool => ({
     },
     required: ["ideas"],
   },
-});
-
-const ideaConfigProps = () => Object.fromEntries(
-  Object.entries(CONFIG_PROPS)
-    .filter(([k]) => !["recipients", "recipientIds", "eventActors", "eventActorIds"].includes(k))
-    .map(([k, v]) => (k === "action" ? [k, { ...v, enum: ["notify", "report", "task"] }] : [k, v])),
-);
+};
 
 /** The ideas one person sees — each fit for them: a screen hidden from them,
  *  or a task they may not give, stays out. */
@@ -70,24 +70,24 @@ export async function ideasForUser(user: User, now = new Date()): Promise<IdeaVi
     prisma.automationIdea.findMany({ orderBy: { id: "desc" }, take: IDEAS_REMEMBERED }),
     prisma.automation.findMany({ where: { ownerId: user.id, deletedAt: null }, select: { name: true } }),
   ]);
-  const hidden = hiddenTabsOf(user);
-  const closed = blockedTablesFor(hidden);
-  return ideasFor(rows, { viewerId: user.id, liveNames: live.map((a) => a.name), now }).filter(({ config: c }) =>
-    !ownerDenied(user, c)
-    && !(c.conditionSql && blockedTableIn(c.conditionSql, closed))
-    && (user.isOwner || !c.eventTypes.some((t) => isAppEventType(t) && EVENT_TAB[t] && hidden.has(EVENT_TAB[t]!))));
+  return ideasFor(rows, {
+    viewerId: user.id, liveNames: live.map((a) => a.name), now,
+    fits: (c) => !ownerDenied(user, c) && !(c.conditionSql && conditionClosed(user, c.conditionSql)) && c.eventTypes.every((t) => !isAppEventType(t) || eventTabOpen(t, user)),
+  });
 }
 
 /** The weekly round, from the automations' tick: on a working day from
  *  IDEAS_AT, once a week — a round that failed (the API down, the month's cap
  *  reached) tries again the next working day of the same week. The day's try
  *  is claimed first, so a busy scheduler never runs it twice. */
-export async function suggestWeeklyIdeas(now: Date): Promise<void> {
+export async function suggestWeeklyIdeas(now: Date, lastWeekISO: string | null): Promise<void> {
   if (factoryClockHHMM(now) < IDEAS_AT) return;
   const todayISO = factoryDayISO(now);
-  if ((await offDays(now))(todayISO)) return;
-  const weekISO = ideaWeekISO(todayISO);
+  const weekISO = weekStartISO(todayISO);
   const tried = `${weekISO}@${todayISO}`;
+  // the settings the tick read already say whether today has its round: no I/O
+  if (lastWeekISO === weekISO || lastWeekISO === tried) return;
+  if ((await offDays(now))(todayISO)) return;
   const claimed = await prisma.aiSettings.updateMany({ where: { id: 1, OR: [{ ideasWeekISO: null }, { ideasWeekISO: { notIn: [weekISO, tried] } }] }, data: { ideasWeekISO: tried } });
   if (claimed.count === 0) return;
   const r = await suggestIdeas(now, { retries: 1 });
@@ -97,11 +97,12 @@ export async function suggestWeeklyIdeas(now: Date): Promise<void> {
 
 /** One round of ideas now: the ones kept, told to the plant's owners. */
 export async function suggestIdeas(now: Date, o: { retries?: number } = {}): Promise<{ made: number } | { error: string }> {
-  const owner = await prisma.user.findFirst({ where: { isOwner: true, active: true }, orderBy: { id: "asc" } });
+  const owners = await prisma.user.findMany({ where: { isOwner: true, active: true }, orderBy: { id: "asc" } });
+  const owner = owners[0];
   if (!owner) return { error: "The plant has no active owner." };
-  const status = await aiStatusFor(owner);
+  const [status, settings] = await Promise.all([aiStatusFor(owner), getAiSettings()]);
   if (!status.ok) return { error: `The assistant is not available to ${owner.name}: ${AI_DENY_TEXT[status.reason!]}` };
-  const apiKey = apiKeyOf(await getAiSettings());
+  const apiKey = apiKeyOf(settings);
   if (!apiKey) return { error: "The assistant has no API key." };
 
   const since = new Date(now.getTime() - 30 * 86_400_000);
@@ -143,31 +144,26 @@ ${AI_SCHEMA_TEXT}
     const msg = await client.messages.create({
       model: IDEAS_MODEL,
       max_tokens: 4000,
-      tools: [suggestTool()],
-      tool_choice: { type: "tool", name: "suggest_automations" },
+      tools: [SUGGEST_TOOL],
+      tool_choice: { type: "tool", name: SUGGEST_TOOL.name },
       messages: [{ role: "user", content: prompt }],
     });
-    const tokens = {
-      inputTokens: msg.usage.input_tokens, outputTokens: msg.usage.output_tokens,
-      cacheReadTokens: msg.usage.cache_read_input_tokens ?? 0, cacheWriteTokens: msg.usage.cache_creation_input_tokens ?? 0,
-    };
+    const tokens = usageTokens(msg.usage);
     await prisma.aiUsage.update({ where: { id: usage.id }, data: { calls: 1, ...tokens, costUsd: costUsd(IDEAS_MODEL, tokens), finishedAt: new Date() } });
     const call = msg.content.find((b) => b.type === "tool_use");
     const ideas = call && (call.input as { ideas?: unknown }).ideas;
     raw = Array.isArray(ideas) ? ideas : [];
   } catch (e) {
-    const error = String(e instanceof Error ? e.message : e).slice(0, 1000);
+    const error = apiErrorText(e).slice(0, 1000);
     await prisma.aiUsage.update({ where: { id: usage.id }, data: { error, finishedAt: new Date() } }).catch(() => {});
     return { error };
   }
 
   const keep = await checkedIdeas(raw, owner, [...taken, ...automations.map((a) => a.name)]);
   if (keep.length === 0) return { made: 0 };
-  const weekISO = ideaWeekISO(factoryDayISO(now));
   await prisma.automationIdea.createMany({
-    data: keep.map((i) => ({ weekISO, title: i.title, desc: i.desc, why: i.why, group: i.group, config: JSON.parse(JSON.stringify(i.config)) })),
+    data: keep.map((i) => ({ title: i.title, desc: i.desc, why: i.why, group: i.group, config: JSON.parse(JSON.stringify(i.config)) })),
   });
-  const owners = await prisma.user.findMany({ where: { isOwner: true, active: true }, select: { id: true } });
   await deliverToInbox(owners.map((o) => ({
     userId: o.id,
     kind: "message" as const,

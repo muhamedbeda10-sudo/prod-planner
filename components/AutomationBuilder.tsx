@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Eye, Lightbulb, Plus, Sparkles, X } from "lucide-react";
 import { previewAutomation, saveAutomation } from "@/app/automations/actions";
-import { automationIdeas, dismissAutomationIdea, suggestIdeasNow, type IdeasData } from "@/app/automations/ideaActions";
+import { automationIdeas, dismissAutomationIdea, suggestIdeasNow } from "@/app/automations/ideaActions";
+import { Loading, useTabData } from "@/components/useTabData";
 import { Badge } from "@/components/Badge";
 import { Modal } from "@/components/Modal";
 import { EmptyState, Note, Switch } from "@/components/primitives";
@@ -297,34 +298,30 @@ export function RecipeGallery({ onPick, onClose }: { onPick: (r: { config: Autom
  *  ones each week; each can be set aside, and the plant's owner can ask for
  *  more now. */
 function IdeasSection({ onPick }: { onPick: (r: { config: AutomationInput }) => void }) {
-  const [data, setData] = useState<IdeasData | null>(null);
+  const { data, error, refresh } = useTabData(automationIdeas, true, false);
+  // set aside here — gone from the list at once
+  const [aside, setAside] = useState<ReadonlySet<number>>(new Set());
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [suggesting, startSuggest] = useTransition();
   const [dismissing, startDismiss] = useTransition();
   // a card set aside takes its focused button with it: focus goes to the heading
   const heading = useRef<HTMLHeadingElement>(null);
-  const load = useCallback(
-    () => automationIdeas().then(setData, () => setData({ ok: false, error: "The ideas could not be read — try again.", ideas: [], canSuggest: false })),
-    [],
-  );
-  useEffect(() => {
-    load();
-  }, [load]);
   const suggest = () => startSuggest(async () => {
     setMsg(null);
     const r = await suggestIdeasNow();
     setMsg({ ok: r.ok, text: r.ok ? r.message ?? "Done." : r.error ?? "The ideas could not be written." });
-    if (r.ok) await load();
+    if (r.ok) refresh();
   });
   const dismiss = (id: number) => startDismiss(async () => {
     const fd = new FormData();
     fd.set("id", String(id));
     const r = await dismissAutomationIdea(fd);
     if (r.ok) {
-      setData((d) => d && { ...d, ideas: d.ideas.filter((i) => i.id !== id) });
+      setAside((s) => new Set(s).add(id));
       heading.current?.focus();
     } else setMsg({ ok: false, text: r.error ?? "It could not be set aside." });
   });
+  const ideas = data?.ideas.filter((i) => !aside.has(i.id)) ?? [];
   return (
     <section aria-labelledby="automation-ideas" aria-busy={!data || suggesting}>
       <div className="flex flex-wrap items-center gap-2 mb-1.5">
@@ -336,16 +333,16 @@ function IdeasSection({ onPick }: { onPick: (r: { config: AutomationInput }) => 
           </button>
         )}
       </div>
-      <Note msg={msg ?? (data && !data.ok ? { ok: false, text: data.error ?? "The ideas could not be read." } : null)} className="mb-1.5" />
+      <Note msg={msg} className="mb-1.5" />
       {!data ? (
-        <p className="text-sm text-muted" role="status">Reading the ideas…</p>
-      ) : data.ok && data.ideas.length === 0 ? (
+        <Loading error={error} onRetry={refresh} />
+      ) : ideas.length === 0 ? (
         <div className="rounded-xl border border-dashed">
           <EmptyState compact icon={Lightbulb} title="No ideas for you right now" hint="The assistant suggests new ones each week." />
         </div>
       ) : (
         <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(15rem,1fr))]">
-          {data.ideas.map((i) => (
+          {ideas.map((i) => (
             <div key={i.id} className="relative">
               <button type="button" className="w-full h-full text-start border rounded-xl ps-3 pe-9 py-2.5 bg-surface hover:bg-surface-2 hover:border-[var(--border-strong)]" onClick={() => onPick(i)}>
                 <span className="flex items-center gap-1.5">

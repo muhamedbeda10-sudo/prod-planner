@@ -241,7 +241,7 @@ export function sendableHistory(history: MessageParam[]): MessageParam[] {
   return history.filter((m, i) => m.role !== "system" || history[i + 1]?.role === "assistant");
 }
 
-function usageTokens(u: Message["usage"]): AiTokens {
+export function usageTokens(u: Pick<Message["usage"], "input_tokens" | "output_tokens" | "cache_read_input_tokens" | "cache_creation_input_tokens">): AiTokens {
   return {
     inputTokens: u.input_tokens ?? 0,
     outputTokens: u.output_tokens ?? 0,

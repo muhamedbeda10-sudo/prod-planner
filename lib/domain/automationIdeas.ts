@@ -1,10 +1,8 @@
 // Automation ideas — what the assistant suggests each week from what happens
-// in the plant, shown above the ready-made automations. Pure: which week an
-// idea belongs to, what a suggestion must be to be kept, and which ones a
-// person sees.
+// in the plant, shown above the ready-made automations. Pure: what a
+// suggestion must be to be kept, and which ones a person sees.
 
 import { checkAutomation, type AutomationConfig, type AutomationInput, type AutomationRecipe } from "./automations";
-import { weekStartISO } from "./dateSlicer";
 
 export type IdeaGroup = AutomationRecipe["group"];
 export const IDEA_GROUPS: readonly IdeaGroup[] = ["Quality", "Production", "Orders", "Reports", "Tasks"];
@@ -31,26 +29,10 @@ export interface IdeaDraft {
   config: AutomationConfig;
 }
 
-/** The plant's week an idea belongs to: the Saturday that starts it, on or
- *  before the day (Friday is the weekend). */
-export function ideaWeekISO(dayISO: string): string {
-  return weekStartISO(dayISO);
-}
-
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
 /** A name as compared with others — case, spaces and punctuation aside. */
 export const ideaKey = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-
-/** A configuration checked — one of the wrong shape (a string where a list
- *  belongs) is refused, not thrown on. */
-function safeCheck(config: unknown): ReturnType<typeof checkAutomation> {
-  try {
-    return checkAutomation((config ?? {}) as AutomationInput);
-  } catch {
-    return { ok: false, error: "The automation is not in a shape the app reads." };
-  }
-}
 
 /** One suggestion as the assistant wrote it, cleaned — or why it is not kept.
  *  It goes to nobody yet (the person picks who when they turn it on), and
@@ -66,10 +48,8 @@ export function cleanIdea(raw: unknown): { ok: true; idea: IdeaDraft } | { ok: f
   if (!group) return { ok: false, error: `"${String(r.group)}" is not a group.` };
   if (!r.config || typeof r.config !== "object") return { ok: false, error: "An idea needs its automation." };
   const config: Record<string, unknown> = { ...(r.config as Record<string, unknown>), recipientIds: [], eventActorIds: [] };
-  // the assistant's fields say 0 for "never goes up"
-  if (config.escalateAfterMin === 0) config.escalateAfterMin = null;
   if (config.action === "act") return { ok: false, error: "An idea does not change data by itself." };
-  const checked = safeCheck(config);
+  const checked = checkAutomation(config as AutomationInput);
   if (!checked.ok) return { ok: false, error: checked.error };
   return { ok: true, idea: { title, desc, why, group, config: checked.config } };
 }
@@ -85,27 +65,22 @@ export interface IdeaRow {
   createdAt: Date;
 }
 
-export interface IdeaView {
-  id: number;
-  title: string;
-  desc: string;
-  why: string;
-  group: string;
-  config: AutomationConfig;
-  isNew: boolean;
-}
+export type IdeaView = Omit<IdeaDraft, "group"> & { id: number; group: string; isNew: boolean };
 
-/** The ideas one person sees, newest first: not the ones they set aside, nor
- *  one they already keep an automation of (by its name), nor one no longer
- *  valid. */
-export function ideasFor(rows: readonly IdeaRow[], o: { viewerId: number; liveNames: readonly string[]; now: Date }): IdeaView[] {
+/** The ideas one person sees, from `rows` newest first: not the ones they set
+ *  aside, nor one they already keep an automation of (by its name), nor one
+ *  no longer valid or not `fit` for them. */
+export function ideasFor(
+  rows: readonly IdeaRow[],
+  o: { viewerId: number; liveNames: readonly string[]; now: Date; fits?: (c: AutomationConfig) => boolean },
+): IdeaView[] {
   const live = new Set(o.liveNames.map(ideaKey));
   const newSince = o.now.getTime() - IDEA_NEW_DAYS * 86_400_000;
   const out: IdeaView[] = [];
-  for (const r of [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id - a.id)) {
+  for (const r of rows) {
     if (r.dismissedBy.includes(o.viewerId)) continue;
-    const checked = safeCheck(r.config);
-    if (!checked.ok || live.has(ideaKey(checked.config.name))) continue;
+    const checked = checkAutomation((r.config ?? {}) as AutomationInput);
+    if (!checked.ok || live.has(ideaKey(checked.config.name)) || (o.fits && !o.fits(checked.config))) continue;
     out.push({ id: r.id, title: r.title, desc: r.desc, why: r.why, group: r.group, config: checked.config, isNew: r.createdAt.getTime() >= newSince });
     if (out.length === IDEAS_SHOWN) break;
   }

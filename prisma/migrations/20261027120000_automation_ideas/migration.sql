@@ -9,7 +9,6 @@ ALTER TABLE "AiSettings" ADD COLUMN "ideasWeekISO" TEXT;
 -- CreateTable
 CREATE TABLE "AutomationIdea" (
     "id" SERIAL NOT NULL,
-    "weekISO" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "desc" TEXT NOT NULL,
     "why" TEXT NOT NULL,

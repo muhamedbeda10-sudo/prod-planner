@@ -2065,7 +2065,6 @@ model Automation {
 // person turns it on; dismissedBy: the people who set it aside.
 model AutomationIdea {
   id          Int      @id @default(autoincrement())
-  weekISO     String
   title       String
   desc        String
   why         String

@@ -103,7 +103,7 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
     // the morning reviews, with what time is left
     if (Date.now() < deadline) await runDailyReviews({ now, deadline }).catch((e) => console.error("review: failed", e));
     // the week's automation ideas, once, when a minute is left for them
-    if (Date.now() < deadline - 90_000) await suggestWeeklyIdeas(now).catch((e) => console.error("automation ideas: failed", e));
+    if (Date.now() < deadline - 90_000) await suggestWeeklyIdeas(now, settings.ideasWeekISO).catch((e) => console.error("automation ideas: failed", e));
   }
   return result;
 }

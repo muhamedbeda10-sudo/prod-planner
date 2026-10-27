@@ -10,17 +10,12 @@ import type { IdeaView } from "@/lib/domain/automationIdeas";
 // who keeps automations, set aside one by one, and, for the plant's owner,
 // asked for again now.
 
-export interface IdeasData {
-  ok: boolean;
-  error?: string;
-  ideas: IdeaView[];
-  /** The plant's owner may ask for new ones now. */
-  canSuggest: boolean;
-}
+/** The ideas for the person — and whether they may ask for new ones now (the plant's owner). */
+export type IdeasData = { ok: true; ideas: IdeaView[]; canSuggest: boolean } | { ok: false; error: string };
 
 export async function automationIdeas(): Promise<IdeasData> {
   const guard = await requirePerm(AUTOMATIONS_KEY);
-  if (guard.error) return { ok: false, error: guard.error, ideas: [], canSuggest: false };
+  if (guard.error) return { ok: false, error: guard.error };
   const user = guard.user!;
   return { ok: true, ideas: await ideasForUser(user), canSuggest: user.isOwner };
 }
@@ -31,10 +26,9 @@ export async function dismissAutomationIdea(fd: FormData): Promise<{ ok: boolean
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(fd.get("id"));
   if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "No such idea." };
-  const idea = await prisma.automationIdea.findUnique({ where: { id }, select: { dismissedBy: true } });
-  if (!idea) return { ok: false, error: "That idea is gone." };
   const me = guard.user!.id;
-  if (!idea.dismissedBy.includes(me)) await prisma.automationIdea.update({ where: { id }, data: { dismissedBy: { push: me } } });
+  const set = await prisma.automationIdea.updateMany({ where: { id, NOT: { dismissedBy: { has: me } } }, data: { dismissedBy: { push: me } } });
+  if (set.count === 0 && !(await prisma.automationIdea.count({ where: { id } }))) return { ok: false, error: "That idea is gone." };
   return { ok: true };
 }
 

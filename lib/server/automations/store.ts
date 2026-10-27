@@ -60,10 +60,15 @@ export function ownerDenied(owner: User, c: Pick<AutomationConfig, "action">): s
   return null;
 }
 
+/** The table of a screen hidden from this person that a query reads, or null. */
+export function conditionClosed(who: User, sql: string): string | null {
+  return blockedTableIn(sql, blockedTablesFor(hiddenTabsOf(who)));
+}
+
 /** A condition's query run for its owner: the screens hidden from them stay
  *  closed, at most the limit of rows. */
 export async function runCondition(owner: User, sql: string): Promise<{ ok: true; rows: Record<string, unknown>[] } | { ok: false; error: string }> {
-  const closed = blockedTableIn(sql, blockedTablesFor(hiddenTabsOf(owner)));
+  const closed = conditionClosed(owner, sql);
   if (closed) return { ok: false, error: `"${closed}" belongs to a screen that is not opened for ${owner.name}.` };
   const r = await runAiRows(sql, AUTOMATION_LIMITS.conditionRows);
   if (!r.ok) return { ok: false, error: `The query failed: ${r.error}` };
@@ -130,6 +135,11 @@ export async function automationFor(user: User, id: number, o: { deleted?: boole
  *  what fires and for what a preview counts. */
 export function eventReaches(type: AppEventType, participants: readonly number[] | undefined, who: Pick<User, "id" | "isOwner" | "hiddenTabs">): boolean {
   if (isTaskEvent(type) && !(participants ?? []).includes(who.id)) return false;
+  return eventTabOpen(type, who);
+}
+
+/** Whether the screen an event belongs to (if any) is opened for this person. */
+export function eventTabOpen(type: AppEventType, who: Pick<User, "isOwner" | "hiddenTabs">): boolean {
   const tab = EVENT_TAB[type];
   return !tab || who.isOwner || !hiddenTabsOf(who as User).has(tab);
 }

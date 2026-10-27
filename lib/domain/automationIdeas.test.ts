@@ -1,16 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { cleanIdea, ideaKey, ideasFor, ideaWeekISO, IDEAS_SHOWN, type IdeaRow } from "./automationIdeas";
+import { cleanIdea, ideaKey, ideasFor, IDEAS_SHOWN, type IdeaRow } from "./automationIdeas";
 
 const notify = { name: "Order on hold", trigger: "event", eventTypes: ["order.held"], action: "notify", message: "{about} on hold" };
-
-describe("ideaWeekISO", () => {
-  it("is the Saturday that starts the plant's week", () => {
-    expect(ideaWeekISO("2026-10-24")).toBe("2026-10-24"); // Saturday
-    expect(ideaWeekISO("2026-10-27")).toBe("2026-10-24"); // Tuesday
-    expect(ideaWeekISO("2026-10-30")).toBe("2026-10-24"); // Friday
-    expect(ideaWeekISO("2026-10-31")).toBe("2026-10-31"); // the next Saturday
-  });
-});
 
 describe("cleanIdea", () => {
   it("keeps a valid idea, going to nobody yet", () => {
@@ -40,8 +31,9 @@ describe("ideasFor", () => {
   const row = (id: number, daysAgo: number, o: Partial<IdeaRow> = {}): IdeaRow => ({
     id, title: `Idea ${id}`, desc: "d", why: "w", group: "Orders", config: { ...notify, name: `Idea ${id}` }, dismissedBy: [], createdAt: new Date(now.getTime() - daysAgo * 86_400_000), ...o,
   });
-  it("shows the newest first, marks this week's new, and hides what the person set aside or keeps already", () => {
-    const v = ideasFor([row(1, 20), row(2, 2), row(3, 1, { dismissedBy: [7] }), row(4, 3), row(5, 1, { config: { name: "bad" } })], { viewerId: 7, liveNames: ["idea 4!"], now });
+  it("marks this week's new, and hides what the person set aside, keeps already, or that does not fit them", () => {
+    const rows = [row(6, 0), row(5, 1, { config: { name: "bad" } }), row(3, 1, { dismissedBy: [7] }), row(4, 3), row(2, 2), row(1, 20)];
+    const v = ideasFor(rows, { viewerId: 7, liveNames: ["idea 4!"], now, fits: (c) => c.name !== "Idea 6" });
     expect(v.map((i) => [i.id, i.isNew])).toEqual([[2, true], [1, false]]);
   });
   it("shows at most a handful", () => {
