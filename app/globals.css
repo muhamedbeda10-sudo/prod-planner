@@ -1569,11 +1569,10 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 .ai-turn { animation: ai-rise 0.28s ease-out; }
 
 /* the empty chat: who it is, what it can do (the tiles), then questions to start from */
-.ai-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.ai-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
 .ai-hero-logo { position: relative; width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; flex-shrink: 0; color: #fff; background: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--brand-fill) 45%, var(--viz-2))); box-shadow: var(--shadow-md); animation: ai-float 4s ease-in-out infinite; }
 .ai-hero-logo::after { content: ""; position: absolute; inset: -5px; border-radius: 19px; border: 2px solid color-mix(in srgb, var(--brand) 40%, transparent); animation: ai-ring 2.6s ease-out infinite; }
 .ai-hero-title { font-size: var(--fs-title); font-weight: 750; line-height: 1.2; margin: 0; text-transform: none; letter-spacing: -0.01em; color: var(--foreground); background: linear-gradient(90deg, var(--brand-ink), color-mix(in srgb, var(--brand-ink) 50%, var(--info-fg))); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-.ai-hero-sub { margin-top: 2px; font-size: var(--fs-body); color: var(--muted); max-width: 46rem; line-height: 1.45; }
 .ai-welcome-label { display: flex; align-items: center; gap: 6px; margin: 18px 0 8px; font-size: var(--fs-label); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .ai-welcome > .ai-hero + .ai-welcome-label { margin-top: 0; }
 

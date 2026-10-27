@@ -566,13 +566,6 @@ export function AiChat({
     else void askQuestion(q);
   };
 
-  const of = (v: number, cap: number) => (cap > 0 ? `${usdText(v)} / ${usdText(cap)}` : usdText(v));
-  const meter = [
-    status.userDayCap > 0 && `today ${of(spent.userToday, status.userDayCap)}`,
-    `month ${of(spent.user, status.userCap)}`,
-    isOwner && (status.plantCap > 0 || status.plantDayCap > 0) && `plant ${status.plantDayCap > 0 ? `today ${of(spent.plantToday, status.plantDayCap)}` : of(spent.plant, status.plantCap)}`,
-  ].filter(Boolean).join(" · ");
-
   // each answer's place among the chat's answers — what a 👍 / 👎 is kept by
   const answerNo: number[] = [];
   let answers = 0;
@@ -659,8 +652,7 @@ export function AiChat({
           }}
         >
           <div className="max-w-3xl mx-auto">
-            <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <p className="text-[11px] text-muted min-w-0 flex-1">{line === "LV" ? "LV panels" : "Transformers"}{tab ? ` · ${tab.label} · page context included` : ""}</p>
+            <div className="mb-1.5 flex justify-end">
               <div className="seg seg-sm ai-depth" role="group" aria-label="How deep to work the next question">
                 {AI_DEPTHS.map((d) => {
                   const Icon = DEPTH_ICON[d];
@@ -755,9 +747,6 @@ export function AiChat({
                     <span className="text-xs text-muted inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Sending…</span>
                   )}
                   {fileErr && <span className="text-xs font-semibold text-bad-fg" dir="auto">{fileErr}</span>}
-                  {!fileErr && uploading === 0 && pending.length === 0 && (
-                    <span className="hidden sm:inline text-[11px] text-muted tabnum ms-auto" title="What the assistant cost you">{meter}</span>
-                  )}
                 </div>
                 {busy ? (
                   <button type="button" className="composer-stop shrink-0" onClick={stop} aria-label="Stop the answer" title="Stop the answer (Esc) — what is written stays">
@@ -784,10 +773,7 @@ function Welcome({ tabId, tabLabel, actions, onAction, onPick, disabled, compact
     <div className={`ai-welcome mx-auto ${compact ? "max-w-2xl pt-1" : "max-w-5xl pt-1 sm:pt-4"}`}>
       <div className="ai-hero">
         <span className="ai-hero-logo" aria-hidden><Bot size={24} /></span>
-        <div className="min-w-0">
-          <h2 className="ai-hero-title">Ask about the plant</h2>
-          <p className="ai-hero-sub">Orders, output, machines, material, Odoo, shifts — answered from the live data, with its sources. Changes it prepares wait for your approval.</p>
-        </div>
+        <h2 className="ai-hero-title">Ask about the plant</h2>
       </div>
       <p className="ai-welcome-label"><Sparkles size={12} aria-hidden /> What it can do</p>
       <AiQuickGrid actions={actions} onPick={onAction} disabled={disabled} compact={compact} />

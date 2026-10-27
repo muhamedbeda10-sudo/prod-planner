@@ -72,7 +72,7 @@ const LINES = [opt("screen", "The line on screen"), opt("TR", "Transformers", "Ù
 
 const period = (defaultValue = "month"): AiQuickField => ({ name: "period", label: "Period", type: "select", defaultValue, options: PERIODS });
 const fromTo: AiQuickField[] = [
-  { name: "from", label: "From (optional)", type: "date", hint: "A date here takes the place of the period above." },
+  { name: "from", label: "From (optional)", type: "date" },
   { name: "to", label: "To (optional)", type: "date" },
 ];
 const dept: AiQuickField = { name: "dept", label: "Department", type: "select", defaultValue: "all", options: DEPTS };
