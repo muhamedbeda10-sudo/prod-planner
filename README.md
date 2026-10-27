@@ -520,14 +520,6 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      numbers as a table and their export. A chart's JSON draws however its fence was labelled, and other names for a
      form (column, donut, bullet, slope, step …) draw as the form that does that job. The same blocks draw in the chat and in the
      inbox's reports (expanded, the inbox fills the screen); **Print / PDF** on an answer or a report prints it alone under the company header, charts and all.
-   - **The plant's watchdog** (`lib/domain/watchdog.ts`, `lib/server/watchdog.ts`, `components/WatchdogCard.tsx`): each
-     working morning from its time (`WatchSettings`, 07:15 by default), once (the day is claimed), from the automations'
-     tick and whatever their pause: orders heading late (the ETA forecast against the delivery day, and those due within a
-     fortnight that cannot be forecast), a stage's earned standard hours on the last working day far under the median of
-     its 10 before, and a department's high absence or a worker absent on most of their recent days. Plain arithmetic —
-     what is new today is kept (`WatchFinding`) and sent once to the people listed (else the owner) as one inbox report
-     with a chart, an optional few lines by Haiku, and a task to themselves ready to approve for each of the first six
-     findings. `get_watch_findings` lets the assistant read them.
    - **How it answers** (`lib/domain/aiAnswer.ts`, `lib/domain/aiHistory.ts`, `components/AiChat.tsx`, `components/AiMarkdown.tsx`):
      the system prompt asks for the answer first, then the detail (a table, a chart), the cause and up to three actions when
      asked why or what to do, a self-check before writing (every figure from a tool result, totals that add up, the scope
@@ -616,7 +608,12 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      "Tasks — assign"). A condition can escalate: a row still found after `escalateAfterMin` minutes is sent once to the
      app's owners and the automation's owner (`keySeenAt`, `escalatedKeys`). Built on /automations with a form that shows
      the next runs, the rows a condition finds now, or what an event would have caught in the last 7 days, or from ten
-     ready-made recipes (`AUTOMATION_RECIPES`). They run as their owner, count against the month's caps, stop after five
+     ready-made recipes (`AUTOMATION_RECIPES`) — under the assistant's ideas (`lib/domain/automationIdeas.ts`,
+     `lib/server/automations/ideas.ts`, `AutomationIdea`): once a week (the first working day from 09:00, the week claimed
+     on `AiSettings.ideasWeekISO`) Haiku reads the last month's events, the automations kept and its earlier ideas, and
+     suggests new ones; up to three that pass the save checks (a condition's query is run) are kept, the owners are told
+     in the inbox, each person sees those fit for them (new this week marked, set aside one by one), the owner can ask
+     for more now, and `list_automation_ideas` lets the assistant read them. They run as their owner, count against the month's caps, stop after five
      failures in a row. The clock: Supabase pg_cron + pg_net call `/api/automations/tick`
      every minute through the plant's day (UTC 02:00-21:59: 04:00-23:59 Cairo in winter, 05:00-00:59 in summer) and
      every quarter hour at night, with a secret kept in Supabase Vault — set up in one click on AI assistant settings,

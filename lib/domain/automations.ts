@@ -136,6 +136,9 @@ const clean = (s: unknown) => String(s ?? "").replace(/\r\n/g, "\n").trim();
 /** A configuration cleaned, or what is wrong with it. */
 export function checkAutomation(i: AutomationInput): { ok: true; config: AutomationConfig } | { ok: false; error: string } {
   const L = AUTOMATION_LIMITS;
+  // from JSON (a stored idea, the assistant): a list where a list belongs
+  const lists = [i.times, i.weekdays, i.eventTypes, i.eventActorIds, i.recipientIds] as unknown[];
+  if (lists.some((v) => v != null && !Array.isArray(v))) return { ok: false, error: "The automation is not in a shape the app reads." };
   const name = clean(i.name).replace(/\s+/g, " ");
   if (!name) return { ok: false, error: "Give the automation a name." };
   if (name.length > L.name) return { ok: false, error: `Keep the name under ${L.name} characters.` };
@@ -208,7 +211,8 @@ export function checkAutomation(i: AutomationInput): { ok: true; config: Automat
   const taskDueDays = action === "task" ? Number(i.taskDueDays ?? 1) : 1;
   if (!Number.isInteger(taskDueDays) || taskDueDays < 0 || taskDueDays > L.taskDueDays) return { ok: false, error: `A task is due 0 to ${L.taskDueDays} days after it is given.` };
   const taskUrgent = action === "task" && i.taskUrgent === true;
-  const escalateAfterMin = trigger === "condition" && i.escalateAfterMin != null ? Number(i.escalateAfterMin) : null;
+  // 0 (as the assistant's fields say it) is never, as null is
+  const escalateAfterMin = trigger === "condition" && i.escalateAfterMin ? Number(i.escalateAfterMin) : null;
   if (escalateAfterMin !== null && !(ESCALATE_AFTER as readonly number[]).includes(escalateAfterMin)) {
     return { ok: false, error: `Escalate after ${ESCALATE_AFTER.map(minutesText).join(", ")}.` };
   }

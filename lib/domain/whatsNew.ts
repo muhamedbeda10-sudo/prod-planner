@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-automation-ideas",
+    dateISO: "2026-10-27",
+    title: "Ready-made automations: new ideas from the assistant every week",
+    where: "Automations → Ready-made · AI assistant → Automations",
+    href: "/automations",
+    body: "Ready-made now opens with “The assistant suggests”: each week (the first working day, from 09:00) the assistant reads what happened in the plant over the last month — the holds, stops, failed tests, returned work and tasks — and the automations already kept, and suggests up to three new ones, checked before they are shown (a condition's query must run). Those of this week are marked New; pick one to open it filled in and choose who it goes to, or × to set it aside. The owner gets a message when new ones come, and can ask for more now with Suggest new ones. Ask the assistant “what could I automate?” and it reads them too. The plant's watchdog card on AI settings is gone, with its morning report.",
+  },
+  {
     id: "2026-10-27-assistant-chats-resize-hide",
     dateISO: "2026-10-27",
     title: "The assistant: widen, narrow or hide the list of chats",
@@ -285,14 +293,7 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     href: "/automations",
     body: "Automations no longer need the assistant to be made: New automation opens a form — when (times and days, a condition, or something that happens in the app), what (a message, a report, a change, or a task), and who gets it — and before saving, Preview shows the next runs, the rows a condition finds right now, or what an event would have caught in the last 7 days. Ready-made opens ten recipes to start from (a failed leak test → a repair task, a machine still stopped → up to the owner, every morning the orders heading late, and more). The new task action gives a task per new row to the people you pick, due in so many working days. And a condition can escalate: a row still found after the time you set (say two hours) is sent once to the owner. Your own automations now have Edit.",
   },
-  {
-    id: "2026-10-26-plant-watchdog",
-    dateISO: "2026-10-26",
-    title: "The plant's watchdog: a morning report of orders heading late, output drops and absence",
-    where: "Inbox → Reports · AI settings → Automations",
-    href: "/admin/ai#automations",
-    body: "Every working morning (07:15 by default) the watchdog checks the plant by itself: orders whose forecast finish lands after their delivery day (and orders due soon that cannot be forecast because a stage made nothing), a stage whose earned standard hours yesterday fell well under its usual, and departments or workers with high absence. When it finds something it sends one report to the inbox — with a chart of the stage's days, a few lines by the assistant on what matters first, and a task ready to give yourself for each finding (one click). The owner sets the time, the thresholds and who gets it on AI settings → Automations, and can run it now. The assistant can read its findings too: ask it what the watchdog flagged.",
-  },
+
   {
     id: "2026-10-26-ai-learns-memory-feedback-checks",
     dateISO: "2026-10-26",

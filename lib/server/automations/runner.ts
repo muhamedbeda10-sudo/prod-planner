@@ -17,7 +17,7 @@ import { getCockpit, recordKpiSnapshot } from "@/lib/server/kpis";
 import { ownLine, withLine } from "@/lib/server/line";
 import { automationWindowOf, configOf, eventReaches, nextRunOf, offDays, ownerDenied, runCondition } from "./store";
 import { runDailyReviews } from "./review";
-import { runWatch } from "@/lib/server/watchdog";
+import { suggestWeeklyIdeas } from "./ideas";
 import { settleOrdersAfterOdoo } from "@/lib/server/odooAutoClose";
 import { AI_DENY_TEXT, automationContext, costUsd } from "@/lib/domain/ai";
 import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
@@ -82,9 +82,6 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
     await remindOverdueTasks(now).catch((e) => console.error("tasks: overdue reminders failed", e));
     await escalateLateTasks(now).catch((e) => console.error("tasks: late escalation failed", e));
   }
-  // the watchdog keeps its own switch and time — it is plain arithmetic, so
-  // the automations' pause does not hold it
-  await runWatch({ now }).catch((e) => console.error("watchdog: failed", e));
   if (settings.automationsPaused) return { ran: 0, checked: 0, skipped: "The owner has paused the automations." };
   // outside the owner's hours: a schedule that falls due now is skipped to
   // its next time; a condition waits, and its next check inside the hours
@@ -105,6 +102,8 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
   } finally {
     // the morning reviews, with what time is left
     if (Date.now() < deadline) await runDailyReviews({ now, deadline }).catch((e) => console.error("review: failed", e));
+    // the week's automation ideas, once, when a minute is left for them
+    if (Date.now() < deadline - 90_000) await suggestWeeklyIdeas(now, settings.ideasWeekISO).catch((e) => console.error("automation ideas: failed", e));
   }
   return result;
 }
