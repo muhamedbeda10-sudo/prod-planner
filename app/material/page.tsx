@@ -17,8 +17,8 @@ export default async function MaterialPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   await guardTab("/material");
-  // viewing is free for every account, like the rest of the app; recording is
-  // gated on material.edit
+  // viewing is free for every account, like the rest of the app; uploading
+  // the sheet — the tab's only change — needs the line's material right
   const me = await getCurrentUser();
   if (!me) redirect("/login");
 
@@ -26,15 +26,15 @@ export default async function MaterialPage({
   // one living table — no month
   const month = "";
   const line = await getActiveLine(); // one product line at a time
-  const { lines, totals, knownBoms, lvOrders, lvTemplates, odooByMo } = await getMaterialData(month);
+  const { lines, odooByMo } = await getMaterialData(month);
 
   return (
     <div>
       <RememberLastVisit storageKey="material:last" />
       <PageHead title="Material" sub="Nesting sheet · one living table, matched on the MO" />
       <MaterialClient
-        lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))}
-        product={line} lvOrders={lvOrders} lvTemplates={lvTemplates} odooByMo={odooByMo}
+        lines={lines} month={month} canImport={hasPerm(me, linePermKey(line, "material"))}
+        product={line} odooByMo={odooByMo}
         lineSwitch={<LineSwitch />}
       />
     </div>

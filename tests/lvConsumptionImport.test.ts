@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as XLSX from "xlsx";
 
 // The LV "Consumption Details" import against a stubbed database: what a
-// bare number in the consumed cell becomes, and whose produced count wins —
-// the sheet's where it states one, the tab's where the sheet says nothing.
+// bare number in the consumed cell becomes, and the produced count — the
+// sheet's where it states one, else the tracker's (nothing is typed in the tab).
 
 const h = vi.hoisted(() => {
   const fn = () => vi.fn();
@@ -43,7 +43,7 @@ const file = sheet([
 ]);
 
 // the tab's rows as the last upload left them, each with a produced count the
-// LV clerk typed over the tracker's
+// LV clerk typed over the tracker's before typing was closed
 const line = (over: Record<string, unknown>) => ({
   id: 1, month: "", line: "LV", partCode: "", material: "Galvanized steel", thicknessMm: 1.5, sheetSize: "1220*2440",
   actualPerUnit: null, actualPerUnitManual: false, sheetsUsed: null, note: null, recordedBy: null, ...over,
@@ -62,13 +62,14 @@ beforeEach(() => {
 const upsertFor = (mo: string) => h.prisma.materialUsage.upsert.mock.calls.map((c) => c[0]).find((a) => a.where.month_bom_mo_partCode_material_thicknessMm_sheetSize.mo === mo);
 
 describe("a bare number in the consumed cell", () => {
-  it("is flagged, not taken for the job's nesting — the job is still running — and the produced count stays the tab's", async () => {
+  it("is flagged, not taken for the job's nesting — the job is still running — and the produced count falls back to the tracker", async () => {
     h.prisma.materialUsage.findMany.mockResolvedValue([{ ...bareRow, units: 1 }, statedRow]);
     const r = await importNestingTracker(file, "Sara");
     expect(r.issues).toEqual([`Row 2: ${BARE} shows 14.4 sheets consumed but neither "Done" nor "For N units" — not counted yet; write "For N units" on the sheet, or "Done" once the job is nested.`]);
     const u = upsertFor(BARE)!;
-    expect(u.update).toMatchObject({ sheetsUsed: null, actualPerUnit: null, units: 30, sheetsPerUnit: 1.2 });
-    expect(u.update).not.toHaveProperty("producedQty"); // the typed 10 stands
+    // the sheet is the only source: it gives no count, so the typed 10 goes and
+    // the panels painted on the tracker count instead
+    expect(u.update).toMatchObject({ sheetsUsed: null, actualPerUnit: null, producedQty: null, units: 30, sheetsPerUnit: 1.2 });
     expect(u.create).toMatchObject({ sheetsUsed: null, actualPerUnit: null, producedQty: null, mo: BARE, line: "LV" });
   });
 
@@ -80,8 +81,8 @@ describe("a bare number in the consumed cell", () => {
     expect(h.prisma.materialUsage.upsert).not.toHaveBeenCalled();
   });
 
-  it("is unchanged once the tab holds it, whatever produced count was typed", async () => {
-    h.prisma.materialUsage.findMany.mockResolvedValue([{ ...bareRow, producedQty: 25 }, { ...statedRow, producedQty: 8, actualPerUnit: 1.8 }]);
+  it("is unchanged once the tab holds exactly what the sheet says", async () => {
+    h.prisma.materialUsage.findMany.mockResolvedValue([{ ...bareRow, producedQty: null }, { ...statedRow, producedQty: 8, actualPerUnit: 1.8 }]);
     const r = await importNestingTracker(file, "Sara");
     expect(r).toMatchObject({ ok: true, added: 0, updated: 0, unchanged: 2 });
     expect(h.prisma.materialUsage.upsert).not.toHaveBeenCalled();
@@ -98,12 +99,13 @@ describe("the produced count on a re-import", () => {
     expect(u.create).toMatchObject({ producedQty: 8, sheetsUsed: null, actualPerUnit: 1.8 });
   });
 
-  it("keeps a rate the planner typed, as the TR sheet does", async () => {
-    h.prisma.materialUsage.findMany.mockResolvedValue([bareRow, { ...statedRow, actualPerUnit: 2, actualPerUnitManual: true }]);
-    await importNestingTracker(file, "Sara");
+  it("replaces a rate typed in the tab before — the sheet is the only source, as on the TR sheet", async () => {
+    h.prisma.materialUsage.findMany.mockResolvedValue([bareRow, { ...statedRow, producedQty: 8, actualPerUnit: 1.8, actualPerUnitManual: true }]);
+    const r = await importNestingTracker(file, "Sara");
     const u = upsertFor(STATED)!;
-    expect(u.update).toMatchObject({ producedQty: 8, sheetsUsed: null });
-    expect(u.update).not.toHaveProperty("actualPerUnit");
+    // the same figure, but typed: still rewritten, so it is the sheet's from now on
+    expect(u.update).toMatchObject({ producedQty: 8, sheetsUsed: null, actualPerUnit: 1.8, actualPerUnitManual: false });
+    expect(r.updated).toBe(2);
   });
 });
 

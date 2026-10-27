@@ -11,11 +11,11 @@
 //   sheets for the job = sheets per unit × quantity of units
 //   difference         = sheets for the job − sheets actually nested
 //
-// The tab adds one typed number, producedQty — how many units were actually
-// made so far — and derives from it the answer the planner asked for:
+// The panels' tab also costs the units produced so far (the sheet's count,
+// else the panels painted on the tracker):
 //   actual per unit      = sheets actually nested / quantity of units
 //   sheets for produced  = actual per unit × units produced
-// "The sheet says 50 sheets made 30 units; I made 5 — so I used 8.333."
+// "The sheet says 50 sheets made 30 units; 5 were made — so 8.333 were used."
 
 /** Sheet counts are fractions of a sheet (0.429 of a sheet per unit). Excel
  *  left 0.564 × 3 as 1.6919999999999997; the nesting sheet quotes its figures
@@ -141,22 +141,6 @@ export function actualPerUnit(stored: number | null, used: number | null, units:
   return used / units;
 }
 
-/**
- * Is the line's rate the planner's OWN after an edit that sets it to `typed`?
- *
- * The nesting sheet does not carry a rate for every line — most of them show a
- * dash — so the tab lets him type one. What he types has to outrank the sheet:
- * a re-import must fill the blanks and leave his figures standing.
- *
- * Clearing the box hands the line back to the sheet. Typing a different figure
- * makes it his. Saving the line without touching the box leaves it as it was,
- * so re-saving an imported line does not quietly claim it.
- */
-export function rateIsTyped(was: { actualPerUnit: number | null; actualPerUnitManual: boolean }, typed: number | null): boolean {
-  if (typed === null) return false;
-  return was.actualPerUnitManual || typed !== was.actualPerUnit;
-}
-
 /** Sheets the produced units really consumed, at that rate. 1.667 a unit with
  *  5 produced → 8.333. */
 export function sheetsForProduced(stored: number | null, used: number | null, units: number, produced: number | null): number | null {
@@ -203,9 +187,6 @@ export interface MaterialLineView extends MaterialLineInput {
   producedUsed: number | null;
   /** Units still to make: the job less what was produced. */
   remainingUnits: number | null;
-  /** The rate was typed in the tab, not read off the sheet — a re-import
-   *  leaves it alone. */
-  actualPerUnitManual: boolean;
   forJob: number; // sheets for the job
   /** Actual Weight (Kg): the pieces nested for the job × one sheet's weight. */
   actualWeightKg: number | null;
@@ -219,38 +200,6 @@ export interface MaterialLineView extends MaterialLineInput {
  *  thickness × size. Re-importing a month's sheet edits its lines. */
 export function materialKey(l: Pick<MaterialLineInput, "month" | "bom" | "mo" | "partCode" | "material" | "thicknessMm" | "sheetSize">): string {
   return [l.month, l.bom, l.mo, l.partCode, l.material, l.thicknessMm, l.sheetSize].join("|");
-}
-
-// ---- totals per material, thickness and size ----
-
-export interface MaterialTotal {
-  material: string;
-  thicknessMm: number;
-  sheetSize: string;
-  forJob: number; // sheets the BOMs call for
-  used: number; // sheets actually nested, over the lines that were
-  forProduced: number; // sheets the produced units really consumed
-  /** Lines not nested yet — `used` and `forProduced` are silent about these. */
-  linesNotNested: number;
-}
-
-export function summarizeMaterial(lines: MaterialLineView[]): MaterialTotal[] {
-  const map = new Map<string, MaterialTotal>();
-  for (const l of lines) {
-    const key = `${l.material}|${l.thicknessMm}|${l.sheetSize}`;
-    let t = map.get(key);
-    if (!t) {
-      t = { material: l.material, thicknessMm: l.thicknessMm, sheetSize: l.sheetSize, forJob: 0, used: 0, forProduced: 0, linesNotNested: 0 };
-      map.set(key, t);
-    }
-    t.forJob = round4(t.forJob + l.forJob);
-    if (l.sheetsUsed === null) t.linesNotNested += 1;
-    else t.used = round4(t.used + l.sheetsUsed);
-    if (l.forProduced !== null) t.forProduced = round4(t.forProduced + l.forProduced);
-  }
-  return [...map.values()].sort(
-    (a, b) => a.material.localeCompare(b.material) || a.thicknessMm - b.thicknessMm || a.sheetSize.localeCompare(b.sheetSize)
-  );
 }
 
 // ---- import: the planner's "Nesting Tracker" sheet ----
@@ -477,7 +426,7 @@ export function filterMaterialLines(lines: MaterialLineView[], f: MaterialFilter
     switch (f.status) {
       case "nested": if (l.sheetsUsed === null) return false; break;
       case "notNested": if (l.sheetsUsed !== null) return false; break;
-      case "produced": if (l.producedQty === null) return false; break;
+      case "produced": if (l.producedUsed === null) return false; break;
       case "over": if (l.difference === null || l.difference >= 0) return false; break;
       case "within": if (l.difference === null || l.difference < 0) return false; break;
     }

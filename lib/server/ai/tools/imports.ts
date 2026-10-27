@@ -329,9 +329,9 @@ export const importMaterialSheetTool = importTool<MaterialInput, MaterialImportR
   name: "import_material_sheet",
   title: "Import the MATERIAL sheet",
   description:
-    "Import an attached material / nesting sheet onto the MATERIAL tab, as its Import does: each line matched to the one there is updated, new ones added. prune true also removes the sheet's earlier lines the file no longer carries (lines typed in the tab always stay).",
+    "Import an attached material / nesting sheet onto the MATERIAL tab, as its Import does: each line matched to the one there is updated, new ones added. prune true also removes every line the file no longer carries. The import is the MATERIAL sheet's only change — no line is typed, edited or deleted by hand.",
   tabs: ["material"],
-  properties: { line: LINE, prune: { type: "boolean", description: "Remove the earlier sheet's lines this file no longer carries." } },
+  properties: { line: LINE, prune: { type: "boolean", description: "Remove every line this file no longer carries." } },
   required: ["line"],
   perm: (i) => linePermKey(i.line, "material"),
   preview: (i, f, ctx) => withLine(i.line, () => importNestingTracker(bytesOf(f), ctx.user.name, true, i.prune ?? false)),

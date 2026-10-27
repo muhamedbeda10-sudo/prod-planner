@@ -101,8 +101,6 @@ export function materialRows(lines: MaterialPageData["lines"], line: ProductLine
     "Actual Weight (Kg)": l.actualWeightKg ?? "",
     Difference: l.difference ?? "",
     Notes: l.note ?? "",
-    Quantity: l.producedQty ?? "",
-    "Actual for Quantity": l.forProduced ?? "",
   }));
 }
 

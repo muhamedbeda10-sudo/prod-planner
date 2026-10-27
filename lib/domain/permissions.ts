@@ -58,7 +58,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
     name: "Material",
     perms: [
       { key: "stock.edit", label: "Physical material — count & import", desc: "Import the store's stock sheet on Material → Physical Material, correct a code's physical count or Odoo figure, add and remove items, and note why a count differs" },
-      { key: "material.edit", label: "Material & nesting — record", desc: "Add and edit the material lines on the MATERIAL tab — the record of what each order actually consumed: which sheet (material, thickness, size) and how many of them were really used" },
+      { key: "material.edit", label: "Material & nesting — import", desc: "Upload the material sheet on the MATERIAL tab — the record of what each order actually consumed: which sheet (material, thickness, size) and how many of them were really used. The sheet is the tab's only source: no line is typed, edited or deleted by hand" },
     ],
   },
   {
@@ -100,7 +100,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
       { key: "lv.status", label: "LV orders — close / reopen / hold", desc: "Close finished panel orders, reopen them, and put panel orders on hold or release them" },
       { key: "lv.import", label: "LV plans — import", desc: "Import the panels' monthly plan (the Orders Registry on LV Panels)" },
       { key: "lv.odoo", label: "LV Odoo close-out log — record", desc: "Add and edit the ODOO log's LV panel rows" },
-      { key: "lv.material", label: "LV material — record", desc: "Add and edit the MATERIAL tab's lines on LV Panels" },
+      { key: "lv.material", label: "LV material — import", desc: "Upload the panels' Consumption Details sheet on the MATERIAL tab (LV Panels) — its only source" },
     ],
   },
   {
@@ -124,7 +124,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
       { key: "ai.act.tracker", label: "AI — Plan Tracker, Daily log and worklists", desc: "The assistant may prepare changes on the Plan Tracker, the Daily log and the worklists for this person: close, reopen, hold and flag orders, quantities, specs and components, recorded totals, output taken off a production sheet or a photo of one, log corrections, the worklists' notes, returns, dates and hidden lines, tanks piece by piece (welder, leak test, repair, painting, quality), and an admin's edits on the Orders Registry. Each one still needs the person's own permission for it" },
       { key: "ai.act.machines", label: "AI — machines and the distribution", desc: "The assistant may put lines and jobs on machines, order and split the queues, plan the machines, keep the machines' rules, and type in jobs (the fabrication board's sheet jobs with their parts) and record their sheets and pieces — within the person's own worklist and machines permissions" },
       { key: "ai.act.simulator", label: "AI — the simulator", desc: "The assistant may build and run what-if scenarios, save and delete them, and — for an admin — apply one as the run order" },
-      { key: "ai.act.data", label: "AI — other data", desc: "The assistant may change the rest of the app's data for this person — the ODOO log, Material, Physical material, Consumables (hand-outs, the catalogue and its limits, powder scrap), the shift roster, the calendar, workers and machines — each within the person's own permission for it" },
+      { key: "ai.act.data", label: "AI — other data", desc: "The assistant may change the rest of the app's data for this person — the ODOO log, Physical material, Consumables (hand-outs, the catalogue and its limits, powder scrap), the shift roster, the calendar, workers and machines — each within the person's own permission for it" },
       { key: "ai.act.setup", label: "AI — standard times and settings", desc: "The assistant may change the plant's set-up for this person — the standard times, the FG map, the LV panels' hours, each stage's capacity and calibration, the times per machine, the shift hours and the master switches — within the person's own admin or machines permission. Every figure the app plans with is built on these, so each change waits for an approval" },
       { key: "ai.act.import", label: "AI — imports", desc: "The assistant may import a file this person attaches in its chat — a monthly or weekly plan, a Daily-log sheet, an ODOO sheet, the MATERIAL sheet or the store's stock sheet — after showing what the import would do. Each still needs the person's own import permission for it, and waits for an approval" },
       { key: "ai.act.delete", label: "AI — deletions", desc: "The assistant may prepare deletions (log rows, scenarios, queue lines, holidays …). A deletion always waits for an explicit approval, whatever else is ticked, and the assistant's log keeps what it removed" },

@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-material-sheet-import-only",
+    dateISO: "2026-10-27",
+    title: "Material: the sheet changes only by uploading it",
+    where: "Material → nesting sheet (Transformers and LV Panels)",
+    href: "/material",
+    body: "The MATERIAL tab now shows the planner's sheet exactly as it was uploaded: no line can be added, typed into, edited or deleted on the tab, and the assistant no longer changes it either. To change a line, correct the sheet and upload it again — what the sheet says replaces what the line held, including any Actual / unit typed by hand before and, on LV Panels, a typed produced count (a note the sheet leaves blank stays). The Quantity and Actual for qty columns and the Totals table under the sheet are gone; the Total row under the sheet still adds up what is shown.",
+  },
+  {
     id: "2026-10-27-odoo-alert-material-colours",
     dateISO: "2026-10-27",
     title: "Ready to close: each row is coloured by its material, as on the ODOO log",
