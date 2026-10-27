@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-assistant-answers-laid-out",
+    dateISO: "2026-10-27",
+    title: "The assistant's answers are laid out to scan",
+    where: "The assistant, the inbox's reports and their printouts",
+    href: "/ai",
+    body: "A longer answer now opens with the answer itself, set apart, then its sections: each heading carries an icon for what it is about — Summary, Details, Causes, Suggestions, Risks, Next steps, Material, Quality and more. Bullets wear the green dot, steps a numbered badge, long tables a light stripe per row, and a 💡 line is a tip in blue beside the ⚠️, ✅ and ❌ callouts. Orders on track, at risk or late can carry 🟢 🟡 🔴. Short answers stay one line.",
+  },
+  {
     id: "2026-10-27-physical-open-need",
     dateISO: "2026-10-27",
     title: "Physical Material shows what the open orders need",

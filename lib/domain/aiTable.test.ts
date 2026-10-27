@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calloutOf, columnKind, groupedFigure, withoutCalloutMark } from "./aiTable";
+import { calloutOf, columnKind, groupedFigure, sectionOf, withoutCalloutMark, withoutLeadingEmoji } from "./aiTable";
 
 describe("figures in an answer's table", () => {
   it("reads a column's kind off its head", () => {
@@ -42,5 +42,47 @@ describe("figures in an answer's table", () => {
     expect(withoutCalloutMark("\n❌ Problem")).toBe("Problem");
     expect(withoutCalloutMark("  ⚠️ Doubt this")).toBe("Doubt this");
     expect(withoutCalloutMark("🚫 Stop")).toBe("Stop");
+  });
+  it("reads a tip or a note as an info callout", () => {
+    expect(calloutOf("💡 Run the 3 mm first")).toBe("info");
+    expect(calloutOf("ℹ️ Fridays excluded")).toBe("info");
+    expect(withoutCalloutMark("💡 Run the 3 mm first")).toBe("Run the 3 mm first");
+    expect(withoutCalloutMark("ℹ️ Fridays excluded")).toBe("Fridays excluded");
+  });
+});
+
+describe("sectionOf", () => {
+  it("reads what a section is about off its heading, in English and in Arabic", () => {
+    expect(sectionOf("Summary")).toBe("summary");
+    expect(sectionOf("الخلاصة")).toBe("summary");
+    expect(sectionOf("Suggestions")).toBe("suggestions");
+    expect(sectionOf("اقتراحات")).toBe("suggestions");
+    expect(sectionOf("Next steps")).toBe("next");
+    expect(sectionOf("الخطوات الجاية")).toBe("next");
+    expect(sectionOf("Why it is late")).toBe("causes");
+    expect(sectionOf("Late orders")).toBe("risks");
+    expect(sectionOf("الأسباب")).toBe("causes");
+    expect(sectionOf("Risks")).toBe("risks");
+    expect(sectionOf("Material")).toBe("material");
+    expect(sectionOf("الجودة")).toBe("quality");
+    expect(sectionOf("Load vs capacity")).toBe("status");
+    expect(sectionOf("Details")).toBe("details");
+    expect(sectionOf("ملاحظات")).toBe("notes");
+    expect(sectionOf("Summary of late orders")).toBe("summary");
+    expect(sectionOf("خطة الإنتاج")).toBe("schedule");
+    expect(sectionOf("الحمل عليه")).toBe("status");
+  });
+  it("looks past a leading emoji, and names the rest other", () => {
+    expect(sectionOf("📊 Figures")).toBe("figures");
+    expect(sectionOf("💡 Suggestions")).toBe("suggestions");
+    expect(sectionOf("Tank line")).toBe("other");
+    expect(sectionOf("")).toBe("other");
+  });
+  it("takes a leading emoji off a heading, and nothing else", () => {
+    expect(withoutLeadingEmoji("📊 Figures")).toBe("Figures");
+    expect(withoutLeadingEmoji("⚠️ Risks")).toBe("Risks");
+    expect(withoutLeadingEmoji("1️⃣ First")).toBe("First");
+    expect(withoutLeadingEmoji("1. First")).toBe("1. First");
+    expect(withoutLeadingEmoji("MO 4471 ✅")).toBe("MO 4471 ✅");
   });
 });

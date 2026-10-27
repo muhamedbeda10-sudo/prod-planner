@@ -97,7 +97,7 @@ function PrintSheet({ title, subtitle, date, text, onDone }: { title: string; su
   return (
     <div ref={sheet} className="ai-print-sheet" aria-hidden>
       <PrintHeader title={title} subtitle={subtitle} date={date} />
-      <AiMarkdown text={text} />
+      <AiMarkdown text={text} className="ai-answer" />
     </div>
   );
 }

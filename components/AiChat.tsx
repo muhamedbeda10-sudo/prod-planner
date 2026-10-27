@@ -904,7 +904,7 @@ function Answer({
       </div>
       <div className="flex-1 min-w-0">
         <Steps steps={turn.steps} lookups={turn.lookups} streaming={streaming} />
-        {turn.text && <AiMarkdown text={turn.text} streaming={streaming} />}
+        {turn.text && <AiMarkdown text={turn.text} streaming={streaming} className="ai-answer" />}
         <AiSources sources={turn.sources ?? []} />
         {live && <Live text={live} since={turn.startedAt} />}
         {turn.remembered?.map((m, k) => (
