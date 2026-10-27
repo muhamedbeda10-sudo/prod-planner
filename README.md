@@ -80,7 +80,9 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    clock, as the ODOO tab shows it. The screen shows no Odoo, ETA, Complete or Left columns — allocating the
    whole Odoo log and forecasting every order made the sheet heavy (`getTrackerSheet` skips the Odoo work).
    Odoo's closings per component, allocated as below, are still read by the auto-close, the BOM trace and the
-   assistant's tracker sheet (`getMasterTracker`).
+   assistant's tracker sheet (`getMasterTracker`). The sheet (both lines) opens on open orders: closed ones
+   are sent only when **Status** is Closed or All (the table adds `?closed=1`), since they pile up month
+   after month.
    The BOM trace's **On Odoo** closing rows are the primary source per component; separate imports
    are used only where that component has no linked closing records. The ledger identifies the part
    and planner MO, even if a freely typed product or FG code differs. Project-only quantities fill the
@@ -206,8 +208,8 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    painting record (and the core frame's shot blast) writes its own row here on the same day with the SOI,
    product and qty, MO left empty for the office to type in place — the FG-CODE is copied from the last row
    of the same SOI and product, or composed from the part code and the transformer's BOM and flagged
-   "check FG-CODE" until someone confirms it. The tab opens on ONE day, which is how a row logged last
-   week reads as lost, so a banner says how many rows sit on other days and how many of the whole log are
+   "check FG-CODE" until someone confirms it. The tab opens on the last 30 days (the whole log grows without
+   end), so a banner says how many rows sit on other days and how many of the whole log are
    still not closed, with **All days** a click away in the day picker (the search covers the day on screen,
    so the whole log is searched from there). Such a row follows its log entry's edits only while nobody has
    touched it, and when the log entry behind it is deleted or corrected to nothing the row is **Cancelled

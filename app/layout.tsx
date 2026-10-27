@@ -18,6 +18,7 @@ import { getChatUnreadCount } from "@/lib/server/chat";
 import { getSettings } from "@/lib/server/data";
 import { getUserPrefs } from "@/lib/server/userPrefs";
 import { WHATS_NEW_PREF_KEYS } from "@/lib/domain/userPrefs";
+import { whatsNewHead } from "@/lib/domain/whatsNew";
 import { ownLine } from "@/lib/server/line";
 import { aiVisibleFor } from "@/lib/server/ai/access";
 import { inboxState } from "@/lib/server/inbox";
@@ -91,7 +92,7 @@ export default async function RootLayout({
             tankTracking={!!settings?.tankTracking}
             machinePlanning={!!settings?.machinePlanning}
             odooAlerts={{ enabled: odooAlertsOn, count: odooReady }}
-            whatsNewSeen={prefs["whatsnew:seen"] ?? null}
+            whatsNew={whatsNewHead(prefs["whatsnew:seen"] ?? null)}
             ai={ai}
             inbox={inbox}
           />

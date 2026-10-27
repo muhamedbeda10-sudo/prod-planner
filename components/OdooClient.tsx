@@ -923,7 +923,7 @@ function FilterBar({ entries, filters, onChange }: { entries: OdooEntryView[]; f
   const active = JSON.stringify(filters) !== JSON.stringify(DEFAULT_ODOO_FILTERS);
   return (
     <div className="toolbar toolbar-row no-print !mb-0">
-      <SearchBox value={filters.q} onChange={(v) => set({ q: v })} placeholder="Search SOI, BOM, MO, product, notes…" wide />
+      <SearchBox value={filters.q} onChange={(v) => set({ q: v })} placeholder="Search SOI, BOM, MO, product, notes…" wide settle />
       <FilterSelect label="Line" title="Product line" value={filters.line} allLabel="both" onChange={(v) => set({ line: v })} options={[{ value: "TR", label: "Transformers" }, { value: "LV", label: "LV Panels" }]} />
       <FilterSelect label="Status" value={filters.status} onChange={(v) => set({ status: v })} options={statuses.map((st) => ({ value: st, label: st }))} />
       {active && <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={() => onChange(DEFAULT_ODOO_FILTERS)} title="Back to the rows marked MO to be close"><FilterX size={13} aria-hidden />Reset</button>}

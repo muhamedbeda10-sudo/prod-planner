@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useState } from "react";
-import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { CAT, ChartCard, DeltaChip, Legend, StatTile, TipBox, fmt, pct } from "@/components/charts/kit";
+import { CAT, ChartCard, DeltaChip, Legend, StatTile, fmt, pct } from "@/components/charts/kit";
+import { PowderTrendChart } from "@/components/LazyCharts";
 import { ActionMsg as Msg, useConsumableAction as useAction } from "@/components/consumablesUi";
 import { monthLong, monthShort } from "@/lib/domain/consumableMonthly";
 import { POWDER_DEPARTMENTS, SCRAP_LIMITS, type PowderFigures } from "@/lib/domain/powderScrap";
@@ -183,7 +183,6 @@ export function PowderScrap({ r, canRecord, isAdmin, today, earliest }: { r: Pow
   const hrefOf = (m: string) => `/consumables?view=powder&month=${m}`;
 
   const series = trendOf === "all" ? r.total.trend : r.departments.find((d) => d.department === trendOf)!.trend;
-  const data = series.map((t) => ({ ...t, label: monthShort(t.month), ratePct: t.rate === null ? null : Math.round(t.rate * 1000) / 10 }));
   const t = r.total;
   const withdrawnChange = t.prev.withdrawn > 0 ? Math.round(((t.withdrawn - t.prev.withdrawn) / t.prev.withdrawn) * 100) : null;
   const showActions = isAdmin || r.entries.some((e) => e.canEdit);
@@ -269,26 +268,7 @@ export function PowderScrap({ r, canRecord, isAdmin, today, earliest }: { r: Pow
         data={series.map((x) => ({ Month: monthLong(x.month), "Drawn (kg)": x.withdrawn, "Scrap (kg)": x.scrap, "Net used (kg)": x.net, "Scrap rate": x.rate === null ? "—" : pct(x.rate, 1) }))}
       >
         <div className="viz" style={{ height: 260 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data} margin={{ top: 12, right: 4, left: -4, bottom: 0 }} barCategoryGap="24%">
-              <CartesianGrid vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} />
-              <YAxis yAxisId="kg" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={48} />
-              <YAxis yAxisId="rate" orientation="right" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} unit="%" allowDecimals={false} />
-              <Tooltip cursor={{ fill: "var(--surface-2)" }} content={({ active, payload }) => {
-                const p = active ? (payload?.[0]?.payload as (typeof data)[number] | undefined) : undefined;
-                return p ? <TipBox title={monthLong(p.month)} rows={[
-                  { label: "Drawn", value: `${fmt(p.withdrawn)} kg`, color: WITHDRAWN },
-                  { label: "Scrap", value: `${fmt(p.scrap)} kg`, color: SCRAP },
-                  { label: "Net used", value: `${fmt(p.net)} kg` },
-                  { label: "Scrap rate", value: rateText(p), color: RATE, line: true },
-                ]} /> : null;
-              }} />
-              <Bar yAxisId="kg" dataKey="withdrawn" fill={WITHDRAWN} maxBarSize={34} radius={[4, 4, 0, 0]} isAnimationActive={false} />
-              <Bar yAxisId="kg" dataKey="scrap" fill={SCRAP} maxBarSize={34} radius={[4, 4, 0, 0]} isAnimationActive={false} />
-              <Line yAxisId="rate" type="monotone" dataKey="ratePct" stroke={RATE} strokeWidth={2} connectNulls dot={{ r: 3, fill: RATE }} isAnimationActive={false} />
-            </ComposedChart>
-          </ResponsiveContainer>
+          <PowderTrendChart series={series} color={{ withdrawn: WITHDRAWN, scrap: SCRAP, rate: RATE }} />
         </div>
         <div className="mt-2"><Legend items={[{ label: "Powder drawn", color: WITHDRAWN }, { label: "Scrap", color: SCRAP }, { label: "Scrap rate", color: RATE, line: true }]} /></div>
       </ChartCard>

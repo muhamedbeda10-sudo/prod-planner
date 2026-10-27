@@ -6,6 +6,7 @@ import { Camera, LogOut, Sparkles, Trash2 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { InstallApp } from "@/components/InstallApp";
 import { useWhatsNew } from "@/components/WhatsNew";
+import type { WhatsNewHead } from "@/lib/domain/whatsNew";
 import { AVATAR_PX, avatarColor, initials } from "@/lib/domain/avatar";
 import { signOut } from "@/lib/signOut";
 import { removeAvatar, setAvatar } from "@/app/profile/actions";
@@ -55,9 +56,9 @@ async function shrink(file: File): Promise<File> {
   }
 }
 
-export function UserMenu({ user, whatsNewSeen }: {
+export function UserMenu({ user, whatsNew }: {
   user: { id: number; name: string; avatarUrl?: string | null; isAdmin: boolean; isOwner?: boolean };
-  whatsNewSeen: string | null;
+  whatsNew: WhatsNewHead;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -65,7 +66,7 @@ export function UserMenu({ user, whatsNewSeen }: {
   const [pending, start] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const news = useWhatsNew(whatsNewSeen);
+  const news = useWhatsNew(whatsNew);
 
   // close on a click outside it, or on Escape
   useEffect(() => {

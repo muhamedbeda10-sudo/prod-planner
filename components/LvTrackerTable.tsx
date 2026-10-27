@@ -5,7 +5,8 @@ import { traceHref } from "@/lib/domain/links";
 import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { Check, CheckCheck, ChevronRight, CornerDownRight, Pause } from "lucide-react";
-import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
+import { SearchBox, SelectFilter, FilterSelect, FilterBar, useSavedFilter } from "@/components/FilterControls";
+import { useClosedRows } from "@/components/useSetParam";
 import { Num, Soi } from "@/components/ui";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
 import { TrackerScope, type TrackerFilter } from "@/components/TrackerScope";
@@ -62,8 +63,12 @@ const SUMMARY_GROUP: ColKey[] = ["left"];
 
 type MenuTarget = { kind: "mo"; row: LvTrackerRow } | { kind: "group"; bom: string; members: LvTrackerRow[] };
 
-export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, head }: {
+export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, canStatus, prefs = {}, head }: {
   rows: LvTrackerRow[];
+  /** Whether `rows` carries the closed orders too (asked for with ?closed=1). */
+  hasClosed: boolean;
+  /** How many closed orders there are, sent or not. */
+  closedTotal: number;
   /** The stages this user may record — each behind its own tracker permission. */
   editableStages: LvChainStage[];
   canStatus: boolean;
@@ -80,6 +85,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
   const [product, setProduct] = useSavedFilter("lvtracker.product");
   const [family, setFamily] = useSavedFilter("lvtracker.family");
   const [status, setStatus] = useSavedFilter("lvtracker.status");
+  const closedLoading = useClosedRows(status, hasClosed);
   const [month, setMonth] = useSavedFilter("lvtracker.month");
   const [urgent, setUrgent] = useSavedFilter("lvtracker.urgent");
   const [progress, setProgress] = useSavedFilter("lvtracker.progress");
@@ -124,8 +130,10 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
   const months = useMemo(() => {
     const seen = new Set<string>();
     for (const r of rows) for (const m of r.months) seen.add(m);
+    // a saved month whose orders are all closed keeps its option
+    if (month) seen.add(month);
     return [...seen].sort((a, b) => monthKey(b) - monthKey(a));
-  }, [rows]);
+  }, [rows, month]);
 
   // the line's plans present — the panels' and the meter boxes'
   const families = useMemo(() => LV_FAMILIES.filter((f) => rows.some((r) => r.family === f)), [rows]);
@@ -419,12 +427,12 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
       </div>
 
       <FilterBar count={filtered.length} total={rows.length} onReset={resetFilters} showReset={false} hasActive={activeFilters.length > 0}
-        head={<><LineSwitch /><SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / FG / SEC…" wide /></>}
+        head={<><LineSwitch /><SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / FG / SEC…" wide settle /></>}
       >
         <SelectFilter label="Plan month" value={month} onChange={setMonth} options={months.map((m) => ({ value: m, label: m }))} />
         {families.length > 1 && <SelectFilter label="Plan" value={family} onChange={(v) => { setFamily(v); setProduct(""); }} options={families.map((f) => ({ value: f || "PNL", label: LV_FAMILY_LABEL[f] }))} />}
         {products.length > 1 && <SelectFilter label="Product" value={product} onChange={setProduct} options={products.map((p) => ({ value: p, label: p }))} />}
-        <SelectFilter label="Status" value={status || "open"} onChange={setStatus} options={[{ value: "open", label: "Open" }, { value: "hold", label: `On hold (${rows.filter((r) => r.hold.onHold).length})` }, { value: "closed", label: "Closed" }, { value: "all", label: "All" }]} />
+        <FilterSelect label="Status" value={status || "open"} emptyValue="open" onChange={(v) => setStatus(v === "open" ? "" : v)} options={[{ value: "open", label: "Open" }, { value: "hold", label: `On hold (${rows.filter((r) => r.hold.onHold).length})` }, { value: "closed", label: `Closed (${closedTotal})` }, { value: "all", label: "All" }]} />
         <SelectFilter label="Progress" value={progress} onChange={setProgress} options={[{ value: "none", label: "Not started" }, { value: "partial", label: "In progress" }, { value: "done", label: "Complete" }]} />
         <SelectFilter label="Urgent" value={urgent} onChange={setUrgent} options={[{ value: "yes", label: "Urgent only" }, { value: "no", label: "Not urgent" }]} />
         <span className="text-xs text-muted">
@@ -483,7 +491,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
           <tbody>
             {filtered.length === 0 && (
               <tr><td colSpan={tableCols} className="p-4 text-center text-muted">
-                {rows.length === 0 ? "No LV panel orders yet — import their monthly plan from Tools → Orders Registry." : "No rows match the filters."}
+                {closedLoading ? "Loading closed orders…" : rows.length === 0 && closedTotal === 0 ? "No LV panel orders yet — import their monthly plan from Tools → Orders Registry." : "No rows match the filters."}
               </td></tr>
             )}
             {groups.map(([bom, members]) => {

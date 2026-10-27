@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { ArrowDownRight, ArrowUpRight, Info } from "lucide-react";
 import { ChartCard } from "@/components/charts/kit";
-import { WaterfallFigure } from "@/components/AiChartForms";
+import { WaterfallFigure } from "@/components/LazyCharts";
 import { FramelessChart } from "@/components/AiChartFrame";
 import { EmptyState } from "@/components/primitives";
 import { parseAiChart, type AiWaterfallSpec } from "@/lib/domain/aiChart";

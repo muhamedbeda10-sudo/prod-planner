@@ -24,4 +24,7 @@ export const OverrunChart = dynamic(() => import("./FabAnalyticsCharts").then((m
 export const VolumeChart = dynamic(() => import("./ProductionCharts").then((m) => m.VolumeChart), { ssr: false, loading: () => <Placeholder h={290} /> });
 export const OdooDashboard = dynamic(() => import("./OdooDashboard").then((m) => m.OdooDashboard), { ssr: false, loading: () => <Placeholder h={520} /> });
 export const ConsumablesTrend = dynamic(() => import("./ConsumablesDashboard").then((m) => m.ConsumablesTrend), { ssr: false, loading: () => <Placeholder h={380} /> });
+export const MonthStatusChart = dynamic(() => import("./ConsumableCharts").then((m) => m.MonthStatusChart), { ssr: false, loading: () => <Placeholder h={220} /> });
+export const PowderTrendChart = dynamic(() => import("./ConsumableCharts").then((m) => m.PowderTrendChart), { ssr: false, loading: () => <Placeholder h={260} /> });
+export const WaterfallFigure = dynamic(() => import("./AiChartForms").then((m) => m.WaterfallFigure), { ssr: false, loading: () => <Placeholder h={300} /> });
 export const ConsumablesBreakdown = dynamic(() => import("./ConsumablesDashboard").then((m) => m.ConsumablesBreakdown), { ssr: false, loading: () => <Placeholder h={420} /> });

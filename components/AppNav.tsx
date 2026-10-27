@@ -25,6 +25,7 @@ import { LINE_LABEL, PRODUCT_LINES, hrefWithLine, pinnedLine, type ProductLine }
 import { signOut } from "@/lib/signOut";
 import { trapTab } from "@/components/Modal";
 import { toneAt } from "@/lib/domain/tones";
+import type { WhatsNewHead } from "@/lib/domain/whatsNew";
 
 type Item = {
   href: string;
@@ -282,7 +283,7 @@ export function AppNav({
   tankTracking = false,
   machinePlanning = false,
   odooAlerts = { enabled: false, count: 0 },
-  whatsNewSeen = null,
+  whatsNew = { unseen: 0, newest: null, seen: null },
   ai = false,
   inbox = { unread: 0, any: false },
 }: {
@@ -295,8 +296,8 @@ export function AppNav({
   machinePlanning?: boolean;
   /** The subscribed person's "ready to close in Odoo" alert: its count on the Plan Tracker tab (which holds the ODOO log), and the popup. */
   odooAlerts?: { enabled: boolean; count: number };
-  /** The newest "What's new" entry this person has seen. */
-  whatsNewSeen?: string | null;
+  /** This person's "What's new" badge: how many entries are unseen. */
+  whatsNew?: WhatsNewHead;
   /** The AI assistant is open to this person (lib/server/ai/access). */
   ai?: boolean;
   /** The inbox's unread count, and whether anything was ever sent to them. */
@@ -607,7 +608,7 @@ export function AppNav({
             {/* the account: one round button — the person's photo — opening
                 their name, photo, what's new, dark mode, install and sign out */}
             <div className="shrink-0 flex items-center md:border-l md:border-white/15 md:pl-3">
-              <UserMenu user={user} whatsNewSeen={whatsNewSeen} />
+              <UserMenu user={user} whatsNew={whatsNew} />
             </div>
           </div>
         </div>

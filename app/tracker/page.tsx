@@ -18,6 +18,7 @@ import { getLvTracker } from "@/lib/server/lvTracker";
 import { LV_CHAIN, lvPermKey } from "@/lib/domain/lv";
 import { getUserPrefs } from "@/lib/server/userPrefs";
 import { LV_TRACKER_PREF_KEYS, TRACKER_PREF_KEYS } from "@/lib/domain/userPrefs";
+import { openFirst } from "@/lib/domain/trackerSummary";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ const FEATURE_KEYS = ["tracker.status", "tracker.components", "tracker.qty", "tr
 export default async function TrackerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; plan?: string }>;
+  searchParams: Promise<{ view?: string; plan?: string; closed?: string }>;
 }) {
   await guardTab("/tracker");
   const sp = await searchParams;
@@ -47,12 +48,12 @@ export default async function TrackerPage({
   // panels' own tracker key for that column.
   if ((await getActiveLine()) === "LV") {
     const user = await getCurrentUser(); // already read by guardTab — cached
-    const [rows, lvPrefs] = await Promise.all([getLvTracker(), getUserPrefs(user?.id, LV_TRACKER_PREF_KEYS)]);
+    const [sheet, lvPrefs] = await Promise.all([getLvTracker(), getUserPrefs(user?.id, LV_TRACKER_PREF_KEYS)]);
     return (
       <>
         <PrintHeader title="Plan Tracker — LV Panels" date={issued} />
         <LvTrackerTable
-          rows={rows}
+          {...openFirst(sheet, sp.closed === "1")}
           editableStages={user ? LV_CHAIN.filter((s) => hasPerm(user, lvPermKey(s))) : []}
           canStatus={!!user && hasPerm(user, "lv.status")}
           prefs={lvPrefs}
@@ -90,12 +91,12 @@ export default async function TrackerPage({
 
   const user = await getCurrentUser(); // already read by guardTab — cached
   // this person's own sheet (columns, folded and hidden components) beside the sheet's data
-  const [rows, prefs] = await Promise.all([getTrackerSheet(), getUserPrefs(user?.id, TRACKER_PREF_KEYS)]);
+  const [sheet, prefs] = await Promise.all([getTrackerSheet(), getUserPrefs(user?.id, TRACKER_PREF_KEYS)]);
   return (
     <>
       <PrintHeader title="Plan Tracker — Monthly" date={issued} />
       <MasterTrackerTable
-        rows={rows}
+        {...openFirst(sheet, sp.closed === "1")}
         prefs={prefs}
         features={user ? [...FEATURE_KEYS.filter((k) => hasPerm(user, k)), ...(user.isAdmin ? ["admin"] : [])] : []}
         // stage columns (Fab/Weld/Paint/SHB/Dlvd) each need their own tracker permission

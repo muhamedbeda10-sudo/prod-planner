@@ -47,7 +47,7 @@ const rows = [
 ];
 
 function render() {
-  return renderToStaticMarkup(createElement(MasterTrackerTable, { rows }));
+  return renderToStaticMarkup(createElement(MasterTrackerTable, { rows, hasClosed: false, closedTotal: 0 }));
 }
 /** The cell in the sheet the assistant makes of the tracker, under the screen's month. */
 function sheetOdoo(mo: string) {
