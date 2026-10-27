@@ -99,7 +99,7 @@ export function OdooInsightsSection({ ins, colorOf }: { ins: Insights; colorOf: 
         <ChartCard title="Average days to close, by product" about="The slower products first" data={tables.leadProduct}>
           {lt.byProduct.length === 0 ? <p className="text-sm text-muted">No row closed in the period.</p> : (
             <Box height={Math.max(140, 24 + lt.byProduct.length * 34)}>
-              <BarChart className="viz-rows" data={lt.byProduct} layout="vertical" margin={{ top: 0, right: 56, left: 8, bottom: 0 }} barCategoryGap="30%">
+              <BarChart data={lt.byProduct} layout="vertical" margin={{ top: 0, right: 56, left: 8, bottom: 0 }} barCategoryGap="30%">
                 <CartesianGrid horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} unit=" d" />
                 <YAxis type="category" dataKey="product" width={110} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
@@ -155,7 +155,7 @@ export function OdooInsightsSection({ ins, colorOf }: { ins: Insights; colorOf: 
         <ChartCard title="Quantity per BOM, by product" about={`The ${bomData.length} heaviest BOM(s) logged in the period — each bar split by product`}
           data={tables.bom}>
           <Box height={Math.max(160, 30 + bomData.length * 34)} minWidth={420}>
-            <BarChart className="viz-rows" data={bomData} layout="vertical" margin={{ top: 0, right: 48, left: 8, bottom: 0 }} barCategoryGap="28%">
+            <BarChart data={bomData} layout="vertical" margin={{ top: 0, right: 48, left: 8, bottom: 0 }} barCategoryGap="28%">
               <CartesianGrid horizontal={false} />
               <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="bom" width={120} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />

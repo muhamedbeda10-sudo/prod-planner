@@ -93,7 +93,7 @@ export function DeptLoadCurve({ board, horizon }: { board: MachineBoardData; hor
                 />
                 {d.owedH > 0 && (
                   <span
-                    className="fx-fill-up absolute inset-x-0 bottom-0 rounded-t-[4px]"
+                    className="absolute inset-x-0 bottom-0 rounded-t-[4px]"
                     style={{
                       height: `${Math.max(barH, 1.5)}%`,
                       background: d.over ? "var(--viz-7)" : "var(--viz-2)",

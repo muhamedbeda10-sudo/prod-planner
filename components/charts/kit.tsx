@@ -5,6 +5,7 @@ import { Badge } from "@/components/Badge";
 import { ChartAbout } from "@/components/ChartAbout";
 import { TableFrame, Th } from "@/components/DataTable";
 import { aiTargetRef } from "@/lib/aiTarget";
+import { Meter } from "@/components/Meter";
 import { formatFigure, formatShare } from "@/lib/domain/format";
 
 // The dashboards' shared parts, so every dashboard reads the same way:
@@ -136,18 +137,6 @@ export function Sparkline({ values, width = 96, height = 28 }: { values: number[
   );
 }
 
-/** A single ratio against its whole: the fill in the accent on a lighter
- *  track of the same hue. */
-export function Meter({ value, label }: { value: number; label?: string }) {
-  const v = Math.max(0, Math.min(1, value));
-  return (
-    <div className="w-full" title={label}>
-      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: TRACK }}>
-        <div className="fx-fill h-full rounded-full" style={{ width: `${v * 100}%`, background: "var(--viz-1)" }} />
-      </div>
-    </div>
-  );
-}
 
 /** A tile: its name with the change beside it, the figure, then at most one
  *  short line. What it means and how it is counted (`about`) is the
@@ -359,12 +348,9 @@ export function Heatmap({
 
 /** A number with a thin bar behind it, for ranking columns in a table. */
 export function DataBar({ value, max, label }: { value: number; max: number; label?: string }) {
-  const w = max > 0 ? Math.max(2, (value / max) * 100) : 0;
   return (
     <div className="flex items-center gap-2 min-w-[7rem]">
-      <div className="flex-1 h-2 rounded-full bg-surface-2 overflow-hidden">
-        <div className="fx-fill h-full rounded-full" style={{ width: `${w}%`, background: "var(--viz-1)" }} />
-      </div>
+      <Meter value={max > 0 ? Math.max(0.02, value / max) : 0} className="flex-1" />
       <span className="tabnum font-bold text-sm w-10 text-right">{label ?? fmt(value)}</span>
     </div>
   );
@@ -384,17 +370,14 @@ export function HeatScale({ max, format = (v: number) => fmt(v) }: { max: number
 
 /** One row of a bullet chart: the bar is what there is, the tick is where it should be. */
 export function Bullet({ label, value, target, max, text, tone }: { label: string; value: number; target: number | null; max: number; text: React.ReactNode; tone?: "ok" | "warn" | "bad" | null }) {
-  const w = (v: number) => `${Math.max(0, Math.min(1, max > 0 ? v / max : 0)) * 100}%`;
+  const share = (v: number) => (max > 0 ? v / max : 0);
   return (
     <div>
       <div className="flex flex-wrap justify-between gap-x-3 text-sm mb-1">
         <span className="font-semibold">{label}</span>
         <span className={`tabnum ${tone ? TONE_TEXT[tone] : ""}`}>{text}</span>
       </div>
-      <div className="relative h-3 rounded-full" style={{ background: TRACK }} role="img" aria-label={`${label}: ${typeof text === "string" ? text : ""}`}>
-        <div className="fx-fill absolute inset-y-0 left-0 rounded-full" style={{ width: w(value), background: "var(--viz-1)" }} />
-        {target !== null && <div className="absolute -inset-y-1 w-0.5 rounded bg-foreground" style={{ left: `calc(${w(target)} - 1px)` }} aria-hidden />}
-      </div>
+      <Meter value={share(value)} mark={target === null ? null : share(target)} size="lg" label={label} valueText={typeof text === "string" ? text : undefined} />
     </div>
   );
 }

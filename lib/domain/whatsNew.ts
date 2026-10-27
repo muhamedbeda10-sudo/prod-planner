@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-one-progress-bar",
+    dateISO: "2026-10-27",
+    title: "Every progress bar looks the same, and the screens are lighter",
+    where: "Plan Tracker cards, machines, consumables and their limits, capacity, trace, tasks, AI settings and the dashboards",
+    body: "All the progress bars in the app are now one bar: the fill in its colour on a lighter track of the same colour, the same thickness for the same job, and a tick where it should reach (a target, a limit, an allowance). Before, each screen drew its own — some on a grey track, some thinner, some with no tick. The motion was also trimmed so it never slows a screen down: on a touch screen (the floor's tablets and phones) nothing animates at all; elsewhere tables no longer fade in or mark the row under the pointer, the marks inside a chart and the progress bars no longer draw themselves, menu rows no longer arrive one by one, cards appear faster, a box no longer animates its focus ring, a chart card no longer glows or casts a shadow under the pointer (its border still turns green), a dialog no longer blurs the page behind it, and an empty list's icon and the assistant's logo stay still.",
+  },
+  {
     id: "2026-10-27-inbox-docked-right",
     dateISO: "2026-10-27",
     title: "The inbox opens down the right side too, beside the app",

@@ -15,6 +15,7 @@ import { deptLabel, FINISHING_LABEL } from "@/lib/domain/constants";
 import { TraceSearch } from "@/components/TraceSearch";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { Soi } from "@/components/ui";
+import { Meter } from "@/components/Meter";
 
 /* ============================================================================
    Trace — premium ERP record view.
@@ -169,7 +170,7 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
                           </span>
                         </div>
                         {m.soi && <div className="mt-0.5 text-[11px] text-muted ltr">SOI {m.soi}</div>}
-                        {m.status !== "closed" && <MiniBar pct={p} className="mt-1.5" />}
+                        {m.status !== "closed" && <TraceBar pct={p} className="mt-1.5" />}
                         {m.remarks && <div className="mt-1 text-[11px] text-muted line-clamp-2">📝 {m.remarks}</div>}
                       </li>
                     );
@@ -269,7 +270,7 @@ function StagePipeline({ stages, totalReq, pipeline }: {
                     <span className="text-xs text-muted tabnum">/ {totalReq}</span>
                     <span className="ml-auto text-xs font-bold tabnum">{s.pct}%</span>
                   </div>
-                  <MiniBar pct={s.pct} className="mt-2" />
+                  <TraceBar pct={s.pct} className="mt-2" />
                   <div className="mt-1.5 text-[11px] text-muted tabnum">{s.left > 0 ? `${s.left} remaining` : "stage clear"}</div>
                 </button>
               </Fragment>
@@ -293,7 +294,7 @@ function StagePipeline({ stages, totalReq, pipeline }: {
                       <span className="tabnum text-muted">{pc}%</span>
                     </div>
                     <div className="tabnum font-extrabold">{v}<span className="text-[10px] text-muted font-normal">/{p.required}</span></div>
-                    <MiniBar pct={pc} className="mt-1" />
+                    <TraceBar pct={pc} className="mt-1" />
                   </div>
                 );
               })}
@@ -395,7 +396,7 @@ function ComponentProgress({ pipeline }: { pipeline: TracePipelineRow[] }) {
                         <td className="px-3 py-2.5 text-center tabnum">{p.delivered}</td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-2">
-                            <MiniBar pct={fin} className="flex-1" />
+                            <TraceBar pct={fin} className="flex-1" />
                             <span className="text-xs font-bold tabnum w-9 text-right">{fin}%</span>
                           </div>
                         </td>
@@ -641,7 +642,7 @@ function Kpi({ icon, label, value, suffix, sub, pct, bar, tone }: {
         <span className="text-[26px] font-extrabold tabnum leading-none tracking-tight" style={{ color }}>{value}{suffix}</span>
         {pct !== undefined && pct !== null && <span className="text-[11px] font-bold tabnum text-muted">{pct}%</span>}
       </div>
-      {bar !== undefined && <MiniBar pct={bar} className="mt-2" />}
+      {bar !== undefined && <TraceBar pct={bar} className="mt-2" />}
       {sub && <div className="mt-1.5 text-[11px] text-muted truncate">{sub}</div>}
     </div>
   );
@@ -652,14 +653,6 @@ function Chip({ tone, className = "", children }: { tone: "ok" | "bad" | "warn" 
     return <span className={`pill bg-brand-light text-brand-ink ${className}`}>{children}</span>;
   }
   return <span className={`pill pill-${tone} ${className}`}>{children}</span>;
-}
-
-function MiniBar({ pct, className = "" }: { pct: number; className?: string }) {
-  return (
-    <div className={`h-1.5 rounded-full bg-border/70 overflow-hidden ${className}`}>
-      <div className="fx-fill h-full rounded-full transition-all" style={{ width: `${Math.min(100, pct)}%`, background: pct >= 100 ? "var(--ok-fg)" : "var(--brand)" }} />
-    </div>
-  );
 }
 
 function MiniStat({ label, value, warn = false }: { label: string; value: number; warn?: boolean }) {
@@ -707,4 +700,9 @@ function Prop({ k, children }: { k: string; children: React.ReactNode }) {
       <dd className="text-right min-w-0">{children}</dd>
     </div>
   );
+}
+
+/** Trace's progress: the brand green until done, then the done green. */
+function TraceBar({ pct, className }: { pct: number; className?: string }) {
+  return <Meter value={pct / 100} color={pct >= 100 ? "var(--ok-fg)" : "var(--brand)"} className={className} />;
 }

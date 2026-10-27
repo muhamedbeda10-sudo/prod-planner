@@ -21,6 +21,7 @@ import { EmptyState, Note, SectionCard, SettingRow, Switch, Tabs } from "@/compo
 import { toneAt } from "@/lib/domain/tones";
 import type { AutomationView } from "@/lib/server/automations/views";
 import type { SchedulerStatus } from "@/lib/server/automations/scheduler";
+import { Meter } from "@/components/Meter";
 
 // The owner's page for the AI assistant: the figures for the day and the
 // month across the top, then its settings in sections — down the side on a
@@ -178,9 +179,7 @@ function Kpi({ label, value, sub, share }: { label: string; value: string; sub?:
       <div className="kpi-label">{label}</div>
       <div className="kpi-value ltr">{value}</div>
       {share !== null && share !== undefined && (
-        <div className={`kpi-meter ${share >= 1 ? "kpi-meter-over" : ""}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(1, share) * 100)} aria-label={label}>
-          <span style={{ width: `${Math.min(1, share) * 100}%` }} />
-        </div>
+        <Meter value={share} color={share >= 1 ? "var(--bad-fg)" : "var(--brand)"} size="sm" label={label} className="mt-2" />
       )}
       {sub && <div className="kpi-sub">{sub}</div>}
     </div>
