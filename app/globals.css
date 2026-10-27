@@ -9,6 +9,7 @@
   --r-sm: 6px; /* controls, badges, buttons */
   --r-md: 8px; /* cards, table frames, toolbars */
   --r-lg: 12px; /* dialogs, panels */
+  --bar-h: 49px; /* the green bar (components/AppNav): h-12 and its border */
   --fs-label: 11px; /* table headers, filter labels — uppercase, tracked */
   --fs-sm: 12px; /* secondary text, badges */
   --fs-body: 13px; /* table body and controls — the floor for data */
@@ -1333,7 +1334,7 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 /* on a narrower tablet it lies over the page under the bar, so the bar's
    buttons (the bell that opens and closes the inbox) stay in reach */
 @media screen and (max-width: 1023px) {
-  .ai-pop-dock { top: 56px; border-top: 1px solid var(--border); border-top-left-radius: var(--r-lg); }
+  .ai-pop-dock { top: var(--bar-h); border-top: 1px solid var(--border); border-top-left-radius: var(--r-lg); }
 }
 /* --ai-dock-push: how far what is pinned to the right of the page moves left with it */
 @media screen and (min-width: 1024px) {

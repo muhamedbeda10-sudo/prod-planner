@@ -9,7 +9,7 @@ import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens,
 import { useInboxPanel } from "@/components/InboxPanel";
 import { handToAssistant } from "@/lib/aiAsk";
 import { clampDockWidth } from "@/lib/domain/aiDock";
-import { DockEdge, useDock, useDockMax } from "@/components/FloatDock";
+import { FloatWindow } from "@/components/FloatDock";
 
 // The workspace (the chat, its Markdown and its charts) is the heaviest thing
 // this layout could ship, and every page carries the button. So it is split
@@ -69,6 +69,8 @@ interface PanelApi {
   canAsk: boolean;
   close: () => void;
   setLarge: (v: boolean) => void;
+  /** Docked: keep this width. */
+  setWidth: (width: number) => void;
   setView: (view: AiView) => void;
 }
 
@@ -163,6 +165,7 @@ export function AiPanelProvider({ config, children }: { config: AiPanelConfig; c
       canAsk: tabs.includes("chat"),
       close,
       setLarge: (v) => put({ large: v }),
+      setWidth: (width) => put({ width }),
       setView: (view) => put({ view: fix(view, state.view) }),
     };
   }, [tabs, shown, aiPage, state, put, close]);
@@ -178,15 +181,11 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
   const p = useAiPanel();
   const inbox = useInboxPanel();
   const phone = usePhone();
-  const max = useDockMax();
   const [made, setMade] = useState(false);
-  const pop = useRef<HTMLElement>(null);
   if (p?.shown && !made) setMade(true);
-  const layout: AiLayout = phone ? "phone" : p?.state.large ? "large" : "compact";
-  const width = clampDockWidth(p?.state.width, max);
-  useDock("ai", !!p?.shown && layout === "compact", width);
   if (!p || p.aiPage) return null;
   const { state } = p;
+  const layout: AiLayout = phone ? "phone" : state.large ? "large" : "compact";
 
   // automations and the playbook open in the large window on a wide screen
   const onView = (v: AiView) => {
@@ -203,30 +202,18 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
         </button>
       )}
       {made && (
-        <div hidden={!p.shown} className="no-print">
-          {layout === "large" && p.shown && <div className="ai-overlay" onClick={p.close} aria-hidden />}
-          <section
-            ref={pop}
-            role="dialog"
-            aria-modal={layout !== "compact"}
-            aria-label="AI assistant"
-            className={`ai-pop ${layout === "compact" ? "ai-pop-dock" : `ai-pop-${layout}`}`}
-          >
-            {layout === "compact" && (
-              <DockEdge label="Resize the assistant" width={width} max={max} pop={pop} onKeep={(w) => store.write({ ...state, width: w })} />
-            )}
-            <AiWorkspace
-              tabs={p.tabs}
-              view={state.view}
-              onView={onView}
-              layout={layout}
-              visible={p.shown}
-              isOwner={isOwner}
-              onExpand={p.setLarge}
-              onClose={p.close}
-            />
-          </section>
-        </div>
+        <FloatWindow name="ai" label="AI assistant" edgeLabel="Resize the assistant" layout={layout} shown={p.shown} width={state.width} onWidth={p.setWidth} onClose={p.close}>
+          <AiWorkspace
+            tabs={p.tabs}
+            view={state.view}
+            onView={onView}
+            layout={layout}
+            visible={p.shown}
+            isOwner={isOwner}
+            onExpand={p.setLarge}
+            onClose={p.close}
+          />
+        </FloatWindow>
       )}
     </>
   );

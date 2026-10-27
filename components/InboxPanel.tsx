@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens, usePhone, useWindowChrome } from "@/components/floatWindow";
-import { DockEdge, useDock, useDockMax } from "@/components/FloatDock";
+import { FloatWindow } from "@/components/FloatDock";
 import { isInboxTab, type InboxTab } from "@/lib/domain/inbox";
 import { clampDockWidth } from "@/lib/domain/aiDock";
 
@@ -45,6 +45,8 @@ interface InboxApi {
   open: (o?: { tab?: InboxTab; taskId?: number | null; itemId?: number | null }) => void;
   close: () => void;
   setLarge: (v: boolean) => void;
+  /** Docked: keep this width. */
+  setWidth: (width: number) => void;
   setTab: (t: InboxTab) => void;
   setTask: (id: number | null) => void;
 }
@@ -113,6 +115,7 @@ export function InboxPanelProvider({ children }: { children: ReactNode }) {
       open: (o = {}) => put({ open: true, itemId: o.itemId ?? null, ...(o.tab ? { tab: o.tab } : {}), ...(o.taskId !== undefined ? { taskId: o.taskId } : {}) }),
       close,
       setLarge: (v) => put({ large: v }),
+      setWidth: (width) => put({ width }),
       setTab: (t) => put({ tab: t }),
       setTask: (id) => put({ taskId: id }),
     }),
@@ -125,31 +128,23 @@ export function InboxPanelProvider({ children }: { children: ReactNode }) {
 export function InboxPanel() {
   const p = useInboxPanel();
   const phone = usePhone();
-  const max = useDockMax();
   const [made, setMade] = useState(false);
-  const pop = useRef<HTMLElement>(null);
   if (p?.shown && !made) setMade(true);
-  const layout = phone ? "phone" : p?.state.large ? "large" : "compact";
-  const width = clampDockWidth(p?.state.width, max);
-  useDock("inbox", !!p?.shown && layout === "compact", width);
   if (!p || !made) return null;
+  const layout = phone ? "phone" : p.state.large ? "large" : "compact";
   return (
-    <div hidden={!p.shown} className="no-print">
-      {layout === "large" && p.shown && <div className="ai-overlay" onClick={p.close} aria-hidden />}
-      <section ref={pop} role="dialog" aria-modal={layout !== "compact"} aria-label="Inbox" className={`ai-pop ${layout === "compact" ? "ai-pop-dock" : `ai-pop-${layout}`}`}>
-        {layout === "compact" && <DockEdge label="Resize the inbox" width={width} max={max} pop={pop} onKeep={(w) => store.write({ ...p.state, width: w })} />}
-        <InboxWorkspace
-          layout={layout}
-          tab={p.state.tab}
-          onTab={p.setTab}
-          taskId={p.state.taskId}
-          onTask={p.setTask}
-          openItem={p.state.itemId}
-          visible={p.shown}
-          onExpand={p.setLarge}
-          onClose={p.close}
-        />
-      </section>
-    </div>
+    <FloatWindow name="inbox" label="Inbox" edgeLabel="Resize the inbox" layout={layout} shown={p.shown} width={p.state.width} onWidth={p.setWidth} onClose={p.close}>
+      <InboxWorkspace
+        layout={layout}
+        tab={p.state.tab}
+        onTab={p.setTab}
+        taskId={p.state.taskId}
+        onTask={p.setTask}
+        openItem={p.state.itemId}
+        visible={p.shown}
+        onExpand={p.setLarge}
+        onClose={p.close}
+      />
+    </FloatWindow>
   );
 }
