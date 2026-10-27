@@ -4,7 +4,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens, usePhone, useWindowChrome } from "@/components/floatWindow";
+import { FloatWindow } from "@/components/FloatDock";
 import { isInboxTab, type InboxTab } from "@/lib/domain/inbox";
+import { clampDockWidth } from "@/lib/domain/aiDock";
 
 // The workspace renders its reports as Markdown with charts, which every page
 // would otherwise carry for a window most of them never open. It is split
@@ -15,10 +17,11 @@ const InboxWorkspace = dynamic(() => import("./InboxWorkspace").then((m) => m.In
   loading: () => <div className="h-full grid place-items-center text-sm text-muted" role="status">Opening the inbox…</div>,
 });
 
-// The inbox as a window of its own, opened from the bell in the bar: a card
-// under the bar on the right (the page stays usable beside it), a window in
-// the middle of the screen with Expand, the whole screen on a phone. Like the
-// assistant's window it stays as it was while the person moves between
+// The inbox as a window of its own, opened from the bell in the bar: docked
+// down the right of the screen, top to bottom, with the app moved left of it
+// and its left edge dragged to resize (components/FloatDock) — as the
+// assistant's window is; the whole screen with Expand, and on a phone. Like
+// the assistant's window it stays as it was while the person moves between
 // pages, closes on Escape, and reopens as it was left; one of the two is open
 // at a time. On the inbox's own page it stays closed — that page is the
 // window at full size.
@@ -30,6 +33,8 @@ interface InboxState {
   taskId: number | null;
   /** An item opened from its popup: unfolded and in view. */
   itemId: number | null;
+  /** Docked: how wide it was dragged (lib/domain/aiDock). */
+  width: number;
 }
 
 interface InboxApi {
@@ -40,6 +45,8 @@ interface InboxApi {
   open: (o?: { tab?: InboxTab; taskId?: number | null; itemId?: number | null }) => void;
   close: () => void;
   setLarge: (v: boolean) => void;
+  /** Docked: keep this width. */
+  setWidth: (width: number) => void;
   setTab: (t: InboxTab) => void;
   setTask: (id: number | null) => void;
 }
@@ -69,12 +76,13 @@ export function InboxPanelProvider({ children }: { children: ReactNode }) {
       tab: s.tab && isInboxTab(s.tab) ? s.tab : "alerts",
       taskId: typeof s.taskId === "number" && s.taskId > 0 ? s.taskId : null,
       itemId: typeof s.itemId === "number" && s.itemId > 0 ? s.itemId : null,
+      width: clampDockWidth(s.width),
     };
   }, [raw, openedNow]);
   const pathname = usePathname();
   const inboxPage = onInboxPage(pathname);
 
-  // a link in it opened a page: the large window steps back to the corner, and on a phone it closes
+  // a link in it opened a page: the large window steps back to the side, and on a phone it closes
   const lastPath = useRef(pathname);
   useEffect(() => {
     if (pathname === lastPath.current) return;
@@ -107,6 +115,7 @@ export function InboxPanelProvider({ children }: { children: ReactNode }) {
       open: (o = {}) => put({ open: true, itemId: o.itemId ?? null, ...(o.tab ? { tab: o.tab } : {}), ...(o.taskId !== undefined ? { taskId: o.taskId } : {}) }),
       close,
       setLarge: (v) => put({ large: v }),
+      setWidth: (width) => put({ width }),
       setTab: (t) => put({ tab: t }),
       setTask: (id) => put({ taskId: id }),
     }),
@@ -124,21 +133,18 @@ export function InboxPanel() {
   if (!p || !made) return null;
   const layout = phone ? "phone" : p.state.large ? "large" : "compact";
   return (
-    <div hidden={!p.shown} className="no-print">
-      {layout === "large" && p.shown && <div className="ai-overlay" onClick={p.close} aria-hidden />}
-      <section role="dialog" aria-modal={layout !== "compact"} aria-label="Inbox" className={`ai-pop ai-pop-${layout} ${layout === "compact" ? "inbox-pop" : ""}`}>
-        <InboxWorkspace
-          layout={layout}
-          tab={p.state.tab}
-          onTab={p.setTab}
-          taskId={p.state.taskId}
-          onTask={p.setTask}
-          openItem={p.state.itemId}
-          visible={p.shown}
-          onExpand={p.setLarge}
-          onClose={p.close}
-        />
-      </section>
-    </div>
+    <FloatWindow name="inbox" label="Inbox" edgeLabel="Resize the inbox" layout={layout} shown={p.shown} width={p.state.width} onWidth={p.setWidth} onClose={p.close}>
+      <InboxWorkspace
+        layout={layout}
+        tab={p.state.tab}
+        onTab={p.setTab}
+        taskId={p.state.taskId}
+        onTask={p.setTask}
+        openItem={p.state.itemId}
+        visible={p.shown}
+        onExpand={p.setLarge}
+        onClose={p.close}
+      />
+    </FloatWindow>
   );
 }
