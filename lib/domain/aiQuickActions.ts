@@ -3,7 +3,8 @@
 // file, a what-if, a plan to a deadline, the morning briefing, what looks
 // wrong, why an efficiency moved, the planner's controls (what to run next,
 // the load against capacity, the bottleneck, a rush order, why an order is
-// late, whether it can be released, input/output, a planning idea explained),
+// late, whether it can be released, the sheets against Odoo's stock,
+// input/output, a planning idea explained),
 // a handwritten sheet scanned, an automation.
 // A tile with fields opens a short form — the period, the department, the
 // form of the answer — and the question is written from what was picked, in
@@ -15,7 +16,7 @@ import { parseISODate } from "./dates";
 
 export type AiQuickId =
   | "report" | "chart" | "excel" | "whatif" | "deadline" | "briefing" | "problems" | "why"
-  | "dispatch" | "load" | "bottleneck" | "rush" | "late" | "release" | "io" | "learn"
+  | "dispatch" | "load" | "bottleneck" | "rush" | "late" | "release" | "stock" | "io" | "learn"
   | "scan" | "automation";
 
 /** A field of a tile's form — the shape the chat's form dialog takes. */
@@ -282,6 +283,7 @@ export const AI_QUICK_ACTIONS: readonly AiQuickAction[] = [
     confirmLabel: "Check it",
     fields: [moField],
   },
+  { id: "stock", label: "Enough material?", hint: "Sheets the open orders need against Odoo's stock", fields: [] },
   {
     id: "io",
     label: "Input / output",
@@ -401,6 +403,8 @@ export function composeQuickQuestion(id: AiQuickId, v: Values = {}): string | nu
       if (!mo) return null;
       return `ينفع نطلق الأوردر ${mo} للأرضية دلوقتي؟\nراجع شروط الإطلاق: الـ hold، الكمية، الأزمنة المعيارية، الـ nesting، الخامة، والحمل على الـ Fabrication — وقولّي جاهز ولا لأ، وإيه اللي ناقص.`;
     }
+    case "stock":
+      return "عندنا خامة كفاية للأوردرات المفتوحة؟ قارن الصاج اللي محتاجينه (حسب الـ nesting) برصيد الأودو والجرد الفعلي في Physical Material.\nوريني الأكواد الناقصة والأوردرات اللي محتاجاها، والأكواد اللي الطلب عليها أكبر من الرصيد، ومين يتقدم الأول.";
     case "io": {
       const station = arOf(STATIONS, v.station) || arOf(STATIONS, "weld");
       return `اعملي تقرير الداخل والخارج (input/output) لـ ${station} عن ${arOf(WEEKS_BACK, v.weeks) || arOf(WEEKS_BACK, "4")}.\nالمشكلة جاية من القسم اللي قبله ولا من جوه القسم؟ والطابور قدامه بيزيد ولا بيقل؟`;

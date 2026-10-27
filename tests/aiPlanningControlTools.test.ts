@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   getStdData: vi.fn(),
   control: { getControlInputs: vi.fn(), getReleaseFacts: vi.fn(), getStationFlows: vi.fn(), getStationStops: vi.fn() },
   prisma: { masterOrder: { findMany: vi.fn() }, holiday: { findMany: vi.fn() } },
+  material: { getOrderPartNeeds: vi.fn(), getOpenPartNeeds: vi.fn(), getStockLines: vi.fn() },
 }));
 
 vi.mock("server-only", () => ({}));
@@ -16,6 +17,7 @@ vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("@/lib/server/auth", () => ({ hasPerm: () => true }));
 vi.mock("@/lib/server/whatif", () => ({ getWhatIfInputs: h.getWhatIfInputs }));
 vi.mock("@/lib/server/standardTimes", () => ({ getStdData: h.getStdData }));
+vi.mock("@/lib/server/materialCoverage", () => h.material);
 vi.mock("@/lib/server/planningControl", async () => {
   const actual = await vi.importActual<typeof import("@/lib/server/planningControl")>("@/lib/server/planningControl");
   return { ...actual, ...h.control };
@@ -25,7 +27,7 @@ import type { User } from "@prisma/client";
 import type { WhatIfInputs, WhatIfJob } from "@/lib/domain/whatif";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import {
-  checkReleaseReadinessTool, getDelayParetoTool, getDispatchListTool, getIoReportTool, getLoadProfileTool, identifyBottleneckTool, simulateRushOrderTool,
+  checkReleaseReadinessTool, getDelayParetoTool, getMaterialCoverageTool, getDispatchListTool, getIoReportTool, getLoadProfileTool, identifyBottleneckTool, simulateRushOrderTool,
 } from "@/lib/server/ai/tools/planningControl";
 import { checkToolInput, toolsFor } from "@/lib/server/ai/tools";
 
@@ -42,6 +44,7 @@ const inputs: WhatIfInputs = {
 const ctx: ToolCtx = { user: { id: 1, name: "Sara" } as User, hidden: new Set(), now: new Date("2026-10-27T08:00:00Z"), todayISO: "2026-10-27", conversationId: 1, automationId: null };
 const lv: ToolCtx = { ...ctx, line: "LV" };
 const json = (r: { text: string }) => JSON.parse(r.text);
+const sheet = (code: string, perUnit: number) => ({ material: "Steel", materialCode: code, thicknessMm: 3, sheetSize: "1220*2440", perUnit, actual: true });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -54,6 +57,16 @@ beforeEach(() => {
   });
   h.prisma.masterOrder.findMany.mockResolvedValue([]);
   h.prisma.holiday.findMany.mockResolvedValue([]);
+  h.material.getOrderPartNeeds.mockResolvedValue([{ mo: "A", item: "TN", pcsLeft: 10, specs: [sheet("C-SHR-003", 1)] }]);
+  h.material.getOpenPartNeeds.mockResolvedValue({
+    parts: [
+      { mo: "A", item: "TN", pcsLeft: 10, specs: [sheet("C-SHR-003", 1)] },
+      { mo: "B", item: "TC", pcsLeft: 30, specs: [sheet("C-SHR-003", 1), sheet("C-SHR-005", 0.5)] },
+      { mo: "D", item: "CB", pcsLeft: 4, specs: [] },
+    ],
+    openMos: new Set(["A", "B", "D", "E"]),
+  });
+  h.material.getStockLines.mockResolvedValue({ lines: [{ code: "C-SHR-003", name: "HR 3mm", uom: "PC", odoo: 25, physical: 25 }, { code: "C-SHR-005", name: "HR 5mm", uom: "PC", odoo: 100, physical: 100 }], lastChange: { atISO: "2026-10-27T09:00:00.000Z", by: "Store" } });
 });
 
 describe("the planning-control tools", () => {
@@ -156,12 +169,43 @@ describe("the planning-control tools", () => {
     expect(json(await checkReleaseReadinessTool.run({ mo: "Q" }, ctx))).toMatchObject({ verdict: "not_ready" });
     h.control.getReleaseFacts.mockResolvedValue({ order: { mo: "A", status: "open", holdAt: null, holdNote: null, pendingPlanQty: null, bom: "B1", kva: "1000", planQty: 10 }, nesting: { lines: 2, nested: 2 }, plannedDueISO: null, alreadyStarted: false });
     const j = json(await checkReleaseReadinessTool.run({ mo: "A" }, ctx));
+    // Odoo's 25 sheets cover A's 10, but all the open work wants 40 of them
     expect(j.verdict).toBe("ready_with_checks");
-    expect(j.checks.find((c: { check: string }) => c.check === "Material stock").status).toBe("unknown");
+    expect(j.checks.find((c: { check: string }) => c.check === "Material stock")).toMatchObject({ status: "warn", detail: expect.stringContaining("competes") });
+    expect(j.material.sheets[0]).toMatchObject({ code: "C-SHR-003", need: 10, odoo: 25, openDemand: 40, status: "covered", contended: true, competing: [{ mo: "B", item: "TC", sheets: 30 }] });
+    expect(j.material.stockTableLastChange).toEqual({ atISO: "2026-10-27T09:00:00.000Z", by: "Store" });
+    // a held order is not in the open work, but its own sheets still count against the stock
+    h.material.getOpenPartNeeds.mockResolvedValueOnce({ parts: [{ mo: "B", item: "TC", pcsLeft: 20, specs: [sheet("C-SHR-003", 1)] }], openMos: new Set(["B"]) });
+    const held = json(await checkReleaseReadinessTool.run({ mo: "A" }, ctx));
+    expect(held.material.sheets[0]).toMatchObject({ openDemand: 30, contended: true });
+    // short in Odoo: not ready
+    h.material.getStockLines.mockResolvedValueOnce({ lines: [{ code: "C-SHR-003", name: "", uom: "PC", odoo: 6, physical: 6 }], lastChange: null });
+    const short = json(await checkReleaseReadinessTool.run({ mo: "A" }, ctx));
+    expect(short.verdict).toBe("not_ready");
+    expect(short.checks.find((c: { check: string }) => c.check === "Material stock").status).toBe("blocked");
+    // the Physical Material screen closed: not read, not checked
+    h.material.getStockLines.mockClear();
+    const closedStock = json(await checkReleaseReadinessTool.run({ mo: "A" }, { ...ctx, hidden: new Set(["physical"]) }));
+    expect(h.material.getStockLines).not.toHaveBeenCalled();
+    expect(closedStock.checks.find((c: { check: string }) => c.check === "Material stock")).toMatchObject({ status: "unknown", detail: expect.stringContaining("not opened") });
     expect(j.checks.find((c: { check: string }) => c.check === "Due date").detail).toContain("2026-10-29");
     // the nesting is the Material screen's
     const closed = json(await checkReleaseReadinessTool.run({ mo: "A" }, { ...ctx, hidden: new Set(["material"]) }));
     expect(closed.checks.find((c: { check: string }) => c.check === "Nesting / drawings")).toMatchObject({ status: "unknown", detail: expect.stringContaining("Material") });
+  });
+
+  it("material coverage: the open work's sheets against Odoo's stock, short first", async () => {
+    const j = json(await getMaterialCoverageTool.run({}, ctx));
+    expect(j.sheets.map((r: { code: string; status: string; need: number }) => [r.code, r.status, r.need])).toEqual([["C-SHR-003", "short", 40], ["C-SHR-005", "covered", 15]]);
+    expect(j.counts).toMatchObject({ short: 1, covered: 1 });
+    expect(j.partsWithoutNesting).toMatchObject({ count: 1, examples: [{ mo: "D", item: "CB", pcsLeft: 4 }] });
+    // named orders, still against the whole open demand
+    const one = json(await getMaterialCoverageTool.run({ mos: ["b", "e", "z"], shortOnly: true }, ctx));
+    expect(one.sheets).toEqual([expect.objectContaining({ code: "C-SHR-003", need: 30, openDemand: 40, status: "short", competing: [{ mo: "A", item: "TN", sheets: 10 }] })]);
+    // E is open with nothing left to cut; Z is not an open order
+    expect(one).toMatchObject({ notOpen: ["Z"], nothingLeftToCut: ["E"] });
+    expect((await getMaterialCoverageTool.run({}, lv)).ok).toBe(false);
+    expect(toolsFor(ctx.user, { hidden: new Set(["physical"]), actionsPaused: true }).map((t) => t.name)).not.toContain("get_material_coverage");
   });
 
   it("rush order: priced by its class, or the missing standard times named", async () => {

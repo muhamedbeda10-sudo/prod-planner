@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-material-against-odoo-stock",
+    dateISO: "2026-10-27",
+    title: "The assistant checks the sheets against Odoo's stock",
+    where: "The assistant → What it can do → Enough material? and Ready to release?",
+    href: "/ai",
+    body: "Ready to release? now checks the material too: the sheets the order's parts still need, by the MATERIAL tab's nesting, per Odoo product code, against the Odoo stock and the store's count on Physical Material. Odoo short blocks the release; the store counting less than Odoo, or the open orders together wanting more of a code than Odoo holds, is a warning that names the other orders wanting the same code. The new Enough material? tile does the same for all the open orders: the codes that are short and the orders behind them. Codes held in KG, codes missing from the table and parts with no nesting are named rather than guessed.",
+  },
+  {
     id: "2026-10-27-assistant-plans-like-a-planner",
     dateISO: "2026-10-27",
     title: "The assistant plans like a production planner",
