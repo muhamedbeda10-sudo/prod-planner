@@ -4,19 +4,21 @@ import { Children, cloneElement, createContext, isValidElement, memo, useContext
 import dynamic from "next/dynamic";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AlertTriangle, CheckCircle2, ChevronDown, Crosshair, FileSpreadsheet, Printer, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, BadgeCheck, CalendarClock, CheckCircle2, ChevronDown, ClipboardList, Crosshair, FileSpreadsheet, LayoutList, Lightbulb, ListChecks, ListTodo, Package, Printer, Search, ShieldAlert, StickyNote, XCircle, type LucideIcon } from "lucide-react";
 import { isChartBlock } from "@/lib/domain/aiChart";
 import { humanizeKey, looksLikeColumn, readableDate } from "@/lib/domain/fieldNames";
 import { isEvidenceAnchor, safeHref } from "@/lib/domain/aiEvidence";
 import { fileLinkKind } from "@/lib/domain/aiFiles";
 import { scopeLineOf } from "@/lib/domain/aiAnswer";
-import { calloutOf, columnKind, FIGURE_UNITS, groupedFigure, TABLE_FOLD_AT, withoutCalloutMark } from "@/lib/domain/aiTable";
+import { calloutOf, columnKind, FIGURE_UNITS, groupedFigure, sectionOf, TABLE_FOLD_AT, withoutCalloutMark, withoutLeadingEmoji, type SectionKind } from "@/lib/domain/aiTable";
 import { downloadXlsx } from "@/components/ExportButton";
 
 // An AI answer as it reads: Markdown (tables, lists, bold) in the app's own
 // type. The answer as a whole reads in the language it was written in — an
 // Arabic answer right to left — while each paragraph and cell still finds its
-// own direction for an MO number or an English line inside it. A table reads
+// own direction for an MO number or an English line inside it. A list keeps
+// the answer's, so its bullets stay on one side whatever its items open with
+// ("MO 4471 — …"). A table reads
 // in the language of its head: Arabic columns right to left, columns named in
 // English (the database's, an automation's rows) left to right — whatever the
 // words around it. Column names written the database's way read as words,
@@ -24,8 +26,10 @@ import { downloadXlsx } from "@/components/ExportButton";
 // A table longer than a screen folds to its first rows with a button for
 // the rest, and every table has its export to Excel. A ```chart block is
 // drawn as a chart; a ```followups block (the next questions the assistant
-// offers) is never drawn here — the chat draws it as buttons. A blockquote
-// that opens with ⚠️, ✅ or ❌ is a callout in that tone, and the closing
+// offers) is never drawn here — the chat draws it as buttons. A heading opens
+// a section with the icon of what it is about (Summary, Causes, Suggestions
+// …), bullets wear the brand's dot and numbered steps a numbered badge. A
+// blockquote that opens with ⚠️, ✅, ❌ or 💡 is a callout in that tone, and the closing
 // "Scope: …" line is a quiet strip. A link to a file the assistant made is a
 // button — download it, or print it. No raw HTML is
 // rendered — only Markdown — and nothing in an answer is fetched from
@@ -75,25 +79,69 @@ const isNumeric = (s: string) => s.trim() !== "" && NUMERIC.test(s) && /[0-9٠-�
  *  column (set by its row) — what tells a figure from a name. */
 const TableHeads = createContext<string[]>([]);
 
-/** The children with the callout's leading mark (⚠️ ✅ ❌) taken off the
- *  first text — the icon stands for it. */
-function withoutMark(nodes: ReactNode): ReactNode {
+/** The children with a leading mark taken off their first text, however
+ *  deep it sits (a bold heading, a callout's paragraph) — the icon stands for
+ *  it: a callout's ⚠️ ✅ ❌ 💡, a heading's emoji. */
+function withoutMark(nodes: ReactNode, strip: (text: string) => string = withoutCalloutMark): ReactNode {
   const list = Children.toArray(nodes);
   // the first node that is not the newline between blocks
   const at = list.findIndex((n) => !(typeof n === "string" && n.trim() === ""));
   if (at < 0) return nodes;
   const first = list[at];
   const stripped = typeof first === "string"
-    ? withoutCalloutMark(first)
-    : isValidElement<{ children?: ReactNode }>(first) ? cloneElement(first, { children: withoutMark(first.props.children) }) : first;
+    ? strip(first)
+    : isValidElement<{ children?: ReactNode }>(first) ? cloneElement(first, { children: withoutMark(first.props.children, strip) }) : first;
   return list.map((n, i) => (i === at ? stripped : n));
 }
+
+/** An item's own direction, inside a list that keeps the answer's: Arabic
+ *  when it holds an Arabic word at all (an "MO 4471 — مستني صاج" line reads
+ *  as the Arabic it is), else left to right — an English line in an Arabic
+ *  answer keeps its full stop at its end. */
+const itemDirection = (text: string): "rtl" | "ltr" => (/[؀-ۿݐ-ݿ]/.test(text) ? "rtl" : "ltr");
+
+/** The elements that make a list item more than a line of text. */
+const BLOCKS = new Set(["p", "ul", "ol", "pre", "table", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "hr"]);
 
 const CALLOUT = {
   warn: { icon: AlertTriangle, label: "Warning" },
   ok: { icon: CheckCircle2, label: "In order" },
   bad: { icon: XCircle, label: "Problem" },
+  info: { icon: Lightbulb, label: "Note" },
 } as const;
+
+/** The icon and tone of each kind of section an answer has. */
+const SECTION: Record<SectionKind, { icon: LucideIcon; tone: string }> = {
+  summary: { icon: ClipboardList, tone: "brand" },
+  details: { icon: ListChecks, tone: "info" },
+  causes: { icon: Search, tone: "info" },
+  suggestions: { icon: Lightbulb, tone: "warn" },
+  risks: { icon: ShieldAlert, tone: "bad" },
+  next: { icon: ListTodo, tone: "brand" },
+  status: { icon: Activity, tone: "info" },
+  schedule: { icon: CalendarClock, tone: "info" },
+  material: { icon: Package, tone: "warn" },
+  quality: { icon: BadgeCheck, tone: "ok" },
+  figures: { icon: BarChart3, tone: "brand" },
+  notes: { icon: StickyNote, tone: "muted" },
+  other: { icon: LayoutList, tone: "brand" },
+};
+
+/** A heading as a section's head: the icon of what it is about, then its
+ *  words — a leading emoji the model put there gives way to the icon. */
+function SectionHead({ level, node, children }: { level: "major" | "minor"; node: HastNode | undefined; children: ReactNode }) {
+  const text = textOf(node);
+  const { icon: Icon, tone } = SECTION[sectionOf(text)];
+  // a heading that is only an emoji keeps it — there is nothing else to read
+  const words = withoutLeadingEmoji(text).trim() === "" ? children : withoutMark(children, withoutLeadingEmoji);
+  const Tag = level === "major" ? "h3" : "h4";
+  return (
+    <Tag dir="auto" className={`ai-h ai-h-${level} ai-tone-${tone}`}>
+      <span className="ai-h-icon" aria-hidden><Icon size={level === "major" ? 15 : 13} /></span>
+      <span className="min-w-0">{words}</span>
+    </Tag>
+  );
+}
 
 /** A table read off its tree: its heads as text, its rows as {column:
  *  value} for the export (the columns read as words). */
@@ -177,28 +225,37 @@ function components(streaming: boolean, ownFiles: boolean): Components {
     },
     ul: ({ children, node }) =>
       isFieldList(node as HastNode | undefined) ? (
-        <ul dir="auto" className="ai-fields">{children}</ul>
+        <ul role="list" className="ai-fields">{children}</ul>
       ) : (
-        <ul dir="auto" className="my-2.5 ps-5 list-disc space-y-1">{children}</ul>
+        <ul role="list" className="ai-ul">{children}</ul>
       ),
-    ol: ({ children }) => <ol dir="auto" className="my-2.5 ps-5 list-decimal space-y-1">{children}</ol>,
+    // numbered steps wear a numbered badge; a list that starts past 1 counts
+    // on from there (the badge by its counter, a screen reader by its start)
+    ol: ({ children, start }) => (
+      <ol role="list" start={start} className="ai-ol" style={start && start > 1 ? { counterReset: `ai-ol ${start - 1}` } : undefined}>{children}</ol>
+    ),
     li: ({ children, node }) => {
-      const label = labelOf(node as HastNode | undefined);
-      if (label === null) return <li dir="auto">{children}</li>;
+      const item = node as HastNode | undefined;
+      const label = labelOf(item);
+      if (label === null) {
+        // a line of text reads in its own direction, its bullet on the list's side
+        const inline = !(item?.children ?? []).some((c) => c.tagName !== undefined && BLOCKS.has(c.tagName));
+        return <li>{inline ? <span dir={itemDirection(textOf(item))}>{children}</span> : children}</li>;
+      }
       // the bold label becomes the row's first cell; what follows it, its value
       const items = Children.toArray(children);
       const rest = items.slice(items.findIndex((c) => isValidElement(c)) + 1);
       return (
         <li>
-          <span className="ai-field-label" dir="auto">{label}</span>
-          <span className="ai-field-value" dir="auto">{trimStart(rest)}</span>
+          <span className="ai-field-label"><span dir={itemDirection(label)}>{label}</span></span>
+          <span className="ai-field-value"><span dir={itemDirection(textOf(item).trimStart().slice(label.length + 1))}>{trimStart(rest)}</span></span>
         </li>
       );
     },
-    h1: ({ children }) => <h3 dir="auto" className="mt-5 mb-1.5 text-[15px] font-bold">{children}</h3>,
-    h2: ({ children }) => <h3 dir="auto" className="mt-5 mb-1.5 text-[15px] font-bold">{children}</h3>,
-    h3: ({ children }) => <h4 dir="auto" className="mt-4 mb-1 text-sm font-bold">{children}</h4>,
-    h4: ({ children }) => <h4 dir="auto" className="mt-3 mb-1 text-sm font-semibold">{children}</h4>,
+    h1: ({ children, node }) => <SectionHead level="major" node={node as HastNode | undefined}>{children}</SectionHead>,
+    h2: ({ children, node }) => <SectionHead level="major" node={node as HastNode | undefined}>{children}</SectionHead>,
+    h3: ({ children, node }) => <SectionHead level="minor" node={node as HastNode | undefined}>{children}</SectionHead>,
+    h4: ({ children, node }) => <SectionHead level="minor" node={node as HastNode | undefined}>{children}</SectionHead>,
     // a link into the app is a link; anything outside is shown, not followed —
     // a row of data could tell the model to put figures in an address. A file
     // the assistant made is a button in the chat it was made in; shared onward
