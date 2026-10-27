@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-assistant-excel-sheet-per-value-totals",
+    dateISO: "2026-10-27",
+    title: "The assistant's Excel files: a sheet per thickness, only the filled rows, and a Total row on each sheet",
+    where: "Assistant → Excel files",
+    body: "Ask the assistant for one Excel file laid out the way you need: a sheet per thickness (or per any other column — material, sheet size, department), only the rows that are actually filled in a column (what was actually nested, for example), and a Total row at the end of each sheet adding up the columns you name, such as the BOM sheets, the actual sheets and the difference. It works on every sheet the assistant makes. Print opens every sheet of the file, each under its name with its Total row.",
+  },
+  {
     id: "2026-10-26-planning-dashboard-at-risk",
     dateISO: "2026-10-26",
     title: "Planning: All | Transformers | LV Panels, filters in one bar, every line at risk, and the rows behind each figure",

@@ -569,10 +569,13 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      assistant's `make_excel` builds the sheet the screen's button used to make — the same loader, filters, columns and
      headers (the Plan Tracker TR/LV, a weekly plan, the Daily log, the Orders Registry, a trace, the ODOO log and its
      days, Material, Physical Material, the consumables' log, limits, edits, summary, monthly review and powder scrap,
-     a day's attendance and machine stops) — or the rows of one read-only SELECT, up to 50,000 rows. Each screen's sheet
+     a day's attendance and machine stops) — or the rows of one read-only SELECT, up to 50,000 rows. Any of them can be
+     laid out in the same file (`lib/domain/sheetLayout.ts`): `nonBlank` keeps the rows with given columns filled,
+     `splitBy` puts each value of a column on its own sheet (a sheet per thickness, up to 50), and `totals` closes each
+     sheet with a Total row over the columns named. Each screen's sheet
      follows the screen's own access (its tab; the Orders Registry and the consumables' edits the admin's). The workbook
      is kept as the person's own file in their chat (`AiFile`, same limits and 14 days), and the answer carries two
-     buttons: download it, or `/ai/print/[id]` — the sheet under the company header with the print dialog open. A
+     buttons: download it, or `/ai/print/[id]` — every sheet of it under the company header with the print dialog open. A
      dashboard or an analysis is printed from the answer itself (its Print / PDF).
    - **Attached files and imports** (`lib/server/ai/files.ts`, `lib/server/ai/tools/imports.ts`): a photo, a PDF, an Excel
      or CSV sheet attached with the 📎 is checked by its bytes (a photo shrunk in the browser first; a photo or PDF also
