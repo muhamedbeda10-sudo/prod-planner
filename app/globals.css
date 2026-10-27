@@ -1335,7 +1335,16 @@ html.ai-modal { overflow: hidden; }
 .ai-head-btn { position: relative; }
 .ai-head-btn .count-badge { position: absolute; top: -5px; right: -5px; }
 .icon-btn-on, .icon-btn-on:hover { background: var(--brand-light); color: var(--brand-ink); border-color: transparent; }
-.ai-side { width: 300px; flex-shrink: 0; border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; background: var(--surface-2); min-height: 0; }
+/* the chats beside the chat: as wide as dragged (--ai-side-w), sliding shut when hidden */
+.ai-side { position: relative; width: var(--ai-side-w, 300px); max-width: 50%; flex-shrink: 0; border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; background: var(--surface-2); min-height: 0; transition: width 0.2s ease; }
+.ai-side-closed { width: 0; border-inline-end-width: 0; overflow: hidden; }
+.ai-side-dragging { transition: none; user-select: none; }
+.ai-side-handle { position: absolute; top: 0; bottom: 0; inset-inline-end: -4px; z-index: 3; width: 8px; cursor: col-resize; touch-action: none; }
+.ai-side-handle::after { content: ""; position: absolute; top: 0; bottom: 0; inset-inline-start: 3px; width: 2px; border-radius: 2px; background: transparent; transition: background-color 0.15s ease; }
+.ai-side-handle:hover::after, .ai-side-dragging .ai-side-handle::after { background: var(--brand); }
+.ai-side-handle:focus-visible { outline: none; }
+.ai-side-handle:focus-visible::after { background: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 30%, transparent); }
+@media (prefers-reduced-motion: reduce) { .ai-side { transition: none; } }
 .ai-pane-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 /* the inbox's card hangs under the bell, on the right, below the bar */
 .ai-pop-compact.inbox-pop { top: 56px; bottom: auto; height: min(720px, calc(100dvh - 76px)); max-height: none; }

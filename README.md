@@ -550,7 +550,9 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      department, line, the form of the answer) writes the question, and the composer's ✨ brings the tiles back in a
      chat already going — then the questions for the screen it is opened on (`AI_PAGE_SUGGESTIONS`). Chats can be
      pinned and renamed; "Select" (or Ctrl/⌘ + click, Shift + click for a run) ticks several to pin or delete together
-     (`deleteAiConversations` / `pinAiConversations`, the person's own only). Before a long chat is sent back to the model, the big
+     (`deleteAiConversations` / `pinAiConversations`, the person's own only). Beside the chat the list is dragged
+     wider or narrower by its edge (arrow keys too) and hidden or shown from the window's head, kept on the browser
+     (`lib/domain/aiSidebar.ts`, `components/AiSidebar.tsx`). Before a long chat is sent back to the model, the big
      results of every question but the last two are folded to a note that keeps their source (`compactHistory`), so the
      chat goes on to 200 messages and the prompt cache keeps hitting on the folded prefix. Stop closes the connection, which
      stops the model too: what was written is kept in the chat with a note, and the question's turn is freed. A chat
