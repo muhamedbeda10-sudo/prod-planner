@@ -49,6 +49,15 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      // the Odoo pull is loaded by an Odoo page (the scheduled task, in the
+      // user's own login there) — that origin alone may read it, never cached
+      {
+        source: "/odoo-pull.js",
+        headers: [
+          { key: "Access-Control-Allow-Origin", value: "https://atcodoo.odoo.com" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
       {
         source: "/:path*",
         headers: [

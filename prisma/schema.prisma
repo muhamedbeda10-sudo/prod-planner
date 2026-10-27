@@ -2124,41 +2124,28 @@ model KpiSnapshot {
   updatedAt DateTime @default(now()) @updatedAt
 }
 
-// ---- Odoo, read on a schedule (lib/server/odooSync.ts) ----
+// ---- Odoo, read on a schedule (lib/domain/odooSync.ts) ----
 //
-// The app READS Odoo — never writes to it. The connection is the owner's to
-// set in Admin → Settings; the sync runs at 09:00 and 13:00 Riyadh time on
-// the working days (Sun–Thu) and on an admin's "Sync now". What it reads is
-// kept in the tables below, apart from the rows people type: a sync never
-// moves a row's status, its MO or its version, so it can never undo or block
-// anyone's edit.
+// The app READS Odoo — never writes to it — and not from the server: a
+// scheduled task on the owner's computer (09:00 and 13:00 Riyadh time, Sunday
+// to Thursday) opens Odoo in the Claude desktop app's browser with the user's
+// own login, runs /odoo-pull.js there (lib/domain/odooPull.ts) with the plan
+// the database's odoo_pull_plan() gives, and hands the result to
+// odoo_ingest() in one call (both functions: migration 20261027180000). What
+// it reads is kept in the tables below, apart from the rows people type: a
+// sync never moves a row's status, its MO or its version, so it can never
+// undo or block anyone's edit.
 
-// The connection: one row. The API key is AES-256-GCM encrypted
-// (lib/server/ai/secret.ts) and never sent to a browser; the hint is its last
-// four characters.
-model OdooSettings {
-  id         Int      @id @default(1)
-  url        String   @default("") // https://atcodoo.odoo.com
-  db         String   @default("")
-  login      String   @default("")
-  apiKeyEnc  String   @default("")
-  apiKeyHint String   @default("")
-  // the scheduled runs are on; "Sync now" works either way
-  enabled    Boolean  @default(true)
-  updatedBy  String?
-  updatedAt  DateTime @default(now()) @updatedAt
-}
-
-// One sync: when, why, what it found. `slot` claims a scheduled run
-// ("2026-10-28@09") so two ticks never run the same one; a manual run's slot
-// is unique by its moment.
+// One sync: when, what it found (odoo_ingest writes it, or odoo_sync_failed
+// when the task could not read Odoo). `slot` is "pull@<when Odoo was read>",
+// so the same payload handed in twice is one run.
 model OdooSyncRun {
   id         Int       @id @default(autoincrement())
   slot       String    @unique
-  trigger    String // schedule | manual
+  trigger    String // schedule
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
-  status     String    @default("running") // running | ok | partial | failed
+  status     String    @default("running") // ok | partial | failed
   // lib/domain/odooSync.ts OdooSyncSummary
   summary    Json?
   error      String?
@@ -2188,11 +2175,12 @@ model OdooMoState {
   @@index([state])
 }
 
-// The sub-assembly MOs under each open order, as Odoo links them: a
-// transformer's tank, top cover, core frame, cable box, arrester, monobloc box
-// and fins under its PF01 MO; an LV panel order's own batches. One row per
-// order × child — a child shared by two orders is under both. Rewritten for
-// every open order on each sync; a closed order keeps its last rows.
+// The shop floor's sub-assembly MOs under each open order, as Odoo links
+// them: a transformer's tank, top cover, core frame, cable box, arrester,
+// monobloc box and fins under its PF01 MO; an LV panel order's own batches.
+// One row per order × child — a child shared by two orders is under both. An
+// order's rows are rewritten whenever they read differently from the last
+// sync (OdooOrderSync); a closed order keeps its last rows.
 model OdooChildMo {
   id          Int       @id @default(autoincrement())
   parentMo    String // the order's MO as the app keeps it (MasterOrder.mo)
@@ -2215,4 +2203,12 @@ model OdooChildMo {
   @@unique([parentMo, odooId])
   @@index([parentMo, item])
   @@index([name])
+}
+
+// How each order's sub-assembly MOs read at the last sync (a fingerprint the
+// pull computes), so an unchanged order is not sent again.
+model OdooOrderSync {
+  parentMo String   @id
+  hash     String
+  syncedAt DateTime @default(now())
 }

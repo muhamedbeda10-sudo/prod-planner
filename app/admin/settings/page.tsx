@@ -7,13 +7,11 @@ import { SectionCard } from "@/components/primitives";
 import { TankTrackingToggle } from "./TankTrackingToggle";
 import { MachinePlanningToggle } from "./MachinePlanningToggle";
 import { OdooTrackingStart } from "@/components/OdooTrackingStart";
-import { OdooConnectionCard } from "@/components/OdooConnectionCard";
+import { OdooSyncCard } from "@/components/OdooSyncCard";
 import { getOdooSyncStatus } from "@/lib/server/odooSync";
 
 export const metadata = { title: "Settings — ATC" };
 export const dynamic = "force-dynamic";
-// "Sync now" reads Odoo after its answer, inside this page's function
-export const maxDuration = 300;
 
 // Plant-wide switches: per-piece tank tracking and planning onto machines —
 // the things that change how several screens behave at once. What a shift is
@@ -36,8 +34,8 @@ export default async function SettingsPage() {
         <SectionCard icon={<Boxes size={16} aria-hidden />} title="Odoo monthly plan tracking" description="Where the tracker starts reading Odoo's closings into the monthly plan">
           <OdooTrackingStart initialDate={settings.odooTrackingFrom} />
         </SectionCard>
-        <SectionCard icon={<PlugZap size={16} aria-hidden />} title="Odoo connection" description="Reads Odoo twice a working day: the close-out log's MOs, the sub-assembly MOs under each open order, and SF01's on-hand">
-          <OdooConnectionCard initial={odoo} isOwner={me.isOwner} />
+        <SectionCard icon={<PlugZap size={16} aria-hidden />} title="Odoo sync" description="Odoo read twice a working day: the close-out log's MOs, the sub-assembly MOs under each open order, and SF01's on-hand">
+          <OdooSyncCard status={odoo} />
         </SectionCard>
       </div>
     </div>

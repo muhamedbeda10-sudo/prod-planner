@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  dueOdooSlot, effectiveDoneAt, firstBatchName, hasBatchSuffix, itemOfCode, nextOdooSlotLabel, odooAgreement, odooDiffers, productCodeOf,
-  suggestChildMos, summaryText, syncClock, EMPTY_SUMMARY, type ChildMoView,
+  effectiveDoneAt, firstBatchName, hasBatchSuffix, isOdooSyncLate, itemOfCode, lastOdooSlotAt, nextOdooSlotLabel, odooAgreement, odooDiffers,
+  productCodeOf, suggestChildMos, summaryText, syncClock, type ChildMoView,
 } from "./odooSync";
 import { EMPTY_ODOO_FILTERS, filterOdooEntries, type OdooEntryView } from "./odoo";
 
@@ -15,28 +15,30 @@ describe("the sync's clock", () => {
     expect(syncClock(at("2026-10-28T21:30:00Z")).dateISO).toBe("2026-10-29");
   });
 
-  it("is due at 09:00 and 13:00 on the working days", () => {
-    expect(dueOdooSlot(at("2026-10-28T05:59:00Z"))).toBeNull(); // 08:59 Wednesday
-    expect(dueOdooSlot(at("2026-10-28T06:00:00Z"))).toBe("2026-10-28@09");
-    expect(dueOdooSlot(at("2026-10-28T09:59:00Z"))).toBe("2026-10-28@09"); // 12:59
-    expect(dueOdooSlot(at("2026-10-28T10:00:00Z"))).toBe("2026-10-28@13");
-    expect(dueOdooSlot(at("2026-10-28T20:00:00Z"))).toBe("2026-10-28@13"); // the evening still names the day's last
-  });
-
-  it("does not make up a missed morning run after 13:00 — the afternoon one reads the same Odoo", () => {
-    expect(dueOdooSlot(at("2026-10-28T10:30:00Z"))).toBe("2026-10-28@13");
-  });
-
-  it("never runs on Friday or Saturday", () => {
-    expect(dueOdooSlot(at("2026-10-30T07:00:00Z"))).toBeNull(); // Friday
-    expect(dueOdooSlot(at("2026-10-31T11:00:00Z"))).toBeNull(); // Saturday
-    expect(dueOdooSlot(at("2026-11-01T06:05:00Z"))).toBe("2026-11-01@09"); // Sunday
+  it("knows the last scheduled run — 09:00 and 13:00 on the working days", () => {
+    expect(lastOdooSlotAt(at("2026-10-28T06:00:00Z"))?.toISOString()).toBe("2026-10-28T06:00:00.000Z"); // 09:00 Wednesday
+    expect(lastOdooSlotAt(at("2026-10-28T09:59:00Z"))?.toISOString()).toBe("2026-10-28T06:00:00.000Z"); // 12:59
+    expect(lastOdooSlotAt(at("2026-10-28T10:00:00Z"))?.toISOString()).toBe("2026-10-28T10:00:00.000Z"); // 13:00
+    expect(lastOdooSlotAt(at("2026-10-28T05:59:00Z"))?.toISOString()).toBe("2026-10-27T10:00:00.000Z"); // 08:59 → yesterday 13:00
+    // Friday and Saturday have none: Saturday evening's last is Thursday 13:00
+    expect(lastOdooSlotAt(at("2026-10-31T18:00:00Z"))?.toISOString()).toBe("2026-10-29T10:00:00.000Z");
   });
 
   it("names the next run", () => {
     expect(nextOdooSlotLabel(at("2026-10-28T05:00:00Z"))).toBe("2026-10-28 09:00");
     expect(nextOdooSlotLabel(at("2026-10-28T07:00:00Z"))).toBe("2026-10-28 13:00");
     expect(nextOdooSlotLabel(at("2026-10-29T11:00:00Z"))).toBe("2026-11-01 09:00"); // Thursday afternoon → Sunday
+  });
+
+  it("says a run is late once the last slot passed with no good run, after a grace", () => {
+    const nineWed = at("2026-10-28T06:00:00Z");
+    const ranAt = at("2026-10-28T06:05:00Z");
+    expect(isOdooSyncLate(ranAt, at("2026-10-28T09:00:00Z"))).toBe(false); // 12:00, the 09:00 run came
+    expect(isOdooSyncLate(at("2026-10-27T10:05:00Z"), at("2026-10-28T07:00:00Z"))).toBe(false); // 10:00: still within the grace
+    expect(isOdooSyncLate(at("2026-10-27T10:05:00Z"), at("2026-10-28T08:00:00Z"))).toBe(true); // 11:00: the 09:00 run never came
+    expect(isOdooSyncLate(null, at("2026-10-28T08:00:00Z"))).toBe(true);
+    expect(isOdooSyncLate(at(nineWed.toISOString()), at("2026-10-30T12:00:00Z"))).toBe(true); // Friday: Thursday's runs missing
+    expect(isOdooSyncLate(at("2026-10-29T10:10:00Z"), at("2026-10-31T12:00:00Z"))).toBe(false); // Saturday, Thursday 13:00 came
   });
 });
 
@@ -158,8 +160,9 @@ describe("the MO a row born from a closing can take", () => {
 
 describe("a run's summary", () => {
   it("reads in one line", () => {
-    const s = { ...EMPTY_SUMMARY, log: { ...EMPTY_SUMMARY.log, checked: 12, differs: 2 }, children: { orders: 3, mos: 20, unresolved: 0 }, stock: { updated: 5, unchanged: 1, missing: 0 }, issues: ["x"] };
-    expect(summaryText(s)).toBe("12 MOs checked (2 differ from the log) · 20 sub-assembly MOs under 3 orders · SF01 stock: 5 updated · 1 issue");
+    const s = { log: { checked: 12, done: 8, open: 3, renamed: 1, notFound: 1 }, children: { orders: 3, mos: 20, unchanged: 75 }, stock: { updated: 5, unchanged: 99, missing: 0 }, issues: ["x"], ms: 30000 };
+    expect(summaryText(s)).toBe("12 MOs checked · 3 orders with new sub-assembly MOs (75 unchanged) · SF01 stock: 5 updated · 1 issue");
+    expect(summaryText({ ...s, stock: { ...s.stock, skipped: true }, issues: [] })).toBe("12 MOs checked · 3 orders with new sub-assembly MOs (75 unchanged) · SF01 stock skipped");
     expect(summaryText(null)).toBe("");
   });
 });

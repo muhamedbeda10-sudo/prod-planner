@@ -1,8 +1,13 @@
-// Odoo, read on a schedule — the pure half: when a run is due, how an Odoo
-// product code names one of the plant's components, whether a close-out row
-// agrees with what Odoo says about its MO, and which open sub-assembly MO a
-// row born from a closing should carry. No I/O; lib/server/odooSync.ts reads
-// Odoo and the database and asks these.
+// Odoo, read on a schedule — the pure half: when the runs are due, how an
+// Odoo product code names one of the plant's components, whether a close-out
+// row agrees with what Odoo says about its MO, and which open sub-assembly MO
+// a row born from a closing should carry. No I/O.
+//
+// How the data arrives: a scheduled task on the owner's computer opens Odoo in
+// the Claude desktop app's browser, with the user's own login, and runs the
+// read-only pull there (lib/domain/odooPull.ts, served as /odoo-pull.js);
+// Claude then hands what it read to the database's odoo_ingest() in one call
+// (prisma/migrations/20261027180000_odoo_sync). Nothing is ever written to Odoo.
 
 import { isCancelledStatus, isDoneStatus } from "./odoo";
 
@@ -10,10 +15,11 @@ export { ODOO_DIFFERS, odooDiffers } from "./odoo";
 
 // ---- when ----
 
-/** The sync's clock is the plant's in Saudi Arabia — the hours the planner
- *  asked for, whatever the app's own factory day reads. */
+/** The sync's clock is the plant's in Saudi Arabia (UTC+3 all year, no
+ *  daylight saving) — the hours the planner asked for. */
 export const ODOO_SYNC_TZ = "Asia/Riyadh";
-/** The hours a scheduled run starts (local, on the hour). */
+const RIYADH_OFFSET_H = 3;
+/** The hours the scheduled task runs (local). */
 export const ODOO_SYNC_HOURS = [9, 13] as const;
 /** The working days it runs on: Sunday (0) to Thursday (4). */
 export const ODOO_SYNC_WEEKDAYS = [0, 1, 2, 3, 4] as const;
@@ -29,31 +35,44 @@ export function syncClock(at: Date): { dateISO: string; weekday: number; hour: n
   return { dateISO: `${p.year}-${p.month}-${p.day}`, weekday: WEEKDAY[p.weekday] ?? -1, hour: Number(p.hour), minute: Number(p.minute) };
 }
 
-/**
- * The scheduled run due at this moment, as its slot ("2026-10-28@09"), or
- * null. Only the LATEST slot of the day that has started counts: a 09:00 run
- * the clock missed is not made up at 13:30 — the 13:00 one is, and it reads
- * the same Odoo. A slot already run is the caller's to skip (its row exists).
- */
-export function dueOdooSlot(at: Date): string | null {
-  const c = syncClock(at);
-  if (!(ODOO_SYNC_WEEKDAYS as readonly number[]).includes(c.weekday)) return null;
-  const started = ODOO_SYNC_HOURS.filter((h) => c.hour >= h);
-  if (started.length === 0) return null;
-  const h = started[started.length - 1];
-  return `${c.dateISO}@${String(h).padStart(2, "0")}`;
+const workingDay = (weekday: number) => (ODOO_SYNC_WEEKDAYS as readonly number[]).includes(weekday);
+const slotMoment = (dateISO: string, hour: number) => {
+  const [y, m, d] = dateISO.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, hour - RIYADH_OFFSET_H));
+};
+
+/** The last scheduled run's moment at or before this one, or null (none in
+ *  the last week). */
+export function lastOdooSlotAt(at: Date): Date | null {
+  for (let d = 0; d < 8; d++) {
+    const c = syncClock(new Date(at.getTime() - d * 86_400_000));
+    if (!workingDay(c.weekday)) continue;
+    for (const h of [...ODOO_SYNC_HOURS].reverse()) {
+      const t = slotMoment(c.dateISO, h);
+      if (t.getTime() <= at.getTime()) return t;
+    }
+  }
+  return null;
 }
 
 /** The next scheduled run after this moment, as a Riyadh "YYYY-MM-DD HH:00". */
 export function nextOdooSlotLabel(at: Date): string {
   for (let d = 0; d < 8; d++) {
-    const day = new Date(at.getTime() + d * 86_400_000);
-    const c = syncClock(day);
-    if (!(ODOO_SYNC_WEEKDAYS as readonly number[]).includes(c.weekday)) continue;
-    const h = ODOO_SYNC_HOURS.find((x) => d > 0 || x > c.hour);
+    const c = syncClock(new Date(at.getTime() + d * 86_400_000));
+    if (!workingDay(c.weekday)) continue;
+    const h = ODOO_SYNC_HOURS.find((x) => d > 0 || slotMoment(c.dateISO, x).getTime() > at.getTime());
     if (h !== undefined) return `${c.dateISO} ${String(h).padStart(2, "0")}:00`;
   }
   return "";
+}
+
+/** The last scheduled run should have landed by now and did not — the
+ *  computer was off, Odoo or the app asked for a login, or the run failed.
+ *  A run is given `graceMin` to finish. */
+export function isOdooSyncLate(lastOkAt: Date | null, at: Date, graceMin = 90): boolean {
+  const slot = lastOdooSlotAt(at);
+  if (!slot || at.getTime() - slot.getTime() < graceMin * 60_000) return false;
+  return !lastOkAt || lastOkAt.getTime() < slot.getTime() - 30 * 60_000;
 }
 
 // ---- the plant's components in Odoo's product codes ----
@@ -237,35 +256,28 @@ export interface RowOdooFacts {
 
 export const NO_ODOO_FACTS: RowOdooFacts = { agreement: "none", state: null, suggest: [] };
 
-// ---- a run's summary ----
+// ---- a run's summary (written by odoo_ingest) ----
 
 export interface OdooSyncSummary {
-  /** Close-out log: MOs read, found closed, still open, renamed, not found. */
-  log: { checked: number; done: number; open: number; renamed: number; notFound: number; differs: number };
-  /** Sub-assembly MOs under the open orders. */
-  children: { orders: number; mos: number; unresolved: number };
-  /** The store's SF01 on-hand: codes updated, unchanged, not found in Odoo. */
-  stock: { updated: number; unchanged: number; missing: number };
+  /** Close-out log: MOs read, closed, still open, renamed, not found. */
+  log: { checked: number; done: number; open: number; renamed: number; notFound: number };
+  /** Sub-assembly MOs: orders rewritten this run, their MOs, orders unchanged since the last. */
+  children: { orders: number; mos: number; unchanged: number };
+  /** The store's SF01 on-hand: codes updated, unchanged, not found in Odoo;
+   *  `skipped` when the read looked broken (most stocks gone to zero). */
+  stock: { updated: number; unchanged: number; missing: number; skipped?: boolean };
   /** What went wrong in a part that did not stop the rest. */
   issues: string[];
   ms: number;
 }
 
-export const EMPTY_SUMMARY: OdooSyncSummary = {
-  log: { checked: 0, done: 0, open: 0, renamed: 0, notFound: 0, differs: 0 },
-  children: { orders: 0, mos: 0, unresolved: 0 },
-  stock: { updated: 0, unchanged: 0, missing: 0 },
-  issues: [],
-  ms: 0,
-};
-
 /** One line for the settings card and the assistant. */
 export function summaryText(s: OdooSyncSummary | null | undefined): string {
   if (!s) return "";
   const parts = [
-    `${s.log.checked} MOs checked (${s.log.differs} differ from the log)`,
-    `${s.children.mos} sub-assembly MOs under ${s.children.orders} orders`,
-    `SF01 stock: ${s.stock.updated} updated`,
+    `${s.log.checked} MOs checked`,
+    `${s.children.orders} order${s.children.orders === 1 ? "" : "s"} with new sub-assembly MOs (${s.children.unchanged} unchanged)`,
+    s.stock.skipped ? "SF01 stock skipped" : `SF01 stock: ${s.stock.updated} updated`,
   ];
   return parts.join(" · ") + (s.issues.length ? ` · ${s.issues.length} issue${s.issues.length === 1 ? "" : "s"}` : "");
 }

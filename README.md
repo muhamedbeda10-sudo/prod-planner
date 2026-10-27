@@ -237,26 +237,29 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    under its product) or on the day it was logged — over today, yesterday, 7/30/90 days, this
    month, all time or a custom from/to, with the numbers as a table (the assistant makes its Excel).
 
-   **Odoo, read by the app** (`lib/server/odooSync.ts`, the pure rules in `lib/domain/odooSync.ts` and
-   `lib/domain/odooChildren.ts`). The owner connects Odoo in **Admin → Settings → Odoo connection** — address,
-   database, login and an API key of a read-only Odoo user, tried before it is saved and kept encrypted
-   (`OdooSettings`, never readable to the assistant). The app only ever READS Odoo: `lib/server/odooApi.ts`
-   refuses any method that is not a read before it leaves the server. A run reads three things, each on its own
-   so one failing leaves the others: what Odoo says about every MO the log names (`OdooMoState` — state, Odoo's
-   own closing moment, the name it uses now when it renamed the first batch `…-001` on splitting the order);
-   the shop floor's sub-assembly MOs under every open order (`OdooChildMo` — tank, top cover, core frame, cable
-   box, arrester, monobloc box and the fins under the tank, walked down from the PF01 MO the way the monthly
-   child-MO sheet is built, through a component assembled on another floor to its SF01 MO; an LV order's own
-   batches); and SF01/Shop Floor Warehouse's on-hand into Physical Material's Odoo column for the codes the
-   table lists. It runs at 09:00 and 13:00 Riyadh time, Sunday to Thursday, from the automations' clock
-   (`runOdooSyncIfDue`, one run per slot, `OdooSyncRun`), and on an admin's **Sync now**. A sync never moves a
-   row's status, MO or version: the log shows what Odoo says under each MO (`OdooStateTag`) — Odoo ✓, Still
-   open in Odoo (Done here only), Closed in Odoo, Cancelled in Odoo, MO of another part, Not in Odoo — with a
-   **differ from Odoo** count that filters to them; a row waiting for its MO offers the open MOs of its order
-   and component, its own batch before the family's others (`suggestChildMos`), one click to book it, here and
-   in the alerts popup. The Trace lists the order's sub-assembly MOs, and a closing counts on Odoo's own
-   closing day on the ODOO and Material dashboards (`effectiveDoneAt`); the export adds Odoo state, Odoo closed
-   at and Odoo check after the sheet's own columns.
+   **Odoo, read on a schedule** (`lib/domain/odooSync.ts`, `lib/domain/odooPull.ts`, `lib/domain/odooChildren.ts`).
+   The app only ever READS Odoo, and not from its server: a scheduled task on the owner's computer, at about
+   09:00 and 13:00 Riyadh time Sunday to Thursday, opens Odoo in the Claude desktop app's browser with the
+   user's own login, gets the plan from the database (`odoo_pull_plan()`), loads `/odoo-pull.js` (the pull,
+   bundled by `scripts/gen-odoo-pull.ts`; a test keeps it current) into the Odoo page and runs it — reads only,
+   any other method refused — then hands what it read to `odoo_ingest()` in pieces small enough to copy (all
+   three database functions: migration `20261027180000_odoo_sync`, not callable by the public API's roles or
+   the assistant). A run reads three things, each on its own so one failing leaves the others: what Odoo says
+   about the close-out log's MOs not settled yet (`OdooMoState` — state, Odoo's own closing moment, the name it
+   uses now when it renamed the first batch `…-001` on splitting the order); the shop floor's sub-assembly MOs
+   under every open order (`OdooChildMo` — tank, top cover, core frame, cable box, arrester, monobloc box and
+   the fins under the tank, walked down from the PF01 MO the way the monthly child-MO sheet is built, through a
+   component assembled on another floor to its SF01 MO; an LV order's own batches), sent only for the orders
+   that read differently from last time (`OdooOrderSync`); and SF01/Shop Floor Warehouse's on-hand into
+   Physical Material's Odoo column for the codes the table lists — not at all when most stocks would drop to
+   zero at once. Each run is an `OdooSyncRun`; Admin → Settings → Odoo sync shows the last and says when a
+   scheduled one is overdue. A sync never moves a row's status, MO or version: the log shows what Odoo says
+   under each MO (`OdooStateTag`) — Odoo ✓, Still open in Odoo (Done here only), Closed in Odoo, Cancelled in
+   Odoo, MO of another part, Not in Odoo — with a **differ from Odoo** count that filters to them; a row
+   waiting for its MO offers the open MOs of its order and component, its own batch before the family's
+   others (`suggestChildMos`), one click to book it, here and in the alerts popup. The Trace lists the order's
+   sub-assembly MOs, and a closing counts on Odoo's own closing day on the ODOO and Material dashboards
+   (`effectiveDoneAt`); the export adds Odoo state, Odoo closed at and Odoo check after the sheet's own columns.
 8. **Shift log** (`/shifts`) — the supervisors' page, one day at a time: every worker registered in a
    section (Tools → Production Workers), narrowed to a line, a section or a search. Each worker gets ONE
    choice that says whether he came and on which shift — ☀ **Day** (07:00–16:00), 🌙 **Night** (19:00–04:00)
