@@ -39,19 +39,20 @@ const BLANK_SPLIT = "(blank)";
 /** A Total row: its first filled cell that is not a number reads Total — the
  *  label goes in the first column not summed, any summed one before it. The
  *  screens' own closing rows read the same (the Production sheet's). */
-export function isTotalRow(row: readonly LayoutCell[] | LayoutRow | undefined): boolean {
+export function isTotalRow(row: readonly unknown[] | Readonly<Record<string, unknown>> | undefined): boolean {
   if (!row) return false;
-  const label = Object.values(row).find((v) => !isBlank(v) && cellNumber(v) === null);
+  // a row an Export button hands over may carry anything: only its texts are labels
+  const label = Object.values(row).find((v) => typeof v === "string" && v.trim() !== "" && cellNumber(v) === null);
   return typeof label === "string" && label.trim() === TOTAL_LABEL;
 }
 
-const isBlank = (v: LayoutCell | undefined) => v === undefined || (typeof v === "string" && v.trim() === "");
+const isBlank = (v: unknown) => v === undefined || v === null || (typeof v === "string" && v.trim() === "");
 
 /** A cell as a number to add up: a number, or text that is one ("1,234.5").
  *  A comma counts only between thousands — "3,4" is not 34. */
-export function cellNumber(v: LayoutCell | undefined): number | null {
+export function cellNumber(v: unknown): number | null {
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
-  if (v === undefined) return null;
+  if (typeof v !== "string") return null;
   const t = v.trim();
   return /^-?(\d{1,3}(,\d{3})+(\.\d+)?|\d+\.?\d*|\.\d+)$/.test(t) ? Number(t.replace(/,/g, "")) : null;
 }
@@ -94,15 +95,29 @@ function compareSplit(a: LayoutCell | undefined, b: LayoutCell | undefined): num
   return String(a ?? "").localeCompare(String(b ?? ""), "en", { numeric: true, sensitivity: "base" });
 }
 
+/** The columns of a sheet as the assistant names them — case and spaces
+ *  aside — and the refusal of a name the sheet does not have, naming the
+ *  ones it has. layoutSheets and the styling (sheetStyle.ts) alike. */
+export function columnResolver(columns: readonly string[]): { resolve: (name: string) => string | undefined; unknown: (names: readonly string[]) => string | null } {
+  const byKey = new Map(columns.map((c) => [c.trim().toLowerCase(), c]));
+  const resolve = (name: string) => byKey.get(name.trim().toLowerCase());
+  return {
+    resolve,
+    unknown: (names) => {
+      const missing = [...new Set(names.filter((n) => !resolve(n)))];
+      return missing.length > 0 ? `The sheet has no column ${missing.map((n) => `"${n}"`).join(", ")} — its columns are: ${columns.join(", ")}.` : null;
+    },
+  };
+}
+
 /** The rows laid out as asked — on one sheet named `sheet` unless split.
  *  Columns are named as the sheet heads them, case and spaces aside; a name
  *  it does not have is refused with the ones it has. */
 export function layoutSheets(rows: readonly LayoutRow[], sheet: string, o: LayoutOptions): Layout | { error: string } {
   const columns = columnsOf(rows);
-  const byKey = new Map(columns.map((c) => [c.trim().toLowerCase(), c]));
-  const resolve = (name: string) => byKey.get(name.trim().toLowerCase());
-  const unknown = [o.splitBy ?? [], o.totals ?? [], o.nonBlank ?? []].flat().filter((n) => !resolve(n));
-  if (unknown.length > 0) return { error: `The sheet has no column ${unknown.map((n) => `"${n}"`).join(", ")} — its columns are: ${columns.join(", ")}.` };
+  const { resolve, unknown } = columnResolver(columns);
+  const problem = unknown([o.splitBy ?? [], o.totals ?? [], o.nonBlank ?? []].flat());
+  if (problem) return { error: problem };
 
   const totals = [...new Set((o.totals ?? []).map((n) => resolve(n)!))];
   // the Total row's label goes in the first column that is not summed

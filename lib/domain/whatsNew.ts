@@ -24,6 +24,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "A new chat opens on tiles for what the assistant can do: Build a report, Draw a chart, Excel file, What if…, Plan to a deadline, Morning briefing, What looks wrong, Why did it change?, Scan a paper sheet and New automation. Click one and fill a short form — the topic, the period or dates, the department, the line, and whether you want a summary, an Excel file, a PDF or charts — and the assistant gets the question written for you. The ✨ button beside the paperclip brings the same tiles back in the middle of a chat. The list of chats is redesigned: each chat shows when it was last used, and Select (or Ctrl + click on a chat) ticks several at once — Shift + click ticks a run — to pin or delete them together, after one confirmation that names them.",
   },
   {
+    id: "2026-10-27-excel-files-formatted",
+    dateISO: "2026-10-27",
+    title: "Excel files come formatted — and the assistant colours them the way you ask",
+    where: "Assistant → Excel files · Floor → Export",
+    body: "Every Excel file the app makes now opens ready to read: a coloured header that stays in view with filters on it, columns as wide as what they hold, numbers with their thousands and decimals, banded rows, a bold Total row, and set to print one page wide. That goes for the assistant's files and for the Export buttons on the Floor and in the chat. Ask the assistant for more and it adds it to the file: a title, another header colour, late rows in red or done in green, a colour scale or data bars on a column, percentages, bold or frozen columns. The colours are live Excel rules, so a figure you change recolours itself.",
+  },
+  {
     id: "2026-10-27-odoo-status-tick-or-cross",
     dateISO: "2026-10-27",
     title: "ODOO log: Status is a ✓ or a ✗ — and a row is cancelled only with a note",

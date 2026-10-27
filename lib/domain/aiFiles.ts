@@ -19,6 +19,9 @@ export type AiFileKind = (typeof AI_FILE_KINDS)[number];
 export const SEEN_KINDS: readonly AiFileKind[] = ["image", "pdf"];
 export const isSeenKind = (k: string): k is "image" | "pdf" => (SEEN_KINDS as readonly string[]).includes(k);
 
+/** An .xlsx workbook's media type. */
+export const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
 export const AI_FILE_LIMITS = {
   /** One file — a request to the app carries at most ~4.5 MB on Vercel. */
   maxBytes: 4 * 1024 * 1024,
@@ -85,7 +88,7 @@ export function aiFileKind(name: string, head: Uint8Array): { kind: AiFileKind; 
   if (startsWith(head, RIFF) && startsWith(head, WEBP, 8)) return { kind: "image", type: "image/webp" };
   if (startsWith(head, PDF)) return { kind: "pdf", type: "application/pdf" };
   const ext = name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? "";
-  if ((ext === "xlsx" || ext === "xlsm") && startsWith(head, ZIP)) return { kind: "excel", type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
+  if ((ext === "xlsx" || ext === "xlsm") && startsWith(head, ZIP)) return { kind: "excel", type: XLSX_TYPE };
   if (ext === "xls" && startsWith(head, OLE)) return { kind: "excel", type: "application/vnd.ms-excel" };
   // text: no NUL byte in what was read (a binary file has them early)
   if (ext === "csv" && head.length > 0 && !head.includes(0)) return { kind: "csv", type: "text/csv" };

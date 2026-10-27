@@ -578,7 +578,13 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      a day's attendance and machine stops) — or the rows of one read-only SELECT, up to 50,000 rows. Any of them can be
      laid out in the same file (`lib/domain/sheetLayout.ts`): `nonBlank` keeps the rows with given columns filled,
      `splitBy` puts each value of a column on its own sheet (a sheet per thickness, up to 50), and `totals` closes each
-     sheet with a Total row over the columns named. Each screen's sheet
+     sheet with a Total row over the columns named. Every workbook the app writes — these, and the Floor's and the
+     chat's Export buttons (the writer is fetched on the first press) — comes in the house style
+     (`lib/domain/sheetStyle.ts`, `lib/excel/workbook.ts`, on `exceljs`): a coloured, frozen header with filters,
+     fitted columns, number formats, banded rows, a bold Total row, set to print a page wide; the values are written as
+     they are (a text is never a formula). The assistant's `style` adds what the person asks for — a title, a header
+     colour, cells or rows coloured by a rule, a colour scale, data bars, a number format, bold or frozen columns — as
+     live Excel rules. Each screen's sheet
      follows the screen's own access (its tab; the Orders Registry and the consumables' edits the admin's). The workbook
      is kept as the person's own file in their chat (`AiFile`, same limits and 14 days), and the answer carries two
      buttons: download it, or `/ai/print/[id]` — every sheet of it under the company header with the print dialog open. A

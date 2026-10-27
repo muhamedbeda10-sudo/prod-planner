@@ -19,6 +19,7 @@
 // Plan dates are OVEN dates: day g -> startDate + g.
 // targetQty(item) = sum of the item's day cells (the scheduled total).
 
+import { columnLetter } from "./sheetStyle";
 import { sheetNumberOr } from "./material";
 import { SHEET_ITEMS, type Item } from "./constants";
 
@@ -133,11 +134,8 @@ export interface ParsedPlan {
   layout: PlanLayout;
 }
 
-const colName = (i: number): string => {
-  let s = "";
-  for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s;
-  return s;
-};
+/** A 0-based column's letters (0 → A). */
+const colName = (i: number): string => columnLetter(i + 1);
 
 const S = (v: unknown): string => (v == null ? "" : String(v).trim());
 // the same reading of a number as the nesting and stock sheets: "1,200" is
