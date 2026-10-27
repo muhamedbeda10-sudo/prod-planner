@@ -4,10 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // the closed rows — the bulk of the log — stay in the database, and the domain
 // rule still decides what is listed.
 
-const h = vi.hoisted(() => ({ findMany: vi.fn() }));
+const h = vi.hoisted(() => ({ findMany: vi.fn(), states: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: { odooEntry: { findMany: h.findMany } } }));
-vi.mock("@/lib/server/odoo", () => ({ resolveRowBoms: async (rows: unknown[]) => rows.map(() => ({ boms: ["T-1"], ambiguous: false })) }));
+vi.mock("@/lib/server/odoo", () => ({
+  resolveRowBoms: async (rows: unknown[]) => rows.map(() => ({ boms: ["T-1"], ambiguous: false })),
+  resolveRowMaterialStates: h.states,
+}));
 
 import { getNeedingMo, getReadyToClose } from "@/lib/server/odooAlerts";
 
@@ -24,5 +27,21 @@ describe("the alert loaders", () => {
     // a Blocked row is not waiting on anyone's MO — out of the poll in SQL, and the domain rule still has the last word on what came back
     expect((await getNeedingMo()).map((r) => r.id)).toEqual([4]);
     expect(h.findMany.mock.calls[1][0]).toMatchObject({ where: { odooMo: "", status: { notIn: ["Done", "Closed", "Blocked", "Cancelled", "Canceled"], mode: "insensitive" } }, take: 400 });
+  });
+
+  it("look the material up only when asked — the layout's count skips it", async () => {
+    h.findMany.mockResolvedValue([row(1, {}), row(2, {})]);
+    expect((await getReadyToClose()).map((r) => r.material)).toEqual(["none", "none"]);
+    expect(h.states).not.toHaveBeenCalled();
+    h.states.mockResolvedValue(["missing", "ok"]);
+    expect((await getReadyToClose({ material: true })).map((r) => r.material)).toEqual(["missing", "ok"]);
+    expect(h.states.mock.calls[0][0].map((r: { id: number }) => r.id)).toEqual([1, 2]);
+    h.findMany.mockResolvedValue([row(4, { odooMo: "" })]);
+    expect((await getNeedingMo()).map((r) => r.material)).toEqual(["none"]);
+    expect(h.states).toHaveBeenCalledTimes(1);
+    // a failed material lookup leaves the rows uncoloured, not the alerts gone
+    h.findMany.mockResolvedValue([row(1, {})]);
+    h.states.mockRejectedValue(new Error("timeout"));
+    expect((await getReadyToClose({ material: true })).map((r) => r.material)).toEqual(["none"]);
   });
 });

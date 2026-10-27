@@ -28,7 +28,7 @@ export async function pollOdooAlerts(): Promise<OdooAlertsPoll> {
   const wantMo = perms.has(ODOO_NEED_MO_PERM);
   if (!wantClose && !wantMo) return { ok: false };
   const [close, mo] = await Promise.all([
-    wantClose ? getReadyToClose() : Promise.resolve(undefined),
+    wantClose ? getReadyToClose({ material: true }) : Promise.resolve(undefined),
     wantMo ? getNeedingMo() : Promise.resolve(undefined),
   ]);
   return {

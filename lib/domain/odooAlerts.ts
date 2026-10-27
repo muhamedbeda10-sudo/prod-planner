@@ -8,6 +8,7 @@
 // they have not seen yet appears, workable from the popup. Pure, tested.
 
 import { statusTone } from "./odoo";
+import type { MoMaterialState } from "./odooMaterial";
 
 /** Subscribes a person to "ready to close". Not an access right, so an admin
  *  does not get it automatically — it is ticked. */
@@ -33,6 +34,9 @@ export interface ReadyRow {
   qty: number;
   status: string;
   source: string; // manual | import | painting | shotblast
+  /** Its MO against the Material tab — the ODOO log's row colour. "none" when
+   *  the row has no MO or the loader was not asked to look it up. */
+  material: MoMaterialState;
 }
 
 /** The statuses a row is finished under — closed, or not waiting on anyone

@@ -6,7 +6,7 @@ import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { blockedItem, isDoneStatus, odooRowBom, odooRowBomLabel, parseOdooSheet, statusTone, type OdooEntryView, type OdooRowBom, type OdooScope } from "@/lib/domain/odoo";
 import { buildOdooDashboard, comparePeriod, type OdooBasis, type OdooCompare, type OdooDashboardData, type OdooPeriod, type OdooSeries } from "@/lib/domain/odooStats";
 import { buildOdooInsights, type OdooInsightRow, type OdooInsights } from "@/lib/domain/odooInsights";
-import { candidateBoms, candidateMos, moKey, moParent, nestingKey, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { candidateBoms, candidateMos, moKey, moParent, nestingKey, rowMaterialState, type MoMaterialState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 
 export interface OdooPageData {
   entries: OdooEntryView[];
@@ -55,16 +55,7 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
     prisma.odooEntry.groupBy({ by: ["status"], _count: { _all: true } }),
   ]);
 
-  const soiBoms: Record<string, string[]> = {};
-  const soiMos: Record<string, string[]> = {};
-  for (const o of orders) {
-    const soi = (o.soi ?? "").trim().toUpperCase();
-    const bom = o.bom.trim().toUpperCase();
-    const mo = o.mo.trim().toUpperCase();
-    if (!soi) continue;
-    if (bom) { const list = (soiBoms[soi] ??= []); if (!list.includes(bom)) list.push(bom); }
-    if (mo && o.line === "LV") { const list = (soiMos[soi] ??= []); if (!list.includes(mo)) list.push(mo); }
-  }
+  const { soiBoms, soiMos } = soiIndex(orders);
 
   // the closing a row was born from names the planner's MO — the key a
   // panel row's material sits under
@@ -115,6 +106,52 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
     totalRows,
     openRows: byStatus.reduce((n, g) => n + (isDoneStatus(g.status) ? 0 : g._count._all), 0),
   };
+}
+
+/** The registry's BOM(s) per SOI, and a panel order's MO(s) per SOI. */
+function soiIndex(orders: readonly { soi: string | null; bom: string; mo: string; line: string }[]): Pick<NeedContext, "soiBoms" | "soiMos"> {
+  const soiBoms: Record<string, string[]> = {};
+  const soiMos: Record<string, string[]> = {};
+  for (const o of orders) {
+    const soi = (o.soi ?? "").trim().toUpperCase();
+    const bom = o.bom.trim().toUpperCase();
+    const mo = o.mo.trim().toUpperCase();
+    if (!soi) continue;
+    if (bom) { const list = (soiBoms[soi] ??= []); if (!list.includes(bom)) list.push(bom); }
+    if (mo && o.line === "LV") { const list = (soiMos[soi] ??= []); if (!list.includes(mo)) list.push(mo); }
+  }
+  return { soiBoms, soiMos };
+}
+
+/** Each row's MO against the Material tab, read the way the ODOO log colours
+ *  it (rowMaterialState): "missing", "partial", "ok" — "none" for a row with
+ *  no MO, which skips the lookup. `boms` are the rows' resolveRowBoms. */
+export async function resolveRowMaterialStates(
+  rows: readonly { line: string; fgCode: string; soi: string | null; odooMo: string; ledgerId: number | null }[],
+  boms: readonly OdooRowBom[],
+): Promise<MoMaterialState[]> {
+  const withMo = rows.map((r, i) => ({ r, i })).filter(({ r }) => r.odooMo.trim() !== "");
+  if (withMo.length === 0) return rows.map(() => "none");
+  const sois = [...new Set(withMo.map(({ r }) => (r.soi ?? "").trim()).filter(Boolean))];
+  const ledgerIds = withMo.map(({ r }) => r.ledgerId).filter((id): id is number => id !== null);
+  const [orders, ledgers] = await Promise.all([
+    sois.length ? prisma.masterOrder.findMany({ where: { soi: { in: sois, mode: "insensitive" } }, select: { soi: true, bom: true, mo: true, line: true } }) : Promise.resolve([]),
+    ledgerIds.length ? prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, mo: true } }) : Promise.resolve([]),
+  ]);
+  const { soiBoms, soiMos } = soiIndex(orders);
+  const moOfLedger = new Map(ledgers.map((l) => [l.id, (l.mo ?? "").trim().toUpperCase() || null]));
+  const entries = withMo.map(({ r, i }) => ({
+    line: r.line, fgCode: r.fgCode, soi: r.soi, odooMo: r.odooMo, bom: boms[i],
+    mo: r.ledgerId !== null ? (moOfLedger.get(r.ledgerId) ?? null) : null,
+  }));
+  const [tr, lv] = await Promise.all([
+    nestingOf(entries.filter((e) => e.line !== "LV"), "TR", soiBoms, soiMos),
+    nestingOf(entries.filter((e) => e.line === "LV"), "LV", soiBoms, soiMos),
+  ]);
+  const nesting = { ...tr, ...lv };
+  const out: MoMaterialState[] = rows.map(() => "none");
+  withMo.forEach(({ i }, k) => { out[i] = rowMaterialState(nesting, entries[k], { lv: entries[k].line === "LV", soiBoms, soiMos }); });
+  return out;
 }
 
 /** The material lines the rows may read: panels by their orders' MOs; a

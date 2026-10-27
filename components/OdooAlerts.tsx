@@ -10,6 +10,7 @@ import { startPoll } from "@/lib/poll";
 import { closeOdooReady, fillOdooMo, odooRowMaterial, pollOdooAlerts } from "@/app/odoo/alertActions";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { ODOO_CHANGED_EVENT, alertKey, pruneSeen, unseenKeys, type ReadyRow } from "@/lib/domain/odooAlerts";
+import { MO_MATERIAL_FLAG } from "@/lib/domain/odooMaterial";
 
 // 🔔 The ODOO alerts, for whoever is subscribed:
 // - "needs an MO" (odoo.needMo): a row landed on the log without Odoo's MO —
@@ -236,10 +237,11 @@ function RowFacts({ r, isNew, onOpen, opening }: { r: ReadyRow; isNew: boolean; 
   }
   // not a button itself — the MO inside it is selectable and has its own
   // copy button; the "📦 material" link is the keyboard's way in
+  const flag = materialFlag(r);
   return (
     <div
       onClick={open}
-      title="Click for the material behind this row"
+      title={flag ? `${flag.text} — click for the material behind this row` : "Click for the material behind this row"}
       className={`flex flex-1 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md -mx-1.5 px-1.5 py-1 text-left hover:bg-surface-2 select-text ${opening ? "cursor-wait" : "cursor-pointer"}`}
     >
       <span className={`pill ${r.line === "LV" ? "pill-muted" : "pill-ok"} text-[10px]`}>{r.line}</span>
@@ -251,9 +253,37 @@ function RowFacts({ r, isNew, onOpen, opening }: { r: ReadyRow; isNew: boolean; 
       <span className="tabnum font-bold">× {r.qty}</span>
       {SOURCE_LABEL[r.source] && <span className="pill pill-muted text-[10px]">{SOURCE_LABEL[r.source]}</span>}
       {isNew && <span className="pill pill-warn text-[10px]">new</span>}
+      {/* the colour, in words, for a screen reader */}
+      {flag && <span className="sr-only">Material: {flag.label}</span>}
       <button type="button" disabled={opening} onClick={(e) => { e.stopPropagation(); onOpen(r.id); }} className="text-xs text-brand-ink font-semibold hover:underline">
         {opening ? "opening…" : "📦 material"}
       </button>
+    </div>
+  );
+}
+
+/** The row's MO against the Material tab — red, yellow or green, as on the ODOO log. */
+const materialFlag = (r: ReadyRow) => (r.material === "none" ? null : MO_MATERIAL_FLAG[r.material]);
+
+// the same three states and colours as the ODOO log's filter chips
+const MATERIAL_LEGEND = [
+  { state: "missing", swatch: "bg-bad-bg border-bad-fg", ink: "text-bad-fg" },
+  { state: "partial", swatch: "bg-warn-bg border-warn-fg", ink: "text-warn-fg" },
+  { state: "ok", swatch: "bg-ok-bg border-ok-fg", ink: "text-ok-fg" },
+] as const;
+
+/** What the row colours mean, with how many rows are in each — only the states present. */
+function MaterialLegend({ rows }: { rows: ReadyRow[] }) {
+  const shown = MATERIAL_LEGEND.map((l) => ({ ...l, n: rows.filter((r) => r.material === l.state).length })).filter((l) => l.n > 0);
+  if (shown.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[length:var(--fs-body)] text-muted">
+      {shown.map((l) => (
+        <span key={l.state} className="inline-flex items-center gap-1.5" title={MO_MATERIAL_FLAG[l.state].text}>
+          <span aria-hidden className={`inline-block w-3.5 h-2.5 rounded-sm border-l-4 ${l.swatch}`} />
+          <b className={`tabnum ${l.ink}`}>{l.n}</b>{MO_MATERIAL_FLAG[l.state].label}
+        </span>
+      ))}
     </div>
   );
 }
@@ -326,19 +356,28 @@ function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo
 
         {close.length > 0 && (
           <section className={mo.length > 0 ? "border-t" : ""}>
-            <h3 className="px-4 pt-3 pb-1 text-xs font-extrabold uppercase tracking-wide text-muted">Ready to close · {close.length}</h3>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-3 pb-1">
+              <h3 className="text-xs font-extrabold uppercase tracking-wide text-muted">Ready to close · {close.length}</h3>
+              <MaterialLegend rows={close} />
+            </div>
             <ul className="divide-y">
-              {close.map((r) => (
-                <li key={`close-${r.id}`} className={`flex items-center gap-3 px-5 py-3 text-base ${fresh.has(alertKey("close", r.id)) ? "bg-warn-bg/40" : ""}`}>
-                  <RowFacts r={r} isNew={fresh.has(alertKey("close", r.id))} onOpen={onOpen} opening={opening === r.id} />
-                  <button
-                    type="button" className="shrink-0 btn btn-sm btn-primary" disabled={pending || !can(r)} onClick={() => onClose([r.id])}
-                    title={can(r) ? "Closed in Odoo — mark it Done" : "You cannot record on this line's ODOO log"}
+              {close.map((r) => {
+                const flag = materialFlag(r);
+                return (
+                  <li
+                    key={`close-${r.id}`}
+                    className={`flex items-center gap-3 px-5 py-3 text-base ${flag?.cls ?? (fresh.has(alertKey("close", r.id)) ? "bg-warn-bg/40" : "")}`}
                   >
-                    ✓ Done
-                  </button>
-                </li>
-              ))}
+                    <RowFacts r={r} isNew={fresh.has(alertKey("close", r.id))} onOpen={onOpen} opening={opening === r.id} />
+                    <button
+                      type="button" className="shrink-0 btn btn-sm btn-primary" disabled={pending || !can(r)} onClick={() => onClose([r.id])}
+                      title={can(r) ? "Closed in Odoo — mark it Done" : "You cannot record on this line's ODOO log"}
+                    >
+                      ✓ Done
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         )}

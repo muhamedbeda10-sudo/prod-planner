@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-odoo-alert-material-colours",
+    dateISO: "2026-10-27",
+    title: "Ready to close: each row is coloured by its material, as on the ODOO log",
+    where: "Odoo alerts popup → Ready to close",
+    body: "The rows in the Ready to close popup now carry the same colours as the ODOO log: red when the Material tab has nothing for the row's MO, yellow when some of its lines are not nested yet, green when every line is nested. A legend beside the heading counts the rows in each colour, and hovering a row says what its colour means.",
+  },
+  {
     id: "2026-10-27-inbox-popups-until-read",
     dateISO: "2026-10-27",
     title: "Alerts, tasks and automations pop up on the screen until you mark them read",

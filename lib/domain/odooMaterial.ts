@@ -384,9 +384,11 @@ export function rowMaterialState(
   return lines.every(nested) ? "ok" : "partial";
 }
 
-/** The row's tint and the words behind it — red, yellow, or green when all is nested. */
-export const MO_MATERIAL_FLAG: Record<"missing" | "partial" | "ok", { cls: string; edge: string; text: string }> = {
-  ok: { cls: "bg-ok-bg/70", edge: "inset 4px 0 0 var(--ok-fg)", text: "This MO is on the Material tab and every line of it is nested" },
-  missing: { cls: "bg-bad-bg/70", edge: "inset 4px 0 0 var(--bad-fg)", text: "Nothing on the Material tab for this MO or for this part of its order (SOI)" },
-  partial: { cls: "bg-warn-bg/70", edge: "inset 4px 0 0 var(--warn-fg)", text: "This MO is on the Material tab, but some of its lines have no actual nested sheets yet" },
+/** The row's tint with its coloured left edge, a short label (the filter
+ *  chips, the alert's legend) and the words behind it — red, yellow, or green
+ *  when all is nested. */
+export const MO_MATERIAL_FLAG: Record<"missing" | "partial" | "ok", { cls: string; label: string; text: string }> = {
+  ok: { cls: "bg-ok-bg/70 shadow-[inset_4px_0_0_var(--ok-fg)]", label: "all nested", text: "This MO is on the Material tab and every line of it is nested" },
+  missing: { cls: "bg-bad-bg/70 shadow-[inset_4px_0_0_var(--bad-fg)]", label: "MO not on Material", text: "Nothing on the Material tab for this MO or for this part of its order (SOI)" },
+  partial: { cls: "bg-warn-bg/70 shadow-[inset_4px_0_0_var(--warn-fg)]", label: "not all nested", text: "This MO is on the Material tab, but some of its lines have no actual nested sheets yet" },
 };

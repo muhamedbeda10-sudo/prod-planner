@@ -520,7 +520,6 @@ function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: 
     <>
       <tr
         className={`border-t ${flag ? `${flag.cls} hover:brightness-95` : `hover:bg-surface-2/60 ${inGroup ? "bg-surface-2/40" : ""}`}`}
-        style={flag ? { boxShadow: flag.edge } : undefined}
         onContextMenu={canEdit ? row.onContextMenu : undefined}
       >
         <td className={`${cell} tabnum ltr ${inGroup ? "ps-6" : ""}`} onClick={open} title={rowTitle}>
@@ -667,7 +666,6 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
     <>
       <tr
         className={`border-t font-semibold ${flag ? `${flag.cls} hover:brightness-95` : open ? "bg-brand-light/40" : "bg-brand-light/20 hover:bg-brand-light/40"} transition-colors`}
-        style={flag ? { boxShadow: flag.edge } : undefined}
         onContextMenu={canEdit ? row.onContextMenu : undefined}
       >
         <td className={`${cell} tabnum ltr`} onClick={details} title={rowTitle}>
@@ -848,7 +846,7 @@ function CountFilter({ n, label, tone, on, title, onClick }: { n: number; label:
 
 /** One colour of the MO-on-Material tint, as a count that filters to it. */
 function MatChip({ state, n, on, onClick }: { state: "missing" | "partial" | "ok"; n: number; on: boolean; onClick: () => void }) {
-  const label = state === "missing" ? "MO not on Material" : state === "partial" ? "not all nested" : "all nested";
+  const label = MO_MATERIAL_FLAG[state].label;
   const ink = state === "missing" ? "var(--bad-fg)" : state === "partial" ? "var(--warn-fg)" : "var(--ok-fg)";
   const bg = state === "missing" ? "var(--bad-bg)" : state === "partial" ? "var(--warn-bg)" : "var(--ok-bg)";
   return (
