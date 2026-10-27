@@ -1,7 +1,9 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { pushTo } from "@/lib/server/push";
-import { INBOX_BODY_MAX, INBOX_TITLE_MAX, inboxPreview, type InboxKind } from "@/lib/domain/inbox";
+import {
+  INBOX_BODY_MAX, INBOX_POPUP_PREVIEW, INBOX_POPUP_SHOWN, INBOX_TITLE_MAX, NO_INBOX_HEAD, inboxPreview, type InboxHead, type InboxKind, type InboxPopupItem,
+} from "@/lib/domain/inbox";
 
 // Putting something in a person's inbox — a report, a message, a suggestion,
 // a task's news — and pushing it to their devices. The inbox row is the delivery; the push is
@@ -58,20 +60,46 @@ export async function deliverToInbox(items: readonly InboxDelivery[]): Promise<n
   return made.map((m) => m.id);
 }
 
-/** How many unread items a person has. */
-export async function unreadInboxCount(userId: number): Promise<number> {
-  return prisma.aiInboxItem.count({ where: { userId, readAt: null } });
+/** The bar's poll: the unread count and the newest unread item, in one query. */
+export async function inboxHead(userId: number): Promise<InboxHead> {
+  const r = await prisma.aiInboxItem.aggregate({ where: { userId, readAt: null }, _count: { _all: true }, _max: { id: true } });
+  return { unread: r._count._all, latestId: r._max.id ?? 0 };
 }
 
-/** What the bell shows: the unread count, and whether there is anything at
- *  all (a person nothing was ever sent to has no bell). Never throws — the
- *  bar on every page reads it. */
-export async function inboxState(userId: number): Promise<{ unread: number; any: boolean }> {
+/** What pops up on the screen until it is marked read: every unread item
+ *  but what the person sent themselves (a reply kept from their own chat). */
+const popupWhere = (userId: number) => ({ userId, readAt: null, OR: [{ fromUserId: null }, { fromUserId: { not: userId } }] });
+
+/** The popups: the newest few, and how many in all. */
+export async function inboxPopups(userId: number): Promise<{ items: InboxPopupItem[]; total: number }> {
+  const where = popupWhere(userId);
+  // one more than shown says whether there are more — only then are they counted
+  const rows = await prisma.aiInboxItem.findMany({
+    where, orderBy: { id: "desc" }, take: INBOX_POPUP_SHOWN + 1,
+    select: { id: true, kind: true, title: true, body: true, fromName: true, createdAt: true, taskId: true },
+  });
+  const total = rows.length > INBOX_POPUP_SHOWN ? await prisma.aiInboxItem.count({ where }) : rows.length;
+  const items = rows.slice(0, INBOX_POPUP_SHOWN).map((r) => ({
+    id: r.id, kind: r.kind as InboxKind, title: r.title, preview: inboxPreview(r.body, INBOX_POPUP_PREVIEW), fromName: r.fromName,
+    createdAt: r.createdAt.toISOString(), taskId: r.taskId,
+  }));
+  return { items, total };
+}
+
+/** Mark read every item that pops up — and only those. */
+export async function markInboxPopupsRead(userId: number): Promise<void> {
+  await prisma.aiInboxItem.updateMany({ where: popupWhere(userId), data: { readAt: new Date() } });
+}
+
+/** What the bell shows: the unread count, the newest unread item, and
+ *  whether there is anything at all (a person nothing was ever sent to has no
+ *  bell). Never throws — the bar on every page reads it. */
+export async function inboxState(userId: number): Promise<InboxHead & { any: boolean }> {
   try {
-    const [unread, first] = await Promise.all([unreadInboxCount(userId), prisma.aiInboxItem.findFirst({ where: { userId }, select: { id: true } })]);
-    return { unread, any: !!first };
+    const [head, first] = await Promise.all([inboxHead(userId), prisma.aiInboxItem.findFirst({ where: { userId }, select: { id: true } })]);
+    return { ...head, any: !!first };
   } catch (e) {
     console.error("inbox: could not read the bell's count", e);
-    return { unread: 0, any: false };
+    return { ...NO_INBOX_HEAD, any: false };
   }
 }

@@ -3,7 +3,8 @@
 import { prisma } from "@/lib/db";
 import { getCurrentUser, requirePerm } from "@/lib/server/auth";
 import { pushPublicKey, readSubscription } from "@/lib/server/push";
-import { unreadInboxCount } from "@/lib/server/inbox";
+import { inboxHead, inboxPopups, markInboxPopupsRead } from "@/lib/server/inbox";
+import { NO_INBOX_HEAD, type InboxHead, type InboxPopupItem } from "@/lib/domain/inbox";
 import { sendMessageFromPerson } from "@/lib/server/inboxMessage";
 
 // A person's own inbox — what the assistant and the automations sent them —
@@ -20,17 +21,28 @@ export interface InboxActionResult {
 
 const idsOk = (ids: unknown): ids is number[] => Array.isArray(ids) && ids.length <= MAX_IDS && ids.every((i) => Number.isInteger(i) && i > 0);
 
-/** The bell's number — polled while the app is open. */
-export async function pollInbox(): Promise<{ unread: number }> {
+/** The bell's number and the newest unread item — polled while the app is open. */
+export async function pollInbox(): Promise<InboxHead> {
   const user = await getCurrentUser();
-  if (!user) return { unread: 0 };
-  return { unread: await unreadInboxCount(user.id) };
+  if (!user) return NO_INBOX_HEAD;
+  return inboxHead(user.id);
 }
 
-/** Mark items read — the ones given, or all of them. */
-export async function markInboxRead(ids: number[] | "all"): Promise<InboxActionResult> {
+/** The unread items that pop up on the screen until they are marked read. */
+export async function loadInboxPopups(): Promise<{ ok: boolean; items: InboxPopupItem[]; total: number }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, items: [], total: 0 };
+  return { ok: true, ...(await inboxPopups(user.id)) };
+}
+
+/** Mark items read — the ones given, all of them, or every one that pops up. */
+export async function markInboxRead(ids: number[] | "all" | "popups"): Promise<InboxActionResult> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: NOT_LOGGED_IN };
+  if (ids === "popups") {
+    await markInboxPopupsRead(user.id);
+    return { ok: true };
+  }
   if (ids !== "all" && !idsOk(ids)) return { ok: false, error: "Invalid items." };
   await prisma.aiInboxItem.updateMany({ where: { userId: user.id, readAt: null, ...(ids === "all" ? {} : { id: { in: ids } }) }, data: { readAt: new Date() } });
   return { ok: true };

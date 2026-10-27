@@ -52,23 +52,25 @@ export interface TabItem {
 
 /** A row of tabs under a line, the open one underlined in the brand green.
  *  `iconsOnly` names only the open tab (the docked panel is narrow). */
-export function Tabs({ items, value, onChange, label, iconsOnly = false, className = "", end }: {
+export function Tabs({ items, value, onChange, label, iconsOnly = false, fill = false, className = "", end }: {
   items: TabItem[];
   value: string;
   onChange: (id: string) => void;
   label: string;
   iconsOnly?: boolean;
+  /** The tabs share the row's width (a narrow window's few tabs). */
+  fill?: boolean;
   className?: string;
   /** What sits at the end of the row (buttons). */
   end?: ReactNode;
 }) {
   return (
     <div className={`tab-strip flex items-center gap-1 ${className}`}>
-      <div role="tablist" aria-label={label} className="no-scrollbar flex items-center min-w-0">
+      <div role="tablist" aria-label={label} className={`no-scrollbar flex items-center min-w-0 ${fill ? "flex-1" : ""}`}>
         {items.map((t) => {
           const on = t.id === value;
           return (
-            <button key={t.id} type="button" role="tab" aria-selected={on} onClick={() => onChange(t.id)} title={t.label} className={`tab ${on ? "tab-active" : ""} ${iconsOnly && !on ? "tab-icon" : ""}`}>
+            <button key={t.id} type="button" role="tab" aria-selected={on} onClick={() => onChange(t.id)} title={t.label} className={`tab ${on ? "tab-active" : ""} ${iconsOnly && !on ? "tab-icon" : ""} ${fill ? "flex-1 justify-center" : ""}`}>
               {t.icon && <t.icon size={15} aria-hidden />}
               <span className={iconsOnly && !on ? "sr-only" : ""}>{t.label}</span>
               {t.count !== undefined && t.count > 0 && <span className="tab-count">{t.count > 99 ? "99+" : t.count}</span>}

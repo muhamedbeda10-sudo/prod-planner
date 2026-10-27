@@ -24,6 +24,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "A new chat opens on tiles for what the assistant can do: Build a report, Draw a chart, Excel file, What if…, Plan to a deadline, Morning briefing, What looks wrong, Why did it change?, Scan a paper sheet and New automation. Click one and fill a short form — the topic, the period or dates, the department, the line, and whether you want a summary, an Excel file, a PDF or charts — and the assistant gets the question written for you. The ✨ button beside the paperclip brings the same tiles back in the middle of a chat. The list of chats is redesigned: each chat shows when it was last used, and Select (or Ctrl + click on a chat) ticks several at once — Shift + click ticks a run — to pin or delete them together, after one confirmation that names them.",
   },
   {
+    id: "2026-10-27-inbox-popups-until-read",
+    dateISO: "2026-10-27",
+    title: "Alerts, tasks and automations pop up on the screen until you mark them read",
+    where: "Every page → under the bell",
+    body: "Whatever reaches you — an alert, a task given to you or news on one, a report or a message from an automation — now pops up under the bell on whatever page you are on, with a short chime, and stays there until you deal with it: Open shows it in the inbox, Mark read clears the card, Mark all read clears them all. There is no ✕ — it does not go away by itself, and it comes back after a reload or on another device until you read it. Either way it stays under the bell to come back to. The newest three show at once (one on a phone), the rest counted under them. The inbox itself is tidier: its tabs share the window's width, the filters and Mark all read sit on one row, and the Tasks tab has its views as icons beside For me | I gave and its Open / Done filters in the filter bar. Tasks are now given through the assistant (“give Ahmed a task to …”), so the New button is gone.",
+  },
+  {
     id: "2026-10-27-assistant-excel-sheet-per-value-totals",
     dateISO: "2026-10-27",
     title: "The assistant's Excel files: a sheet per thickness, only the filled rows, and a Total row on each sheet",

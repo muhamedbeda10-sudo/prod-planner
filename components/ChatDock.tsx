@@ -7,7 +7,7 @@ import { MessagesSquare, X, Maximize2, Reply, Volume2, VolumeX, Bell, BellOff, B
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { pollChat, pollChatInbox } from "@/app/chat/actions";
-import { INBOX_UNREAD } from "@/components/InboxBell";
+import { tellInboxHead } from "@/components/InboxBell";
 import { CornerCard } from "@/components/primitives";
 import type { ChatContact, ChatInboxItem, ThreadKind } from "@/lib/server/chat";
 import { factoryClockHHMM } from "@/lib/domain/dates";
@@ -138,7 +138,7 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
     if (!res?.ok) return;
     setLiveUnread(res.unread ?? 0);
     // the bell's number comes with the same answer
-    if (res.inboxUnread !== undefined) window.dispatchEvent(new CustomEvent<number>(INBOX_UNREAD, { detail: res.inboxUnread }));
+    if (res.inbox) tellInboxHead(res.inbox);
     const fresh = first ? [] : (res.items ?? []);
     // out of sight: the OS notification carries it (even with the panel open)
     if (fresh.length > 0 && appInBackground()) {

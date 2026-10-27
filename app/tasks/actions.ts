@@ -14,8 +14,8 @@ import {
   MOVE_NEEDS_TEXT, REPEAT_LIMITS, TASK_LIMITS, TASK_MOVE_LABEL, checklistOf, cleanChecklist, cleanDueDate, cleanRepeat, isClosed, isTaskMove, isTaskStatus, moveTask, nextRepeatDay, tickItem, workingDaysAfter,
 } from "@/lib/domain/tasks";
 
-// Tasks: given by a person with the key for it — by hand or through the
-// assistant — and reported on by the people they were given to, until the
+// Tasks: given by a person with the key for it — through the assistant, an
+// automation or a repeating task — and reported on by the people they were given to, until the
 // giver approves them or cancels them. Each person reads and acts only on
 // the tasks they gave or were given; every move is checked against the
 // task's state as it is in the database at that moment, so two people acting
@@ -42,16 +42,13 @@ function jsonOr(v: FormDataEntryValue | null): unknown {
   }
 }
 
-const TEMPLATE_NAME_MAX = 60;
-const TEMPLATES_PER_OWNER = 50;
-
 /** Where it came from: a click, or the assistant acting for the person. */
 const viaNow = () => (currentActor() ? "ai" : "app");
 
 /** Give a task to one or more people. Several people get one task each
  *  (made together), or — shared — one task they all report on. With
  *  `repeat`, it is also kept to be given again by itself (the first one is
- *  given now); with `templateName`, kept as a template to give again by hand. */
+ *  given now). */
 export async function createTask(fd: FormData): Promise<TaskActionResult & { ids?: number[]; repeatId?: number }> {
   const guard = await requirePerm(ASSIGN_KEY);
   if (guard.error) return { ok: false, error: guard.error };
@@ -67,7 +64,6 @@ export async function createTask(fd: FormData): Promise<TaskActionResult & { ids
   const files = filesOf(fd);
   const checklist = cleanChecklist(jsonOr(fd.get("checklist")));
   const repeatRaw = jsonOr(fd.get("repeat"));
-  const templateName = String(fd.get("templateName") ?? "").replace(/\s+/g, " ").trim();
 
   if (!title || title.length > TASK_LIMITS.title) return { ok: false, error: `Give the task a title (at most ${TASK_LIMITS.title} characters).` };
   if (details.length > TASK_LIMITS.details) return { ok: false, error: `The details are too long (at most ${TASK_LIMITS.details} characters).` };
@@ -76,7 +72,6 @@ export async function createTask(fd: FormData): Promise<TaskActionResult & { ids
   if ("error" in checklist) return { ok: false, error: checklist.error };
   const repeat = repeatRaw ? cleanRepeat(repeatRaw) : null;
   if (repeat && "error" in repeat) return { ok: false, error: repeat.error };
-  if (templateName.length > TEMPLATE_NAME_MAX) return { ok: false, error: `A template's name is at most ${TEMPLATE_NAME_MAX} characters.` };
   const due = dueRaw ? cleanDueDate(dueRaw) : null;
   if (dueRaw && !due) return { ok: false, error: "The due day is not a date." };
 
@@ -88,9 +83,6 @@ export async function createTask(fd: FormData): Promise<TaskActionResult & { ids
   }
   if (repeat && (await prisma.taskRepeat.count({ where: { ownerId: me.id } })) >= REPEAT_LIMITS.perOwner) {
     return { ok: false, error: `You keep ${REPEAT_LIMITS.perOwner} repeating tasks already — delete one first.` };
-  }
-  if (templateName && (await prisma.taskTemplate.count({ where: { ownerId: me.id } })) >= TEMPLATES_PER_OWNER) {
-    return { ok: false, error: `You keep ${TEMPLATES_PER_OWNER} templates already — delete one first.` };
   }
   // who it goes to and the hour's cap, before anything is stored
   const via = viaNow();
@@ -133,11 +125,6 @@ export async function createTask(fd: FormData): Promise<TaskActionResult & { ids
   if (!given.ok) {
     await undoRepeat();
     return { ok: false, error: given.error };
-  }
-  if (templateName) {
-    await prisma.taskTemplate.create({
-      data: { ownerId: me.id, name: templateName, title, details, checklist: checklist.map((x) => x.text) as unknown as object, priority, people, shared: shared && people.length > 1 },
-    });
   }
   return { ok: true, ids: given.ids, ...(repeatId ? { repeatId } : {}) };
 }
@@ -256,14 +243,6 @@ export async function loadTask(id: number): Promise<Loaded<{ task: TaskDetail }>
   return { ok: true, task };
 }
 
-/** The people a task can be given to — for the giver's form. */
-export async function loadAssignable(): Promise<Loaded<{ people: { id: number; name: string }[] }>> {
-  const guard = await requirePerm(ASSIGN_KEY);
-  if (guard.error) return { ok: false, error: guard.error };
-  const people = await prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } });
-  return { ok: true, people };
-}
-
 /** Tick or untick a step of a task's checklist — its giver or its people,
  *  while it is open. Written only over the checklist as it was read, so two
  *  people ticking at once never lose each other's tick. */
@@ -311,16 +290,6 @@ export async function setTaskChecklist(fd: FormData): Promise<TaskActionResult> 
   const r = await prisma.task.updateMany({ where: { id, updatedAt: t.updatedAt }, data: { checklist: next as unknown as object, activityAt: new Date() } });
   if (r.count !== 1) return { ok: false, error: "The task changed meanwhile — try again." };
   return { ok: true };
-}
-
-/** Delete one of the person's own task templates. */
-export async function deleteTaskTemplate(fd: FormData): Promise<TaskActionResult> {
-  const me = await getCurrentUser();
-  if (!me) return { ok: false, error: NOT_LOGGED_IN };
-  const id = Number(fd.get("id"));
-  if (!idOk(id)) return { ok: false, error: "Invalid template." };
-  const r = await prisma.taskTemplate.deleteMany({ where: { id, ownerId: me.id } });
-  return r.count === 1 ? { ok: true } : { ok: false, error: "That template is not yours, or it is gone." };
 }
 
 /** Pause a repeating task, or turn it back on (it gives next on its next day from today). */
