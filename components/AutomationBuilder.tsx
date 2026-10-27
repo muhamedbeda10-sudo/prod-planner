@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { Eye, Lightbulb, Plus, Sparkles, X } from "lucide-react";
 import { previewAutomation, saveAutomation } from "@/app/automations/actions";
 import { automationIdeas, dismissAutomationIdea, suggestIdeasNow, type IdeasData } from "@/app/automations/ideaActions";
@@ -301,6 +301,8 @@ function IdeasSection({ onPick }: { onPick: (r: { config: AutomationInput }) => 
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [suggesting, startSuggest] = useTransition();
   const [dismissing, startDismiss] = useTransition();
+  // a card set aside takes its focused button with it: focus goes to the heading
+  const heading = useRef<HTMLHeadingElement>(null);
   const load = useCallback(
     () => automationIdeas().then(setData, () => setData({ ok: false, error: "The ideas could not be read — try again.", ideas: [], canSuggest: false })),
     [],
@@ -318,13 +320,15 @@ function IdeasSection({ onPick }: { onPick: (r: { config: AutomationInput }) => 
     const fd = new FormData();
     fd.set("id", String(id));
     const r = await dismissAutomationIdea(fd);
-    if (r.ok) setData((d) => d && { ...d, ideas: d.ideas.filter((i) => i.id !== id) });
-    else setMsg({ ok: false, text: r.error ?? "It could not be set aside." });
+    if (r.ok) {
+      setData((d) => d && { ...d, ideas: d.ideas.filter((i) => i.id !== id) });
+      heading.current?.focus();
+    } else setMsg({ ok: false, text: r.error ?? "It could not be set aside." });
   });
   return (
     <section aria-labelledby="automation-ideas" aria-busy={!data || suggesting}>
       <div className="flex flex-wrap items-center gap-2 mb-1.5">
-        <h3 id="automation-ideas" className="text-xs font-bold text-muted inline-flex items-center gap-1.5"><Lightbulb size={14} aria-hidden /> The assistant suggests</h3>
+        <h3 id="automation-ideas" ref={heading} tabIndex={-1} className="outline-none text-xs font-bold text-muted inline-flex items-center gap-1.5"><Lightbulb size={14} aria-hidden /> The assistant suggests</h3>
         <span className="text-xs text-muted">New ones each week, from what happens in the plant.</span>
         {data?.canSuggest && (
           <button type="button" className="btn btn-secondary btn-sm ms-auto" disabled={suggesting} onClick={suggest}>
@@ -334,7 +338,7 @@ function IdeasSection({ onPick }: { onPick: (r: { config: AutomationInput }) => 
       </div>
       <Note msg={msg ?? (data && !data.ok ? { ok: false, text: data.error ?? "The ideas could not be read." } : null)} className="mb-1.5" />
       {!data ? (
-        <p className="text-sm text-muted">Reading the ideas…</p>
+        <p className="text-sm text-muted" role="status">Reading the ideas…</p>
       ) : data.ok && data.ideas.length === 0 ? (
         <div className="rounded-xl border border-dashed">
           <EmptyState compact icon={Lightbulb} title="No ideas for you right now" hint="The assistant suggests new ones each week." />
