@@ -12,7 +12,7 @@ vi.mock("@/lib/server/odoo", () => ({
   resolveRowMaterialStates: h.states,
 }));
 
-import { getNeedingMo, getReadyToClose } from "@/lib/server/odooAlerts";
+import { getNeedingMo, getReadyToClose, getRowsMaterial } from "@/lib/server/odooAlerts";
 
 const row = (id: number, o: Record<string, unknown>) => ({ id, line: "TR", date: new Date("2026-10-20T00:00:00Z"), soi: null, fgCode: "FB-1", product: "Tank", odooMo: "SF01/MO/1", qty: 1, status: "MO to be close", source: "manual", ledgerId: null, ...o });
 
@@ -29,19 +29,16 @@ describe("the alert loaders", () => {
     expect(h.findMany.mock.calls[1][0]).toMatchObject({ where: { odooMo: "", status: { notIn: ["Done", "Closed", "Blocked", "Cancelled", "Canceled"], mode: "insensitive" } }, take: 400 });
   });
 
-  it("look the material up only when asked — the layout's count skips it", async () => {
-    h.findMany.mockResolvedValue([row(1, {}), row(2, {})]);
-    expect((await getReadyToClose()).map((r) => r.material)).toEqual(["none", "none"]);
-    expect(h.states).not.toHaveBeenCalled();
-    h.states.mockResolvedValue(["missing", "ok"]);
-    expect((await getReadyToClose({ material: true })).map((r) => r.material)).toEqual(["missing", "ok"]);
-    expect(h.states.mock.calls[0][0].map((r: { id: number }) => r.id)).toEqual([1, 2]);
-    h.findMany.mockResolvedValue([row(4, { odooMo: "" })]);
-    expect((await getNeedingMo()).map((r) => r.material)).toEqual(["none"]);
-    expect(h.states).toHaveBeenCalledTimes(1);
-    // a failed material lookup leaves the rows uncoloured, not the alerts gone
+  it("leave the material lookup to the open popup — the poll never makes it", async () => {
     h.findMany.mockResolvedValue([row(1, {})]);
-    h.states.mockRejectedValue(new Error("timeout"));
-    expect((await getReadyToClose({ material: true })).map((r) => r.material)).toEqual(["none"]);
+    await getReadyToClose();
+    await getNeedingMo();
+    expect(h.states).not.toHaveBeenCalled();
+    expect(await getRowsMaterial([])).toEqual({});
+    expect(h.findMany).toHaveBeenCalledTimes(2);
+    h.findMany.mockResolvedValue([row(7, {}), row(3, {})]);
+    h.states.mockResolvedValue(["missing", "ok"]);
+    expect(await getRowsMaterial([3, 7])).toEqual({ 7: "missing", 3: "ok" });
+    expect(h.findMany.mock.calls[2][0]).toMatchObject({ where: { id: { in: [3, 7] } } });
   });
 });

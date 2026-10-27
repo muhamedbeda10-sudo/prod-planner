@@ -7,10 +7,10 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { armChime, playChime } from "@/lib/chime";
 import { appInBackground, onNotifyClick, systemNotify } from "@/lib/sysNotify";
 import { startPoll } from "@/lib/poll";
-import { closeOdooReady, fillOdooMo, odooRowMaterial, pollOdooAlerts } from "@/app/odoo/alertActions";
+import { closeOdooReady, fillOdooMo, odooReadyMaterial, odooRowMaterial, pollOdooAlerts } from "@/app/odoo/alertActions";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { ODOO_CHANGED_EVENT, alertKey, pruneSeen, unseenKeys, type ReadyRow } from "@/lib/domain/odooAlerts";
-import { MO_MATERIAL_FLAG } from "@/lib/domain/odooMaterial";
+import { MO_MATERIAL_FLAG, MO_MATERIAL_STATES, moMaterialFlag, type MoMaterialState } from "@/lib/domain/odooMaterial";
 
 // 🔔 The ODOO alerts, for whoever is subscribed:
 // - "needs an MO" (odoo.needMo): a row landed on the log without Odoo's MO —
@@ -183,10 +183,24 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
       .finally(() => setOpening(null));
   };
 
+  // the ready rows' colours — their MOs against the Material tab, as the
+  // ODOO log shows them — looked up while the popup is open, again whenever
+  // its rows change, so the minute's poll stays light
+  const [rowMaterial, setRowMaterial] = useState<Record<number, MoMaterialState>>({});
+  const readyIds = open && close ? close.map((r) => r.id).join(",") : "";
+  useEffect(() => {
+    if (!readyIds) return;
+    let live = true;
+    odooReadyMaterial(readyIds.split(",").map(Number))
+      .then((r) => { if (live && r.ok && r.material) setRowMaterial(r.material); })
+      .catch(() => {}); // uncoloured rows are still workable
+    return () => { live = false; };
+  }, [readyIds]);
+
   const popup = enabled && open && count > 0 && loaded ? (
     <>
       <ReadyPopup
-        close={close} mo={mo} fresh={fresh} canEdit={canEdit} pending={pending} err={err}
+        close={close} mo={mo} fresh={fresh} material={rowMaterial} canEdit={canEdit} pending={pending} err={err}
         onClose={closeRows} onSaveMo={saveMo} onLater={later}
         onOpen={openMaterial} opening={opening} covered={material !== null}
       />
@@ -227,7 +241,9 @@ function CopyMo({ mo }: { mo: string }) {
   );
 }
 
-function RowFacts({ r, isNew, onOpen, opening }: { r: ReadyRow; isNew: boolean; onOpen: (id: number) => void; opening: boolean }) {
+function RowFacts({ r, isNew, flag = null, onOpen, opening }: {
+  r: ReadyRow; isNew: boolean; flag?: ReturnType<typeof moMaterialFlag>; onOpen: (id: number) => void; opening: boolean;
+}) {
   // the facts open the material behind the row — unless text is being
   // selected in them (the MO, to copy it)
   function open() {
@@ -237,7 +253,6 @@ function RowFacts({ r, isNew, onOpen, opening }: { r: ReadyRow; isNew: boolean; 
   }
   // not a button itself — the MO inside it is selectable and has its own
   // copy button; the "📦 material" link is the keyboard's way in
-  const flag = materialFlag(r);
   return (
     <div
       onClick={open}
@@ -262,26 +277,17 @@ function RowFacts({ r, isNew, onOpen, opening }: { r: ReadyRow; isNew: boolean; 
   );
 }
 
-/** The row's MO against the Material tab — red, yellow or green, as on the ODOO log. */
-const materialFlag = (r: ReadyRow) => (r.material === "none" ? null : MO_MATERIAL_FLAG[r.material]);
-
-// the same three states and colours as the ODOO log's filter chips
-const MATERIAL_LEGEND = [
-  { state: "missing", swatch: "bg-bad-bg border-bad-fg", ink: "text-bad-fg" },
-  { state: "partial", swatch: "bg-warn-bg border-warn-fg", ink: "text-warn-fg" },
-  { state: "ok", swatch: "bg-ok-bg border-ok-fg", ink: "text-ok-fg" },
-] as const;
-
-/** What the row colours mean, with how many rows are in each — only the states present. */
-function MaterialLegend({ rows }: { rows: ReadyRow[] }) {
-  const shown = MATERIAL_LEGEND.map((l) => ({ ...l, n: rows.filter((r) => r.material === l.state).length })).filter((l) => l.n > 0);
+/** What the row colours mean, with how many rows are in each — only the
+ *  states present; the same colours and words as the ODOO log's chips. */
+function MaterialLegend({ rows, material }: { rows: ReadyRow[]; material: Record<number, MoMaterialState> }) {
+  const shown = MO_MATERIAL_STATES.map((state) => ({ state, f: MO_MATERIAL_FLAG[state], n: rows.filter((r) => material[r.id] === state).length })).filter((l) => l.n > 0);
   if (shown.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[length:var(--fs-body)] text-muted">
-      {shown.map((l) => (
-        <span key={l.state} className="inline-flex items-center gap-1.5" title={MO_MATERIAL_FLAG[l.state].text}>
-          <span aria-hidden className={`inline-block w-3.5 h-2.5 rounded-sm border-l-4 ${l.swatch}`} />
-          <b className={`tabnum ${l.ink}`}>{l.n}</b>{MO_MATERIAL_FLAG[l.state].label}
+      {shown.map(({ state, f, n }) => (
+        <span key={state} className="inline-flex items-center gap-1.5" title={f.text}>
+          <span aria-hidden className={`inline-block w-3.5 h-2.5 rounded-sm border-l-4 ${f.swatch}`} />
+          <b className={`tabnum ${f.ink}`}>{n}</b>{f.label}
         </span>
       ))}
     </div>
@@ -307,8 +313,11 @@ function MoInput({ r, disabled, onSave }: { r: ReadyRow; disabled: boolean; onSa
   );
 }
 
-function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo, onLater, onOpen, opening, covered }: {
-  close: ReadyRow[]; mo: ReadyRow[]; fresh: Set<string>; canEdit: { TR: boolean; LV: boolean }; pending: boolean; err: string;
+function ReadyPopup({ close, mo, fresh, material, canEdit, pending, err, onClose, onSaveMo, onLater, onOpen, opening, covered }: {
+  close: ReadyRow[]; mo: ReadyRow[]; fresh: Set<string>;
+  /** The ready rows' MOs against the Material tab, by id — their colours. */
+  material: Record<number, MoMaterialState>;
+  canEdit: { TR: boolean; LV: boolean }; pending: boolean; err: string;
   onClose: (ids: number[]) => void; onSaveMo: (id: number, v: string) => void; onLater: () => void;
   onOpen: (id: number) => void; opening: number | null;
   /** The material popup is open on top — Escape is its, not this one's. */
@@ -358,17 +367,17 @@ function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo
           <section className={mo.length > 0 ? "border-t" : ""}>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-3 pb-1">
               <h3 className="text-xs font-extrabold uppercase tracking-wide text-muted">Ready to close · {close.length}</h3>
-              <MaterialLegend rows={close} />
+              <MaterialLegend rows={close} material={material} />
             </div>
             <ul className="divide-y">
               {close.map((r) => {
-                const flag = materialFlag(r);
+                const flag = moMaterialFlag(material[r.id]);
+                const isNew = fresh.has(alertKey("close", r.id));
+                // the material colour wins; a new row still has its "new" pill
+                const tint = flag ? flag.cls : isNew ? "bg-warn-bg/40" : "";
                 return (
-                  <li
-                    key={`close-${r.id}`}
-                    className={`flex items-center gap-3 px-5 py-3 text-base ${flag?.cls ?? (fresh.has(alertKey("close", r.id)) ? "bg-warn-bg/40" : "")}`}
-                  >
-                    <RowFacts r={r} isNew={fresh.has(alertKey("close", r.id))} onOpen={onOpen} opening={opening === r.id} />
+                  <li key={`close-${r.id}`} className={`flex items-center gap-3 px-5 py-3 text-base ${tint}`}>
+                    <RowFacts r={r} isNew={isNew} flag={flag} onOpen={onOpen} opening={opening === r.id} />
                     <button
                       type="button" className="shrink-0 btn btn-sm btn-primary" disabled={pending || !can(r)} onClick={() => onClose([r.id])}
                       title={can(r) ? "Closed in Odoo — mark it Done" : "You cannot record on this line's ODOO log"}

@@ -384,11 +384,29 @@ export function rowMaterialState(
   return lines.every(nested) ? "ok" : "partial";
 }
 
-/** The row's tint with its coloured left edge, a short label (the filter
- *  chips, the alert's legend) and the words behind it — red, yellow, or green
- *  when all is nested. */
-export const MO_MATERIAL_FLAG: Record<"missing" | "partial" | "ok", { cls: string; label: string; text: string }> = {
-  ok: { cls: "bg-ok-bg/70 shadow-[inset_4px_0_0_var(--ok-fg)]", label: "all nested", text: "This MO is on the Material tab and every line of it is nested" },
-  missing: { cls: "bg-bad-bg/70 shadow-[inset_4px_0_0_var(--bad-fg)]", label: "MO not on Material", text: "Nothing on the Material tab for this MO or for this part of its order (SOI)" },
-  partial: { cls: "bg-warn-bg/70 shadow-[inset_4px_0_0_var(--warn-fg)]", label: "not all nested", text: "This MO is on the Material tab, but some of its lines have no actual nested sheets yet" },
+/** The states a row with an MO can be in — the order the chips and legends list them. */
+export type MoMaterialFlagState = Exclude<MoMaterialState, "none">;
+export const MO_MATERIAL_STATES: readonly MoMaterialFlagState[] = ["missing", "partial", "ok"];
+
+/** The row's tint with its coloured left edge, the legend's swatch and number
+ *  colour, a short label (the filter chips, the alert's legend) and the words
+ *  behind it — red, yellow, or green when all is nested. */
+export const MO_MATERIAL_FLAG: Record<MoMaterialFlagState, { cls: string; swatch: string; ink: string; label: string; text: string }> = {
+  ok: {
+    cls: "bg-ok-bg/70 shadow-[inset_4px_0_0_var(--ok-fg)]", swatch: "bg-ok-bg border-ok-fg", ink: "text-ok-fg",
+    label: "all nested", text: "This MO is on the Material tab and every line of it is nested",
+  },
+  missing: {
+    cls: "bg-bad-bg/70 shadow-[inset_4px_0_0_var(--bad-fg)]", swatch: "bg-bad-bg border-bad-fg", ink: "text-bad-fg",
+    label: "MO not on Material", text: "Nothing on the Material tab for this MO or for this part of its order (SOI)",
+  },
+  partial: {
+    cls: "bg-warn-bg/70 shadow-[inset_4px_0_0_var(--warn-fg)]", swatch: "bg-warn-bg border-warn-fg", ink: "text-warn-fg",
+    label: "not all nested", text: "This MO is on the Material tab, but some of its lines have no actual nested sheets yet",
+  },
 };
+
+/** A row's flag — none for a row with no MO, or a state not known (yet). */
+export function moMaterialFlag(state: MoMaterialState | undefined) {
+  return state === undefined || state === "none" ? null : MO_MATERIAL_FLAG[state];
+}

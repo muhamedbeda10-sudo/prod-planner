@@ -23,7 +23,7 @@ import { useActiveLine } from "@/components/LineContext";
 import { SAVE_UNCONFIRMED, Soi } from "@/components/ui";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { Modal } from "@/components/Modal";
-import { MO_MATERIAL_FLAG, entryMaterialNeed, rowMaterialState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { MO_MATERIAL_FLAG, MO_MATERIAL_STATES, entryMaterialNeed, moMaterialFlag, rowMaterialState, type MoMaterialFlagState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 import { ODOO_CHANGED_EVENT } from "@/lib/domain/odooAlerts";
 import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, addOdooNote, deleteOdooNote, updateOdooGroup, deleteOdooEntries } from "@/app/odoo/actions";
 import { factoryDayISO } from "@/lib/domain/dates";
@@ -446,9 +446,9 @@ function FlagLegend() {
       <span className="inline-flex items-center gap-1.5"><span className="pill pill-info">from Painting</span>written by a closing on the floor</span>
       <span className="inline-flex items-center gap-1.5"><span className="pill pill-muted">3 closings</span>rows of one closing, added up — click to open</span>
       <span className="inline-flex items-center gap-1.5">🧱 the material the quantity takes</span>
-      <span className="inline-flex items-center gap-1.5"><span aria-hidden style={{ display: "inline-block", width: 18, height: 12, borderRadius: 2, background: "var(--bad-bg)", borderLeft: "4px solid var(--bad-fg)" }} />MO not on the Material tab</span>
-      <span className="inline-flex items-center gap-1.5"><span aria-hidden style={{ display: "inline-block", width: 18, height: 12, borderRadius: 2, background: "var(--warn-bg)", borderLeft: "4px solid var(--warn-fg)" }} />MO on the Material tab, not all of it nested yet</span>
-      <span className="inline-flex items-center gap-1.5"><span aria-hidden style={{ display: "inline-block", width: 18, height: 12, borderRadius: 2, background: "var(--ok-bg)", borderLeft: "4px solid var(--ok-fg)" }} />MO on the Material tab, all nested</span>
+      <span className="inline-flex items-center gap-1.5"><MatSwatch state="missing" big />MO not on the Material tab</span>
+      <span className="inline-flex items-center gap-1.5"><MatSwatch state="partial" big />MO on the Material tab, not all of it nested yet</span>
+      <span className="inline-flex items-center gap-1.5"><MatSwatch state="ok" big />MO on the Material tab, all nested</span>
     </div>
   );
 }
@@ -515,7 +515,7 @@ function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: 
   // filed under it, yellow when some of its lines are not nested yet, green
   // when every line is
   const moState = rowMaterialState(nesting, e, needCtx);
-  const flag = moState === "none" ? null : MO_MATERIAL_FLAG[moState];
+  const flag = moMaterialFlag(moState);
   return (
     <>
       <tr
@@ -660,7 +660,7 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
   // closings underneath
   const details = () => setMaterial(true);
   const moState = rowMaterialState(nesting, head, needCtx);
-  const flag = moState === "none" ? null : MO_MATERIAL_FLAG[moState];
+  const flag = moMaterialFlag(moState);
   const rowTitle = need ? `Click for the material behind all ${g.qty} units` : `Click — no material lines for this ${needCtx.lv ? "order" : "line"} yet`;
   return (
     <>
@@ -845,20 +845,23 @@ function CountFilter({ n, label, tone, on, title, onClick }: { n: number; label:
 }
 
 /** One colour of the MO-on-Material tint, as a count that filters to it. */
-function MatChip({ state, n, on, onClick }: { state: "missing" | "partial" | "ok"; n: number; on: boolean; onClick: () => void }) {
-  const label = MO_MATERIAL_FLAG[state].label;
-  const ink = state === "missing" ? "var(--bad-fg)" : state === "partial" ? "var(--warn-fg)" : "var(--ok-fg)";
-  const bg = state === "missing" ? "var(--bad-bg)" : state === "partial" ? "var(--warn-bg)" : "var(--ok-bg)";
+/** A row colour in small — the tint with its coloured left edge. */
+function MatSwatch({ state, big = false }: { state: MoMaterialFlagState; big?: boolean }) {
+  return <span aria-hidden className={`inline-block rounded-sm border-l-4 ${big ? "w-[18px] h-3" : "w-3.5 h-[11px]"} ${MO_MATERIAL_FLAG[state].swatch}`} />;
+}
+
+function MatChip({ state, n, on, onClick }: { state: MoMaterialFlagState; n: number; on: boolean; onClick: () => void }) {
+  const flag = MO_MATERIAL_FLAG[state];
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={on}
-      title={`${MO_MATERIAL_FLAG[state].text}${on ? " — click again to show them all" : " — show only these rows"}`}
+      title={`${flag.text}${on ? " — click again to show them all" : " — show only these rows"}`}
       className="chip-toggle inline-flex items-center gap-1.5 tabnum"
     >
-      <span aria-hidden style={{ display: "inline-block", width: 14, height: 11, borderRadius: 2, background: bg, borderLeft: `4px solid ${ink}` }} />
-      <span className="font-extrabold" style={on ? undefined : { color: ink }}>{n}</span>{label}
+      <MatSwatch state={state} />
+      <span className={`font-extrabold ${on ? "" : flag.ink}`}>{n}</span>{flag.label}
     </button>
   );
 }
@@ -1079,7 +1082,7 @@ export function OdooClient({
           {(matCounts.missing + matCounts.partial + matCounts.ok > 0 || matState) && (
             <span className="inline-flex flex-wrap items-center gap-1.5 ms-1" role="group" aria-label="The row's MO on the Material tab">
               <span className="filter-label">Material</span>
-              {(["missing", "partial", "ok"] as const).map((st) => (matCounts[st] > 0 || matState === st) && (
+              {MO_MATERIAL_STATES.map((st) => (matCounts[st] > 0 || matState === st) && (
                 <MatChip key={st} state={st} n={matCounts[st]} on={matState === st} onClick={() => setMatState(matState === st ? "" : st)} />
               ))}
             </span>
