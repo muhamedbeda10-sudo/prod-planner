@@ -23,6 +23,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "Whatever reaches you — an alert, a task given to you or news on one, a report or a message from an automation — now pops up under the bell on whatever page you are on, with a short chime, and stays there until you deal with it: Open shows it in the inbox, Mark read clears the card, Mark all read clears them all. There is no ✕ — it does not go away by itself, and it comes back after a reload or on another device until you read it. Either way it stays under the bell to come back to. The newest three show at once (one on a phone), the rest counted under them. The inbox itself is tidier: its tabs share the window's width, the filters and Mark all read sit on one row, and the Tasks tab has its views as icons beside For me | I gave and its Open / Done filters in the filter bar. Tasks are now given through the assistant (“give Ahmed a task to …”), so the New button is gone.",
   },
   {
+    id: "2026-10-27-assistant-excel-sheet-per-value-totals",
+    dateISO: "2026-10-27",
+    title: "The assistant's Excel files: a sheet per thickness, only the filled rows, and a Total row on each sheet",
+    where: "Assistant → Excel files",
+    body: "Ask the assistant for one Excel file laid out the way you need: a sheet per thickness (or per any other column — material, sheet size, department), only the rows that are actually filled in a column (what was actually nested, for example), and a Total row at the end of each sheet adding up the columns you name, such as the BOM sheets, the actual sheets and the difference. It works on every sheet the assistant makes. Print opens every sheet of the file, each under its name with its Total row.",
+  },
+  {
     id: "2026-10-26-planning-dashboard-at-risk",
     dateISO: "2026-10-26",
     title: "Planning: All | Transformers | LV Panels, filters in one bar, every line at risk, and the rows behind each figure",

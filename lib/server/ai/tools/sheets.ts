@@ -47,6 +47,7 @@ import { filterLvTracker, filterMasterTracker, trackerStagesOf, type TrackerFilt
 import { WEEKLY_STAGES, filterWeeklyDays, weeklyMetricOf, weeklyPlanRows, weeklyStagesOf } from "@/lib/domain/weeklyPlanView";
 import { runAiRows } from "../reader";
 import { roomProblem, storeMadeWorkbook } from "../files";
+import { MAX_SPLIT_SHEETS, columnsOf, isTotalRow, layoutSheets } from "@/lib/domain/sheetLayout";
 import { TRACKER_FILTER_SCHEMA, trackerFiltersFor } from "./planning";
 import { MATERIAL_SCOPE_PROPERTIES, materialScopeProblem, materialScopeRequest, type MaterialScopeInput } from "./materialDashboard";
 import type { ReadResult, ReadTool, ToolCtx } from "./types";
@@ -68,7 +69,9 @@ const GUARD_HISTORY = 2000;
 
 const STAGE_VALUES = WEEKLY_STAGES.map((o) => o.value);
 
-type Param = Exclude<keyof Input, "sheet" | "name">;
+/** The inputs every sheet takes: its file name and how its rows are laid out. */
+const COMMON = ["sheet", "name", "splitBy", "totals", "nonBlank"] as const;
+type Param = Exclude<keyof Input, (typeof COMMON)[number]>;
 
 /** Each sheet: the screen it comes from (its tab), whether it is the admin's,
  *  what it is, and the inputs it takes — any other is refused, never ignored. */
@@ -124,6 +127,9 @@ interface Input extends MaterialScopeInput {
   basis?: "closed" | "logged";
   address?: string;
   sql?: string;
+  splitBy?: string;
+  totals?: string[];
+  nonBlank?: string[];
 }
 
 /** A sheet made: its rows and the file's name, or why there is none. */
@@ -140,7 +146,8 @@ export const makeSheetTool: ReadTool<Input> = {
   description:
     "Make an Excel file (.xlsx) for the person to download or print — the screens have no Export button any more, so this is how anyone gets a sheet of the app's data. Call it whenever they ask for an Excel, a sheet, an export, a download, a file, or a printout of a list. Each `sheet` builds EXACTLY the sheet the screen's old Export button made — its loader, its filters, its columns and headers, so the file drops back into the office's workbooks — and takes only its own inputs: " +
     Object.entries(SHEETS).map(([k, v]) => `${k}: ${v.about}`).join("; ") +
-    `. Use \`query\` only when no screen sheet fits (any columns, joins, totals): one SELECT, double-quoted names, the same read-only rules as query_database, up to ${MAX_ROWS_TEXT} rows. The result gives the file's download and print links: ALWAYS put both in your answer as Markdown links, e.g. [Download plan-tracker.xlsx](${aiFileHref(12)}) · [Print](${aiPrintHref(12)}), and say in one line what it holds (rows, scope). Never paste the rows into the answer — the file carries them.`,
+    `. Use \`query\` only when no screen sheet fits (any columns, joins, totals): one SELECT, double-quoted names, the same read-only rules as query_database, up to ${MAX_ROWS_TEXT} rows. The result gives the file's download and print links: ALWAYS put both in your answer as Markdown links, e.g. [Download plan-tracker.xlsx](${aiFileHref(12)}) · [Print](${aiPrintHref(12)}), and say in one line what it holds (rows, scope). Never paste the rows into the answer — the file carries them. ` +
+    `Any sheet can also be laid out: nonBlank keeps only the rows whose given columns are filled (\"what was actually nested\" → nonBlank ["Actual sheets"]); splitBy puts each value of a column on its own sheet of the same file (a sheet per thickness, up to ${MAX_SPLIT_SHEETS}); totals closes each sheet with a Total row summing the given columns (the quantities and the difference — never a thickness, a rate, a share, or a per-MO figure repeated on each of its lines such as Units or Closed qty). Name the columns exactly as the sheet heads them; a wrong name comes back with the sheet's columns. One file with all of it — never a file per sheet.`,
   schema: {
     type: "object",
     additionalProperties: false,
@@ -171,13 +178,16 @@ export const makeSheetTool: ReadTool<Input> = {
       basis: { type: "string", enum: ["closed", "logged"], description: "odoo_daily: count by the day closed (default) or the day logged." },
       address: { type: "string", maxLength: 600, description: "consumables_dashboard: the dashboard's address query, exactly as on the screen — e.g. \"from=2026-10-01&to=2026-10-26&dept=WeldingTX&status=over\" (dept, item c<id> or t:<typed name>, link linked|unlinked, status over|near|within|none); empty for today with no filter." },
       sql: str(20000, "query: one SELECT statement — no semicolons, no writes."),
+      splitBy: str(100, "Any sheet: a column whose every value gets its own sheet in the file (\"Thickness mm\" → 2 mm, 3 mm, …), in order."),
+      totals: { type: "array", items: { type: "string", minLength: 1, maxLength: 100 }, minItems: 1, maxItems: 30, description: "Any sheet: the columns a Total row at the end of each sheet adds up." },
+      nonBlank: { type: "array", items: { type: "string", minLength: 1, maxLength: 100 }, minItems: 1, maxItems: 10, description: "Any sheet: keep only the rows with these columns filled." },
     },
   },
   parse(raw) {
     const i = raw as unknown as Input;
     const takes: readonly string[] = SHEETS[i.sheet].params;
-    const foreign = Object.keys(i).filter((k) => k !== "sheet" && k !== "name" && !takes.includes(k));
-    if (foreign.length > 0) return `${i.sheet} does not take ${foreign.join(", ")} — it takes ${takes.length ? takes.join(", ") : "nothing but its name"}.`;
+    const foreign = Object.keys(i).filter((k) => !(COMMON as readonly string[]).includes(k) && !takes.includes(k));
+    if (foreign.length > 0) return `${i.sheet} does not take ${foreign.join(", ")} — it takes ${takes.length ? takes.join(", ") : "nothing but its name"} (and ${COMMON.slice(2).join(", ")}).`;
     if (i.sheet === "query" && !i.sql) return "A query sheet needs its SELECT (sql).";
     if (i.sheet === "trace" && !i.mo && !i.bom) return "A trace needs the order's MO or the code (bom).";
     if (i.from && i.to && i.from > i.to) return "from must not be after to.";
@@ -203,14 +213,30 @@ export const makeSheetTool: ReadTool<Input> = {
 async function keep(i: Input, made: Exclude<Made, { error: string }>, ctx: ToolCtx): Promise<ReadResult> {
   if (made.rows.length === 0) return { ok: true, text: JSON.stringify({ rows: 0, scope: made.scope, note: "Nothing matches, so no file was made — say so, and offer a wider scope." }) };
   if (made.rows.length > MAX_SHEET_ROWS) return { ok: false, text: `That is ${made.rows.length.toLocaleString("en-US")} rows — at most ${MAX_ROWS_TEXT} in one file. Narrow it (a shorter period, a filter) or make it in parts.` };
-  const stored = await storeMadeWorkbook(ctx, i.name ?? made.name, [{ name: made.sheet, rows: made.rows }]);
+  const laidOut = Boolean(i.splitBy || i.totals || i.nonBlank);
+  // a sheet's own closing Total row (the Production sheet's, a query's) is neither split nor added in again
+  const ownTotal = isTotalRow(made.rows.at(-1));
+  const data = ownTotal ? made.rows.slice(0, -1) : made.rows;
+  const laid = laidOut ? layoutSheets(data, made.sheet, i) : { sheets: [{ name: made.sheet, rows: made.rows }], dropped: 0, notNumbers: 0 };
+  if ("error" in laid) return { ok: false, text: laid.error };
+  const rows = laidOut ? laid.sheets.reduce((n, s) => n + s.rows.length, 0) : data.length;
+  const left = laid.dropped ? `${laid.dropped} rows with a blank in ${i.nonBlank!.join(", ")} are not in the file` : undefined;
+  if (rows === 0) return { ok: true, text: JSON.stringify({ rows: 0, scope: made.scope, left, note: "Nothing is left once the blank rows are out, so no file was made — say so." }) };
+  const stored = await storeMadeWorkbook(ctx, i.name ?? made.name, laid.sheets.map((s) => ({ name: s.name, rows: s.total ? [...s.rows, s.total] : s.rows })));
   if (!stored.ok) return { ok: false, text: stored.error };
   const download = aiFileHref(stored.file.id);
   const print = aiPrintHref(stored.file.id);
+  // each Total row's sums, as the answer quotes them
+  const sumsOf = (t: SheetRow) => Object.fromEntries(Object.entries(t).filter(([, v]) => typeof v === "number"));
   return {
     ok: true,
     text: JSON.stringify({
-      file: stored.file.name, scope: made.scope, rows: made.rows.length, columns: Object.keys(made.rows[0]), preview: made.rows.slice(0, 3), download, print,
+      file: stored.file.name, scope: made.scope, rows, columns: columnsOf(made.rows), preview: laid.sheets[0].rows.slice(0, 3),
+      sheets: laidOut ? laid.sheets.map((s, n) => ({ name: stored.sheets[n], rows: s.rows.length, totals: s.total && sumsOf(s.total) })) : undefined,
+      left,
+      ownTotal: laidOut && ownTotal ? "The sheet's own Total row is left out of the laid-out file" : undefined,
+      notSummed: laid.notNumbers ? `${laid.notNumbers} cells in the totals columns are text, not numbers — not in the totals; say so` : undefined,
+      download, print,
       note: `Put both links in your answer: [Download ${stored.file.name}](${download}) · [Print](${print}). The file is kept for the person for ${AI_FILE_LIMITS.keepDays} days.`,
     }),
     links: [{ label: `Download ${stored.file.name}`, href: download }, { label: "Print it", href: print }],
