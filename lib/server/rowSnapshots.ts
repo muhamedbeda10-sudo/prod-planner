@@ -8,12 +8,12 @@ import { MANUAL_BOM, MANUAL_ITEM, manualMo } from "@/lib/domain/manualJob";
 import type { RosterDept } from "@/lib/domain/shifts";
 import { userMessage } from "@/lib/server/errors";
 
-// Rows of the ODOO log, the MATERIAL tab, the physical stock, the shift
-// roster, the standard times and the accounts' access exactly as they stand
-// — what the assistant's change card compares before a change runs, and what
-// its undo writes back, every column and an ODOO row's notes included. The
-// screens' own actions stamp things as they go (the moment a row was closed,
-// a rate typed by hand, who recorded it), and some leave no way back at all
+// Rows of the ODOO log, the physical stock, the shift roster, the standard
+// times and the accounts' access exactly as they stand — what the assistant's
+// change card compares before a change runs, and what its undo writes back,
+// every column and an ODOO row's notes included. The screens' own actions
+// stamp things as they go (the moment a row was closed, who recorded it),
+// and some leave no way back at all
 // (a stage's capacity cannot be unset, an account's assistant not taken
 // away), so the opposite action would not put a row back as it was; this does.
 //
@@ -108,62 +108,6 @@ export async function restoreOdooRows(rows: readonly OdooRowSnapshot[]): Promise
   }
   revalidatePath("/odoo");
   revalidatePath("/tracker");
-  return { ok: true };
-}
-
-// --------------------------------------------------------------- MATERIAL
-
-export interface MaterialRowSnapshot {
-  id: number;
-  line: string;
-  month: string;
-  bom: string;
-  mo: string;
-  units: number;
-  partCode: string;
-  partName: string;
-  materialCode: string;
-  material: string;
-  thicknessMm: number;
-  sheetSize: string;
-  sheetsPerUnit: number;
-  actualPerUnit: number | null;
-  actualPerUnitManual: boolean;
-  sheetsUsed: number | null;
-  producedQty: number | null;
-  sortOrder: number;
-  soi: string;
-  mtr: string;
-  weightKg: number | null;
-  utilization: number | null;
-  note: string | null;
-  recordedBy: string | null;
-  createdAt: string;
-}
-
-export async function readMaterialRows(ids: readonly number[]): Promise<MaterialRowSnapshot[]> {
-  if (ids.length === 0) return [];
-  const rows = await prisma.materialUsage.findMany({ where: { id: { in: [...ids] } }, orderBy: { id: "asc" } });
-  return rows.map(snapshotOf);
-}
-
-/** Put MATERIAL lines back exactly as snapshotted — a line deleted since
- *  comes back under its own id. */
-export async function restoreMaterialRows(rows: readonly MaterialRowSnapshot[]): Promise<RestoreResult> {
-  for (const line of new Set(rows.map((r) => r.line))) {
-    const guard = await requirePerm(linePermKey(line, "material"));
-    if (guard.error) return { ok: false, error: guard.error };
-  }
-  try {
-    await prisma.$transaction(async (tx) => {
-      for (const { id, createdAt, ...data } of rows) {
-        await tx.materialUsage.upsert({ where: { id }, create: { id, ...data, createdAt: date(createdAt)! }, update: data });
-      }
-    });
-  } catch (e) {
-    return { ok: false, error: userMessage(e, "put the lines back") };
-  }
-  revalidatePath("/material");
   return { ok: true };
 }
 

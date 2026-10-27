@@ -29,12 +29,8 @@ const h = vi.hoisted(() => {
     },
     perms: new Set<string>(),
     lines: [] as string[],
-    snap: { readOdooRows: fn(), restoreOdooRows: fn(), readMaterialRows: fn(), restoreMaterialRows: fn(), readPhysicalRows: fn(), restorePhysicalRows: fn() },
+    snap: { readOdooRows: fn(), restoreOdooRows: fn(), readPhysicalRows: fn(), restorePhysicalRows: fn() },
     odoo: { addOdooNote: fn(), createOdooEntry: fn(), deleteOdooEntry: fn(), deleteOdooNote: fn(), setOdooMo: fn(), setOdooStatus: fn(), updateOdooEntry: fn(), setOdooFgCode: fn(), updateOdooGroup: fn() },
-    material: {
-      deleteMaterialLine: fn(), setActualPerUnit: fn(), setProducedQty: fn(), setSheetsUsed: fn(), setUtilization: fn(), updateMaterialLine: fn(),
-      createMaterialLine: fn(), createLvOrderLines: fn(), updateMaterialGroup: fn(),
-    },
     physical: { createPhysicalItem: fn(), deletePhysicalItem: fn(), updatePhysicalCell: fn() },
     calendar: { addHoliday: fn(), deleteHoliday: fn() },
     workers: { createWorker: fn(), deleteWorker: fn(), setWorkerActive: fn(), setWorkerVacation: fn(), updateWorker: fn() },
@@ -50,7 +46,6 @@ vi.mock("@/lib/server/auth", () => ({ hasPerm: (_u: unknown, k: string) => h.per
 vi.mock("@/lib/server/line", () => ({ withLine: (l: string, f: () => unknown) => { h.lines.push(l); return f(); } }));
 vi.mock("@/lib/server/rowSnapshots", () => h.snap);
 vi.mock("@/app/odoo/actions", () => h.odoo);
-vi.mock("@/app/material/actions", () => h.material);
 vi.mock("@/app/physical/actions", () => h.physical);
 vi.mock("@/app/calendar/actions", () => h.calendar);
 vi.mock("@/app/admin/workers/actions", () => h.workers);
@@ -64,7 +59,6 @@ import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import {
   addOdooEntryTool, deleteOdooEntriesTool, restoreOdooRowsTool, setOdooFgCodeTool, setOdooMoTool, setOdooStatusTool, updateOdooEntryTool, updateOdooGroupTool,
 } from "@/lib/server/ai/tools/odoo";
-import { addLvOrderMaterialTool, addMaterialLineTool, setMaterialCellsTool, updateMaterialGroupTool, updateMaterialLineTool } from "@/lib/server/ai/tools/material";
 import { updatePhysicalItemsTool } from "@/lib/server/ai/tools/physical";
 import { addHolidaysTool, deleteHolidaysTool, restoreHolidaysTool } from "@/lib/server/ai/tools/calendar";
 import { deleteWorkerTool, updateWorkerTool } from "@/lib/server/ai/tools/workers";
@@ -86,7 +80,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.perms.clear();
   h.lines.length = 0;
-  for (const group of [h.odoo, h.material, h.physical, h.calendar, h.workers, h.machines, h.consumables]) for (const f of Object.values(group)) f.mockResolvedValue({ ok: true });
+  for (const group of [h.odoo, h.physical, h.calendar, h.workers, h.machines, h.consumables]) for (const f of Object.values(group)) f.mockResolvedValue({ ok: true });
   h.snap.restoreOdooRows.mockResolvedValue({ ok: true });
   h.checkIssueLimits.mockResolvedValue([]);
 });
@@ -114,65 +108,6 @@ describe("ODOO: FG-CODE and a merged line", () => {
     await updateOdooGroupTool.execute({ ids: [1, 2], odooMo: "sf01/mo/9", status: "Done" }, ctx);
     expect(fdOf(h.odoo.updateOdooGroup)).toEqual({ ids: "1,2", soi: "S1", product: "Tank", odooMo: "SF01/MO/9", status: "Done" });
     expect(checkToolInput(updateOdooGroupTool, { ids: [1] })).toMatchObject({ ok: false });
-  });
-});
-
-describe("MATERIAL: new lines and a group", () => {
-  const mat = (id: number, o: Record<string, unknown> = {}) => ({
-    id, line: "TR", month: "", bom: "B1", mo: "M1", units: 4, partCode: "TN", partName: "TANK", materialCode: "", material: "Steel", thicknessMm: 3, sheetSize: "1250*2500",
-    sheetsPerUnit: 2, actualPerUnit: null, actualPerUnitManual: false, sheetsUsed: null, producedQty: null, sortOrder: 0, soi: "S1", mtr: "", weightKg: null, utilization: null, note: null,
-    recordedBy: null, createdAt: "2026-10-01T00:00:00.000Z", ...o,
-  });
-
-  it("adds a line on its own product line, refused when the same line is there, undone by deleting it", async () => {
-    const raw = { line: "LV", bom: "b9", mo: "P1", material: "galvanized", thicknessMm: 1.5, sheetSize: "1220 x 2440", units: 5, sheetsPerUnit: 0.5 };
-    const c = checkToolInput<Parameters<typeof addMaterialLineTool.describe>[0]>(addMaterialLineTool, raw);
-    if (!c.ok) throw new Error(c.error);
-    expect(c.input).toMatchObject({ bom: "B9", material: "Galvanized steel", sheetSize: "1220*2440", partCode: "" });
-    expect(await addMaterialLineTool.describe(c.input, ctx)).toEqual({ error: expect.stringContaining("MATERIAL permission") });
-    h.perms.add("lv.material");
-    h.prisma.materialUsage.findUnique.mockResolvedValueOnce({ id: 70 });
-    expect(await addMaterialLineTool.describe(c.input, ctx)).toEqual({ error: expect.stringContaining("is a line already (#70)") });
-    h.prisma.materialUsage.findUnique.mockResolvedValueOnce(null);
-    expect(await addMaterialLineTool.describe(c.input, ctx)).toMatchObject({ title: "MATERIAL: add P1 Galvanized steel 1.5mm 1220*2440" });
-    h.prisma.materialUsage.findUnique.mockResolvedValueOnce({ id: 71 });
-    expect(await addMaterialLineTool.execute(c.input, ctx)).toMatchObject({ ok: true, undo: { tool: "delete_material_lines", input: { ids: [71] } } });
-    expect(h.lines).toEqual(["LV"]);
-    expect(fdOf(h.material.createMaterialLine)).toMatchObject({ bom: "B9", mo: "P1", material: "Galvanized steel", thicknessMm: "1.5", sheetSize: "1220*2440", units: "5", sheetsPerUnit: "0.5" });
-  });
-
-  it("adds an LV order's sheets, skipping the ones there, undone by deleting what it added", async () => {
-    h.perms.add("lv.material");
-    h.prisma.masterOrder.findUnique.mockResolvedValue({ bom: "LVB", planQty: 6, line: "LV" });
-    const raw = { mo: "p1", rows: [{ thicknessMm: 1.5, sheetsPerUnit: 0.5 }, { material: "Stainless", thicknessMm: 2, sheetSize: "1250*2500", sheetsPerUnit: 0.25 }] };
-    expect(checkToolInput(addLvOrderMaterialTool, { mo: "P1", rows: [{ thicknessMm: 1.5, sheetsPerUnit: 1 }, { thicknessMm: 1.5, sheetsPerUnit: 2, material: "galvanized" }] })).toMatchObject({ ok: false, error: expect.stringContaining("listed twice") });
-    const c = checkToolInput<Parameters<typeof addLvOrderMaterialTool.describe>[0]>(addLvOrderMaterialTool, raw);
-    if (!c.ok) throw new Error(c.error);
-    h.prisma.materialUsage.findUnique.mockResolvedValueOnce({ id: 80 }).mockResolvedValueOnce(null);
-    const p = await addLvOrderMaterialTool.describe(c.input, ctx);
-    expect(p).toMatchObject({ summary: expect.stringContaining("1 already there, skipped"), changes: [{ after: "skipped — there already" }, { after: "0.25 sheet(s) a panel" }] });
-    h.prisma.materialUsage.findUnique.mockResolvedValueOnce({ id: 80 }).mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 81 });
-    h.material.createLvOrderLines.mockResolvedValue({ ok: true, added: 1, skipped: 1 });
-    expect(await addLvOrderMaterialTool.execute(c.input, ctx)).toEqual({ ok: true, message: "Added 1 sheet line(s) of P1.", undo: { tool: "delete_material_lines", input: { ids: [81] } } });
-    expect(h.lines).toEqual(["LV"]);
-    h.prisma.masterOrder.findUnique.mockResolvedValue({ bom: "B1", planQty: 6, line: "TR" });
-    expect(await addLvOrderMaterialTool.describe(c.input, ctx)).toEqual({ error: "P1 is not an LV panel order." });
-  });
-
-  it("edits an SOI group's lines together, sending only what is given, undone by the lines as they were", async () => {
-    h.perms.add("material.edit");
-    const rows = [mat(1), mat(2, { partCode: "TC", producedQty: 3 })];
-    h.snap.readMaterialRows.mockResolvedValue(rows);
-    expect(checkToolInput(updateMaterialGroupTool, { ids: [1, 2] })).toMatchObject({ ok: false });
-    const p = await updateMaterialGroupTool.describe({ ids: [1, 2], mtr: " mt-9 ", producedQty: null }, ctx);
-    expect(p).toMatchObject({ summary: "On 2 MATERIAL line(s): MTR → MT-9; Units produced → —." });
-    expect("changes" in p && p.changes).toHaveLength(3);
-    const out = await updateMaterialGroupTool.execute({ ids: [1, 2], mtr: " mt-9 ", producedQty: null }, ctx);
-    expect(fdOf(h.material.updateMaterialGroup)).toEqual({ ids: "1,2", mtr: " mt-9 ", producedQty: "" });
-    expect(out).toMatchObject({ undo: { tool: "restore_material_rows" } });
-    h.snap.readMaterialRows.mockResolvedValue([mat(1), mat(2, { line: "LV" })]);
-    h.perms.add("lv.material");
-    expect(await updateMaterialGroupTool.describe({ ids: [1, 2], mtr: "X" }, ctx)).toEqual({ error: expect.stringContaining("both product lines") });
   });
 });
 
@@ -229,21 +164,6 @@ describe("the ODOO log", () => {
   it("the restore will not take a snapshot it cannot read", () => {
     expect(checkToolInput(restoreOdooRowsTool, { rows: "[{\"x\":1}]" })).toMatchObject({ ok: false });
     expect(checkToolInput(restoreOdooRowsTool, { rows: "[]" })).toMatchObject({ ok: false });
-  });
-});
-
-describe("MATERIAL", () => {
-  it("types each cell through the tab's own action on the line's own product line", async () => {
-    h.perms.add("lv.material");
-    const row = { id: 5, line: "LV", bom: "B", mo: "M", partCode: "", material: "Steel", thicknessMm: 2, sheetSize: "1220*2440", sheetsUsed: null, producedQty: 3 };
-    h.snap.readMaterialRows.mockResolvedValue([row]);
-    const input = { changes: [{ id: 5, field: "sheetsUsed" as const, value: 12 }, { id: 5, field: "producedQty" as const, value: null }] };
-    expect(await setMaterialCellsTool.describe(input, ctx)).toMatchObject({ changes: [{ before: "—", after: "12" }, { before: "3", after: "—" }] });
-    const out = await setMaterialCellsTool.execute(input, ctx);
-    expect(h.lines).toEqual(["LV", "LV"]);
-    expect(fdOf(h.material.setSheetsUsed)).toEqual({ id: "5", sheetsUsed: "12" });
-    expect(fdOf(h.material.setProducedQty)).toEqual({ id: "5", producedQty: "" });
-    expect(out.undo).toEqual({ tool: "restore_material_rows", input: { rows: JSON.stringify([row]) } });
   });
 });
 
@@ -362,11 +282,13 @@ describe("who is offered the data tools", () => {
     expect(toolsFor(user(), { hidden: new Set(), actionsPaused: false }).map((t) => t.name)).not.toContain("set_odoo_status");
     h.perms.add("ai.act.data");
     const names = toolsFor(user(), { hidden: new Set(["odoo"]), actionsPaused: false }).map((t) => t.name);
-    expect(names).toEqual(expect.arrayContaining(["set_material_cells", "add_holidays", "update_worker", "update_machine", "record_consumable_issue"]));
+    expect(names).toEqual(expect.arrayContaining(["add_holidays", "update_worker", "update_machine", "record_consumable_issue"]));
     expect(names.filter((n) => n.includes("odoo"))).toEqual([]);
     expect(names.filter((n) => n.startsWith("restore_"))).toEqual([]);
     // deletions only with the deletions key
-    expect(names).not.toContain("delete_material_lines");
+    expect(names).not.toContain("delete_holidays");
+    // the MATERIAL sheet changes only by its import — no tool types into it
+    expect(names.filter((n) => /material_(cells|line|group)|lv_order_material/.test(n))).toEqual([]);
   });
 
   it("a read-only question (Ask AI) gets the reading tools alone — nothing that changes or keeps", () => {
@@ -374,7 +296,6 @@ describe("who is offered the data tools", () => {
     const all = toolsFor(user(), { hidden: new Set(), actionsPaused: false });
     const names = toolsFor(user(), { hidden: new Set(), actionsPaused: false, readOnly: true }).map((t) => t.name);
     expect(names).toEqual(expect.arrayContaining(["query_database", "get_kpis"]));
-    expect(names).not.toContain("set_material_cells");
     for (const kept of ["remember", "forget", "keep_scenario"]) expect(names).not.toContain(kept);
     expect(all.filter((t) => t.kind === "read" && !t.keeps).map((t) => t.name)).toEqual(names);
   });
@@ -397,18 +318,6 @@ describe("a quantity, a closing or several rows wait for the person's click", ()
     expect(risk(updateOdooEntryTool, { id: 1, status: "Done" })).toBe("high");
     expect(risk(updateOdooEntryTool, { id: 1, soi: "SOI-9" })).toBe("low");
     expect(risk(updateOdooEntryTool, { id: 1, status: "Pending" })).toBe("low");
-  });
-  it("MATERIAL: cells with quantities are high, a note alone is low", () => {
-    expect(risk(setMaterialCellsTool, { changes: [] })).toBe("high");
-    expect(risk(updateMaterialGroupTool, { ids: [1, 2], mtr: "MT-9" })).toBe("low");
-    expect(risk(updateMaterialGroupTool, { ids: [1, 2], units: 40 })).toBe("high");
-    expect(risk(updateMaterialGroupTool, { ids: [1, 2, 3, 4], mtr: "MT-9" })).toBe("high");
-    // one line: the units, the BOM's sheets per unit or a sheet's weight carry a quantity
-    expect(risk(updateMaterialLineTool, { id: 1, units: 40 })).toBe("high");
-    expect(risk(updateMaterialLineTool, { id: 1, sheetsPerUnit: 2 })).toBe("high");
-    expect(risk(updateMaterialLineTool, { id: 1, weightKg: 120 })).toBe("high");
-    expect(risk(updateMaterialLineTool, { id: 1, weightKg: null })).toBe("high");
-    expect(risk(updateMaterialLineTool, { id: 1, mtr: "MT-9", note: "late" })).toBe("low");
   });
   it("stock: a count is high, a name is low", () => {
     expect(risk(updatePhysicalItemsTool, { changes: [{ id: 1, field: "physical", value: "3" }] })).toBe("high");

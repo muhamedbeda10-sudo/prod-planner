@@ -173,8 +173,11 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
 6. **Material — nesting project tracker** (`/material`) — the planner's Nesting Project Tracker sheet, filed
    month by month, exactly its columns: BOM Ref · Quantity of Units · Part Code · Part Name · Codes · Material ·
    Thickness · Sheet Size · Sheets in BOM for one Unit / for Job · Actual Nesting for one Unit / for Job ·
-   Difference · Notes. The tab adds two columns: units **produced** (typed) and the sheets those units really
-   consumed at the job's actual rate (50 sheets nested for 30 units, 5 produced → 8.333). The sheets nested
+   Difference · Notes. The sheet is the tab's **only source**: nothing is typed, edited or deleted on the tab
+   (nor by the assistant) — uploading the sheet again is how a line changes, its figures replacing what the
+   line held (a blank note aside), and "upload and remove the rows no longer in the file" (confirmed first)
+   drops every line the file no longer carries, those typed in by hand before included. The panels' tab shows the units produced (the sheet's count, else the panels painted on the
+   tracker) and the sheets they consumed. The sheets nested
    **for the job** are computed on import as the sheet's own **Actual Nesting for one Unit × Quantity of
    Units**, not read from its "for Job" column: that column is a figure somebody left behind — change the job
    size and it keeps the old answer (one row of the tracker says 17.6 sheets where 90 units at 0.568 a unit is
@@ -182,9 +185,8 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    were stale. Import the sheet for a
    month (re-importing adds new lines and updates changed ones; the same BOM's tank and top-cover lines stay
    apart), filter by month and, within it, by part, material, thickness, sheet size, status (nested / not
-   nested / with produced / over BOM) or a search across BOM, SOI, part, code and note — the totals follow
-   the filter; edit any value inline, delete a whole month (confirmed by typing its name), export in the
-   sheet's own headers.
+   nested / with produced / over BOM) or a search across BOM, SOI, part, code and note — the Total row
+   follows the filter.
 7. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
    close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status, plus Notes. Two people work a row: the
    clerk types it in (or imports the sheet — its first seven columns, the same MO on the same day

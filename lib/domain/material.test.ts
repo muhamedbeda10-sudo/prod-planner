@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   normalizeMaterialType, normalizeSheetSize, parseSheetNumber, sheetNumberOr, sheetsForJob, sheetsDifference,
-  actualPerUnit, rateIsTyped, sheetsForProduced, summarizeMaterial, parseNestingTracker, materialKey, round3, partNameFor,
+  actualPerUnit, sheetsForProduced, parseNestingTracker, materialKey, round3, partNameFor,
   filterMaterialLines, EMPTY_MATERIAL_FILTERS, groupMaterialBySoi,
   type MaterialLineView,
 } from "./material";
@@ -129,33 +129,14 @@ function line(over: Partial<MaterialLineView>): MaterialLineView {
     id: 1, month: "July 2026", bom: "B1", mo: "", units: 10, partCode: "FB-022", partName: "TANK", materialCode: "T-SSS-5MM",
     material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
     sheetsPerUnit: 1, sheetsUsed: 10, producedQty: null, note: null, soi: "", mtr: "", weightKg: null, utilization: null, actualWeightKg: null, producedAuto: null, producedUsed: null, remainingUnits: null,
-    forJob: 10, difference: 0, actualPerUnit: 1, actualPerUnitManual: false, forProduced: null,
+    forJob: 10, difference: 0, actualPerUnit: 1, forProduced: null,
     updatedISO: "2026-09-07", recordedBy: null, ...over,
   };
 }
 
-describe("summarizeMaterial", () => {
-  it("adds up the job, the nesting and the produced consumption per material and size", () => {
-    const totals = summarizeMaterial([
-      line({ id: 1, forJob: 10, sheetsUsed: 8, forProduced: 4 }),
-      line({ id: 2, bom: "B2", forJob: 5.5, sheetsUsed: 5, forProduced: 2.5 }),
-      line({ id: 3, material: "Stainless steel", forJob: 2, sheetsUsed: 2, forProduced: null }),
-    ]);
-    expect(totals).toHaveLength(2);
-    expect(totals[0]).toMatchObject({ material: "Stainless steel", forJob: 2, used: 2, forProduced: 0, linesNotNested: 0 });
-    expect(totals[1]).toMatchObject({ material: "Steel", forJob: 15.5, used: 13, forProduced: 6.5, linesNotNested: 0 });
-  });
-  it("counts lines not nested yet instead of treating them as zero", () => {
-    const [t] = summarizeMaterial([line({ id: 1, forJob: 10, sheetsUsed: null }), line({ id: 2, forJob: 4, sheetsUsed: 4 })]);
-    expect(t.forJob).toBe(14);
-    expect(t.used).toBe(4);
-    expect(t.linesNotNested).toBe(1);
-  });
-});
-
 describe("filterMaterialLines", () => {
   const rows = [
-    line({ id: 1, bom: "10017E11M11", soi: "S01035-1", partCode: "FB-022", partName: "TANK", sheetsUsed: 6.4, difference: 2.4, producedQty: 1 }),
+    line({ id: 1, bom: "10017E11M11", soi: "S01035-1", partCode: "FB-022", partName: "TANK", sheetsUsed: 6.4, difference: 2.4, producedQty: null, producedAuto: 1, producedUsed: 1 }),
     line({ id: 2, bom: "40012E11M11", partCode: "FB-051", partName: "TOP COVER", sheetsUsed: null, difference: null, producedQty: null }),
     line({ id: 3, bom: "40012E11M11", partCode: "FB-022", partName: "TANK", material: "Steel", thicknessMm: 4, sheetsUsed: 9, difference: -1, note: "re-nest" }),
   ];
@@ -344,36 +325,6 @@ describe("parseNestingTracker", () => {
     expect(rows).toEqual([]);
     expect(issues[0]).toMatch(/No header row found/);
     expect(skipped).toBe(0);
-  });
-});
-
-describe("rateIsTyped — whose figure the per-unit rate is", () => {
-  const sheet = { actualPerUnit: 0.25, actualPerUnitManual: false };
-  const typed = { actualPerUnit: 0.4, actualPerUnitManual: true };
-
-  it("claims the rate when a figure is typed over a line the sheet filled", () => {
-    expect(rateIsTyped(sheet, 0.4)).toBe(true);
-  });
-
-  it("leaves an imported line alone when the box is saved untouched", () => {
-    expect(rateIsTyped(sheet, 0.25)).toBe(false);
-  });
-
-  it("claims the rate on a line the sheet left blank", () => {
-    expect(rateIsTyped({ actualPerUnit: null, actualPerUnitManual: false }, 0.33)).toBe(true);
-  });
-
-  it("keeps a typed rate typed when the line is saved again unchanged", () => {
-    expect(rateIsTyped(typed, 0.4)).toBe(true);
-  });
-
-  it("hands the line back to the sheet when the box is cleared", () => {
-    expect(rateIsTyped(typed, null)).toBe(false);
-    expect(rateIsTyped(sheet, null)).toBe(false);
-  });
-
-  it("treats a typed zero as a figure, not as an empty box", () => {
-    expect(rateIsTyped(sheet, 0)).toBe(true);
   });
 });
 

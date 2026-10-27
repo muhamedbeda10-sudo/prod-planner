@@ -15,7 +15,6 @@ import { TANK_TOOLS } from "./tanks";
 import { SIMULATION_REVIEW_TOOLS } from "./simulationReview";
 import { SIMULATOR_TOOLS } from "./simulator";
 import { ODOO_TOOLS } from "./odoo";
-import { MATERIAL_TOOLS } from "./material";
 import { PHYSICAL_TOOLS } from "./physical";
 import { CONSUMABLE_TOOLS } from "./consumables";
 import { CALENDAR_TOOLS } from "./calendar";
@@ -57,7 +56,6 @@ export const AI_TOOLS: readonly AiTool[] = [
   ...SIMULATOR_TOOLS,
   ...SIMULATION_REVIEW_TOOLS,
   ...ODOO_TOOLS,
-  ...MATERIAL_TOOLS,
   ...PHYSICAL_TOOLS,
   ...CONSUMABLE_TOOLS,
   ...CALENDAR_TOOLS,
