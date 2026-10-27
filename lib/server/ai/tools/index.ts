@@ -28,6 +28,7 @@ import { PLAYBOOK_TOOLS } from "./playbook";
 import { SHIFT_TOOLS } from "./shifts";
 import { DOWNTIME_TOOLS } from "./downtime";
 import { KPI_TOOLS } from "./kpis";
+import { PLANNING_CONTROL_TOOLS } from "./planningControl";
 import { MATERIAL_DASHBOARD_TOOLS } from "./materialDashboard";
 import { CATALOGUE_TOOLS } from "./catalogue";
 import { SETUP_TOOLS } from "./setup";
@@ -69,6 +70,7 @@ export const AI_TOOLS: readonly AiTool[] = [
   ...SHIFT_TOOLS,
   ...DOWNTIME_TOOLS,
   ...KPI_TOOLS,
+  ...PLANNING_CONTROL_TOOLS,
   ...MATERIAL_DASHBOARD_TOOLS,
   ...CATALOGUE_TOOLS,
   ...SETUP_TOOLS,

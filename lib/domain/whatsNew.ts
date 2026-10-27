@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-assistant-plans-like-a-planner",
+    dateISO: "2026-10-27",
+    title: "The assistant plans like a production planner",
+    where: "The assistant → What it can do",
+    href: "/ai",
+    body: "Eight new tiles under What it can do. What to run next ranks a department's work by critical ratio, or by due date, slack or the shortest job, and marks what to expedite and what is on a machine and should not be broken. Load vs capacity shows each department's load week by week, with the overloaded weeks and the fixes in order. Find the bottleneck names the department that sets the pace, with the evidence. Can we take this order? tests a new order against the plan: its date, and the orders it would push late. Why is this order late?, Ready to release?, Input / output (is the problem upstream or inside the department?) and Explain a planning idea complete them. Every figure comes with its formula and the data it rests on. The transformers only for now; the raw-material stock is not read from Odoo yet, so a release still says to check it.",
+  },
+  {
     id: "2026-10-27-open-orders-first",
     dateISO: "2026-10-27",
     title: "Plan Tracker opens on open orders · ODOO log on 30 days",
