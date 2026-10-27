@@ -161,6 +161,9 @@ const IDEAS = [
   opt("schedule", "Backward and forward scheduling", "الجدولة العكسية والأمامية"),
 ];
 
+const stationField: AiQuickField = { name: "station", label: "Department", type: "select", defaultValue: "weld", options: STATIONS };
+const moField: AiQuickField = { name: "mo", label: "Order (MO)", type: "text", required: true, placeholder: "e.g. MO/12345" };
+
 const CADENCES = [opt("new", "Whenever something new shows up", "تتشيّك كل شوية وتبعت أول ما يظهر جديد"), opt("morning", "Every working morning", "كل يوم شغل الصبح"), opt("weekly", "Every week (Sunday)", "كل أسبوع يوم الحد الصبح")];
 
 export const AI_QUICK_ACTIONS: readonly AiQuickAction[] = [
@@ -242,7 +245,7 @@ export const AI_QUICK_ACTIONS: readonly AiQuickAction[] = [
     hint: "A department's priority list, by critical ratio",
     confirmLabel: "Build the list",
     fields: [
-      { name: "station", label: "Department", type: "select", defaultValue: "weld", options: STATIONS },
+      stationField,
       { name: "rule", label: "Order by", type: "select", defaultValue: "CR", options: RULES },
     ],
   },
@@ -270,14 +273,14 @@ export const AI_QUICK_ACTIONS: readonly AiQuickAction[] = [
     label: "Why is this order late?",
     hint: "Where it waits, its priority, and what to do",
     confirmLabel: "Trace it",
-    fields: [{ name: "mo", label: "Order (MO)", type: "text", required: true, placeholder: "e.g. MO/12345" }],
+    fields: [moField],
   },
   {
     id: "release",
     label: "Ready to release?",
     hint: "Nesting, material and capacity before the floor",
     confirmLabel: "Check it",
-    fields: [{ name: "mo", label: "Order (MO)", type: "text", required: true, placeholder: "e.g. MO/12345" }],
+    fields: [moField],
   },
   {
     id: "io",
@@ -285,7 +288,7 @@ export const AI_QUICK_ACTIONS: readonly AiQuickAction[] = [
     hint: "Upstream or inside — where a department loses",
     confirmLabel: "Read it",
     fields: [
-      { name: "station", label: "Department", type: "select", defaultValue: "weld", options: STATIONS },
+      stationField,
       { name: "weeks", label: "Over", type: "select", defaultValue: "4", options: WEEKS_BACK },
     ],
   },

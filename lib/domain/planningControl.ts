@@ -11,21 +11,30 @@
 
 import { ETA_STAGES, etaQueueOrder, forecastEta, forecastEtaQueued, type EtaOrder, type EtaStage } from "./eta";
 import { countWorkingDaysISO, dateForOffsetISO, offsetForDateISO, type WhatIfInputs, type WhatIfJob, type WiStage } from "./whatif";
+import { addDaysISO as addDays, weekStartISO } from "./dateSlicer";
+import { round1 as r1 } from "./shifts";
+import type { ItemStageHours } from "./stdEngine";
 
 export const CONTROL_STAGES = ETA_STAGES;
 export type ControlStage = EtaStage;
 export const STAGE_NAME: Record<ControlStage, string> = { cut: "Fabrication", weld: "Welding", finish: "Finishing (shot blast + paint)" };
 /** The capacity rows behind each station (Admin → Standard times & capacity). */
-export const STAGE_DEPTS: Record<ControlStage, WiStage[]> = { cut: ["Cut"], weld: ["Welding"], finish: ["ShotBlast", "Painting"] };
+const STAGE_DEPTS: Record<ControlStage, WiStage[]> = { cut: ["Cut"], weld: ["Welding"], finish: ["ShotBlast", "Painting"] };
+/** The station a department's work belongs to (a panel's department to none). */
+export const DEPT_STAGE: Readonly<Record<string, ControlStage>> = { Cut: "cut", Welding: "weld", ShotBlast: "finish", Painting: "finish" };
+
+/** One piece's std hours at each station, priced as the forecast prices a job
+ *  (lib/server/eta.ts): finishing = shot blast + paint. */
+export const stagePerPc = (p: ItemStageHours): Record<ControlStage, number> => ({ cut: p.cut, weld: p.weld, finish: p.shb + p.paint });
 
 /** Load bands: under 85% comfortable, up to 100% tight, past it overloaded. */
 export const LOAD_TIGHT = 85;
 export const LOAD_OVER = 100;
+/** The top of the critical ratio's "on schedule" band (from 1). */
+export const CR_ON_SCHEDULE = 1.1;
 
-const DAY = 86400000;
-const r1 = (n: number) => Math.round(n * 10) / 10;
 const r2 = (n: number) => Math.round(n * 100) / 100;
-const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
+const r1n = (n: number | null) => (n === null ? null : r1(n));
 
 // ---------------------------------------------------------------- formulas
 
@@ -41,10 +50,10 @@ export function criticalRatio(daysToDue: number | null, remainingDays: number | 
   return { cr: r2(cr), status: crStatus(cr) };
 }
 
-export function crStatus(cr: number): Exclude<CrStatus, "done" | "unknown"> {
+function crStatus(cr: number): Exclude<CrStatus, "done" | "unknown"> {
   if (cr <= 0) return "late";
   if (cr < 1) return "behind";
-  if (cr <= 1.1) return "on_schedule";
+  if (cr <= CR_ON_SCHEDULE) return "on_schedule";
   return "ahead";
 }
 
@@ -82,8 +91,10 @@ export function loadPct(load: number, capacity: number | null): number | null {
   return r1((load / capacity) * 100);
 }
 
-/** A load % as words: a load against no hours at all is beyond capacity, not a number. */
-export const pctText = (pct: number) => (Number.isFinite(pct) ? `${pct}%` : "beyond capacity (no working hours in the window)");
+/** How a load against no working hours at all reads — beyond capacity, not a number. */
+export const BEYOND_CAPACITY = "beyond capacity (no working hours in the window)";
+/** A load % as words. */
+export const pctText = (pct: number) => (Number.isFinite(pct) ? `${pct}%` : BEYOND_CAPACITY);
 
 export type LoadStatus = "ok" | "tight" | "overloaded" | "no_capacity";
 export function loadStatus(pct: number | null): LoadStatus {
@@ -104,6 +115,33 @@ export function workingDaysToDue(dueISO: string, todayISO: string, holidays: Set
   return 0 - countWorkingDaysISO(addDays(dueISO, 1), addDays(todayISO, -1), holidays, false);
 }
 
+/** The calendar arithmetic a list asks of many jobs, worked out once per date:
+ *  working days to a due date, and the date a forecast's working days land on. */
+export function plantCalendar(todayISO: string, holidays: Set<string>) {
+  const toDue = new Map<string, number>();
+  const dates = new Map<number, string>();
+  return {
+    todayISO,
+    daysToDue(dueISO: string): number {
+      let d = toDue.get(dueISO);
+      if (d === undefined) toDue.set(dueISO, (d = workingDaysToDue(dueISO, todayISO, holidays)));
+      return d;
+    },
+    /** The working-day offset a date ends (passed dates pin to 0). */
+    offsetOf(iso: string): number {
+      return iso < todayISO ? 0 : Math.max(0, this.daysToDue(iso));
+    },
+    dateFor(days: number): string {
+      if (days <= 0) return todayISO;
+      const key = Math.ceil(days);
+      let iso = dates.get(key);
+      if (iso === undefined) dates.set(key, (iso = dateForOffsetISO(key, todayISO, holidays, false)));
+      return iso;
+    },
+  };
+}
+export type PlantCalendar = ReturnType<typeof plantCalendar>;
+
 export interface PlantWeek {
   fromISO: string;
   toISO: string;
@@ -114,8 +152,7 @@ export interface PlantWeek {
 /** The plant's weeks, Saturday to Friday, from the current one; the current
  *  week counts its working days from today. */
 export function plantWeeks(todayISO: string, count: number, holidays: Set<string>): PlantWeek[] {
-  const dow = new Date(`${todayISO}T00:00:00Z`).getUTCDay(); // 6 = Saturday
-  const start = addDays(todayISO, -((dow + 1) % 7));
+  const start = weekStartISO(todayISO);
   return Array.from({ length: count }, (_, i) => {
     const fromISO = addDays(start, i * 7);
     const toISO = addDays(fromISO, 6);
@@ -131,7 +168,7 @@ export function pastPlantWeeks(todayISO: string, count: number, holidays: Set<st
     const i = count - k;
     const fromISO = addDays(current.fromISO, -7 * i);
     const toISO = i === 0 ? addDays(todayISO, -1) : addDays(fromISO, 6);
-    return { fromISO, toISO, workingDays: toISO < fromISO ? 0 : countWorkingDaysISO(fromISO, toISO, holidays, false) };
+    return { fromISO, toISO, workingDays: countWorkingDaysISO(fromISO, toISO, holidays, false) };
   }).filter((w) => w.toISO >= w.fromISO);
   return weeks.slice(-count);
 }
@@ -146,6 +183,14 @@ const prevStage = (s: ControlStage): ControlStage | null => (s === "cut" ? null 
 export function arrivedPcs(j: Pick<WhatIfJob, "left">, s: ControlStage): number {
   const p = prevStage(s);
   return Math.max(0, p ? j.left[s] - j.left[p] : j.left[s]);
+}
+
+/** The std hours waiting in front of each station now: at Fabrication every
+ *  piece not cut yet, at the others the pieces the station before has passed on. */
+export function queueNow(jobs: readonly Pick<WhatIfJob, "left" | "perPc">[]): Record<ControlStage, number> {
+  const q: Record<ControlStage, number> = { cut: 0, weld: 0, finish: 0 };
+  for (const j of jobs) for (const s of CONTROL_STAGES) q[s] += arrivedPcs(j, s) * (j.perPc[s] || 0);
+  return q;
 }
 
 /** Days of pure work left (each station's hours at its whole station's
@@ -202,8 +247,7 @@ export interface DispatchRow {
 }
 
 export interface DispatchContext {
-  todayISO: string;
-  holidays: Set<string>;
+  calendar: PlantCalendar;
   rates: Record<ControlStage, number>;
   priorityMos?: ReadonlySet<string>;
   urgentMos?: ReadonlySet<string>;
@@ -211,7 +255,7 @@ export interface DispatchContext {
 }
 
 export function dispatchRow(j: WhatIfJob, stage: ControlStage, c: DispatchContext): DispatchRow {
-  const daysToDue = j.dueISO ? workingDaysToDue(j.dueISO, c.todayISO, c.holidays) : null;
+  const daysToDue = j.dueISO ? c.calendar.daysToDue(j.dueISO) : null;
   const forecastDays = j.blockedBy ? null : j.baselineDays;
   const { cr, status } = criticalRatio(daysToDue, forecastDays);
   const work = workDaysLeft(j, c.rates);
@@ -222,8 +266,8 @@ export function dispatchRow(j: WhatIfJob, stage: ControlStage, c: DispatchContex
     pcsLeft: j.left[stage], pcsArrived: arrivedPcs(j, stage),
     stageHours: r1(stageHours(j, stage)),
     totalHours: r1(CONTROL_STAGES.reduce((a, s) => a + stageHours(j, s), 0)),
-    opsLeft, forecastDays: forecastDays === null ? null : r1(forecastDays),
-    forecastISO: forecastDays === null ? null : forecastDays <= 0 ? c.todayISO : dateForOffsetISO(forecastDays, c.todayISO, c.holidays, false),
+    opsLeft, forecastDays: r1n(forecastDays),
+    forecastISO: forecastDays === null ? null : c.calendar.dateFor(forecastDays),
     cr, status, action: CR_ACTION[status],
     slack: slack?.slack ?? null, slackPerOperation: slack?.perOperation ?? null,
     priority: c.priorityMos?.has(j.mo) ?? false, urgent: c.urgentMos?.has(j.mo) ?? false,
@@ -232,7 +276,7 @@ export function dispatchRow(j: WhatIfJob, stage: ControlStage, c: DispatchContex
 }
 
 const nullsLast = (a: number | null, b: number | null) => (a === null ? (b === null ? 0 : 1) : b === null ? -1 : a - b);
-const byDue = (a: DispatchRow, b: DispatchRow) => (a.dueISO ?? "9999") < (b.dueISO ?? "9999") ? -1 : (a.dueISO ?? "9999") > (b.dueISO ?? "9999") ? 1 : 0;
+const dueOrder = (a: { dueISO: string | null }, b: { dueISO: string | null }) => (a.dueISO ?? "9999").localeCompare(b.dueISO ?? "9999");
 
 /** The rule's order, lowest value first (a more negative CR before a less
  *  negative one); ties by due date, then job. Nothing to compare goes last. */
@@ -245,7 +289,7 @@ export function compareByRule(rule: DispatchRule): (a: DispatchRow, b: DispatchR
     LWR: (r) => r.totalHours,
     FOR: (r) => r.opsLeft,
   };
-  return (a, b) => nullsLast(key[rule](a), key[rule](b)) || byDue(a, b) || a.id.localeCompare(b.id);
+  return (a, b) => nullsLast(key[rule](a), key[rule](b)) || dueOrder(a, b) || a.id.localeCompare(b.id);
 }
 
 /** The station's dispatch list: every job that still owes it work, in the
@@ -255,6 +299,17 @@ export function dispatchList(jobs: readonly WhatIfJob[], stage: ControlStage, ru
   const rows = jobs.filter((j) => j.left[stage] > 0).map((j) => dispatchRow(j, stage, c));
   const cmp = compareByRule(rule);
   return rows.sort((a, b) => Number(b.running) - Number(a.running) || Number(b.pcsArrived > 0) - Number(a.pcsArrived > 0) || cmp(a, b));
+}
+
+/** Named orders' priority, each job at the station it is at now (the first it
+ *  still owes), in the rule's order — a job running on a machine on top. */
+export function dispatchByCurrentStation(jobs: readonly WhatIfJob[], rule: DispatchRule, c: Omit<DispatchContext, "runningIds"> & { running?: Partial<Record<ControlStage, ReadonlySet<string>>> }): (DispatchRow & { station: ControlStage })[] {
+  const rows = jobs.flatMap((j) => {
+    const at = CONTROL_STAGES.find((s) => j.left[s] > 0);
+    return at ? [{ ...dispatchRow(j, at, { ...c, runningIds: c.running?.[at] }), station: at }] : [];
+  });
+  const cmp = compareByRule(rule);
+  return rows.sort((a, b) => Number(b.running) - Number(a.running) || cmp(a, b));
 }
 
 /** How many of the rows fall in each status — the list's headline. */
@@ -296,6 +351,15 @@ export interface StageLoad {
 export function stageCapacityPerDay(capacity: Partial<Record<WiStage, number>>, stage: ControlStage): number | null {
   const set = STAGE_DEPTS[stage].filter((d) => capacity[d] !== undefined);
   return set.length ? set.reduce((a, d) => a + (capacity[d] ?? 0), 0) : null;
+}
+
+/** A station's load over all the weeks of its profile: the hours due, the
+ *  hours available (null without a capacity figure), their % and band. */
+export function windowLoad(s: StageLoad): { loadH: number; availableH: number | null; pct: number | null; status: LoadStatus } {
+  const loadH = s.weeks.reduce((a, w) => a + w.loadH, 0);
+  const availableH = s.capacityPerDay === null ? null : s.weeks.reduce((a, w) => a + (w.availableH ?? 0), 0);
+  const pct = loadPct(loadH, availableH);
+  return { loadH: r1(loadH), availableH: r1n(availableH), pct, status: loadStatus(pct) };
 }
 
 /** Infinite loading by due week: every job's hours land in the week its order
@@ -360,14 +424,15 @@ export type IoDiagnosis = "upstream" | "internal" | "on_plan" | "no_plan";
  *  front of it now closes the last week; each earlier week's backlog is walked
  *  back from it (start = end − input + output). Input below plan points
  *  upstream; input on plan with output below points inside the station. */
-export function ioReport(weeks: readonly IoWeekIn[], backlogNow: number | null, tolerance = 0.1): { weeks: IoWeek[]; diagnosis: IoDiagnosis; backlogGrowing: boolean | null; reading: string } {
+export function ioReport(weeks: readonly IoWeekIn[], backlogNow: number | null, tolerance = 0.1): { weeks: IoWeek[]; diagnosis: IoDiagnosis; backlogGrowing: boolean | null; backlogTrendH: number | null; reading: string } {
   const out: IoWeek[] = weeks.map((w) => ({ ...w, backlogStart: null, backlogEnd: null, cumInputVariance: null, cumOutputVariance: null }));
   let end = backlogNow;
   for (let i = out.length - 1; i >= 0; i--) {
     const w = out[i];
-    w.backlogEnd = end === null ? null : r1(end);
+    w.backlogEnd = r1n(end);
+    // walked back: start = end − input + output (end = ioBacklog(start, input, output))
     end = end === null || w.actualInput === null ? null : end - w.actualInput + w.actualOutput;
-    w.backlogStart = end === null ? null : r1(end);
+    w.backlogStart = r1n(end);
   }
   let pi = 0, ai = 0, po = 0, ao = 0;
   let inPlanned = true, outPlanned = true;
@@ -381,6 +446,7 @@ export function ioReport(weeks: readonly IoWeekIn[], backlogNow: number | null, 
   const first = out[0]?.backlogStart ?? null;
   const lastEnd = out[out.length - 1]?.backlogEnd ?? null;
   const backlogGrowing = first === null || lastEnd === null ? null : lastEnd > first * 1.1 && lastEnd - first > 1;
+  for (const w of out) Object.assign(w, { plannedInput: r1n(w.plannedInput), actualInput: r1n(w.actualInput), plannedOutput: r1n(w.plannedOutput), actualOutput: r1(w.actualOutput) });
   let diagnosis: IoDiagnosis;
   if (!outPlanned || po <= 0) diagnosis = "no_plan";
   else if (inPlanned && pi > 0 && ai - pi < -tolerance * pi) diagnosis = "upstream";
@@ -392,7 +458,7 @@ export function ioReport(weeks: readonly IoWeekIn[], backlogNow: number | null, 
     on_plan: "Input and output are within 10% of plan.",
     no_plan: "No weekly plan covers these weeks, so only the actual flow and backlog can be read.",
   }[diagnosis] + (backlogGrowing ? " The queue in front of it is growing — every order through it will wait longer." : "");
-  return { weeks: out, diagnosis, backlogGrowing, reading };
+  return { weeks: out, diagnosis, backlogGrowing, backlogTrendH: first === null || lastEnd === null ? null : r1(lastEnd - first), reading };
 }
 
 // ---------------------------------------------------------------- the constraint
@@ -407,8 +473,22 @@ export interface ConstraintEvidence {
   queueH: number;
   queueDays: number | null;
   nearLoadPct: number | null;
-  lostH: number;
+  /** Machine-hours lost to unplanned stops; null when not read (the Shifts screen closed). */
+  lostH: number | null;
   backlogTrendH: number | null;
+}
+
+/** One station's evidence: its open work and queue against its real pace, its
+ *  load over the profile's weeks, its lost hours and how its queue moved. */
+export function stationEvidence(stage: ControlStage, o: { jobs: readonly WhatIfJob[]; rate: number; queueH: number; load: StageLoad; lostH: number | null; backlogTrendH: number | null }): ConstraintEvidence {
+  const openH = o.jobs.reduce((a, j) => a + stageHours(j, stage), 0);
+  return {
+    stage, name: STAGE_NAME[stage], openH: r1(openH), ratePerDay: r1(o.rate),
+    daysOfWork: o.rate > 0 ? r1(openH / o.rate) : null,
+    queueH: r1(o.queueH), queueDays: o.rate > 0 ? r1(o.queueH / o.rate) : null,
+    nearLoadPct: windowLoad(o.load).pct,
+    lostH: r1n(o.lostH), backlogTrendH: o.backlogTrendH,
+  };
 }
 
 /** Rank the stations by the days of open work they hold at their real pace —
@@ -421,7 +501,7 @@ export function rankConstraint(rows: readonly ConstraintEvidence[]): { ranked: C
     evidence.push(`${constraint.name} holds ${r1(constraint.daysOfWork!)} working days of open work at its real pace (${constraint.openH} std h ÷ ${constraint.ratePerDay} std h/day) — the most of any station.`);
     if (constraint.queueDays !== null) evidence.push(`${constraint.queueH} std h already wait in front of it (${r1(constraint.queueDays)} days).`);
     if (constraint.nearLoadPct !== null) evidence.push(`Its load over the coming weeks is ${pctText(constraint.nearLoadPct)} of its capacity.`);
-    if (constraint.lostH > 0) evidence.push(`${constraint.lostH} machine-hours were lost to stops there lately.`);
+    if (constraint.lostH !== null && constraint.lostH > 0) evidence.push(`${constraint.lostH} machine-hours were lost to stops there lately.`);
     if (constraint.backlogTrendH !== null && constraint.backlogTrendH > 0) evidence.push(`Its queue grew by ${constraint.backlogTrendH} std h over the weeks read.`);
   }
   for (const r of rows) if (r.daysOfWork === null && r.openH > 0) evidence.push(`${r.name} has open work but no recorded pace — it cannot be ranked.`);
@@ -454,10 +534,12 @@ export interface RushJob {
   perPc: Record<ControlStage, number>;
 }
 
+export interface RushPlacement { finishDays: number | null; finishISO: string | null; feasible: boolean | null; pushed: PushedJob[] }
+
 export interface RushOutcome {
   /** Where the new order lands queued by its due date, and rushed to the front. */
-  atDuePosition: { finishDays: number | null; finishISO: string | null; feasible: boolean | null; pushed: PushedJob[] };
-  expedited: { finishDays: number | null; finishISO: string | null; feasible: boolean | null; pushed: PushedJob[] };
+  atDuePosition: RushPlacement;
+  expedited: RushPlacement;
   requestedISO: string;
   blockedBy: ControlStage | null;
 }
@@ -470,17 +552,17 @@ const asOrder = (j: WhatIfJob): EtaOrder => ({ id: j.id, dueISO: j.dueISO, hours
  *  works today) and again at the front (expedited); each with the jobs it
  *  delays and those it makes late. Nothing is changed. */
 export function simulateRush(inputs: Pick<WhatIfInputs, "jobs" | "rates" | "todayISO" | "holidayISOs">, rush: readonly RushJob[], requestedISO: string): RushOutcome {
-  const holidays = new Set(inputs.holidayISOs);
-  const toISO = (d: number | null) => (d === null ? null : d <= 0 ? inputs.todayISO : dateForOffsetISO(d, inputs.todayISO, holidays, false));
-  const dueOffset = (iso: string | null) => (iso ? (iso < inputs.todayISO ? 0 : offsetForDateISO(iso, inputs.todayISO, holidays, false)) : null);
+  const cal = plantCalendar(inputs.todayISO, new Set(inputs.holidayISOs));
+  const toISO = (d: number | null) => (d === null ? null : cal.dateFor(d));
   const base = inputs.jobs.map(asOrder);
-  const baseline = new Map(forecastEta(base, inputs.rates).map((r) => [r.id, r.days]));
+  // today's forecast of each job, as the model already holds it
+  const baseline = new Map(inputs.jobs.map((j) => [j.id, j.blockedBy ? null : j.baselineDays]));
   const extra: EtaOrder[] = rush.map((j) => ({ id: j.id, dueISO: requestedISO, hours: { cut: j.qty * j.perPc.cut, weld: j.qty * j.perPc.weld, finish: j.qty * j.perPc.finish } }));
   const extraIds = new Set(extra.map((e) => e.id));
-  const reqOffset = dueOffset(requestedISO)!;
+  const reqOffset = cal.offsetOf(requestedISO);
   const meta = new Map(inputs.jobs.map((j) => [j.id, j]));
 
-  const read = (results: { id: string; days: number | null; blockedBy: ControlStage | null }[]) => {
+  const read = (results: { id: string; days: number | null; blockedBy: ControlStage | null }[]): { placement: RushPlacement; blocked: ControlStage | null } => {
     const mine = results.filter((r) => extraIds.has(r.id));
     const blocked = mine.find((r) => r.blockedBy)?.blockedBy ?? null;
     const finish = blocked ? null : Math.max(0, ...mine.map((r) => r.days ?? 0));
@@ -490,22 +572,19 @@ export function simulateRush(inputs: Pick<WhatIfInputs, "jobs" | "rates" | "toda
       const before = baseline.get(r.id) ?? null;
       if (before === null || r.days === null || r.days <= before + 1e-9) continue;
       const j = meta.get(r.id)!;
-      const due = dueOffset(j.dueISO);
       const beforeISO = toISO(before), afterISO = toISO(r.days);
       if (beforeISO === afterISO) continue; // the same day — not a delay anyone sees
+      const due = j.dueISO ? cal.offsetOf(j.dueISO) : null;
       pushed.push({ id: r.id, mo: j.mo, dueISO: j.dueISO, beforeISO, afterISO, nowLate: due !== null && Math.ceil(before) <= due && Math.ceil(r.days) > due });
     }
-    pushed.sort((a, b) => Number(b.nowLate) - Number(a.nowLate) || (a.dueISO ?? "9999").localeCompare(b.dueISO ?? "9999"));
-    return { finishDays: finish === null ? null : r1(finish), finishISO: toISO(finish), feasible: finish === null ? null : Math.ceil(finish) <= reqOffset, pushed, blocked };
+    pushed.sort((a, b) => Number(b.nowLate) - Number(a.nowLate) || dueOrder(a, b));
+    return { placement: { finishDays: r1n(finish), finishISO: toISO(finish), feasible: finish === null ? null : Math.ceil(finish) <= reqOffset, pushed }, blocked };
   };
 
-  const byDue = read(forecastEta([...base, ...extra], inputs.rates));
+  const atDue = read(forecastEta([...base, ...extra], inputs.rates));
   // the new order at the front of the queue, the rest in today's order (by due date)
   const front = read(forecastEtaQueued([...extra, ...[...base].sort(etaQueueOrder)], inputs.rates));
-  const { blocked, ...atDue } = byDue;
-  const { blocked: _expeditedBlock, ...exp } = front;
-  void _expeditedBlock;
-  return { atDuePosition: atDue, expedited: exp, requestedISO, blockedBy: blocked };
+  return { atDuePosition: atDue.placement, expedited: front.placement, requestedISO, blockedBy: atDue.blocked };
 }
 
 // ---------------------------------------------------------------- release checklist
@@ -521,8 +600,9 @@ export interface ReleaseFacts {
   /** Components with work left but no standard time. */
   missingTimes?: string[];
   dueISO?: string | null;
-  /** The MATERIAL tab's nesting lines for the order (or its BOM). */
-  nesting?: { lines: number; nested: number };
+  /** The MATERIAL tab's nesting lines for the order (or its BOM); "not_checked"
+   *  when the Material screen is closed to the person asking. */
+  nesting?: { lines: number; nested: number } | "not_checked";
   /** Raw-material stock for the order — not connected yet; when the Odoo
    *  stock feed arrives it fills this in and the checklist reads it. */
   stock?: { status: CheckStatus; detail: string } | null;
@@ -545,15 +625,15 @@ export function releaseChecklist(f: ReleaseFacts): { verdict: "ready" | "ready_w
   if (f.pendingQty !== undefined) add("Quantity settled", f.pendingQty === null ? "ok" : "warn", f.pendingQty === null ? "No plan quantity waiting for a decision." : `A plan import is holding back a different quantity (${f.pendingQty}) — decide it first.`);
   if (f.missingTimes) add("Standard times", f.missingTimes.length ? "warn" : "ok", f.missingTimes.length ? `No standard time for ${f.missingTimes.join(", ")} — its load and dates cannot be priced.` : "Every component left is priced.");
   if (f.dueISO !== undefined) add("Due date", f.dueISO ? "ok" : "warn", f.dueISO ? `Due ${f.dueISO} (latest weekly-plan date).` : "No weekly plan dates it — priority cannot be computed.");
-  if (f.nesting) {
-    const n = f.nesting;
-    add("Nesting / drawings", n.lines === 0 ? "blocked" : n.nested < n.lines ? "warn" : "ok", n.lines === 0 ? "No line on the MATERIAL tab's nesting sheet for this order." : n.nested < n.lines ? `${n.nested} of ${n.lines} nesting lines carry the actual nesting.` : `All ${n.lines} nesting lines are nested.`);
-  }
+  const n = f.nesting;
+  if (n === "not_checked") add("Nesting / drawings", "unknown", "Not checked — the Material screen is not opened for this person.");
+  else if (n && n.lines === 0) add("Nesting / drawings", "blocked", "No line on the MATERIAL tab's nesting sheet for this order.");
+  else if (n && n.nested < n.lines) add("Nesting / drawings", "warn", `${n.nested} of ${n.lines} nesting lines carry the actual nesting.`);
+  else if (n) add("Nesting / drawings", "ok", `All ${n.lines} nesting lines are nested.`);
   add("Material stock", f.stock?.status ?? "unknown", f.stock?.detail ?? "The app does not read Odoo's on-hand stock yet — check the sheets are in the store before releasing.");
-  if (f.firstStationLoad) {
-    const l = f.firstStationLoad;
-    add("Fabrication capacity", l.status === "overloaded" ? "warn" : l.status === "no_capacity" ? "unknown" : "ok", l.status === "no_capacity" ? "No capacity figure for Fabrication." : `Fabrication is at ${l.pct === null ? "?" : pctText(l.pct)} of its capacity ${l.weeks} (${l.status}).`);
-  }
+  const l = f.firstStationLoad;
+  if (l && (l.status === "no_capacity" || l.pct === null)) add("Fabrication capacity", "unknown", "No capacity figure for Fabrication.");
+  else if (l && l.pct !== null) add("Fabrication capacity", l.status === "overloaded" ? "warn" : "ok", `Fabrication is at ${pctText(l.pct)} of its capacity ${l.weeks} (${l.status}).`);
   if (f.alreadyStarted) add("Already on the floor", "warn", "Fabrication has already recorded pieces of this order — it is released in practice.");
   const verdict = checks.some((c) => c.status === "blocked") ? "not_ready" : checks.some((c) => c.status !== "ok") ? "ready_with_checks" : "ready";
   return { verdict, checks };

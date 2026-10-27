@@ -8,7 +8,7 @@ const h = vi.hoisted(() => ({
   getWhatIfInputs: vi.fn(),
   getStdData: vi.fn(),
   control: { getControlInputs: vi.fn(), getReleaseFacts: vi.fn(), getStationFlows: vi.fn(), getStationStops: vi.fn() },
-  prisma: { masterOrder: { findMany: vi.fn() }, planSchedule: { aggregate: vi.fn() } },
+  prisma: { masterOrder: { findMany: vi.fn() }, holiday: { findMany: vi.fn() } },
 }));
 
 vi.mock("server-only", () => ({}));
@@ -53,7 +53,7 @@ beforeEach(() => {
     return { flows: { cut: rows(true), weld: rows(false), finish: rows(false) }, unpricedPcs: 0 };
   });
   h.prisma.masterOrder.findMany.mockResolvedValue([]);
-  h.prisma.planSchedule.aggregate.mockResolvedValue({ _max: { ovenDate: null } });
+  h.prisma.holiday.findMany.mockResolvedValue([]);
 });
 
 describe("the planning-control tools", () => {
@@ -129,7 +129,7 @@ describe("the planning-control tools", () => {
     h.control.getStationStops.mockClear();
     const closed = json(await identifyBottleneckTool.run({}, { ...ctx, hidden: new Set(["shifts"]) }));
     expect(h.control.getStationStops).not.toHaveBeenCalled();
-    expect(closed.constraint.lostH).toBe(0);
+    expect(closed.constraint.lostH).toBeNull();
     expect(closed.scope.stopsFrom).toContain("not opened");
   });
 
@@ -154,15 +154,14 @@ describe("the planning-control tools", () => {
   it("release readiness: unknown order, and a clean order still needs its stock checked", async () => {
     h.control.getReleaseFacts.mockResolvedValue(null);
     expect(json(await checkReleaseReadinessTool.run({ mo: "Q" }, ctx))).toMatchObject({ verdict: "not_ready" });
-    h.control.getReleaseFacts.mockResolvedValue({ order: { status: "open", holdAt: null, holdNote: null, pendingPlanQty: null, bom: "B1", kva: "1000", planQty: 10 }, row: null, nesting: { lines: 2, nested: 2 }, alreadyStarted: false });
+    h.control.getReleaseFacts.mockResolvedValue({ order: { mo: "A", status: "open", holdAt: null, holdNote: null, pendingPlanQty: null, bom: "B1", kva: "1000", planQty: 10 }, nesting: { lines: 2, nested: 2 }, plannedDueISO: null, alreadyStarted: false });
     const j = json(await checkReleaseReadinessTool.run({ mo: "A" }, ctx));
     expect(j.verdict).toBe("ready_with_checks");
     expect(j.checks.find((c: { check: string }) => c.check === "Material stock").status).toBe("unknown");
     expect(j.checks.find((c: { check: string }) => c.check === "Due date").detail).toContain("2026-10-29");
     // the nesting is the Material screen's
     const closed = json(await checkReleaseReadinessTool.run({ mo: "A" }, { ...ctx, hidden: new Set(["material"]) }));
-    expect(closed.checks.some((c: { check: string }) => c.check === "Nesting / drawings")).toBe(false);
-    expect(closed.nestingNotChecked).toContain("Material");
+    expect(closed.checks.find((c: { check: string }) => c.check === "Nesting / drawings")).toMatchObject({ status: "unknown", detail: expect.stringContaining("Material") });
   });
 
   it("rush order: priced by its class, or the missing standard times named", async () => {

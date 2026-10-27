@@ -1,20 +1,23 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { traceHref } from "@/lib/domain/links";
-import { parseISODate, toISODate } from "@/lib/domain/dates";
-import { downtimeByCause, downtimeLabel, stopsByMachine } from "@/lib/domain/downtime";
+import { toISODate } from "@/lib/domain/dates";
+import { addDaysISO, daysBetweenISO } from "@/lib/domain/dateSlicer";
+import { downtimeByCause, downtimeLabel, isPlannedCode, stopsByMachine } from "@/lib/domain/downtime";
+import { round1 as r1 } from "@/lib/domain/shifts";
 import { itemHoursFor, tierForOrder } from "@/lib/domain/stdEngine";
 import { SHEET_ITEMS } from "@/lib/domain/constants";
 import {
-  CONTROL_STAGES, CR_ACTION, DISPATCH_RULES, LOAD_OVER, LOAD_TIGHT, RULE_TEXT, STAGE_NAME,
-  compareByRule, dispatchList, dispatchRow, ioReport, loadPct, loadProfile, loadStatus, pastPlantWeeks, rankConstraint, releaseChecklist, simulateRush, stageHours, statusCounts, withCumulative,
+  BEYOND_CAPACITY, CONTROL_STAGES, CR_ACTION, CR_ON_SCHEDULE, DISPATCH_RULES, LOAD_OVER, LOAD_TIGHT, RULE_TEXT, STAGE_NAME,
+  dispatchByCurrentStation, dispatchList, ioReport, loadProfile, pastPlantWeeks, plantCalendar, queueNow, rankConstraint, releaseChecklist, simulateRush, stagePerPc,
+  stationEvidence, statusCounts, windowLoad, withCumulative,
   type ControlStage, type DispatchRule, type RushJob,
 } from "@/lib/domain/planningControl";
 import type { WhatIfInputs } from "@/lib/domain/whatif";
 import { getStdData } from "@/lib/server/standardTimes";
-import { withLine } from "@/lib/server/line";
+import { loadHolidays } from "@/lib/server/loads";
 import { getWhatIfInputs } from "@/lib/server/whatif";
-import { getControlInputs, getReleaseFacts, getStationFlows, getStationStops, queueNow } from "@/lib/server/planningControl";
+import { getControlInputs, getReleaseFacts, getStationFlows, getStationStops } from "@/lib/server/planningControl";
 import type { ReadResult, ReadTool, ToolCtx } from "./types";
 
 // The planner's production-activity-control tools: what each station should
@@ -27,9 +30,8 @@ import type { ReadResult, ReadTool, ToolCtx } from "./types";
 
 const STAGE = { type: "string", enum: [...CONTROL_STAGES], description: "cut = Fabrication (laser, punching, bending, fins), weld = Welding, finish = shot blast + painting (the core frame finishes at shot blast)." } as const;
 const LINE = { type: "string", enum: ["TR"], description: "These tools model the transformers only. Give TR explicitly when asked from an LV screen about the transformers." } as const;
-const r1 = (n: number) => Math.round(n * 10) / 10;
-/** JSON for the model: a load against no hours at all would otherwise read as null — "no figure". */
-const toJson = (v: unknown) => JSON.stringify(v, (_k, x) => (x === Infinity ? "beyond capacity (no working hours in the window)" : x));
+/** JSON for the model: a load % against no hours at all (Infinity) would otherwise read as null — "no figure". */
+const toJson = (v: unknown) => JSON.stringify(v, (_k, x) => (x === Infinity ? BEYOND_CAPACITY : x));
 const dashboardLink = { label: "Planning dashboard", href: "/" };
 const orderLinks = (mos: readonly string[]) => [...new Set(mos)].slice(0, 15).map((mo) => ({ label: mo, href: traceHref({ mo, line: "TR" }) }));
 
@@ -43,6 +45,11 @@ const BASE_ASSUMPTIONS = [
 function lvRefusal(input: { line?: "TR" }, ctx: ToolCtx): ReadResult | null {
   if (ctx.line === "LV" && input.line !== "TR") return { ok: false, text: "These planning tools model the transformers (TR) only, not the LV panels. Say so; give line TR only if the person means the transformers." };
   return null;
+}
+
+/** The past weeks a flow report reads, known before the model is loaded so both load together. */
+async function pastWeeks(todayISO: string, count: number) {
+  return pastPlantWeeks(todayISO, count, new Set((await loadHolidays()).map((h) => toISODate(h.date))));
 }
 
 function inputsUsed(inputs: WhatIfInputs) {
@@ -68,7 +75,7 @@ export const getDispatchListTool: ReadTool<DispatchInput> = {
   kind: "read", name: "get_dispatch_list", title: "Building the dispatch list", tabs: ["dashboard"], cacheable: true,
   description:
     "The prioritized dispatch list of a TR station (what to run next) under a dispatch rule — CR (critical ratio, the default), EDD (earliest due date), SLACK, SPT (shortest at this station), LWR (least work remaining) or FOR (fewest operations remaining). " +
-    "Per job (one component of one order, MO|ITEM): due date, working days to due, pieces left at the station and pieces already waiting at it, standard hours, the forecast finish (queue included), CR = working days to due ÷ forecast working days left, its status (late ≤0 / behind <1 / on schedule 1–1.1 / ahead) and action, slack = days to due − remaining work days (setup + run at the stations' real pace, no queue) and slack per operation, ⭐ priority, urgent, and running (on a machine now, as the Fabrication and Painting machine boards record it — do not break its setup; the other stations record no running job). " +
+    `Per job (one component of one order, MO|ITEM): due date, working days to due, pieces left at the station and pieces already waiting at it, standard hours, the forecast finish (queue included), CR = working days to due ÷ forecast working days left, its status (late ≤0 / behind <1 / on schedule 1–${CR_ON_SCHEDULE} / ahead) and action,` + " slack = days to due − remaining work days (setup + run at the stations' real pace, no queue) and slack per operation, ⭐ priority, urgent, and running (on a machine now, as the Fabrication and Painting machine boards record it — do not break its setup; the other stations record no running job). " +
     "Jobs already at the station come first, then those still upstream. Give mos instead (or with a stage) to compute the priority of named orders — each job at its current station when no stage is given. Read this for \"what should welding run today?\", \"which orders to expedite?\", \"compute the critical ratio of …\". FCFS is not offered: arrival times are not recorded.",
   schema: { type: "object", additionalProperties: false, properties: {
     stage: STAGE,
@@ -84,21 +91,11 @@ export const getDispatchListTool: ReadTool<DispatchInput> = {
     const refusal = lvRefusal(i, ctx); if (refusal) return refusal;
     const { inputs, priorityMos, urgentMos, running } = await getControlInputs();
     const rule = i.rule ?? "CR";
-    const holidays = new Set(inputs.holidayISOs);
     // order numbers as typed, matched whatever their case
     const wanted = i.mos?.length ? new Set(i.mos.map((m) => m.trim().toUpperCase())) : null;
     const jobs = wanted ? inputs.jobs.filter((j) => wanted.has(j.mo.toUpperCase())) : inputs.jobs;
-    const base = { todayISO: inputs.todayISO, holidays, rates: inputs.rates, priorityMos, urgentMos };
-    let rows;
-    if (i.stage) rows = dispatchList(jobs, i.stage, rule, { ...base, runningIds: running[i.stage] });
-    else {
-      rows = jobs.flatMap((j) => {
-        const at = CONTROL_STAGES.find((s) => j.left[s] > 0);
-        return at ? [{ ...dispatchRow(j, at, { ...base, runningIds: running[at] }), station: at }] : [];
-      });
-      const cmp = compareByRule(rule);
-      rows.sort((a, b) => Number(b.running) - Number(a.running) || cmp(a, b));
-    }
+    const base = { calendar: plantCalendar(inputs.todayISO, new Set(inputs.holidayISOs)), rates: inputs.rates, priorityMos, urgentMos };
+    let rows = i.stage ? dispatchList(jobs, i.stage, rule, { ...base, runningIds: running[i.stage] }) : dispatchByCurrentStation(jobs, rule, { ...base, running });
     if (i.arrivedOnly) rows = rows.filter((r) => r.pcsArrived > 0);
     const limit = i.limit ?? 15;
     const missing = wanted ? [...wanted].filter((mo) => !inputs.jobs.some((j) => j.mo.toUpperCase() === mo)) : [];
@@ -107,7 +104,7 @@ export const getDispatchListTool: ReadTool<DispatchInput> = {
       text: toJson({
         scope: { line: "TR", station: i.stage ? STAGE_NAME[i.stage] : "each job at its current station", rule, ruleText: RULE_TEXT[rule], orders: wanted ? [...wanted] : "all open" },
         inputs_used: inputsUsed(inputs),
-        formulas: { criticalRatio: "CR = working days to due ÷ forecast working days left (the forecast includes the queue at each station)", slack: "slack = working days to due − remaining work days (each station's std hours ÷ its pace, no queue); per operation = slack ÷ stations left", statusBands: { late: "CR ≤ 0", behind: "CR < 1", on_schedule: "1 ≤ CR ≤ 1.1", ahead: "CR > 1.1" }, actions: CR_ACTION },
+        formulas: { criticalRatio: "CR = working days to due ÷ forecast working days left (the forecast includes the queue at each station)", slack: "slack = working days to due − remaining work days (each station's std hours ÷ its pace, no queue); per operation = slack ÷ stations left", statusBands: { late: "CR ≤ 0", behind: "CR < 1", on_schedule: `1 ≤ CR ≤ ${CR_ON_SCHEDULE}`, ahead: `CR > ${CR_ON_SCHEDULE}` }, actions: CR_ACTION },
         counts: statusCounts(rows),
         totalJobs: rows.length,
         rows: rows.slice(0, limit),
@@ -134,7 +131,7 @@ export const getLoadProfileTool: ReadTool<LoadInput> = {
   schema: { type: "object", additionalProperties: false, properties: { weeks: { type: "integer", minimum: 1, maximum: 8, description: "Weeks ahead, the current one included; default 4." }, stage: STAGE, line: LINE } },
   async run(i, ctx) {
     const refusal = lvRefusal(i, ctx); if (refusal) return refusal;
-    const inputs = await withLine("TR", () => getWhatIfInputs());
+    const inputs = await getWhatIfInputs();
     const profile = loadProfile(inputs, i.weeks ?? 4).filter((s) => !i.stage || s.stage === i.stage);
     const overloaded = profile.flatMap((s) => s.weeks.filter((w) => w.status === "overloaded").map((w) => ({ station: s.name, week: `${w.fromISO} – ${w.toISO}`, loadH: w.loadH, availableH: w.availableH, loadPct: w.loadPct })));
     return {
@@ -165,11 +162,10 @@ export const getIoReportTool: ReadTool<IoInput> = {
   schema: { type: "object", additionalProperties: false, properties: { stage: STAGE, weeks: { type: "integer", minimum: 2, maximum: 8, description: "Past weeks; default 4." }, line: LINE }, required: ["stage"] },
   async run(i, ctx) {
     const refusal = lvRefusal(i, ctx); if (refusal) return refusal;
-    const inputs = await withLine("TR", () => getWhatIfInputs());
-    const weeks = pastPlantWeeks(inputs.todayISO, i.weeks ?? 4, new Set(inputs.holidayISOs));
-    const flow = await getStationFlows(weeks);
-    const queue = queueNow(inputs)[i.stage];
-    const report = ioReport(flow.flows[i.stage].map((w) => ({ ...w, plannedInput: w.plannedInput === null ? null : r1(w.plannedInput), actualInput: w.actualInput === null ? null : r1(w.actualInput), plannedOutput: w.plannedOutput === null ? null : r1(w.plannedOutput), actualOutput: r1(w.actualOutput) })), i.stage === "cut" ? null : r1(queue));
+    const weeks = await pastWeeks(ctx.todayISO, i.weeks ?? 4);
+    const [inputs, flow] = await Promise.all([getWhatIfInputs(), getStationFlows(weeks)]);
+    const queue = queueNow(inputs.jobs)[i.stage];
+    const report = ioReport(flow.flows[i.stage], i.stage === "cut" ? null : queue);
     return {
       ok: true,
       text: toJson({
@@ -197,37 +193,24 @@ export const identifyBottleneckTool: ReadTool<BottleneckInput> = {
   schema: { type: "object", additionalProperties: false, properties: { weeks: { type: "integer", minimum: 1, maximum: 8, description: "Weeks ahead for the load %; default 4." }, line: LINE } },
   async run(i, ctx) {
     const refusal = lvRefusal(i, ctx); if (refusal) return refusal;
-    const inputs = await withLine("TR", () => getWhatIfInputs());
-    const holidays = new Set(inputs.holidayISOs);
-    const past = pastPlantWeeks(inputs.todayISO, 4, holidays);
-    const lostFrom = toISODate(new Date(Date.parse(`${inputs.todayISO}T00:00:00Z`) - 14 * 86400000));
-    // machine stops are the shift log's: left out for whoever the Shifts screen is closed to, as on the dashboard
+    const weeks = i.weeks ?? 4;
+    const past = await pastWeeks(ctx.todayISO, 4);
+    const lostFrom = addDaysISO(ctx.todayISO, -14);
+    // machine stops are the shift log's: not read for whoever the Shifts screen is closed to, as on the dashboard
     const stopsOpen = !ctx.hidden.has("shifts");
-    const [stops, { flows }] = await Promise.all([stopsOpen ? getStationStops(lostFrom, inputs.todayISO) : Promise.resolve([]), getStationFlows(past)]);
-    const queue = queueNow(inputs);
-    const profile = loadProfile(inputs, i.weeks ?? 4);
-    const evidence = CONTROL_STAGES.map((stage) => {
-      const openH = inputs.jobs.reduce((a, j) => a + stageHours(j, stage), 0);
-      const rate = inputs.rates[stage];
-      const p = profile.find((x) => x.stage === stage)!;
-      const load = p.weeks.reduce((a, w) => a + w.loadH, 0);
-      const avail = p.capacityPerDay === null ? null : p.weeks.reduce((a, w) => a + (w.availableH ?? 0), 0);
-      const io = stage === "cut" ? null : ioReport(flows[stage], queue[stage]);
-      const first = io?.weeks[0]?.backlogStart ?? null, last = io?.weeks[io.weeks.length - 1]?.backlogEnd ?? null;
-      return {
-        stage, name: STAGE_NAME[stage], openH: r1(openH), ratePerDay: r1(rate),
-        daysOfWork: rate > 0 ? r1(openH / rate) : null,
-        queueH: r1(queue[stage]), queueDays: rate > 0 ? r1(queue[stage] / rate) : null,
-        nearLoadPct: loadPct(load, avail),
-        lostH: stopsOpen ? r1(stops.filter((s) => s.stage === stage && s.reasonCode !== "PM").reduce((a, s) => a + s.hours, 0)) : 0,
-        backlogTrendH: first === null || last === null ? null : r1(last - first),
-      };
-    });
+    const [inputs, stops, { flows }] = await Promise.all([getWhatIfInputs(), stopsOpen ? getStationStops(lostFrom, ctx.todayISO) : null, getStationFlows(past)]);
+    const queue = queueNow(inputs.jobs);
+    const profile = loadProfile(inputs, weeks);
+    const evidence = CONTROL_STAGES.map((stage) => stationEvidence(stage, {
+      jobs: inputs.jobs, rate: inputs.rates[stage], queueH: queue[stage], load: profile.find((x) => x.stage === stage)!,
+      lostH: stops && stops.filter((s) => s.stage === stage && !isPlannedCode(s.reasonCode)).reduce((a, s) => a + s.hours, 0),
+      backlogTrendH: stage === "cut" ? null : ioReport(flows[stage], queue[stage]).backlogTrendH,
+    }));
     const ranked = rankConstraint(evidence);
     return {
       ok: true,
       text: toJson({
-        scope: { line: "TR", loadWeeks: i.weeks ?? 4, stopsFrom: stopsOpen ? lostFrom : "not read — the Shifts screen is not opened for this person", trendWeeks: past.map((w) => `${w.fromISO} – ${w.toISO}`) },
+        scope: { line: "TR", loadWeeks: weeks, stopsFrom: stopsOpen ? lostFrom : "not read — the Shifts screen is not opened for this person", trendWeeks: past.map((w) => `${w.fromISO} – ${w.toISO}`) },
         inputs_used: inputsUsed(inputs),
         formulas: { daysOfWork: "days of work = open std h at the station ÷ its pace (std h a day)", queueDays: "queue days = std h already waiting ÷ pace", loadPct: "std h due in the weeks ÷ available man-hours" },
         ...ranked,
@@ -254,9 +237,9 @@ export const getDelayParetoTool: ReadTool<ParetoInput> = {
   } },
   async run(i, ctx) {
     const toISO = i.to ?? ctx.todayISO;
-    const fromISO = i.from ?? toISODate(new Date(parseISODate(toISO)!.getTime() - 29 * 86400000));
+    const fromISO = i.from ?? addDaysISO(toISO, -29);
     if (fromISO > toISO) return { ok: false, text: "from must not be after to (to is today when left out)." };
-    if ((Date.parse(toISO) - Date.parse(fromISO)) / 86400000 > 366) return { ok: false, text: "At most a year at a time." };
+    if (daysBetweenISO(fromISO, toISO) > 366) return { ok: false, text: "At most a year at a time." };
     const dept = i.dept && i.dept !== "all" ? i.dept : null;
     const [stops, holds] = await Promise.all([
       getStationStops(fromISO, toISO, ctx.now),
@@ -264,7 +247,8 @@ export const getDelayParetoTool: ReadTool<ParetoInput> = {
     ]);
     const rows = stops.filter((s) => !dept || s.dept === dept);
     const { causes, unplannedH, plannedH } = downtimeByCause(rows);
-    const unplanned = withCumulative(causes.filter((c) => !c.planned).map(({ code, label, hours, stops: n }) => ({ code, label, hours, stops: n })));
+    const brief = ({ code, label, hours, stops: n }: (typeof causes)[number]) => ({ code, label, hours, stops: n });
+    const unplanned = withCumulative(causes.filter((c) => !c.planned).map(brief));
     return {
       ok: true,
       text: toJson({
@@ -273,7 +257,7 @@ export const getDelayParetoTool: ReadTool<ParetoInput> = {
         formulas: { share: "cause hours ÷ all unplanned hours", cumShare: "running total of the shares, most hours first", vital: "the causes reaching 80% of the hours" },
         unplannedH, plannedMaintenanceH: plannedH,
         pareto: unplanned,
-        planned: causes.filter((c) => c.planned).map((c) => ({ code: c.code, label: c.label, hours: c.hours, stops: c.stops })),
+        planned: causes.filter((c) => c.planned).map(brief),
         topMachines: stopsByMachine(rows.map((r) => ({ machine: r.machine, dept: r.dept, hours: r.hours, reasonCode: r.reasonCode }))),
         uncodedExamples: rows.filter((r) => !r.reasonCode).slice(0, 5).map((r) => ({ machine: r.machine, reason: downtimeLabel(r.reasonCode, r.reason), hours: r1(r.hours) })),
         ordersOnHold: holds.map((h) => ({ mo: h.mo, since: h.holdAt ? toISODate(h.holdAt) : null, reason: h.holdNote })),
@@ -296,30 +280,22 @@ export const checkReleaseReadinessTool: ReadTool<ReleaseInput> = {
   schema: { type: "object", additionalProperties: false, properties: { mo: { type: "string", minLength: 1, maxLength: 60 }, line: LINE }, required: ["mo"] },
   async run(i, ctx) {
     const refusal = lvRefusal(i, ctx); if (refusal) return refusal;
-    const mo = i.mo.trim();
-    const [facts, inputs] = await Promise.all([getReleaseFacts(mo), withLine("TR", () => getWhatIfInputs())]);
-    if (!facts) return { ok: true, text: toJson({ mo, ...releaseChecklist({ found: false }) }) };
-    const jobs = inputs.jobs.filter((j) => j.mo === mo);
-    let dueISO = jobs.find((j) => j.dueISO)?.dueISO ?? null;
-    if (!dueISO) {
-      const s = await prisma.planSchedule.aggregate({ where: { mo }, _max: { ovenDate: true } });
-      dueISO = s._max.ovenDate ? toISODate(s._max.ovenDate) : null;
-    }
-    const cut = loadProfile(inputs, 2).find((s) => s.stage === "cut")!;
-    const load = cut.weeks.reduce((a, w) => a + w.loadH, 0);
-    const avail = cut.capacityPerDay === null ? null : cut.weeks.reduce((a, w) => a + (w.availableH ?? 0), 0);
-    const pct = loadPct(load, avail);
+    const [facts, inputs] = await Promise.all([getReleaseFacts(i.mo.trim()), getWhatIfInputs()]);
+    if (!facts) return { ok: true, text: toJson({ mo: i.mo.trim(), ...releaseChecklist({ found: false }) }) };
+    // the registry's own spelling of the order from here on
+    const mo = facts.order.mo;
+    const cut = windowLoad(loadProfile(inputs, 2).find((s) => s.stage === "cut")!);
     const result = releaseChecklist({
       found: true,
       status: facts.order.status,
       onHold: facts.order.holdAt ? { note: facts.order.holdNote } : null,
       pendingQty: facts.order.pendingPlanQty,
       missingTimes: (inputs.coverage?.missingTimes ?? []).filter((m) => m.mo === mo).map((m) => m.item),
-      dueISO,
+      dueISO: inputs.jobs.find((j) => j.mo === mo && j.dueISO)?.dueISO ?? facts.plannedDueISO,
       // the nesting sheet is the Material screen's: not checked for whoever it is closed to
-      nesting: ctx.hidden.has("material") ? undefined : facts.nesting,
+      nesting: ctx.hidden.has("material") ? "not_checked" : facts.nesting,
       stock: null,
-      firstStationLoad: { pct, status: loadStatus(pct), weeks: `this week and next (${cut.weeks[0].fromISO} – ${cut.weeks[cut.weeks.length - 1].toISO})` },
+      firstStationLoad: { pct: cut.pct, status: cut.status, weeks: "this week and next" },
       alreadyStarted: facts.alreadyStarted,
     });
     return {
@@ -327,8 +303,7 @@ export const checkReleaseReadinessTool: ReadTool<ReleaseInput> = {
       text: toJson({
         mo, bom: facts.order.bom, kva: facts.order.kva, required: facts.order.planQty,
         ...result,
-        inputs_used: { todayISO: inputs.todayISO, fabricationLoadStdH: r1(load), fabricationAvailableH: avail === null ? null : r1(avail) },
-        nestingNotChecked: ctx.hidden.has("material") ? "The Material screen is not opened for this person, so the nesting was not checked." : undefined,
+        inputs_used: { todayISO: inputs.todayISO, fabricationLoadStdH: cut.loadH, fabricationAvailableH: cut.availableH },
         assumptions: ["Material stock is not verified by the app yet — the Odoo stock feed is still to come; a planner must check it.", "Drawings are read through the nesting lines of the MATERIAL tab; other documents are not tracked."],
       }),
       links: orderLinks([mo]),
@@ -356,14 +331,14 @@ export const simulateRushOrderTool: ReadTool<RushInput> = {
   async run(i, ctx) {
     const refusal = lvRefusal(i, ctx); if (refusal) return refusal;
     if (i.by < ctx.todayISO) return { ok: false, text: "The date asked for has already passed." };
-    const [inputs, std] = await Promise.all([withLine("TR", () => getWhatIfInputs()), getStdData()]);
+    const [inputs, std] = await Promise.all([getWhatIfInputs(), getStdData()]);
     const tier = tierForOrder(std, { kva: i.kva, fgCode: i.fgCode ?? null });
     if (tier === null) return { ok: true, text: toJson({ insufficientData: true, missing: ["standard times for this kVA class"], note: "No standard-time class matches this rating; add it on Admin → Standard times before the order can be priced." }) };
     const per = itemHoursFor(std, tier);
     const items = i.items?.length ? [...new Set(i.items)] : [...SHEET_ITEMS];
     const rush: RushJob[] = items.flatMap((item) => {
       const p = per[item];
-      return p ? [{ id: `NEW|${item}`, item, qty: i.qty, perPc: { cut: p.cut, weld: p.weld, finish: p.shb + p.paint } }] : [];
+      return p ? [{ id: `NEW|${item}`, item, qty: i.qty, perPc: stagePerPc(p) }] : [];
     });
     if (!rush.length) return { ok: true, text: toJson({ insufficientData: true, missing: ["standard times for the components asked"] }) };
     const outcome = simulateRush(inputs, rush, i.by);

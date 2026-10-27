@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  pctText, arrivedPcs, availableTime, compareByRule, criticalRatio, dispatchList, dispatchRow, drumTime, ioBacklog, ioReport, loadPct, loadProfile, loadStatus,
+  pctText, plantCalendar, dispatchByCurrentStation, windowLoad, stationEvidence, queueNow, stagePerPc, arrivedPcs, availableTime, compareByRule, criticalRatio, dispatchList, dispatchRow, drumTime, ioBacklog, ioReport, loadPct, loadProfile, loadStatus,
   matchedRate, pastPlantWeeks, plantWeeks, rankConstraint, ratedCapacity, releaseChecklist, simulateRush, slackTime, workDaysLeft, workingDaysToDue, withCumulative,
   type ConstraintEvidence, type DispatchRow,
 } from "./planningControl";
@@ -84,7 +84,7 @@ describe("the edges", () => {
 });
 
 describe("the dispatch list", () => {
-  const ctx = { todayISO: TODAY, holidays: new Set<string>(), rates };
+  const ctx = { calendar: plantCalendar(TODAY, new Set()), rates };
   it("reads a job's pieces waiting at the station from the station before", () => {
     expect(arrivedPcs({ left: { cut: 2, weld: 10, finish: 10 } }, "weld")).toBe(8);
     expect(arrivedPcs({ left: { cut: 2, weld: 10, finish: 10 } }, "cut")).toBe(2);
@@ -108,6 +108,23 @@ describe("the dispatch list", () => {
     expect(rows.map((r) => r.id)).toEqual(["RUN|TN", "SOON|TN", "LATER|TN", "LATE|TN"]);
     expect(dispatchList(jobs, "weld", "EDD", ctx).map((r) => r.id)).toEqual(["SOON|TN", "LATER|TN", "RUN|TN", "LATE|TN"]);
     expect(rows.find((r) => r.id === "LATE|TN")).toMatchObject({ status: "late", action: "Expedite now" });
+  });
+  it("named orders at their current station, the rule's order, running first", () => {
+    const jobs = [
+      job("A|TN", { dueISO: "2026-11-20", left: { cut: 4, weld: 10, finish: 10 } }),
+      job("B|TC", { dueISO: "2026-10-28" }),
+      job("DONE|CB", { left: { cut: 0, weld: 0, finish: 0 } }),
+    ];
+    const rows = dispatchByCurrentStation(jobs, "EDD", { ...ctx, running: { cut: new Set(["A|TN"]) } });
+    expect(rows.map((r) => [r.id, r.station, r.running])).toEqual([["A|TN", "cut", true], ["B|TC", "weld", false]]);
+    expect(dispatchByCurrentStation(jobs, "EDD", ctx).map((r) => r.id)).toEqual(["B|TC", "A|TN"]);
+  });
+  it("the calendar works each date out once and reads a forecast's day", () => {
+    const cal = plantCalendar(TODAY, new Set());
+    expect(cal.daysToDue("2026-10-31")).toBe(4);
+    expect(cal.offsetOf("2026-10-01")).toBe(0);
+    expect(cal.dateFor(0)).toBe(TODAY);
+    expect(cal.dateFor(3.2)).toBe("2026-10-31");
   });
   it("a blocked job has no forecast and sorts last", () => {
     const rows = dispatchList([job("B|TN", { blockedBy: "weld", baselineDays: null }), job("A|TN")], "weld", "CR", ctx);
@@ -141,6 +158,11 @@ describe("the load profile", () => {
     expect(finish.weeks[0]).toMatchObject({ loadH: 20, availableH: 12, loadPct: 166.7 });
     expect(finish.weeks[0].status).toBe("overloaded");
   });
+  it("a station's load over the whole window", () => {
+    const [, weld, finish] = loadProfile({ todayISO: TODAY, holidayISOs: [], rates, capacity: { Welding: 10 }, jobs: [job("A|TN", { dueISO: "2026-10-28" })] }, 2);
+    expect(windowLoad(weld)).toEqual({ loadH: 20, availableH: 90, pct: 22.2, status: "ok" });
+    expect(windowLoad(finish)).toMatchObject({ availableH: null, pct: null, status: "no_capacity" });
+  });
   it("weeks run Saturday to Friday", () => {
     expect(plantWeeks("2026-10-31", 1, new Set())[0]).toMatchObject({ fromISO: "2026-10-31", toISO: "2026-11-06", workingDays: 6 });
     expect(plantWeeks("2026-10-30", 1, new Set())[0].fromISO).toBe("2026-10-24");
@@ -160,6 +182,7 @@ describe("input/output control", () => {
     expect(r.weeks[1].cumInputVariance).toBe(-50);
     expect(r.diagnosis).toBe("upstream");
     expect(r.backlogGrowing).toBe(false);
+    expect(r.backlogTrendH).toBe(-25);
   });
   it("input on plan, output short: inside the station; the queue grows", () => {
     const r = ioReport([w(100, 100, 100, 70), w(100, 100, 100, 75)], 100);
@@ -182,6 +205,21 @@ describe("the constraint and the Pareto", () => {
     expect(r.subordinate).toEqual([{ stage: "cut", name: "cut", shareOfDrum: 0.4 }, { stage: "finish", name: "finish", shareOfDrum: null }]);
     expect(r.evidence.join(" ")).toContain("no recorded pace");
   });
+  it("builds a station's evidence from its jobs, queue, load and stops", () => {
+    const jobs = [job("A|TN"), job("B|TC", { left: { cut: 4, weld: 10, finish: 10 } })];
+    expect(queueNow(jobs)).toEqual({ cut: 4, weld: 32, finish: 0 });
+    const [, load] = loadProfile({ todayISO: TODAY, holidayISOs: [], rates, capacity: { Welding: 10 }, jobs }, 2); // both due 2026-11-05, in the second week
+    expect(stationEvidence("weld", { jobs, rate: 20, queueH: 32, load, lostH: 3.04, backlogTrendH: 5 })).toEqual({
+      stage: "weld", name: "Welding", openH: 40, ratePerDay: 20, daysOfWork: 2, queueH: 32, queueDays: 1.6, nearLoadPct: 44.4, lostH: 3, backlogTrendH: 5,
+    });
+    // not read (the Shifts screen closed): no stop line in the evidence
+    const r = rankConstraint([stationEvidence("weld", { jobs, rate: 20, queueH: 32, load, lostH: null, backlogTrendH: null })]);
+    expect(r.constraint?.lostH).toBeNull();
+    expect(r.evidence.join(" ")).not.toContain("lost to stops");
+  });
+  it("prices a piece per station, finishing = shot blast + paint", () => {
+    expect(stagePerPc({ cut: 1, weld: 2, shb: 0.5, paint: 1 })).toEqual({ cut: 1, weld: 2, finish: 1.5 });
+  });
   it("no work anywhere: no constraint", () => {
     expect(rankConstraint([ev("cut", 0), ev("weld", null, { openH: 0 })]).constraint).toBeNull();
   });
@@ -192,7 +230,8 @@ describe("the constraint and the Pareto", () => {
 });
 
 describe("a rush order", () => {
-  const inputs = { todayISO: TODAY, holidayISOs: [], rates: { cut: 10, weld: 10, finish: 10 }, jobs: [job("A|TN", { dueISO: "2026-10-29", left: { cut: 0, weld: 10, finish: 10 }, perPc: { cut: 1, weld: 1, finish: 1 } })] };
+  // A's forecast today: welding day 0–1, finishing 1–2
+  const inputs = { todayISO: TODAY, holidayISOs: [], rates: { cut: 10, weld: 10, finish: 10 }, jobs: [job("A|TN", { dueISO: "2026-10-29", left: { cut: 0, weld: 10, finish: 10 }, perPc: { cut: 1, weld: 1, finish: 1 }, baselineDays: 2 })] };
   const rush = [{ id: "NEW|TN", item: "TN", qty: 10, perPc: { cut: 1, weld: 1, finish: 1 } }];
   it("queued by its date behind the earlier order, and expedited ahead of it", () => {
     const r = simulateRush(inputs, rush, "2026-11-02");
@@ -226,6 +265,11 @@ describe("the release checklist", () => {
     const r = releaseChecklist({ found: true, status: "open", onHold: null, pendingQty: null, missingTimes: [], dueISO: "2026-11-05", nesting: { lines: 3, nested: 3 }, stock: null, firstStationLoad: { pct: 70, status: "ok", weeks: "this week" } });
     expect(r.verdict).toBe("ready_with_checks");
     expect(r.checks.find((c) => c.check === "Material stock")?.status).toBe("unknown");
+  });
+  it("a nesting not checked (the Material screen closed) is a check still to do, not a pass", () => {
+    const r = releaseChecklist({ found: true, status: "open", nesting: "not_checked", stock: { status: "ok", detail: "" } });
+    expect(r.verdict).toBe("ready_with_checks");
+    expect(r.checks.find((c) => c.check === "Nesting / drawings")?.status).toBe("unknown");
   });
   it("reads the stock once a feed fills it in", () => {
     const r = releaseChecklist({ found: true, status: "open", onHold: null, nesting: { lines: 1, nested: 1 }, stock: { status: "ok", detail: "All sheets on hand." } });
