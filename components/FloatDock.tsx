@@ -5,13 +5,13 @@ import { ResizeHandle } from "@/components/ResizeHandle";
 import type { FloatName } from "@/components/floatWindow";
 import { AI_DOCK_DEFAULT, AI_DOCK_MIN, AI_DOCK_STEP, clampDockWidth, dockMax } from "@/lib/domain/aiDock";
 
-// The shell of a floating window — the AI assistant or the inbox. Docked
-// ("compact") it runs down the right of the screen, top to bottom, as wide
+// The shell of a floating window — the AI assistant, the inbox or the chat
+// (ChatDock). Docked ("compact") it runs down the right of the screen, top to bottom, as wide
 // as the person drags its left edge: from a laptop up the app (its bar and
 // the page) moves left into the rest (html.ai-docked and --ai-dock in
 // globals.css); on a narrower tablet it lies over the page under the bar.
 // Expanded it fills the screen over a dimmed page, and on a phone it is
-// the whole screen. One of the two is open at a time.
+// the whole screen. One of them is open at a time.
 
 export type FloatLayout = "compact" | "large" | "phone";
 

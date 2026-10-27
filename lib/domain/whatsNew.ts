@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-chat-docked-right",
+    dateISO: "2026-10-27",
+    title: "Chat opens down the right side too, beside the page you are on",
+    where: "Chat → the speech bubble in the bar",
+    body: "The chat no longer drops down as a box under its icon. Like the assistant and the inbox, it opens down the whole right side of the screen, from the top to the bottom, and the page moves left beside it — and it stays open while you work on the page, until you close it with its ✕, the icon or Escape inside it. It opens narrow, one conversation at a time with Back to the list; drag its left edge wider and, from about 670px, the contacts and the conversation show side by side (the width is kept on this browser). Opening the chat closes the assistant's or the inbox's window, and the other way round. ⤢ still opens the full chat page.",
+  },
+  {
     id: "2026-10-27-one-progress-bar",
     dateISO: "2026-10-27",
     title: "Every progress bar looks the same, and the screens are lighter",

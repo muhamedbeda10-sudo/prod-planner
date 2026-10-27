@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { MessagesSquare, X, Maximize2, Reply, Volume2, VolumeX, Bell, BellOff, BellRing } from "lucide-react";
 import Link from "next/link";
@@ -9,6 +9,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { pollChat, pollChatInbox } from "@/app/chat/actions";
 import { tellInboxHead } from "@/components/InboxBell";
 import { CornerCard } from "@/components/primitives";
+import { FloatWindow } from "@/components/FloatDock";
+import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens, usePhone } from "@/components/floatWindow";
+import { clampDockWidth } from "@/lib/domain/aiDock";
 import type { ChatContact, ChatInboxItem, ThreadKind } from "@/lib/server/chat";
 import { factoryClockHHMM } from "@/lib/domain/dates";
 import { armChime, chimeOn, playChime, setChimeOn } from "@/lib/chime";
@@ -20,8 +23,12 @@ import { startPoll } from "@/lib/poll";
 // Messaging is not a place you go — it is something you glance at while doing
 // the actual work, and a full-screen tab made every glance cost the page you
 // were on. The icon lives in the nav's right cluster with its unread badge;
-// clicking it drops a panel over the corner, and the page underneath is
-// untouched. The full page is still there behind the ⤢ for a long conversation.
+// clicking it docks the chat down the right of the screen, top to bottom,
+// and the page moves left beside it (components/FloatDock, as the assistant
+// and the inbox do — one of the three is open at a time); its left edge is
+// dragged to make it wider, and from about 670px it shows the contacts and
+// the conversation side by side. The full page is still there behind the ⤢
+// for a long conversation.
 //
 // The chat bundle is the heaviest client module in the app, so it is only
 // fetched when the panel is first opened — a planner who never chats never
@@ -70,6 +77,9 @@ function writeSeen(userId: number, id: number) {
 // on the factory clock, as the chat itself writes it
 const timeOf = (iso: string) => factoryClockHHMM(new Date(iso));
 
+// the docked window's width, kept on this browser
+const dockStore = floatStore("chat-panel:v1");
+
 const ChatClient = dynamic(() => import("./ChatClient").then((m) => m.ChatClient), {
   ssr: false,
   loading: () => <div className="h-full grid place-items-center text-sm text-muted">Opening chat…</div>,
@@ -77,16 +87,45 @@ const ChatClient = dynamic(() => import("./ChatClient").then((m) => m.ChatClient
 
 export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name: string }; unread: number }) {
   const [open, setOpen] = useState(false);
+  const [contacts, setContacts] = useState<ChatContact[] | null>(null);
+  const [err, setErr] = useState("");
+  // closed, the chat is put away whole (its own polling stops) and its
+  // contacts are read again the next time it opens
+  const close = useCallback(() => {
+    setOpen(false);
+    setContacts(null);
+    setErr("");
+  }, []);
+  // opening it closes the assistant's or the inbox's window, and theirs closes it
+  const show = useCallback(
+    (on: boolean) => {
+      if (!on) return close();
+      announceOpen("chat");
+      setOpen(true);
+    },
+    [close],
+  );
+  useCloseWhenOtherOpens("chat", open, close);
+  const dockRaw = useSyncExternalStore(dockStore.subscribe, dockStore.read, () => "");
+  const dockWidth = useMemo(() => clampDockWidth(parseStored<{ width: number }>(dockRaw).width), [dockRaw]);
   const [liveUnread, setLiveUnread] = useState<number | null>(null);
   const unread = liveUnread ?? initialUnread;
   const [cards, setCards] = useState<ChatInboxItem[]>([]);
   const [openOn, setOpenOn] = useState<{ kind: ThreadKind; id: number } | null>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const quietRef = useRef(false); // panel open or on /chat — the chat itself shows them
+  // the full chat page shows a message itself; the docked chat chimes for
+  // one (it may be on another conversation) but pops no card over it
+  const onChatPage = pathname === "/chat" || pathname.startsWith("/chat/");
+  const phone = usePhone();
+  // docked beside a page only — not over the chat page itself, nor a phone's
+  const docked = open && !onChatPage && !phone;
+  // going to the chat page puts the docked one away
+  if (open && onChatPage) close();
+  const quietRef = useRef({ page: false, docked: false });
   useEffect(() => {
-    quietRef.current = open || pathname === "/chat";
-  }, [open, pathname]);
+    quietRef.current = { page: onChatPage, docked };
+  }, [onChatPage, docked]);
   const cursorRef = useRef<number | null>(null);
   const [sound, setSound] = useState(true);
   useEffect(() => {
@@ -117,10 +156,6 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
     setOffer(false);
     try { localStorage.setItem(ASKED_KEY, "1"); } catch {}
   };
-  const [contacts, setContacts] = useState<ChatContact[] | null>(null);
-  const [err, setErr] = useState("");
-  const panelRef = useRef<HTMLDivElement>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
 
   // the contact list is fetched once, the first time the panel opens; the
   // chat's own polling keeps it current from there
@@ -151,8 +186,8 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
         action: { kind: "chat", thread: { kind: m.kind, id: m.threadId } },
       });
     }
-    if (fresh.length > 0 && !quietRef.current) {
-      playChime();
+    if (fresh.length > 0 && !quietRef.current.page) playChime();
+    if (fresh.length > 0 && !quietRef.current.page && !quietRef.current.docked) {
       setCards((cur) => {
         const have = new Set(cur.map((c) => c.id));
         return [...fresh.filter((m) => !have.has(m.id)), ...cur].slice(0, 10);
@@ -177,15 +212,15 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
   const openThread = useCallback(
     (kind: ThreadKind, id: number) => {
       setCards([]);
-      // the corner panel is desktop-only; a phone gets the full chat page
-      if (!window.matchMedia("(min-width: 768px)").matches) {
+      // the docked chat is for a wider screen; a phone gets the full chat page
+      if (isPhone()) {
         router.push(`/chat?open=${kind}-${id}`);
         return;
       }
       setOpenOn({ kind, id });
-      setOpen(true);
+      show(true);
     },
-    [router],
+    [router, show],
   );
   const reply = (c: ChatInboxItem) => openThread(c.kind, c.threadId);
 
@@ -193,38 +228,25 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
   useEffect(() => onNotifyClick((a) => a.kind === "chat" && openThread(a.thread.kind, a.thread.id)), [openThread]);
   const dismiss = (id: number) => setCards((cur) => cur.filter((c) => c.id !== id));
 
+  // docked beside the page, it stays open while the page is worked in —
+  // the icon, its ✕ or Escape from inside it close it
   useEffect(() => {
-    if (!open) return;
-    load();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (!panelRef.current?.contains(t) && !btnRef.current?.contains(t)) setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    // pointerdown, not click: a click that starts inside the panel and ends
-    // outside it (selecting a message) must not close the thing
-    window.addEventListener("pointerdown", onDown);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("pointerdown", onDown);
-    };
-  }, [open, load]);
+    if (docked) load();
+  }, [docked, load]);
 
   return (
     <div className="relative shrink-0">
       <button
-        ref={btnRef}
         type="button"
         onClick={() => {
           setOpenOn(null);
           setCards([]);
-          setOpen((v) => !v);
+          show(!docked);
         }}
         onMouseEnter={load}
-        className={`nav-tab nav-tab-icon flex items-center relative ${open ? "nav-tab-active" : ""}`}
+        className={`nav-tab nav-tab-icon flex items-center relative ${docked ? "nav-tab-active" : ""}`}
         aria-haspopup="dialog"
-        aria-expanded={open}
+        aria-expanded={docked}
         aria-label={unread > 0 ? `Chat — ${unread} unread` : "Chat"}
         title={unread > 0 ? `Chat — ${unread} unread` : "Chat"}
       >
@@ -236,82 +258,71 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
         )}
       </button>
 
-      {open && (
-        <div
-          ref={panelRef}
-          role="dialog"
-          aria-label="Chat"
-          // Anchored to the icon on desktop; on a phone it takes the screen,
-          // where a corner panel would be unusable. Hanging left from the
-          // icon (about 9rem in from the bar's end), it stays inside the page
-          // when the assistant is docked beside it.
-          className="fixed inset-x-2 bottom-2 top-14 z-50 flex flex-col rounded-xl border bg-surface text-foreground shadow-xl overflow-hidden md:absolute md:inset-auto md:right-0 md:top-[calc(100%+10px)] md:w-[860px] md:max-w-[min(92vw,calc(100vw_-_var(--ai-dock-push,0px)_-_9rem))] md:h-[min(640px,calc(100vh-7rem))]"
-        >
-          <div className="flex items-center gap-2 px-3 py-2 border-b bg-surface-2 shrink-0">
-            <MessagesSquare size={15} className="text-brand-ink" />
-            <b className="text-sm">Chat</b>
-            {perm !== "unsupported" && (
-              <button
-                type="button"
-                onClick={() => perm === "default" && void turnOnAlerts()}
-                className={`ms-auto rounded-md p-1.5 hover:bg-surface transition-colors ${perm === "granted" ? "text-brand-ink" : "text-muted"}`}
-                title={
-                  perm === "granted" ? "Desktop alerts are on — they show when the app is minimised or on another tab"
-                  : perm === "denied" ? "Desktop alerts are blocked — allow notifications from the lock icon in the address bar"
-                  : "Turn on desktop alerts"
-                }
-                aria-label="Desktop alerts"
-              >
-                {perm === "granted" ? <BellRing size={15} /> : perm === "denied" ? <BellOff size={15} /> : <Bell size={15} />}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                const on = !sound;
-                setSound(on);
-                setChimeOn(on);
-                if (on) playChime();
-              }}
-              className={`${perm === "unsupported" ? "ms-auto " : ""}rounded-md p-1.5 hover:bg-surface transition-colors text-muted`}
-              title={sound ? "Sound on for messages and Odoo alerts — click to mute" : "Sound off — click to turn on"}
-              aria-label={sound ? "Mute message sound" : "Turn message sound on"}
-              aria-pressed={sound}
-            >
-              {sound ? <Volume2 size={15} /> : <VolumeX size={15} />}
-            </button>
-            <Link
-              href="/chat"
-              onClick={() => setOpen(false)}
-              className="rounded-md p-1.5 hover:bg-surface transition-colors text-muted"
-              title="Open chat full screen"
-              aria-label="Open chat full screen"
-            >
-              <Maximize2 size={15} />
-            </Link>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded-md p-1.5 hover:bg-surface transition-colors text-muted"
-              aria-label="Close chat"
-              title="Close"
-            >
-              <X size={16} />
-            </button>
+      {/* portalled out of the sticky header (its own z-30 layer), beside the
+          assistant's and the inbox's windows */}
+      {docked && createPortal(
+        <FloatWindow name="chat" label="Chat" edgeLabel="Resize the chat" layout="compact" shown width={dockWidth} onWidth={(width) => dockStore.write({ width })} onClose={close}>
+          <div className="flex flex-col h-full min-h-0 bg-surface">
+            <header className="ai-pop-head">
+              <span className="ai-pop-logo"><MessagesSquare size={18} aria-hidden /></span>
+              <div className="min-w-0 flex-1">
+                <div className="ai-pop-title">Chat</div>
+                <div className="ai-pop-sub">Messages with your colleagues</div>
+              </div>
+              <div className="flex items-center gap-0.5 shrink-0">
+                {perm !== "unsupported" && (
+                  <button
+                    type="button"
+                    onClick={() => perm === "default" && void turnOnAlerts()}
+                    className={`icon-btn icon-btn-md ${perm === "granted" ? "text-brand-ink" : ""}`}
+                    title={
+                      perm === "granted" ? "Desktop alerts are on — they show when the app is minimised or on another tab"
+                      : perm === "denied" ? "Desktop alerts are blocked — allow notifications from the lock icon in the address bar"
+                      : "Turn on desktop alerts"
+                    }
+                    aria-label="Desktop alerts"
+                  >
+                    {perm === "granted" ? <BellRing size={17} /> : perm === "denied" ? <BellOff size={17} /> : <Bell size={17} />}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const on = !sound;
+                    setSound(on);
+                    setChimeOn(on);
+                    if (on) playChime();
+                  }}
+                  className="icon-btn icon-btn-md"
+                  title={sound ? "Sound on for messages and Odoo alerts — click to mute" : "Sound off — click to turn on"}
+                  aria-label={sound ? "Mute message sound" : "Turn message sound on"}
+                  aria-pressed={sound}
+                >
+                  {sound ? <Volume2 size={17} /> : <VolumeX size={17} />}
+                </button>
+                <Link href="/chat" onClick={close} className="icon-btn icon-btn-md" title="Open chat full screen" aria-label="Open chat full screen">
+                  <Maximize2 size={17} />
+                </Link>
+                <button type="button" onClick={close} className="icon-btn icon-btn-md" aria-label="Close chat" title="Close">
+                  <X size={17} />
+                </button>
+              </div>
+            </header>
+            <div className="flex-1 min-h-0">
+              {err ? (
+                <p className="p-4 text-sm text-bad-fg">{err}</p>
+              ) : contacts === null ? (
+                <div className="h-full grid place-items-center text-sm text-muted">Opening chat…</div>
+              ) : (
+                <ChatClient me={me} initialContacts={contacts} fill openOn={openOn} />
+              )}
+            </div>
           </div>
-          <div className="flex-1 min-h-0">
-            {err ? (
-              <p className="p-4 text-sm text-bad-fg">{err}</p>
-            ) : contacts === null ? (
-              <div className="h-full grid place-items-center text-sm text-muted">Opening chat…</div>
-            ) : (
-              <ChatClient me={me} initialContacts={contacts} fill openOn={openOn} />
-            )}
-          </div>
-        </div>
+        </FloatWindow>,
+        document.body,
       )}
 
-      {offer && !open && createPortal(
+      {offer && !docked && createPortal(
         <CornerCard
           role="dialog"
           label="Desktop alerts"
@@ -332,7 +343,7 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
 
       {/* portalled: inside the sticky header (its own z-30 layer) the cards
           could never sit above a page's own overlays */}
-      {cards.length > 0 && !open && createPortal(
+      {cards.length > 0 && !docked && createPortal(
         <div
           role="status"
           aria-live="polite"
@@ -376,7 +387,7 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
               className="self-end rounded-full border bg-surface px-3 py-1 text-xs font-bold shadow"
               onClick={() => {
                 setCards([]);
-                if (window.matchMedia("(min-width: 768px)").matches) setOpen(true);
+                if (!isPhone()) show(true);
                 else router.push("/chat");
               }}
             >
