@@ -78,7 +78,7 @@ export function ChartCard({
 }) {
   const ref = aiTargetRef({ kind: "chart", title, about, rows: data });
   return (
-    <section ref={ref} className={`bg-surface border rounded-xl p-4 min-w-0 ${className}`}>
+    <section ref={ref} className={`chart-card bg-surface border rounded-xl p-4 min-w-0 ${className}`}>
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <div className="min-w-0">
           <h2 className="font-bold leading-tight"><ChartAbout title={title} about={about} /></h2>
@@ -143,7 +143,7 @@ export function Meter({ value, label }: { value: number; label?: string }) {
   return (
     <div className="w-full" title={label}>
       <div className="h-1.5 rounded-full overflow-hidden" style={{ background: TRACK }}>
-        <div className="h-full rounded-full" style={{ width: `${v * 100}%`, background: "var(--viz-1)" }} />
+        <div className="fx-fill h-full rounded-full" style={{ width: `${v * 100}%`, background: "var(--viz-1)" }} />
       </div>
     </div>
   );
@@ -258,7 +258,7 @@ export function Legend({ items }: { items: { label: string; color: string; value
 
 export function TipBox({ title, rows }: { title: React.ReactNode; rows: { label: string; value: string; color?: string; line?: boolean }[] }) {
   return (
-    <div className="bg-surface border rounded-lg shadow-md px-3 py-2 text-xs min-w-[10rem] max-w-[18rem]">
+    <div className="chart-tip bg-surface border rounded-lg shadow-md px-3 py-2 text-xs min-w-[10rem] max-w-[18rem]">
       <div className="font-bold mb-1">{title}</div>
       {rows.map((r) => (
         <div key={r.label} className="flex items-center gap-2">
@@ -363,7 +363,7 @@ export function DataBar({ value, max, label }: { value: number; max: number; lab
   return (
     <div className="flex items-center gap-2 min-w-[7rem]">
       <div className="flex-1 h-2 rounded-full bg-surface-2 overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${w}%`, background: "var(--viz-1)" }} />
+        <div className="fx-fill h-full rounded-full" style={{ width: `${w}%`, background: "var(--viz-1)" }} />
       </div>
       <span className="tabnum font-bold text-sm w-10 text-right">{label ?? fmt(value)}</span>
     </div>
@@ -392,7 +392,7 @@ export function Bullet({ label, value, target, max, text, tone }: { label: strin
         <span className={`tabnum ${tone ? TONE_TEXT[tone] : ""}`}>{text}</span>
       </div>
       <div className="relative h-3 rounded-full" style={{ background: TRACK }} role="img" aria-label={`${label}: ${typeof text === "string" ? text : ""}`}>
-        <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: w(value), background: "var(--viz-1)" }} />
+        <div className="fx-fill absolute inset-y-0 left-0 rounded-full" style={{ width: w(value), background: "var(--viz-1)" }} />
         {target !== null && <div className="absolute -inset-y-1 w-0.5 rounded bg-foreground" style={{ left: `calc(${w(target)} - 1px)` }} aria-hidden />}
       </div>
     </div>

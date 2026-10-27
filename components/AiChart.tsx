@@ -176,7 +176,7 @@ function XYFigure({ spec }: { spec: AiXYSpec }) {
     >
       <div ref={box} style={{ height }} dir="ltr">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={rows} layout={h ? "vertical" : "horizontal"} stackOffset={percent ? "expand" : undefined}
+          <ComposedChart data={rows} className={h ? "viz-rows" : undefined} layout={h ? "vertical" : "horizontal"} stackOffset={percent ? "expand" : undefined}
             margin={{ top: spec.labels ? 22 : 12, right: h && tipLabels ? 16 + widest : 16, left: (h ? 4 : -6) + (h && below0 ? widest : 0), bottom: spec.labels && (lines.length > 1 || (!h && below0)) ? 14 : 0 }} barGap={2}>
             <CartesianGrid stroke="var(--border)" vertical={h} horizontal={!h} />
             {h ? (
@@ -329,7 +329,7 @@ function ParetoFigure({ spec }: { spec: AiParetoSpec }) {
     >
       <div style={{ height: Math.max(140, spec.data.length * 28 + 40) }} dir="ltr">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={spec.data} layout="vertical" margin={{ top: 4, right: 16 + widest, left: 4, bottom: 0 }}>
+          <ComposedChart className="viz-rows" data={spec.data} layout="vertical" margin={{ top: 4, right: 16 + widest, left: 4, bottom: 0 }}>
             <CartesianGrid stroke="var(--border)" horizontal={false} />
             <XAxis type="number" tick={TICK} axisLine={false} tickLine={false} tickFormatter={(v: number) => compact(v)} />
             <YAxis type="category" dataKey="name" tick={TICK} axisLine={{ stroke: "var(--border-strong)" }} tickLine={false} width={Math.min(180, Math.max(48, longest * 7))} />

@@ -519,7 +519,7 @@ function HandoutSummary({ rows, periodLabel, onClose }: { rows: ConsumableIssueV
   );
   const bar = (share: number) => (
     <div className="h-1 rounded bg-surface-3 overflow-hidden mt-1" aria-hidden>
-      <span className="block h-full rounded bg-[var(--info-fg)] opacity-70" style={{ width: `${Math.max(4, share * 100)}%` }} />
+      <span className="fx-fill block h-full rounded bg-[var(--info-fg)] opacity-70" style={{ width: `${Math.max(4, share * 100)}%` }} />
     </div>
   );
   return (

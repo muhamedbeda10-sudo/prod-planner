@@ -479,7 +479,7 @@ main textarea {
 main input:where([type="text"], [type="number"], [type="date"], [type="month"], [type="email"], [type="password"], [type="search"]):hover,
 main select:hover,
 main textarea:hover {
-  border-color: var(--muted);
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--border-strong));
 }
 main input:where([type="text"], [type="number"], [type="date"], [type="month"], [type="email"], [type="password"], [type="search"]):focus,
 main select:focus,
@@ -898,6 +898,7 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   /* whichever row the pointer happens to rest on when Print is pressed must not
      come out tinted — in dark mode that row printed as a black band */
   main table tbody tr:hover { background-color: transparent !important; }
+  main table tbody tr:hover > td:first-child { box-shadow: none !important; }
 }
 
 /* ---- sticky table headers: long tables scroll inside their card and the
@@ -1022,7 +1023,7 @@ main select.ctl { padding-right: 1.6rem; }
 .chip-toggle {
   height: 26px; padding: 0 0.6rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600;
   border: 1px solid var(--border-strong); background: var(--surface); color: var(--muted);
-  transition: color 0.12s ease, border-color 0.12s ease, background-color 0.12s ease;
+  transition: color 0.12s ease, border-color 0.12s ease, background-color 0.12s ease, transform 0.12s ease;
 }
 .chip-toggle:hover { color: var(--foreground); border-color: var(--muted); }
 .chip-toggle[aria-pressed="true"] { background: var(--brand-fill); border-color: var(--brand-fill); color: #fff; }
@@ -1151,7 +1152,7 @@ main select.ctl { padding-right: 1.6rem; }
 .filter-chip > select.ctl { max-width: 100%; font-weight: 550; field-sizing: content; min-width: 6.5rem; padding-right: 1.75rem; }
 .filter-chip-on > select.ctl { border-color: var(--brand) !important; background-color: color-mix(in srgb, var(--brand) 10%, var(--surface)) !important; padding-right: 2.6rem; }
 .filter-chip-x {
-  position: absolute; right: 22px; top: 50%; transform: translateY(-50%);
+  position: absolute; right: 22px; top: 50%; translate: 0 -50%;
   display: grid; place-items: center; width: 18px; height: 18px; border-radius: 999px;
   color: var(--muted);
 }
@@ -1883,7 +1884,10 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 
 @keyframes fx-pop { 0% { opacity: 0; transform: scale(0.5); } 70% { opacity: 1; transform: scale(1.15); } 100% { transform: none; } }
 @keyframes fx-press { 0% { transform: scale(0.92); } 60% { transform: scale(1.04); } 100% { transform: none; } }
-@keyframes fx-grow-x { from { transform: scaleX(0); } to { transform: none; } }
+/* a fill revealed from its start (a bar, a meter, a timeline block) or from its foot (a column) — no stretching, so rounded ends and text stay true */
+@keyframes fx-reveal-x { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes fx-reveal-y { from { clip-path: inset(100% 0 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes fx-ring { from { box-shadow: 0 0 0 7px transparent; } }
 @keyframes fx-sweep { from { background-position: 160% 0; } to { background-position: -60% 0; } }
 
 /* the icon square that wears a tone — the brand green when it has none;
@@ -1932,14 +1936,14 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 .menu-row-on .menu-row-hint { color: color-mix(in srgb, var(--brand-ink) 70%, var(--muted)); }
 
 /* one after another: assistant tiles, menu rows, KPIs, section cards */
-.ai-cap:nth-child(2), .menu-row:nth-child(2), .kpi:nth-child(2), .section-card:nth-child(2) { animation-delay: 0.03s; }
-.ai-cap:nth-child(3), .menu-row:nth-child(3), .kpi:nth-child(3), .section-card:nth-child(3) { animation-delay: 0.06s; }
-.ai-cap:nth-child(4), .menu-row:nth-child(4), .kpi:nth-child(4), .section-card:nth-child(4) { animation-delay: 0.09s; }
-.ai-cap:nth-child(5), .menu-row:nth-child(5), .kpi:nth-child(5), .section-card:nth-child(5) { animation-delay: 0.12s; }
-.ai-cap:nth-child(6), .menu-row:nth-child(6), .kpi:nth-child(6), .section-card:nth-child(6) { animation-delay: 0.15s; }
-.ai-cap:nth-child(7), .menu-row:nth-child(7), .kpi:nth-child(7), .section-card:nth-child(7) { animation-delay: 0.18s; }
-.ai-cap:nth-child(8), .menu-row:nth-child(8), .kpi:nth-child(8), .section-card:nth-child(8) { animation-delay: 0.21s; }
-.ai-cap:nth-child(n+9), .menu-row:nth-child(n+9), .kpi:nth-child(n+9), .section-card:nth-child(n+9) { animation-delay: 0.24s; }
+.ai-cap:nth-child(2), .menu-row:nth-child(2), .kpi:nth-child(2), .section-card:nth-child(2), .chart-card:nth-child(2), .inbox-item:nth-child(2), .col-card:nth-child(2) { animation-delay: 0.03s; }
+.ai-cap:nth-child(3), .menu-row:nth-child(3), .kpi:nth-child(3), .section-card:nth-child(3), .chart-card:nth-child(3), .inbox-item:nth-child(3), .col-card:nth-child(3) { animation-delay: 0.06s; }
+.ai-cap:nth-child(4), .menu-row:nth-child(4), .kpi:nth-child(4), .section-card:nth-child(4), .chart-card:nth-child(4), .inbox-item:nth-child(4), .col-card:nth-child(4) { animation-delay: 0.09s; }
+.ai-cap:nth-child(5), .menu-row:nth-child(5), .kpi:nth-child(5), .section-card:nth-child(5), .chart-card:nth-child(5), .inbox-item:nth-child(5), .col-card:nth-child(5) { animation-delay: 0.12s; }
+.ai-cap:nth-child(6), .menu-row:nth-child(6), .kpi:nth-child(6), .section-card:nth-child(6), .chart-card:nth-child(6), .inbox-item:nth-child(6), .col-card:nth-child(6) { animation-delay: 0.15s; }
+.ai-cap:nth-child(7), .menu-row:nth-child(7), .kpi:nth-child(7), .section-card:nth-child(7), .chart-card:nth-child(7), .inbox-item:nth-child(7), .col-card:nth-child(7) { animation-delay: 0.18s; }
+.ai-cap:nth-child(8), .menu-row:nth-child(8), .kpi:nth-child(8), .section-card:nth-child(8), .chart-card:nth-child(8), .inbox-item:nth-child(8), .col-card:nth-child(8) { animation-delay: 0.21s; }
+.ai-cap:nth-child(n+9), .menu-row:nth-child(n+9), .kpi:nth-child(n+9), .section-card:nth-child(n+9), .chart-card:nth-child(n+9), .inbox-item:nth-child(n+9), .col-card:nth-child(n+9) { animation-delay: 0.24s; }
 
 /* a menu's surface — the bar's panels and a right-click — glows from its corner */
 .menu-panel { background-image: radial-gradient(120% 60% at 0% 0%, color-mix(in srgb, var(--brand) 7%, transparent), transparent 60%); }
@@ -1961,7 +1965,6 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
   }
   .kpi-strip > .kpi:hover { background-color: color-mix(in srgb, var(--brand) 6%, var(--surface)); }
 }
-.kpi-bar > span, .kpi-meter > span { transform-origin: left; animation: fx-grow-x 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s backwards; }
 
 /* ---- buttons: the primary one carries the sweep; every one lifts and presses ---- */
 .btn-primary { background-image: linear-gradient(100deg, transparent 35%, rgb(255 255 255 / 0.28) 50%, transparent 65%); background-size: 250% 100%; background-repeat: no-repeat; background-position: 160% 0; }
@@ -1994,8 +1997,49 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 .modal-box { animation: aipop-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .login-card { animation: ai-rise 0.45s ease-out backwards; }
 
+/* ============ the same motion on tables, charts and filters ============ */
+
+/* The pointer's answers — instant, so they hold under reduced motion and on paper */
+/* the row under the pointer: a brand bar on its left edge, as a focused row has (.erp-table) */
+main table tbody tr:hover > td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
+/* a chart's card lights; the bar or slice under the pointer stays bright while the rest of its series steps back */
+@media (hover: hover) {
+  main .chart-card:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); box-shadow: 0 8px 22px color-mix(in srgb, var(--brand) 12%, transparent), var(--shadow-sm); }
+  .recharts-bar-rectangles:hover .recharts-bar-rectangle:not(:hover),
+  .recharts-pie:hover .recharts-pie-sector:not(:hover) { opacity: 0.45; }
+}
+.chart-card { background-image: radial-gradient(120% 70% at 0% 0%, color-mix(in srgb, var(--brand) 6%, transparent), transparent 55%); }
+
+/* Motion — on screen only, and only for those who have not asked for less:
+   paper always gets the finished table, chart and bar */
+@media screen and (prefers-reduced-motion: no-preference) {
+  /* a table's body fades in — the body, not each row, so sorting or editing a row never blinks it */
+  main table tbody { animation: drawerfade 0.35s ease-out backwards; }
+  /* charts: the card rises in; columns rise from their foot, sideways bars
+     (.viz-rows), lines and areas draw from the left, a pie opens. Each
+     series' group animates, not each bar, so a resize never replays it */
+  .chart-card { animation: ai-rise 0.35s ease-out backwards; transition: border-color 0.18s ease, box-shadow 0.18s ease; }
+  .recharts-bar-rectangles, .fx-fill-up { animation: fx-reveal-y 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s backwards; }
+  .viz-rows .recharts-bar-rectangles, .recharts-line, .recharts-line-dots, .recharts-area,
+  .kpi-bar > span, .kpi-meter > span, .task-progress > span, .fx-fill { animation: fx-reveal-x 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s backwards; }
+  .recharts-pie { transform-box: fill-box; transform-origin: center; animation: aipop-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+  .recharts-active-dot circle { transform-box: fill-box; transform-origin: center; animation: fx-pop 0.3s ease-out; }
+  .chart-tip, .recharts-default-tooltip { animation: aipop-in 0.16s ease-out; }
+  /* filters: the bar, the date range and a notice rise in; an active filter
+     springs on and its ✕ pops in, turning under the pointer */
+  .toolbar, .date-range, .alert, .inbox-item, .col-card { animation: ai-rise 0.3s ease-out backwards; }
+  .filter-chip-on > select.ctl, .chip-on { animation: fx-press 0.28s ease-out; }
+  .filter-chip-x { animation: fx-pop 0.25s ease-out backwards; transition: rotate 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.12s ease, color 0.12s ease; }
+  .filter-chip-x:hover { rotate: 90deg; }
+  /* a box's focus ring settles in from wider — not in a table cell's editor, the fastest typing path */
+  main :is(input, select, textarea):focus:not(.cell-edit) { animation: fx-ring 0.35s ease-out; }
+  .chip:active, .chip-toggle:active { transform: scale(0.95); }
+  main input:is([type="checkbox"], [type="radio"]) { transition: transform 0.12s ease; }
+  main input:is([type="checkbox"], [type="radio"]):active:not(:disabled) { transform: scale(0.85); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .menu-row, .menu-row::after, .ai-cap::after, .nav-drop, .section-card, .kpi, .kpi-bar > span, .kpi-meter > span, .btn-primary,
+  .menu-row, .menu-row::after, .ai-cap::after, .nav-drop, .section-card, .kpi, .btn-primary,
   .seg > .on, .segmented > button, .chip-toggle, .option-radio, .empty, .empty-icon, .count-badge,
   .modal-scrim, .modal-box, .login-card { animation: none !important; }
   .tone-tile, .nav-tab, .nav-tab::after, .nav-tab > svg, .tab::after, .tab > svg, .btn, .btn svg, .icon-btn, .icon-btn svg,

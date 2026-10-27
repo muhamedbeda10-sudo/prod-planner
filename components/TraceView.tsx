@@ -657,7 +657,7 @@ function Chip({ tone, className = "", children }: { tone: "ok" | "bad" | "warn" 
 function MiniBar({ pct, className = "" }: { pct: number; className?: string }) {
   return (
     <div className={`h-1.5 rounded-full bg-border/70 overflow-hidden ${className}`}>
-      <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, pct)}%`, background: pct >= 100 ? "var(--ok-fg)" : "var(--brand)" }} />
+      <div className="fx-fill h-full rounded-full transition-all" style={{ width: `${Math.min(100, pct)}%`, background: pct >= 100 ? "var(--ok-fg)" : "var(--brand)" }} />
     </div>
   );
 }

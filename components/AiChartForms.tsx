@@ -146,7 +146,7 @@ export function ProgressFigure({ spec }: { spec: AiProgressSpec }) {
               </div>
               <div className="relative h-2.5 mt-1 rounded-full" style={{ background: TRACK }}
                 role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(ratio * 100)} aria-label={it.label}>
-                <div className="absolute inset-y-0 start-0 rounded-full" style={{ width: `${Math.max(0, Math.min(1, ratio / scale)) * 100}%`, background: "var(--viz-1)" }} />
+                <div className="fx-fill absolute inset-y-0 start-0 rounded-full" style={{ width: `${Math.max(0, Math.min(1, ratio / scale)) * 100}%`, background: "var(--viz-1)" }} />
                 {ratio > 1 && <div className="absolute -top-1 -bottom-1 w-0.5 rounded bg-[var(--foreground)]" style={{ insetInlineStart: `${(1 / scale) * 100}%` }} title="Target" />}
               </div>
               {it.note && <div className="text-xs text-muted mt-0.5" dir="auto">{it.note}</div>}
@@ -182,7 +182,7 @@ export function FunnelFigure({ spec }: { spec: AiFunnelSpec }) {
               <span className="text-xs whitespace-nowrap ltr"><b className="text-sm">{fmt(d.value)}</b>{unitOf(spec.unit)} <span className="text-muted">· {pct(d.value / first)}</span></span>
             </div>
             <div className="h-3 mt-1 rounded">
-              <div className="h-full rounded" title={`${d.name}: ${valueText(d.value, spec.unit)}`}
+              <div className="fx-fill h-full rounded" title={`${d.name}: ${valueText(d.value, spec.unit)}`}
                 style={{ width: `${Math.max(1, Math.min(1, d.value / first) * 100)}%`, background: `color-mix(in srgb, var(--ramp-5) ${steps ? Math.round(100 - (k / steps) * 100) : 100}%, var(--ramp-2))` }} />
             </div>
           </li>

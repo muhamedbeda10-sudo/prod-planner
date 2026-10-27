@@ -64,7 +64,7 @@ function Bar({ used, limit, state }: { used: number; limit: number; state: Limit
   const ratio = limit > 0 ? used / limit : 0;
   return (
     <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden" aria-hidden>
-      <div className="h-full rounded-full" style={{ width: `${Math.min(100, ratio * 100)}%`, background: STATE_TONE[state] }} />
+      <div className="fx-fill h-full rounded-full" style={{ width: `${Math.min(100, ratio * 100)}%`, background: STATE_TONE[state] }} />
     </div>
   );
 }
