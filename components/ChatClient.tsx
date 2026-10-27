@@ -1040,9 +1040,9 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
             type="button"
             aria-label="Close"
             onClick={() => setGroupModal(null)}
-            className="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
+            className="modal-scrim"
           />
-          <div className="relative w-full max-w-sm bg-surface border rounded-xl shadow-lg p-4">
+          <div className="modal-box relative w-full max-w-sm bg-surface border rounded-xl shadow-lg p-4">
             <div className="flex items-center gap-2 mb-3">
               <Users size={17} className="text-brand-ink" />
               <span className="font-bold text-sm">{groupModal === "create" ? "New group" : "Add members"}</span>

@@ -164,5 +164,3 @@ export function Soi({
  */
 export const SAVE_UNCONFIRMED = "Could not confirm the save — refresh and check the records before trying again.";
 
-/** One row of a dropdown menu — the account menu's. */
-export const MENU_ROW = "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-bold text-start transition-colors hover:bg-surface-2 disabled:opacity-50";

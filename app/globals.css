@@ -505,12 +505,12 @@ main textarea:focus {
   transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
   white-space: nowrap;
 }
-.btn:active { transform: scale(0.97); }
+.btn:active:not(:disabled) { transform: translateY(0) scale(0.97); } /* also undoes the hover lift */
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 /* native checkboxes, radios and ranges: the white tick sits on the fill green */
 :root { accent-color: var(--brand-fill); }
-.btn-primary { background: var(--brand-fill); color: #fff; box-shadow: var(--shadow-sm); }
-.btn-primary:hover { background: var(--brand-dark); box-shadow: var(--shadow-md); }
+.btn-primary { background-color: var(--brand-fill); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-primary:hover { background-color: var(--brand-dark); box-shadow: var(--shadow-md); }
 .btn-secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--foreground); }
 .btn-secondary:hover { border-color: var(--muted); background: var(--surface-3); }
 .btn-ghost { color: var(--muted); }
@@ -529,7 +529,7 @@ main textarea:focus {
   border-radius: 6px;
   color: var(--muted);
   border: 1px solid transparent;
-  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
 }
 .icon-btn:hover { background: var(--surface-3); color: var(--foreground); border-color: var(--border); }
 .icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -621,7 +621,7 @@ main textarea:focus {
   font-weight: 550;
   letter-spacing: 0.005em;
   color: rgb(255 255 255 / 0.85);
-  transition: color 0.15s ease, background-color 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease, transform 0.12s ease;
 }
 /* The strip has to hold every tab on a laptop: below 1800px the tabs tighten
    and drop their icons — the labels are what people read. */
@@ -645,9 +645,16 @@ main textarea:focus {
   bottom: -9px;
   height: 2px;
   border-radius: 2px 2px 0 0;
-  background: transparent;
-  transition: background-color 0.15s ease;
+  background: var(--nav-active);
+  opacity: 0;
+  transform: scaleX(0);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.15s ease;
 }
+/* the bar grows out from the middle: a hint of it on hover, all of it once open */
+.nav-tab:hover::after { opacity: 0.5; transform: scaleX(0.45); }
+.nav-tab:active { transform: scale(0.97); }
+.nav-tab > svg:first-child { transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@media (hover: hover) { .nav-tab:hover > svg:first-child { transform: scale(1.12) rotate(-6deg); } }
 .nav-tab:hover {
   color: #fff;
   background: rgb(255 255 255 / 0.10); /* resting tabs are 85% white: the wash carries the hover */
@@ -659,7 +666,8 @@ main textarea:focus {
 }
 .nav-tab-active::after,
 .nav-tab-active:hover::after {
-  background: var(--nav-active);
+  opacity: 1;
+  transform: none;
 }
 
 @keyframes navdrop {
@@ -1404,7 +1412,7 @@ html.ai-modal { overflow: hidden; }
 .task-col-done { --col-tone: var(--ok-fg); }
 .task-col-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3) var(--sp-1); font-size: var(--fs-body); font-weight: 700; }
 .task-col-body { display: flex; flex-direction: column; gap: var(--sp-2); padding: 0 var(--sp-2) var(--sp-2); overflow-y: auto; min-height: 0; }
-.task-card { display: block; width: 100%; text-align: start; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm); transition: border-color 0.12s ease; }
+.task-card { display: block; width: 100%; text-align: start; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm); transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; }
 .task-card:hover { border-color: var(--border-strong); }
 .task-card-on, .task-card-on:hover { border-color: var(--brand); background: var(--brand-light); }
 .task-card:focus-visible, .task-cal-item:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
@@ -1439,11 +1447,19 @@ html.ai-modal { overflow: hidden; }
   display: inline-flex; align-items: center; gap: 6px;
   padding: 10px 12px; margin-bottom: 0;
   font-size: var(--fs-body); font-weight: 600; line-height: 1.2; white-space: nowrap;
-  color: var(--muted); border-bottom: 2px solid transparent;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  position: relative; color: var(--muted); border-bottom: 2px solid transparent;
+  transition: color 0.15s ease;
+}
+/* the underline grows out from the middle, as on the app bar's tabs */
+.tab::after {
+  content: ""; position: absolute; left: 8px; right: 8px; bottom: -2px; height: 2px; border-radius: 2px 2px 0 0;
+  background: var(--brand-ink); opacity: 0; transform: scaleX(0);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.15s ease;
 }
 .tab:hover { color: var(--foreground); }
-.tab-active, .tab-active:hover { color: var(--brand-ink); border-bottom-color: var(--brand-ink); }
+.tab:hover::after { opacity: 0.4; transform: scaleX(0.4); }
+.tab-active, .tab-active:hover { color: var(--brand-ink); }
+.tab-active::after, .tab-active:hover::after { opacity: 1; transform: none; }
 .tab-icon { padding-inline: 10px; }
 .tab-count {
   display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px;
@@ -1454,7 +1470,9 @@ html.ai-modal { overflow: hidden; }
 /* ---- empty state ---- */
 .empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 44px 16px; gap: 4px; }
 .empty-compact { padding: 28px 12px; }
-.empty-icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); margin-bottom: 6px; }
+.empty-icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 6px;
+  /* the assistant's floating tile: the brand green and its hover step both carry white in both themes; it floats twice, then rests */
+  color: #fff; background: linear-gradient(135deg, var(--brand-fill), var(--brand-dark)); box-shadow: var(--shadow-md); animation: ai-float 4s ease-in-out 2; }
 .empty-compact .empty-icon { width: 36px; height: 36px; border-radius: 10px; }
 .empty-title { font-size: var(--fs-md); font-weight: 700; color: var(--foreground); }
 .empty-hint { font-size: var(--fs-sm); color: var(--muted); max-width: 32rem; line-height: 1.5; }
@@ -1470,7 +1488,7 @@ html.ai-modal { overflow: hidden; }
 .switch-on { background: var(--brand); }
 .switch-knob {
   position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 999px;
-  background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); transition: transform 0.18s ease;
+  background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .switch-on .switch-knob { transform: translateX(18px); }
 .switch-sm { width: 32px; height: 18px; }
@@ -1481,7 +1499,6 @@ html.ai-modal { overflow: hidden; }
 .section-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-sm); }
 .section-head { display: flex; align-items: flex-start; gap: 10px; padding: 16px 16px 12px; }
 @media (min-width: 768px) { .section-head { padding: 18px 20px 12px; } }
-.section-icon { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--brand-light); color: var(--brand-ink); flex-shrink: 0; }
 /* a section's title is its own, not the quiet uppercase label of `main h2` */
 .section-title { font-size: var(--fs-md); font-weight: 700; line-height: 1.3; color: var(--foreground); }
 .section-desc { font-size: var(--fs-sm); color: var(--muted); margin-top: 2px; line-height: 1.45; }
@@ -1595,39 +1612,19 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 .ai-caps-compact { grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); }
 .ai-cap { position: relative; overflow: hidden; isolation: isolate; display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); text-align: start; transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease; animation: ai-rise 0.4s ease-out backwards; }
 .ai-cap::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(130% 90% at 0% 0%, color-mix(in srgb, var(--tone) 16%, transparent), transparent 62%); transition: opacity 0.18s ease; opacity: 0.8; }
-.ai-cap::after { content: ""; position: absolute; top: 0; bottom: 0; width: 45%; inset-inline-start: -70%; z-index: -1; background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--tone) 18%, transparent), transparent); transform: skewX(-18deg); }
 .ai-cap:hover:not(:disabled), .ai-cap:focus-visible { transform: translateY(-2px); border-color: color-mix(in srgb, var(--tone) 60%, var(--border)); box-shadow: 0 8px 22px color-mix(in srgb, var(--tone) 22%, transparent), var(--shadow-sm); }
 .ai-cap:hover:not(:disabled)::before { opacity: 1; }
-.ai-cap:hover:not(:disabled)::after { animation: ai-shine 0.75s ease; }
 .ai-cap:active:not(:disabled) { transform: translateY(0) scale(0.98); }
 .ai-cap:disabled { opacity: 0.55; cursor: not-allowed; }
-.ai-cap-icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; background: var(--tone); color: var(--tone-ink); box-shadow: 0 3px 10px color-mix(in srgb, var(--tone) 35%, transparent); transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1); }
-.ai-cap:hover:not(:disabled) .ai-cap-icon { transform: scale(1.1) rotate(-6deg); }
-.ai-cap-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ai-cap-icon { --tile: 34px; --tile-r: 10px; } /* a .tone-tile, a size up */
+.ai-cap-text, .menu-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ai-cap-label { font-size: var(--fs-md); font-weight: 650; line-height: 1.25; color: var(--foreground); }
-.ai-cap-hint { font-size: var(--fs-sm); color: var(--muted); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.ai-cap-tone-1 { --tone: var(--viz-1); --tone-ink: var(--viz-1-ink); }
-.ai-cap-tone-2 { --tone: var(--viz-2); --tone-ink: var(--viz-2-ink); }
-.ai-cap-tone-3 { --tone: var(--viz-3); --tone-ink: var(--viz-3-ink); }
-.ai-cap-tone-4 { --tone: var(--viz-4); --tone-ink: var(--viz-4-ink); }
-.ai-cap-tone-5 { --tone: var(--viz-5); --tone-ink: var(--viz-5-ink); }
-.ai-cap-tone-6 { --tone: var(--viz-6); --tone-ink: var(--viz-6-ink); }
-.ai-cap-tone-7 { --tone: var(--prod-9); --tone-ink: var(--prod-9-ink); }
-.ai-cap-tone-8 { --tone: var(--prod-8); --tone-ink: var(--prod-8-ink); }
+.ai-cap-hint, .menu-row-hint { font-size: var(--fs-sm); font-weight: 400; color: var(--muted); line-height: 1.35; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 @media (max-width: 639px) {
   /* a phone: the label alone, the hint stays in the tooltip */
   .ai-cap { align-items: center; padding: 10px; }
   .ai-cap-hint { display: none; }
 }
-.ai-cap:nth-child(2) { animation-delay: 0.04s; }
-.ai-cap:nth-child(3) { animation-delay: 0.08s; }
-.ai-cap:nth-child(4) { animation-delay: 0.12s; }
-.ai-cap:nth-child(5) { animation-delay: 0.16s; }
-.ai-cap:nth-child(6) { animation-delay: 0.2s; }
-.ai-cap:nth-child(7) { animation-delay: 0.24s; }
-.ai-cap:nth-child(8) { animation-delay: 0.28s; }
-.ai-cap:nth-child(9) { animation-delay: 0.32s; }
-.ai-cap:nth-child(10) { animation-delay: 0.36s; }
 
 .ai-suggests { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 @media (min-width: 640px) { .ai-suggests-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -1643,7 +1640,7 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 @keyframes ai-grow { from { transform: scaleY(0); } to { transform: none; } }
 @keyframes ai-ring { 0% { opacity: 0.9; transform: scale(0.94); } 100% { opacity: 0; transform: scale(1.18); } }
 @keyframes ai-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-@keyframes ai-shine { from { inset-inline-start: -70%; } to { inset-inline-start: 130%; } }
+@keyframes ai-shine { from { transform: translateX(0) skewX(-18deg); } to { transform: translateX(445%) skewX(-18deg); } }
 @keyframes ai-bounce { 0%, 80%, 100% { transform: translateY(0); opacity: 0.55; } 40% { transform: translateY(-4px); opacity: 1; } }
 @keyframes ai-shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
 @keyframes ai-run { from { background-position: 100% 0; } to { background-position: -100% 0; } }
@@ -1651,8 +1648,8 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 @media (prefers-reduced-motion: reduce) {
   .ai-turn, .ai-cap, .ai-suggest, .ai-hero-logo, .ai-hero-logo::after, .ai-pop-logo-busy::after, .ai-dots > span, .ai-live-text, .composer-busy::before, .chat-list-head-on, .conv-item-active::before { animation: none; }
   .ai-live-text { color: var(--muted); background: none; }
-  .ai-cap, .ai-cap-icon, .ai-suggest-go, .conv-icon { transition: none; }
-  .ai-cap:hover:not(:disabled), .ai-cap:hover:not(:disabled) .ai-cap-icon, .conv-item:hover .conv-icon { transform: none; }
+  .ai-cap, .ai-suggest-go, .conv-icon { transition: none; }
+  .ai-cap:hover:not(:disabled), .conv-item:hover .conv-icon { transform: none; }
 }
 /* the strip under an answer: model, time, cost, then its buttons */
 .ai-answer-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; margin-top: 6px; margin-inline-start: -4px; }
@@ -1738,8 +1735,7 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 }
 .settings-nav-item:hover { background: var(--surface-2); color: var(--foreground); }
 .settings-nav-active, .settings-nav-active:hover { background: var(--brand-light); color: var(--brand-ink); }
-.settings-nav-icon { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; background: var(--surface-2); flex-shrink: 0; transition: background-color 0.12s ease; }
-.settings-nav-active .settings-nav-icon { background: color-mix(in srgb, var(--brand) 18%, transparent); }
+.settings-nav-icon { --tile: 28px; --tile-r: 8px; } /* a .tone-tile */
 .settings-nav-label { font-size: var(--fs-body); font-weight: 650; line-height: 1.2; }
 .settings-nav-desc { font-size: var(--fs-label); color: var(--muted); line-height: 1.3; margin-top: 2px; }
 .settings-nav-active .settings-nav-desc { color: color-mix(in srgb, var(--brand-ink) 70%, var(--muted)); }
@@ -1760,7 +1756,7 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 .kpi-meter-over > span { background: var(--bad-fg); }
 
 /* ---- a choice among a few: option cards, a segmented control, chips ---- */
-.option { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); cursor: pointer; transition: border-color 0.12s ease, background-color 0.12s ease; }
+.option { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; }
 .option:hover { border-color: var(--border-strong); background: var(--surface-2); }
 .option-on, .option-on:hover { border-color: var(--brand); background: var(--brand-light); }
 .option:focus-within { outline: 2px solid var(--brand); outline-offset: 1px; }
@@ -1840,11 +1836,6 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 .drawer-label, .nav-drop-label { padding: 14px 16px 4px; font-size: var(--fs-label); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 /* a group's name inside a nav panel — the Floor tab's two lines */
 .nav-drop-label { padding: var(--sp-2) var(--sp-3) var(--sp-1); }
-.drawer-link { display: flex; align-items: center; gap: 12px; width: calc(100% - 16px); margin: 0 8px; padding: 10px 12px; border-radius: var(--r-md); font-size: 15px; font-weight: 600; text-align: start; color: var(--foreground); transition: background-color 0.12s ease, color 0.12s ease; }
-.drawer-link:hover { background: var(--surface-2); }
-.drawer-link > svg { flex-shrink: 0; color: var(--muted); }
-.drawer-link-active, .drawer-link-active:hover { background: var(--brand-light); color: var(--brand-ink); }
-.drawer-link-active > svg { color: var(--brand-ink); }
 
 /* ---- a code chip: a machine's code, a badge number ---- */
 .code-chip { display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; font-weight: 700; line-height: 1.2; padding: 3px 6px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); direction: ltr; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -1872,3 +1863,142 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 .avatar-disc { background: var(--avatar); color: var(--avatar-ink); }
 .avatar-name { color: var(--avatar); }
 .avatar-quote { border-left-color: var(--avatar); }
+
+/* ============ tones and motion: the assistant's tiles, app-wide ============
+   The look of the assistant's "What it can do" tiles is the whole app's: an
+   icon in a colour of its own, a glow from its corner, a light sweeping
+   across on hover, the icon tipping up, items arriving one after another.
+   It dresses the bar's tab panels, the drawer, the account and right-click
+   menus, section cards, KPIs, buttons, tabs, dialogs and empty states.
+   Eight tones (lib/domain/tones.ts), each a chart colour with its own ink in
+   both themes. */
+.tone-1 { --tone: var(--viz-1); --tone-ink: var(--viz-1-ink); }
+.tone-2 { --tone: var(--viz-2); --tone-ink: var(--viz-2-ink); }
+.tone-3 { --tone: var(--viz-3); --tone-ink: var(--viz-3-ink); }
+.tone-4 { --tone: var(--viz-4); --tone-ink: var(--viz-4-ink); }
+.tone-5 { --tone: var(--viz-5); --tone-ink: var(--viz-5-ink); }
+.tone-6 { --tone: var(--viz-6); --tone-ink: var(--viz-6-ink); }
+.tone-7 { --tone: var(--prod-9); --tone-ink: var(--prod-9-ink); }
+.tone-8 { --tone: var(--prod-8); --tone-ink: var(--prod-8-ink); }
+
+@keyframes fx-pop { 0% { opacity: 0; transform: scale(0.5); } 70% { opacity: 1; transform: scale(1.15); } 100% { transform: none; } }
+@keyframes fx-press { 0% { transform: scale(0.92); } 60% { transform: scale(1.04); } 100% { transform: none; } }
+@keyframes fx-grow-x { from { transform: scaleX(0); } to { transform: none; } }
+@keyframes fx-sweep { from { background-position: 160% 0; } to { background-position: -60% 0; } }
+
+/* the icon square that wears a tone — the brand green when it has none;
+   --tile / --tile-r size it (.ai-cap-icon, .settings-nav-icon) */
+.tone-tile {
+  width: var(--tile, 30px); height: var(--tile, 30px); border-radius: var(--tile-r, 9px);
+  display: grid; place-items: center; flex-shrink: 0;
+  background: var(--tone, var(--brand-fill)); color: var(--tone-ink, #fff);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--tone, var(--brand)) 32%, transparent);
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.tone-tile-sm { --tile: 26px; --tile-r: 8px; }
+/* a glyph that brings its own colours (an emoji) sits on a wash of the tone */
+.tone-tile-soft { background: color-mix(in srgb, var(--tone, var(--brand)) 18%, var(--surface)); color: var(--foreground); box-shadow: none; }
+/* the tile tips up under the pointer, wherever it sits */
+@media (hover: hover) {
+  :is(.ai-cap, .menu-row, .settings-nav-item):hover:not(:disabled) .tone-tile,
+  .section-card:hover .section-icon { transform: scale(1.1) rotate(-6deg); }
+}
+:is(.ai-cap, .menu-row):focus-visible .tone-tile { transform: scale(1.1) rotate(-6deg); }
+
+/* ---- a row of a menu: a tab's places, the tools, the account, the drawer, a right-click ---- */
+.menu-row {
+  position: relative; overflow: hidden; isolation: isolate;
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 10px 5px 6px; border-radius: 10px;
+  font-size: var(--fs-md); font-weight: 650; line-height: 1.25; text-align: start; color: var(--foreground); cursor: pointer;
+  transition: background-color 0.16s ease, transform 0.12s ease;
+  animation: ai-rise 0.3s ease-out backwards;
+}
+/* the light that sweeps across a row (and an assistant tile) under the pointer */
+.ai-cap::after, .menu-row::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 45%; inset-inline-start: -70%; z-index: -1; pointer-events: none;
+  background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--tone, var(--brand)) 20%, transparent), transparent);
+  transform: skewX(-18deg);
+}
+@media (hover: hover) { :is(.ai-cap, .menu-row):hover:not(:disabled)::after { animation: ai-shine 0.75s ease; } }
+.menu-row:hover:not(:disabled), .menu-row:focus-visible { background-color: color-mix(in srgb, var(--tone, var(--brand)) 10%, var(--surface)); }
+.menu-row:active:not(:disabled) { transform: scale(0.98); }
+.menu-row:disabled { opacity: 0.45; cursor: not-allowed; }
+.menu-row-on, .menu-row-on:hover:not(:disabled) { background-color: var(--brand-light); color: var(--brand-ink); }
+.menu-row-danger { color: var(--bad-fg); --tone: var(--bad-fg); --tone-ink: var(--surface); }
+.menu-row-danger:hover:not(:disabled) { background-color: var(--bad-bg); }
+.menu-row-sm { gap: 8px; padding: 3px 8px 3px 4px; border-radius: 8px; font-size: var(--fs-body); font-weight: 550; }
+/* the phone's drawer: a row with a thumb's reach */
+.drawer-link { gap: 12px; width: calc(100% - 16px); margin: 0 8px 1px; padding: 6px 12px 6px 8px; font-size: 15px; font-weight: 600; }
+.menu-row-on .menu-row-hint { color: color-mix(in srgb, var(--brand-ink) 70%, var(--muted)); }
+
+/* one after another: assistant tiles, menu rows, KPIs, section cards */
+.ai-cap:nth-child(2), .menu-row:nth-child(2), .kpi:nth-child(2), .section-card:nth-child(2) { animation-delay: 0.03s; }
+.ai-cap:nth-child(3), .menu-row:nth-child(3), .kpi:nth-child(3), .section-card:nth-child(3) { animation-delay: 0.06s; }
+.ai-cap:nth-child(4), .menu-row:nth-child(4), .kpi:nth-child(4), .section-card:nth-child(4) { animation-delay: 0.09s; }
+.ai-cap:nth-child(5), .menu-row:nth-child(5), .kpi:nth-child(5), .section-card:nth-child(5) { animation-delay: 0.12s; }
+.ai-cap:nth-child(6), .menu-row:nth-child(6), .kpi:nth-child(6), .section-card:nth-child(6) { animation-delay: 0.15s; }
+.ai-cap:nth-child(7), .menu-row:nth-child(7), .kpi:nth-child(7), .section-card:nth-child(7) { animation-delay: 0.18s; }
+.ai-cap:nth-child(8), .menu-row:nth-child(8), .kpi:nth-child(8), .section-card:nth-child(8) { animation-delay: 0.21s; }
+.ai-cap:nth-child(n+9), .menu-row:nth-child(n+9), .kpi:nth-child(n+9), .section-card:nth-child(n+9) { animation-delay: 0.24s; }
+
+/* a menu's surface — the bar's panels and a right-click — glows from its corner */
+.menu-panel { background-image: radial-gradient(120% 60% at 0% 0%, color-mix(in srgb, var(--brand) 7%, transparent), transparent 60%); }
+
+/* ---- section cards rise in; their icon is a tile of the card's own tone (components/primitives) ---- */
+.section-card { animation: ai-rise 0.35s ease-out backwards; }
+
+/* ---- KPI cards: a brand glow from the corner, a lift under the pointer, their bars filling in ---- */
+.kpi {
+  animation: ai-rise 0.35s ease-out backwards;
+  background-image: radial-gradient(130% 90% at 0% 0%, color-mix(in srgb, var(--brand) 8%, transparent), transparent 60%);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+/* a strip's cells share hairlines and a picked filter card keeps its ring: those light, they do not lift */
+@media (hover: hover) {
+  .kpi:not(.kpi-strip > .kpi, [aria-pressed="true"]):hover {
+    transform: translateY(-2px); border-color: color-mix(in srgb, var(--brand) 45%, var(--border));
+    box-shadow: inset 0 3px 0 var(--kpi-accent, transparent), 0 8px 22px color-mix(in srgb, var(--brand) 16%, transparent), var(--shadow-sm);
+  }
+  .kpi-strip > .kpi:hover { background-color: color-mix(in srgb, var(--brand) 6%, var(--surface)); }
+}
+.kpi-bar > span, .kpi-meter > span { transform-origin: left; animation: fx-grow-x 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s backwards; }
+
+/* ---- buttons: the primary one carries the sweep; every one lifts and presses ---- */
+.btn-primary { background-image: linear-gradient(100deg, transparent 35%, rgb(255 255 255 / 0.28) 50%, transparent 65%); background-size: 250% 100%; background-repeat: no-repeat; background-position: 160% 0; }
+.btn svg, .icon-btn svg { transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@media (hover: hover) {
+  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 16px color-mix(in srgb, var(--brand) 32%, transparent); animation: fx-sweep 0.75s ease; }
+  .btn-secondary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+  .option:hover, .task-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+}
+/* an icon grows under the pointer — never one that is already turning (a spinner) */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .btn:hover:not(:disabled) svg:first-child:not(.animate-spin) { transform: scale(1.12); }
+  .icon-btn:hover:not(:disabled) svg:not(.animate-spin) { transform: scale(1.15); }
+}
+.icon-btn:active:not(:disabled) { transform: scale(0.9); }
+
+/* ---- segments and toggles spring into place; a tab's icon tips up ---- */
+.seg > .on, .segmented > button[aria-pressed="true"], .chip-toggle[aria-pressed="true"], .option-on .option-radio { animation: fx-press 0.28s ease-out; }
+.tab > svg { transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@media (hover: hover) { .tab:hover > svg { transform: scale(1.12) rotate(-6deg); } }
+
+/* ---- a settings page's active section: its tile ringed ---- */
+.settings-nav-active .settings-nav-icon { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px color-mix(in srgb, var(--tone, var(--brand)) 55%, transparent); }
+
+/* ---- counts pop in; empty states, dialogs and the login card rise in ---- */
+.count-badge { animation: fx-pop 0.35s ease-out backwards; }
+.empty { animation: ai-rise 0.4s ease-out backwards; }
+/* the one dimmed backdrop behind a dialog */
+.modal-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.45); backdrop-filter: blur(2px); animation: drawerfade 0.18s ease-out; }
+.modal-box { animation: aipop-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.login-card { animation: ai-rise 0.45s ease-out backwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-row, .menu-row::after, .ai-cap::after, .nav-drop, .section-card, .kpi, .kpi-bar > span, .kpi-meter > span, .btn-primary,
+  .seg > .on, .segmented > button, .chip-toggle, .option-radio, .empty, .empty-icon, .count-badge,
+  .modal-scrim, .modal-box, .login-card { animation: none !important; }
+  .tone-tile, .nav-tab, .nav-tab::after, .nav-tab > svg, .tab::after, .tab > svg, .btn, .btn svg, .icon-btn, .icon-btn svg,
+  .switch-knob, .kpi, .option, .task-card, .menu-row { transition: none; }
+  .tone-tile, .nav-tab, .nav-tab > svg, .tab > svg, .btn, .icon-btn, .kpi, .option, .task-card, .menu-row { transform: none !important; }
+}

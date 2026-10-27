@@ -1,7 +1,6 @@
 "use client";
 
 import { Moon, Sun } from "lucide-react";
-import { MENU_ROW } from "@/components/ui";
 
 /** Light/dark toggle. The initial class is applied pre-paint by the inline
  *  script in the root layout; this button just flips and persists it. The
@@ -18,9 +17,9 @@ export function ThemeToggle({ wide = false, row = false }: { wide?: boolean; row
   // a row of the account menu
   if (row) {
     return (
-      <button type="button" role="menuitem" onClick={toggle} className={MENU_ROW}>
-        <span className="contents dark:hidden"><Moon size={17} className="shrink-0 text-muted" /> Dark mode</span>
-        <span className="hidden dark:contents"><Sun size={17} className="shrink-0 text-muted" /> Light mode</span>
+      <button type="button" role="menuitem" onClick={toggle} className="menu-row tone-4">
+        <span className="contents dark:hidden"><span className="tone-tile tone-tile-sm" aria-hidden><Moon size={15} /></span> Dark mode</span>
+        <span className="hidden dark:contents"><span className="tone-tile tone-tile-sm" aria-hidden><Sun size={15} /></span> Light mode</span>
       </button>
     );
   }
