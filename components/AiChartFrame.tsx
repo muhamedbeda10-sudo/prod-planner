@@ -1,8 +1,11 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type SVGProps } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { ChartCard, Legend, TipBox, fmt, type TableRow } from "@/components/charts/kit";
+import { PlotText, textWidth } from "@/components/charts/labels";
+
+export { PlotText, textWidth };
 import { ExportButton } from "@/components/ExportButton";
 import type { AiTone } from "@/lib/domain/aiChart";
 
@@ -103,8 +106,6 @@ export function useWidth<T extends HTMLElement>() {
 
 // ---------------------------------------------------------------- values on the marks
 
-/** About how wide a value written at 11px is. */
-export const textWidth = (text: string) => text.length * 6.4 + 2;
 
 /** The room each of `count` categories has across a plot `width` wide, less
  *  what its axis and margins take (`aside`); 600 before the width is measured. */
@@ -112,10 +113,6 @@ export const perSlot = (width: number, count: number, aside = 60) => Math.max(0,
 
 /** Every one of `texts` fits over its own category, with `pad` to spare. */
 export const fits = (width: number, texts: readonly string[], pad = 0) => perSlot(width, texts.length) >= Math.max(0, ...texts.map(textWidth)) + pad;
-
-/** A value written on the plot: the surface's colour drawn under the
- *  letters keeps it readable over grid lines, lines and other marks. */
-const HALO = { stroke: "var(--surface)", strokeWidth: 3, paintOrder: "stroke", strokeLinejoin: "round" } as const;
 
 type Box = { x: number; y: number; width: number; height: number };
 /** What recharts hands a label's content: the mark's box, its value and its index. */
@@ -198,7 +195,4 @@ export function sideLabel(text: (index: number) => string | null) {
   return SideLabel;
 }
 
-/** Text drawn in an SVG of our own (a dial, a flow), with the same halo. */
-export function PlotText({ children, ...rest }: SVGProps<SVGTextElement>) {
-  return <text fontSize={11} fill="var(--foreground)" {...HALO} {...rest}>{children}</text>;
-}
+

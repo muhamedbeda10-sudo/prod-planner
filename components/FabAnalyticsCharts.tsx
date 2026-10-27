@@ -3,7 +3,8 @@
 import { formatDate, formatDayShort } from "@/lib/domain/format";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, LabelList } from "recharts";
 import { signedTonnes, tonnes, type Breakdown, type DayPoint, type Overrun, type PartCompare } from "@/lib/domain/materialDashboard";
-import { CAT, Legend, OTHER, TipBox, fmt } from "@/components/charts/kit";
+import { CAT, Legend, OTHER, TipBox, catInk, fmt } from "@/components/charts/kit";
+import { LABEL_HEADROOM, segmentLabel, segmentValue, stackTotalValue, TotalLabel } from "@/components/charts/labels";
 
 // The Material dashboard's charts. Each one is clickable — a bar narrows the
 // whole page to what it stands for (a day, a part, a thickness, an MO) — and
@@ -14,6 +15,10 @@ import { CAT, Legend, OTHER, TipBox, fmt } from "@/components/charts/kit";
 const H = 300;
 const ACTUAL = CAT[0];
 const ESTIMATE = CAT[1];
+/** The day's column, bottom up: at the actual nesting rate, then the BOM estimate. */
+const DAY_STACK = ["actualT", "estT"] as const;
+/** Tonnes written on a mark. */
+const tOf = (t: number) => tonnes(t * 1000);
 const BOM = OTHER;
 const OVER = "var(--bad-fg)";
 
@@ -30,7 +35,7 @@ export function ConsumedPerDayChart({ days, onPick }: { days: DayPoint[]; onPick
       <Legend items={[{ label: "At the actual nesting rate", color: ACTUAL }, { label: "Estimated from BOM", color: ESTIMATE }]} />
       <div className="viz w-full min-w-0" style={{ height: H }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barCategoryGap="18%"
+          <BarChart data={data} margin={{ top: LABEL_HEADROOM, right: 8, left: 0, bottom: 0 }} barCategoryGap="18%"
             onClick={(s: { activeLabel?: unknown; activeTooltipIndex?: unknown }) => {
               const i = typeof s?.activeTooltipIndex === "number" ? s.activeTooltipIndex : Number(s?.activeTooltipIndex);
               if (onPick && Number.isInteger(i) && data[i]) onPick(data[i].dateISO);
@@ -54,8 +59,12 @@ export function ConsumedPerDayChart({ days, onPick }: { days: DayPoint[]; onPick
                 return <TipBox title={formatDate(p.dateISO)} rows={rows} />;
               }}
             />
-            <Bar dataKey="actualT" stackId="t" fill={ACTUAL} isAnimationActive={false} cursor={onPick ? "pointer" : undefined} />
-            <Bar dataKey="estT" stackId="t" fill={ESTIMATE} radius={[4, 4, 0, 0]} isAnimationActive={false} cursor={onPick ? "pointer" : undefined} />
+            {DAY_STACK.map((k, i) => (
+              <Bar key={k} dataKey={k} stackId="t" fill={i === 0 ? ACTUAL : ESTIMATE} radius={i === 1 ? [4, 4, 0, 0] : undefined} isAnimationActive={false} cursor={onPick ? "pointer" : undefined}>
+                <LabelList valueAccessor={segmentValue(k, DAY_STACK, { format: tOf })} content={segmentLabel(catInk(i))} />
+                <LabelList valueAccessor={stackTotalValue(k, DAY_STACK, tOf)} content={TotalLabel} />
+              </Bar>
+            ))}
           </BarChart>
         </ResponsiveContainer>
       </div>

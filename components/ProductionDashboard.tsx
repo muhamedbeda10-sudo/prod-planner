@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Database, Info, Search } from "lucide-react";
 import { BarPopup } from "@/components/BarPopup";
 import { Badge } from "@/components/Badge";
-import { Bullet, ChartCard, DeltaChip, Legend, StatTile, TONE_TEXT, fmt, pct, pctOrDash } from "@/components/charts/kit";
+import { Bullet, ChartCard, DeltaChip, Legend, RateBar, StatTile, TONE_TEXT, fmt, pct, pctOrDash } from "@/components/charts/kit";
 import { EfficiencyHeatmap } from "@/components/EfficiencyHeatmap";
 import { OutputChart, ProductivityTrendChart, VolumeChart } from "@/components/LazyCharts";
 import { LossWaterfallCard } from "@/components/LossWaterfallCard";
@@ -128,7 +128,7 @@ export function ProductionDashboard({ view, req, range, beforeRange, more }: {
       {/* earned against booked */}
       <ChartCard
         title="Earned against booked, day by day"
-        about={`${view.scopeName}, ${range}: the standard hours each department earned (stacked) against the man-hours booked (the line), on the unit-days that booked hours — the gap is the time not earned. Click a day for its rows. Output on a day with no attendance is in the output chart below, not here.`}
+        about={`${view.scopeName}, ${range}: the standard hours each department earned (stacked, each part's hours on it, the day's total on top) against the man-hours booked (the line), on the unit-days that booked hours — the gap is the time not earned. Under each date, the day's efficiency (earned ÷ booked), green at the standard (90%+), amber short of it, red well short. Click a day for its rows. Output on a day with no attendance is in the output chart below, not here.`}
         data={view.daily.days.map((d) => ({ Day: d.dateISO, ...Object.fromEntries(view.daily.groups.map((g) => [`${g.label} std-h`, d.values[g.key] ?? 0])), "Earned std-h": d.earnedH, "Booked h": d.workedH, "Efficiency %": d.efficiency === null ? "" : Math.round(d.efficiency * 100) }))}
       >
         {view.daily.days.length === 0 ? empty : (
@@ -275,7 +275,7 @@ function VolumeCard({ view, range, stage, href }: { view: ProductionView; range:
       className="xl:col-span-5"
       title="What was made each day?"
       sub={on ? `${on.label} · ${on.unit} · ${fmt(on.total)} in the period` : undefined}
-      about={`What the Daily log recorded in ${range}, one stage at a time and in its own unit — pieces for the transformers, panels for the LV — by component. Every day it recorded shows, with attendance or not. A piece passing several stages is counted at each, so the stages are never added together as finished units. Shot blast counts every painted piece.`}
+      about={`What the Daily log recorded in ${range}, one stage at a time and in its own unit — pieces for the transformers, panels for the LV — by component, each part's count and its share of the day on it, the day's total on top. Every day it recorded shows, with attendance or not. A piece passing several stages is counted at each, so the stages are never added together as finished units. Shot blast counts every painted piece.`}
       data={days.map((d) => ({ Stage: on!.label, Day: d.dateISO, ...d.byComponent, [`Total ${on!.unit}`]: d.total }))}
       right={stages.length > 1 ? (
         <nav className="seg flex-wrap" aria-label="Stage">
@@ -354,10 +354,16 @@ function AttendanceCard({ view, shift, range, href }: { view: ProductionView; sh
   );
 }
 
+/** An efficiency in a table cell: its figure (or `children`) beside a bar in its band's colour. */
+function EffBar({ value, children }: { value: number | null; children?: React.ReactNode }) {
+  return <RateBar value={value} tone={efficiencyBand(value)}>{children ?? pctOrDash(value)}</RateBar>;
+}
+
 function DeptTable({ view, range }: { view: ProductionView; range: string }) {
   const rows = view.table;
   const f = view.figures;
   const both = !!(view.byLine.TR && view.byLine.LV);
+  const totalEff = view.kpis.find((k) => k.key === "efficiency")?.value ?? null;
   return (
     <ChartCard
       title="Department by department"
@@ -383,7 +389,6 @@ function DeptTable({ view, range }: { view: ProductionView; range: string }) {
             </thead>
             <tbody>
               {rows.map((r) => {
-                const b = efficiencyBand(r.efficiency);
                 return (
                   <tr key={`${r.line}${r.dept}`}>
                     <td className="px-2 font-semibold whitespace-nowrap">{r.label}{both ? <span className="text-muted font-normal"> · {r.line}</span> : null}</td>
@@ -393,8 +398,8 @@ function DeptTable({ view, range }: { view: ProductionView; range: string }) {
                     <td className="px-2 text-right tabnum">{fmt(r.workedH, 1)}</td>
                     <td className="px-2 text-right tabnum">{fmt(r.overtimeH, 1)}</td>
                     <td className="px-2 text-right tabnum">{fmt(r.earnedH, 1)}</td>
-                    <td className={`px-2 text-right tabnum font-bold ${b ? TONE_TEXT[b] : "text-muted"}`} title={r.priced ? undefined : "The output carries no standard hours — efficiency not known"}>
-                      {!r.priced && r.workedH > 0 ? "n/p" : <>{r.efficiency !== null && r.efficiency > UNUSUAL_EFFICIENCY ? "⚠ " : ""}{pctOrDash(r.efficiency)}</>}
+                    <td className="px-2" title={r.priced ? undefined : "The output carries no standard hours — efficiency not known"}>
+                      <EffBar value={r.efficiency}>{!r.priced && r.workedH > 0 ? "n/p" : <>{r.efficiency !== null && r.efficiency > UNUSUAL_EFFICIENCY ? "⚠ " : ""}{pctOrDash(r.efficiency)}</>}</EffBar>
                     </td>
                     <td className="px-2 text-right tabnum whitespace-nowrap">{fmt(r.output)} <span className="text-muted">{r.outputUnit}</span></td>
                     <td className="px-2 whitespace-nowrap">
@@ -405,7 +410,7 @@ function DeptTable({ view, range }: { view: ProductionView; range: string }) {
               })}
             </tbody>
             <tfoot>
-              <tr className="font-bold">
+              <tr>
                 <td className="px-2">Total</td>
                 <td className="px-2 text-right tabnum">{view.coverage.recordedDays} / {view.coverage.workingDays}</td>
                 <td className="px-2 text-right tabnum">{pctOrDash(view.coverage.share)}</td>
@@ -413,8 +418,8 @@ function DeptTable({ view, range }: { view: ProductionView; range: string }) {
                 <td className="px-2 text-right tabnum">{fmt(f.workedH, 1)}</td>
                 <td className="px-2 text-right tabnum">{fmt(f.overtimeH, 1)}</td>
                 <td className="px-2 text-right tabnum">{fmt(f.earnedH, 1)}</td>
-                <td className="px-2 text-right tabnum">{pctOrDash(view.kpis.find((k) => k.key === "efficiency")?.value)}</td>
-                <td className="px-2 text-right text-muted" title="Pieces and panels at different stages never add up">—</td>
+                <td className="px-2"><EffBar value={totalEff} /></td>
+                <td className="px-2 text-right text-muted font-normal" title="Pieces and panels at different stages never add up">—</td>
                 <td />
               </tr>
             </tfoot>
@@ -479,14 +484,13 @@ function FocusModal({ view, focus, day, range, onClose }: { view: ProductionView
             <tbody>
               {rows.map((d) => {
                 const eff = d.workedH > 0 ? d.earnedH / d.workedH : null;
-                const b = efficiencyBand(eff);
                 return (
                   <tr key={`${d.dateISO}${d.line}${d.unit}`}>
                     <td className="px-2 whitespace-nowrap">{formatDate(d.dateISO)}</td>
                     <td className="px-2 whitespace-nowrap font-semibold">{unitLabel(d.line, d.unit)}<span className="text-muted font-normal"> · {deptLabel(d.line, d.dept)}{d.line === "LV" || view.byLine.LV ? ` · ${d.line}` : ""}</span></td>
                     <td className="px-2 text-right tabnum">{fmt(d.workedH, 1)}</td>
                     <td className="px-2 text-right tabnum">{fmt(round1(d.earnedH), 1)}{d.workedH > 0 ? "" : d.earnedH > 0 ? <span className="text-warn-fg" title="No attendance this day: left out of the efficiency"> ⚠</span> : ""}</td>
-                    <td className={`px-2 text-right tabnum ${b ? TONE_TEXT[b] : "text-muted"}`}>{pctOrDash(eff)}</td>
+                    <td className="px-2"><EffBar value={eff} /></td>
                     <td className="px-2 text-right tabnum">{fmt(d.people)}</td>
                     <td className="px-2 text-right tabnum">{fmt(d.overtimeH, 1)}</td>
                     <td className="px-2 text-right tabnum">{fmt(d.rows)}</td>
@@ -500,11 +504,11 @@ function FocusModal({ view, focus, day, range, onClose }: { view: ProductionView
               })}
             </tbody>
             <tfoot>
-              <tr className="font-bold">
+              <tr>
                 <td className="px-2" colSpan={2}>Total{focus ? " — the tile's figure" : ""}</td>
                 <td className="px-2 text-right tabnum">{fmt(t.workedH, 1)}</td>
                 <td className="px-2 text-right tabnum">{fmt(t.earnedH, 1)}</td>
-                <td className="px-2 text-right tabnum">{pctOrDash(t.efficiency)}</td>
+                <td className="px-2"><EffBar value={t.efficiency} /></td>
                 <td className="px-2 text-right tabnum">{fmt(t.personDays)}</td>
                 <td className="px-2 text-right tabnum">{fmt(t.overtimeH, 1)}</td>
                 <td className="px-2 text-right tabnum">{fmt(t.rows)}</td>

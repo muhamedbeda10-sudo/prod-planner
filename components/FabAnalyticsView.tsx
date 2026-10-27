@@ -448,7 +448,7 @@ function DetailTable({ a, req, line, period, filtered }: { a: MaterialDashboardD
               ))}
             </tbody>
             <tfoot>
-              <tr className="font-semibold border-t">
+              <tr>
                 <td className="px-2" colSpan={6}>Total · {fmt(T.lines)} lines · {fmt(T.mos)} MOs</td>
                 <td className="px-2 text-right tabnum" title="Each MO once">{n1(T.units)}</td>
                 <td className="px-2 text-right tabnum">{n1(T.bomSheets)}</td>

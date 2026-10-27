@@ -49,11 +49,11 @@ export function LvStageTable({ d, today }: { d: LvDashboardData; today: string }
             })}
           </tbody>
           <tfoot>
-            <tr className="border-t-2 font-bold bg-surface-2/60">
+            <tr>
               <td className="px-2 py-1">{d.ranged ? "Period" : `Last ${d.days.length} days`}</td>
               {LV_CHAIN.map((s) => <td key={s} className="px-2 py-1 text-center tabnum">{fmt(d.period[s])}</td>)}
             </tr>
-            <tr className="font-bold">
+            <tr>
               <td className="px-2 py-1">{d.monthLabel}</td>
               {LV_CHAIN.map((s) => <td key={s} className="px-2 py-1 text-center tabnum">{fmt(d.month[s])}</td>)}
             </tr>

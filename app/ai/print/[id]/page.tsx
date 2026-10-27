@@ -99,7 +99,7 @@ function SheetTable({ name, header, body, foot }: { name: string; header: string
         </tbody>
         {foot && (
           <tfoot>
-            <tr className="border-t-2 font-bold">
+            <tr>
               {header.map((_, c) => (foot[c] === TOTAL_LABEL
                 ? <th key={c} scope="row" className={`${cell(c)} text-left`}>{foot[c]}</th>
                 : <td key={c} className={cell(c)}>{foot[c] ?? ""}</td>))}
