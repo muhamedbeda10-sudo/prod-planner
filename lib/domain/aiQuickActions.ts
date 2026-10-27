@@ -1,7 +1,10 @@
 // What the assistant can do, as tiles on top of an empty chat (and behind the
 // composer's ✨ button in a chat already going): a report, a chart, an Excel
 // file, a what-if, a plan to a deadline, the morning briefing, what looks
-// wrong, why an efficiency moved, a handwritten sheet scanned, an automation.
+// wrong, why an efficiency moved, the planner's controls (what to run next,
+// the load against capacity, the bottleneck, a rush order, why an order is
+// late, whether it can be released, input/output, a planning idea explained),
+// a handwritten sheet scanned, an automation.
 // A tile with fields opens a short form — the period, the department, the
 // form of the answer — and the question is written from what was picked, in
 // the plant's Arabic, so the answer comes back in it too. A tile without
@@ -10,7 +13,10 @@
 import { oneLine } from "./aiExplain";
 import { parseISODate } from "./dates";
 
-export type AiQuickId = "report" | "chart" | "excel" | "whatif" | "deadline" | "briefing" | "problems" | "why" | "scan" | "automation";
+export type AiQuickId =
+  | "report" | "chart" | "excel" | "whatif" | "deadline" | "briefing" | "problems" | "why"
+  | "dispatch" | "load" | "bottleneck" | "rush" | "late" | "release" | "io" | "learn"
+  | "scan" | "automation";
 
 /** A field of a tile's form — the shape the chat's form dialog takes. */
 export interface AiQuickField {
@@ -135,6 +141,29 @@ const SPLITS = [opt("none", "One sheet"), opt("dept", "A sheet per department", 
 
 const HORIZONS = [opt("week", "This week", "الأسبوع ده"), opt("month", "This month", "الشهر ده"), opt("next30", "The next 30 days", "الـ 30 يوم الجايين")];
 
+const STATIONS = [opt("weld", "Welding", "قسم اللحام (Welding)"), opt("cut", "Fabrication", "قسم الـ Fabrication (التقطيع والتشكيل)"), opt("finish", "Painting & Shot Blast", "قسم الدهان والـ shot blast")];
+const RULES = [
+  opt("CR", "Critical ratio (recommended)", "النسبة الحرجة (critical ratio)"),
+  opt("EDD", "Earliest due date", "أقرب ميعاد تسليم (EDD)"),
+  opt("SLACK", "Least slack", "أقل وقت فائض (slack)"),
+  opt("SPT", "Shortest job first", "أقصر شغل الأول (SPT)"),
+];
+const WEEKS_AHEAD = [opt("2", "2 weeks", "الأسبوعين الجايين"), opt("4", "4 weeks", "الـ 4 أسابيع الجايين"), opt("8", "8 weeks", "الـ 8 أسابيع الجايين")];
+const WEEKS_BACK = [opt("4", "Last 4 weeks", "آخر 4 أسابيع"), opt("8", "Last 8 weeks", "آخر 8 أسابيع")];
+const IDEAS = [
+  opt("cr", "Critical ratio and dispatch rules", "النسبة الحرجة (critical ratio) وقواعد ترتيب الشغل"),
+  opt("load", "Load against capacity (CRP)", "الحمل مقابل الطاقة (CRP) ونسب الحمل"),
+  opt("io", "Input/output control", "التحكم في الداخل والخارج (input/output control)"),
+  opt("dbr", "The bottleneck and drum-buffer-rope", "الاختناق ونظرية القيود والطبلة والحاجز والحبل (DBR)"),
+  opt("lead", "Lead time and queues", "زمن التصنيع وعناصره، وليه الانتظار هو الأكبر"),
+  opt("release", "Releasing orders to the floor", "إطلاق الأوامر للأرضية (order release) وشروطه"),
+  opt("split", "Overlapping and lot splitting", "التداخل بين العمليات (overlapping) وتقسيم الدفعة (lot splitting)"),
+  opt("schedule", "Backward and forward scheduling", "الجدولة العكسية والأمامية"),
+];
+
+const stationField: AiQuickField = { name: "station", label: "Department", type: "select", defaultValue: "weld", options: STATIONS };
+const moField: AiQuickField = { name: "mo", label: "Order (MO)", type: "text", required: true, placeholder: "e.g. MO/12345" };
+
 const CADENCES = [opt("new", "Whenever something new shows up", "تتشيّك كل شوية وتبعت أول ما يظهر جديد"), opt("morning", "Every working morning", "كل يوم شغل الصبح"), opt("weekly", "Every week (Sunday)", "كل أسبوع يوم الحد الصبح")];
 
 export const AI_QUICK_ACTIONS: readonly AiQuickAction[] = [
@@ -209,6 +238,66 @@ export const AI_QUICK_ACTIONS: readonly AiQuickAction[] = [
     hint: "The causes behind an efficiency move",
     confirmLabel: "Find out",
     fields: [{ ...dept, defaultValue: "Welding" }, period("week")],
+  },
+  {
+    id: "dispatch",
+    label: "What to run next",
+    hint: "A department's priority list, by critical ratio",
+    confirmLabel: "Build the list",
+    fields: [
+      stationField,
+      { name: "rule", label: "Order by", type: "select", defaultValue: "CR", options: RULES },
+    ],
+  },
+  {
+    id: "load",
+    label: "Load vs capacity",
+    hint: "Overloaded weeks per department, and the fix",
+    confirmLabel: "Check the load",
+    fields: [{ name: "weeks", label: "Over", type: "select", defaultValue: "4", options: WEEKS_AHEAD }],
+  },
+  { id: "bottleneck", label: "Find the bottleneck", hint: "The department that sets the pace, with the evidence", fields: [] },
+  {
+    id: "rush",
+    label: "Can we take this order?",
+    hint: "A new order against the plan — its date, who it pushes",
+    confirmLabel: "Check it",
+    fields: [
+      { name: "kva", label: "Rating (kVA)", type: "text", required: true, placeholder: "e.g. 1000" },
+      { name: "qty", label: "Quantity", type: "text", required: true, placeholder: "e.g. 20" },
+      { name: "by", label: "Wanted by", type: "date", required: true },
+    ],
+  },
+  {
+    id: "late",
+    label: "Why is this order late?",
+    hint: "Where it waits, its priority, and what to do",
+    confirmLabel: "Trace it",
+    fields: [moField],
+  },
+  {
+    id: "release",
+    label: "Ready to release?",
+    hint: "Nesting, material and capacity before the floor",
+    confirmLabel: "Check it",
+    fields: [moField],
+  },
+  {
+    id: "io",
+    label: "Input / output",
+    hint: "Upstream or inside — where a department loses",
+    confirmLabel: "Read it",
+    fields: [
+      stationField,
+      { name: "weeks", label: "Over", type: "select", defaultValue: "4", options: WEEKS_BACK },
+    ],
+  },
+  {
+    id: "learn",
+    label: "Explain a planning idea",
+    hint: "In plain words, with our plant's numbers",
+    confirmLabel: "Explain",
+    fields: [{ name: "idea", label: "Idea", type: "select", defaultValue: "cr", options: IDEAS }],
   },
   { id: "scan", label: "Scan a paper sheet", hint: "Photo of a paper form → records to approve", fields: [] },
   {
@@ -287,6 +376,37 @@ export function composeQuickQuestion(id: AiQuickId, v: Values = {}): string | nu
       const d = v.dept && v.dept !== "all" ? `قسم ${clean(v.dept, 60)}` : "الأقسام";
       return `ليه كفاءة وإنتاج ${d} اتغيروا ${periodText(v)}؟\nحلّل الأسباب: الساعات، الإنتاج، التوقفات، الغياب، ونوع الشغل — وقارن بالفترة اللي قبلها واقترح إزاي نحسّن.`;
     }
+    case "dispatch": {
+      const station = arOf(STATIONS, v.station) || arOf(STATIONS, "weld");
+      const rule = arOf(RULES, v.rule) || arOf(RULES, "CR");
+      return `${station} يشتغل على إيه دلوقتي؟ رتّبلي قائمة الأولويات بـ ${rule}.\nوضّح لكل أوردر الحسبة وحالته (متأخر / ورا / في الميعاد / قدام)، الأوردرات اللي لازم تتقدّم، واللي شغّال على ماكينة ومينفعش يتقطع.`;
+    }
+    case "load":
+      return `الحمل على كل قسم مقابل طاقته في ${arOf(WEEKS_AHEAD, v.weeks) || arOf(WEEKS_AHEAD, "4")}، أسبوع بأسبوع.\nفين الأسابيع اللي فيها حمل زيادة، والحسبة، وإيه الحلول بالترتيب (نقل الشغل، طاقة إضافية، تقليل الحمل)، ومين محتاج يوافق؟`;
+    case "bottleneck":
+      return "مين الاختناق (bottleneck) في المصنع دلوقتي؟ وريني الأدلة بالأرقام (أيام الشغل المفتوح، الطابور قدامه، الحمل، التوقفات)، وإزاي نستغله ونخلي باقي الأقسام تمشي على سرعته.";
+    case "rush": {
+      const kva = clean(v.kva, 20);
+      const qty = clean(v.qty, 10);
+      if (!kva || !/^\d+$/.test(qty) || Number(qty) < 1 || !isoDay(v.by)) return null;
+      return `ينفع ناخد أوردر جديد ${qty} محول ${kva} kVA ونسلّمه قبل ${v.by}؟\nوريني التاريخ المتوقع لو دخل بترتيب ميعاده ولو اتقدّم لأول الطابور، والأوردرات اللي هتتأخر بسببه، ومين لازم يوافق.`;
+    }
+    case "late": {
+      const mo = clean(v.mo, 60);
+      if (!mo) return null;
+      return `ليه الأوردر ${mo} متأخر أو معرّض للتأخير؟\nتتبّعه قسم بقسم: فين واقف، النسبة الحرجة بتاعته، الحمل والطابور في القسم ده، والأسباب المسجلة — وإيه اللي نعمله دلوقتي.`;
+    }
+    case "release": {
+      const mo = clean(v.mo, 60);
+      if (!mo) return null;
+      return `ينفع نطلق الأوردر ${mo} للأرضية دلوقتي؟\nراجع شروط الإطلاق: الـ hold، الكمية، الأزمنة المعيارية، الـ nesting، الخامة، والحمل على الـ Fabrication — وقولّي جاهز ولا لأ، وإيه اللي ناقص.`;
+    }
+    case "io": {
+      const station = arOf(STATIONS, v.station) || arOf(STATIONS, "weld");
+      return `اعملي تقرير الداخل والخارج (input/output) لـ ${station} عن ${arOf(WEEKS_BACK, v.weeks) || arOf(WEEKS_BACK, "4")}.\nالمشكلة جاية من القسم اللي قبله ولا من جوه القسم؟ والطابور قدامه بيزيد ولا بيقل؟`;
+    }
+    case "learn":
+      return `اشرحلي ${arOf(IDEAS, v.idea) || arOf(IDEAS, "cr")} بكلام بسيط، بمثال بأرقام من أقسام المصنع عندنا، وفي الآخر إزاي بنستخدمه في البرنامج وإيه اللي المفروض أعمله دلوقتي.`;
     case "automation": {
       const what = clean(v.what);
       if (!what) return null;

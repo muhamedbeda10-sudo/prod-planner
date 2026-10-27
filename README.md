@@ -398,6 +398,17 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    plant's run order — each a change with a card. The right stays on Users & Permissions ("What-ifs (through the
    assistant)", tab id `simulate`, no screen): ticked off, the assistant runs no what-if for that person. The cockpit's
    capacity decisions open the assistant with the question ready (`CockpitAction.ask`, `lib/aiAsk.ts`).
+   **Planning controls** (`lib/domain/planningControl.ts`, the tools in `lib/server/ai/tools/planningControl.ts`) —
+   the assistant plans like a production planner (the "Planning method" of its rules: critical ratio, load bands,
+   input/output, the constraint, release, exceptions) on the same model, every figure computed and returned with
+   its inputs and assumptions: `get_dispatch_list` (a station's priorities by CR, EDD, slack, SPT, LWR or FOR, the job
+   running on a machine kept on top), `get_load_profile` (load against capacity per plant week — under 85% ok, to 100%
+   tight, past it overloaded), `get_io_report` (input/output and the queue, upstream or inside), `identify_bottleneck`,
+   `get_delay_pareto` (machine stops by cause, the holds), `check_release_readiness` (hold, quantity, standard times,
+   nesting, Fabrication's load — the raw-material stock is a check still to do until the Odoo stock feed fills
+   `ReleaseFacts.stock`) and `simulate_rush_order`. Each has a tile under the assistant's "What it can do". Operation
+   start/finish times, queue/setup/move standards and order-level delay codes are not recorded, so queue time per
+   operation is not measured and CR's lead time is the forecast's.
 11. **Consumables** (`/consumables`, a place of the **Material** tab beside the nesting sheets and Physical Material —
    the Material tab's panel moves between the three, each keeping its own views; each is still switched on or
    off per account) — the store's log of what it hands out to the floor. A hand-out is recorded

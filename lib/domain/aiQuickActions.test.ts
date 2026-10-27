@@ -20,7 +20,7 @@ describe("the assistant's quick actions", () => {
   it("writes a question for every tile but scan, from its form's defaults", () => {
     for (const a of AI_QUICK_ACTIONS) {
       const defaults = Object.fromEntries(a.fields.map((f) => [f.name, f.defaultValue ?? ""]));
-      const q = composeQuickQuestion(a.id, { ...defaults, change: "عامل زيادة", by: "2026-11-15", what: "MOs من غير خامة" });
+      const q = composeQuickQuestion(a.id, { ...defaults, change: "عامل زيادة", by: "2026-11-15", what: "MOs من غير خامة", mo: "MO/123", kva: "1000", qty: "20" });
       if (a.id === "scan") expect(q).toBeNull();
       else expect(q?.length).toBeGreaterThan(20);
     }
@@ -50,6 +50,31 @@ describe("the assistant's quick actions", () => {
     expect(composeQuickQuestion("deadline", { by: "2026-02-30" })).toBeNull();
     expect(composeQuickQuestion("automation", {})).toBeNull();
     expect(composeQuickQuestion("deadline", { by: "2026-11-15" })).toContain("الأوردرات المتأخرة");
+  });
+});
+
+describe("the planner's tiles", () => {
+  it("asks for the station and rule picked", () => {
+    const q = composeQuickQuestion("dispatch", { station: "finish", rule: "EDD" })!;
+    expect(q).toContain("الدهان");
+    expect(q).toContain("EDD");
+    expect(composeQuickQuestion("dispatch", {})).toContain("النسبة الحرجة");
+    expect(composeQuickQuestion("io", { station: "cut", weeks: "8" })).toContain("آخر 8 أسابيع");
+    expect(composeQuickQuestion("load", { weeks: "2" })).toContain("الأسبوعين");
+    expect(composeQuickQuestion("learn", { idea: "dbr" })).toContain("DBR");
+  });
+  it("a rush order needs a rating, a whole quantity and a real date", () => {
+    expect(composeQuickQuestion("rush", { kva: "1000", qty: "20", by: "2026-11-15" })).toContain("20 محول 1000 kVA");
+    expect(composeQuickQuestion("rush", { kva: "1000", qty: "twenty", by: "2026-11-15" })).toBeNull();
+    expect(composeQuickQuestion("rush", { kva: "1000", qty: "0", by: "2026-11-15" })).toBeNull();
+    expect(composeQuickQuestion("rush", { kva: "", qty: "5", by: "2026-11-15" })).toBeNull();
+    expect(composeQuickQuestion("rush", { kva: "1000", qty: "5", by: "soon" })).toBeNull();
+  });
+  it("tracing or releasing an order needs the order", () => {
+    expect(composeQuickQuestion("late", { mo: "  " })).toBeNull();
+    expect(composeQuickQuestion("release", {})).toBeNull();
+    expect(composeQuickQuestion("late", { mo: "MO/77" })).toContain("MO/77");
+    expect(composeQuickQuestion("release", { mo: "MO/77" })).toContain("الـ nesting");
   });
 });
 
