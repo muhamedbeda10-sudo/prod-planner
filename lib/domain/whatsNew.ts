@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-assistant-docked-right",
+    dateISO: "2026-10-27",
+    title: "The assistant opens down the right side, and the app moves over beside it",
+    where: "AI assistant → the round button in the corner",
+    body: "The assistant no longer opens as a card over the corner of the page. It opens down the whole right side of the screen, from the top to the bottom, and the app — the green bar and the page — moves left into the rest, so the table or dashboard you are on and the chat are both seen in full at once. Drag the assistant's left edge to make it wider or narrower (the arrow keys work on it too, and a double-click puts it back to its usual width); the width is kept on this browser. Fill screen still makes it the whole screen, and Back to the side brings it back. On a phone it still opens over the whole screen, and on a narrow tablet it opens down the right over the page.",
+  },
+  {
     id: "2026-10-27-material-sheet-import-only",
     dateISO: "2026-10-27",
     title: "Material: the sheet changes only by uploading it",
