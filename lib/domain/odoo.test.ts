@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { groupOdooEntries, odooSameKey, bomOfFgCode, odooRowBom, odooRowBomLabel, blockedItem, EMPTY_ODOO_FILTERS, filterOdooEntries, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone, type OdooEntryView, odooItemTotals, odooScopeKey, odooScopeLabel, parseOdooScope, singleDayOf } from "./odoo";
+import { groupOdooEntries, odooSameKey, bomOfFgCode, odooRowBom, odooRowBomLabel, blockedItem, cancelLocked, cancelsOpenRow, isCancelledStatus, isOpenStatus, EMPTY_ODOO_FILTERS, filterOdooEntries, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone, type OdooEntryView, odooItemTotals, odooScopeKey, odooScopeLabel, parseOdooScope, singleDayOf } from "./odoo";
 
 const HEADER = ["Date", "SOI#", "FG-CODE", "Product", "MO#", "QTY", "Status", "Reason"];
 
@@ -351,5 +351,29 @@ describe("odooRowBom — the BOM a close-out row is for", () => {
   it("falls back to the FG-CODE's suffix, and to nothing", () => {
     expect(odooRowBom("FB-022-14003E11M11", null, [])).toEqual({ boms: ["14003E11M11"], via: "fg" });
     expect(odooRowBom("", null, [])).toEqual({ boms: [], via: null });
+  });
+});
+
+describe("cancelling a row", () => {
+  it("reads both spellings of cancelled", () => {
+    expect(isCancelledStatus(" Cancelled ")).toBe(true);
+    expect(isCancelledStatus("canceled")).toBe(true);
+    expect(isCancelledStatus("Done")).toBe(false);
+    expect(isCancelledStatus(null)).toBe(false);
+    expect(isOpenStatus(" MO To Be Close ")).toBe(true);
+    expect(isOpenStatus("Pending")).toBe(false);
+  });
+
+  it("needs a note to cancel a row still open, but not to keep one cancelled or to move elsewhere", () => {
+    expect(cancelsOpenRow("Cancelled", ["MO to be close"])).toBe(true);
+    // a merged line: one of its rows is still open
+    expect(cancelsOpenRow("Cancelled", ["Cancelled", "Done"])).toBe(true);
+    expect(cancelsOpenRow("Cancelled", ["canceled"])).toBe(false);
+    expect(cancelsOpenRow("Done", ["MO to be close"])).toBe(false);
+    expect(cancelsOpenRow("MO to be close", ["Cancelled"])).toBe(false);
+    // the screen's ✗ waits for a note, but a cancelled row can always be opened again
+    expect(cancelLocked("MO to be close", 0)).toBe(true);
+    expect(cancelLocked("MO to be close", 1)).toBe(false);
+    expect(cancelLocked("Cancelled", 0)).toBe(false);
   });
 });

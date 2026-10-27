@@ -7,25 +7,32 @@ import { calendarDate, excelSerialToDate } from "./dates";
 export const ODOO_PRODUCTS = ["Tank", "Top Cover", "Core Frame", "Encloser", "Cable Box", "Conservator"] as const;
 
 /** Where a close attempt stands. The clerk enters the row as "MO to be close";
- *  the planner moves it on. Free text is still accepted, so a new state never
- *  needs a code change. */
-export const ODOO_STATUSES = ["MO to be close", "Pending", "Done", "Blocked", "Cancelled"] as const;
+ *  the planner ticks it Done (✓) or Cancelled (✗). Older rows may carry other
+ *  words (Pending, Blocked, an imported sheet's own) — those are kept as they are. */
+export const ODOO_OPEN_STATUS = "MO to be close";
+export const ODOO_DONE_STATUS = "Done";
+export const ODOO_CANCELLED_STATUS = "Cancelled";
+export const ODOO_STATUSES = [ODOO_OPEN_STATUS, ODOO_DONE_STATUS, ODOO_CANCELLED_STATUS] as const;
 
 export type OdooTone = "ok" | "warn" | "bad" | "muted";
 
 /** The words statusTone reads, lower-case; anything else is "muted". "ok" and
  *  "bad" are the finished tones — odooAlerts' FINISHED_STATUSES must name the
  *  same words (a test holds the two together). */
+const CANCELLED_WORDS = ["cancelled", "canceled"] as const;
+
 export const STATUS_TONE_WORDS: { readonly [T in Exclude<OdooTone, "muted">]: readonly string[] } = {
   ok: ["done", "closed"],
   warn: ["pending"],
-  bad: ["blocked", "cancelled", "canceled"],
+  bad: ["blocked", ...CANCELLED_WORDS],
 };
 
 /** How a status reads at a glance: green when done, amber while pending,
  *  red when it will not close, grey while it is still just queued. */
+const normStatus = (status: string | null | undefined): string => (status ?? "").trim().toLowerCase();
+
 export function statusTone(status: string | null | undefined): OdooTone {
-  const s = (status ?? "").trim().toLowerCase();
+  const s = normStatus(status);
   if (STATUS_TONE_WORDS.ok.includes(s)) return "ok";
   if (STATUS_TONE_WORDS.warn.includes(s)) return "warn";
   if (STATUS_TONE_WORDS.bad.includes(s)) return "bad";
@@ -34,6 +41,30 @@ export function statusTone(status: string | null | undefined): OdooTone {
 
 export function isDoneStatus(status: string | null | undefined): boolean {
   return statusTone(status) === "ok";
+}
+
+export function isCancelledStatus(status: string | null | undefined): boolean {
+  return (CANCELLED_WORDS as readonly string[]).includes(normStatus(status));
+}
+
+/** Still just queued — "MO to be close", however the sheet spelled it. */
+export function isOpenStatus(status: string | null | undefined): boolean {
+  return normStatus(status) === ODOO_OPEN_STATUS.toLowerCase();
+}
+
+/** Why a row may not be cancelled yet: it is cancelled only with its reason
+ *  written down as a note first. */
+export const CANCEL_NEEDS_NOTE = "Add a note with the reason first — a row is cancelled only with a note.";
+
+/** Moving rows to `next` cancels at least one of them that is not cancelled
+ *  already — refused while none of the rows carries a note. */
+export function cancelsOpenRow(next: string, prevStatuses: readonly string[]): boolean {
+  return isCancelledStatus(next) && prevStatuses.some((p) => !isCancelledStatus(p));
+}
+
+/** The screen's ✗ (and the form's Cancelled) wait for a note on a row not cancelled yet. */
+export function cancelLocked(status: string | null | undefined, noteCount: number): boolean {
+  return !isCancelledStatus(status) && noteCount === 0;
 }
 
 /** Odoo's error text names the item in [BRACKETS] first — pull that out so a

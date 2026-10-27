@@ -10,7 +10,8 @@ const h = vi.hoisted(() => {
   const fn = () => vi.fn();
   return {
     prisma: {
-      odooEntry: { findMany: fn(), findUnique: fn(), updateMany: fn(), deleteMany: fn() },
+      odooEntry: { findMany: fn(), findUnique: fn(), updateMany: fn(), deleteMany: fn(), create: fn(), update: fn() },
+      odooNote: { count: fn(), findUnique: fn(), deleteMany: fn() },
       $transaction: fn(),
     },
     requirePerm: fn(),
@@ -27,7 +28,8 @@ vi.mock("@/lib/server/events", () => ({ emitEvent: async () => {} }));
 vi.mock("@/lib/server/odoo", () => ({ importOdooSheet: vi.fn() }));
 vi.mock("@/lib/server/odooAutoClose", () => ({ settleOrdersAfterOdoo: h.settle }));
 
-import { deleteOdooEntry, updateOdooEntry, updateOdooGroup } from "@/app/odoo/actions";
+import { createOdooEntry, deleteOdooEntry, deleteOdooNote, setOdooStatus, updateOdooEntry, updateOdooGroup } from "@/app/odoo/actions";
+import { CANCEL_NEEDS_NOTE } from "@/lib/domain/odoo";
 
 function form(fields: Record<string, string>): FormData {
   const fd = new FormData();
@@ -103,5 +105,50 @@ describe("deleteOdooEntry", () => {
     expect(await deleteOdooEntry(form({ id: "42" }))).toEqual({ ok: false, error: "That row no longer exists." });
     h.prisma.odooEntry.deleteMany.mockResolvedValue({ count: 1 });
     expect(await deleteOdooEntry(form({ id: "42" }))).toEqual({ ok: true });
+  });
+});
+
+describe("cancelling needs a note", () => {
+  it("refuses to cancel an open row with no note, and writes nothing", async () => {
+    h.prisma.odooNote.count.mockResolvedValue(0);
+    expect(await setOdooStatus(form({ ids: "1,2", status: "Cancelled" }))).toEqual({ ok: false, error: CANCEL_NEEDS_NOTE });
+    expect(h.prisma.odooNote.count).toHaveBeenCalledWith({ where: { entryId: { in: [1, 2] } } });
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("cancels once a note on any row of the line says why", async () => {
+    h.prisma.odooNote.count.mockResolvedValue(1);
+    expect(await setOdooStatus(form({ ids: "1,2", status: "Cancelled" }))).toEqual({ ok: true });
+    expect(h.prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves to Done without reading the notes", async () => {
+    expect(await setOdooStatus(form({ ids: "1", status: "Done" }))).toEqual({ ok: true });
+    expect(h.prisma.odooNote.count).not.toHaveBeenCalled();
+  });
+
+  it("holds the Edit form and a merged line's edit to the same rule", async () => {
+    h.prisma.odooNote.count.mockResolvedValue(0);
+    h.prisma.odooEntry.findUnique.mockResolvedValue(row(1));
+    expect(await updateOdooEntry(form({ id: "1", date: "2026-10-10", product: "Tank", odooMo: "SF01/MO/9", qty: "4", status: "Cancelled" }))).toEqual({ ok: false, error: CANCEL_NEEDS_NOTE });
+    expect(await updateOdooGroup(form({ ids: "1,2", product: "Tank", odooMo: "SF01/MO/9", status: "Cancelled" }))).toEqual({ ok: false, error: CANCEL_NEEDS_NOTE });
+    expect(h.prisma.odooEntry.updateMany).not.toHaveBeenCalled();
+    // a row cancelled already is edited freely — its reason was given then
+    h.prisma.odooEntry.findUnique.mockResolvedValue(row(1, { status: "Cancelled" }));
+    expect(await updateOdooEntry(form({ id: "1", date: "2026-10-10", product: "Tank", odooMo: "SF01/MO/9", qty: "5", status: "Cancelled" }))).toEqual({ ok: true });
+  });
+
+  it("never adds a new row as cancelled — it has no note yet", async () => {
+    expect(await createOdooEntry(form({ date: "2026-10-10", product: "Tank", odooMo: "SF01/MO/9", qty: "4", status: "Cancelled" }))).toEqual({ ok: false, error: CANCEL_NEEDS_NOTE });
+    expect(h.prisma.odooEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("keeps the last note of a cancelled row", async () => {
+    h.prisma.odooNote.findUnique.mockResolvedValue({ entryId: 1, entry: { status: "Cancelled", _count: { notes: 1 } } });
+    expect((await deleteOdooNote(form({ noteId: "7" }))).ok).toBe(false);
+    expect(h.prisma.odooNote.deleteMany).not.toHaveBeenCalled();
+    h.prisma.odooNote.findUnique.mockResolvedValue({ entryId: 1, entry: { status: "Cancelled", _count: { notes: 2 } } });
+    expect(await deleteOdooNote(form({ noteId: "7" }))).toEqual({ ok: true });
+    expect(h.prisma.odooNote.deleteMany).toHaveBeenCalledWith({ where: { id: 7 } });
   });
 });
