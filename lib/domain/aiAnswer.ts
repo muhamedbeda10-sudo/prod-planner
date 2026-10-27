@@ -76,6 +76,21 @@ export function scopeLineOf(line: string): string | null {
 /** A chat's name in the list, at most. */
 export const AI_CONVERSATION_TITLE_MAX = 80;
 
+/** The most chats one click deletes or pins. */
+export const AI_CHATS_BULK_MAX = 200;
+
+/** The chats a bulk delete or pin names: whole positive ids, each once, at
+ *  most AI_CHATS_BULK_MAX — anything else from the browser is dropped. */
+export function chatIdsOf(ids: unknown): number[] {
+  if (!Array.isArray(ids)) return [];
+  const out = new Set<number>();
+  for (const id of ids) {
+    if (typeof id === "number" && Number.isInteger(id) && id > 0) out.add(id);
+    if (out.size >= AI_CHATS_BULK_MAX) break;
+  }
+  return [...out];
+}
+
 const SOURCE_LINK = new RegExp(`\\s*\\(?\\[[^\\]]*\\]\\(#${evidenceAnchor("")}[^)]*\\)\\)?`, "g");
 
 /** The source links an answer carries ("([Source](#ai-source-…))") — they
