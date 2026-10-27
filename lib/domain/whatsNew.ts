@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-numbers-on-stacked-charts",
+    dateISO: "2026-10-27",
+    title: "Stacked charts carry their numbers, and efficiency reads at a glance",
+    where: "Dashboards → Production",
+    body: "On Earned against booked, each department's hours are written on its part of the column, the day's earned total sits on top, and the day's efficiency is under its date — green at the standard, amber short of it, red well short. On What was made each day, each component's count and its share of the day are on its part, and the day's total on top. A number is written only where it fits; the tooltip still has them all. The Efficiency column of Department by department has a short bar beside each figure in the same colour, with the 100% standard marked, and the Total row now stands apart on its own band with a line over it — the same Total row on every table in the app. The same numbers are on the stacked columns of the Odoo dashboard, the consumables' six months and the material consumed per day.",
+    href: "/dashboards/production",
+  },
+  {
     id: "2026-10-27-assistant-docked-right",
     dateISO: "2026-10-27",
     title: "The assistant opens down the right side, and the app moves over beside it",

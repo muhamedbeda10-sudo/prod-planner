@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useMemo, useState } from "react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChartCard, DeltaChip, Legend, Sparkline, StatTile, TipBox, fmt, pct } from "@/components/charts/kit";
+import { LABEL_HEADROOM, segmentLabel, segmentValue, stackTotalValue, TotalLabel } from "@/components/charts/labels";
 import {
   MONTH_STATUS_LABEL, monthLong, monthShort,
   type ItemMonthRow, type LimitMonthRow, type MonthStatus,
@@ -19,6 +20,8 @@ import type { MonthlyReportView } from "@/lib/server/consumableMonthly";
 // last six months as a line, and each item opening onto its limits by
 // department.
 
+/** The statuses the six-month chart stacks, bottom up. */
+const STACKED = ["under", "near", "over"] as const;
 const STATUS_COLOR: Record<MonthStatus, string> = {
   over: "var(--bad-fg)",
   near: "var(--warn-fg)",
@@ -175,7 +178,7 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
         data={r.countsByMonth.map((c) => ({ Month: monthLong(c.month), Over: c.over, Close: c.near, Under: c.under, "Not issued": c.unused }))}>
         <div className="viz" style={{ height: 220 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={r.countsByMonth.map((c) => ({ ...c, label: monthShort(c.month) }))} margin={{ top: 8, right: 8, left: -4, bottom: 0 }} barCategoryGap="28%">
+            <BarChart data={r.countsByMonth.map((c) => ({ ...c, label: monthShort(c.month) }))} margin={{ top: LABEL_HEADROOM, right: 8, left: -4, bottom: 0 }} barCategoryGap="28%">
               <CartesianGrid vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} />
               <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
@@ -183,8 +186,12 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
                 const p = active ? (payload?.[0]?.payload as (typeof r.countsByMonth)[number] & { label: string } | undefined) : undefined;
                 return p ? <TipBox title={monthLong(p.month)} rows={(["over", "near", "under", "unused"] as const).map((s) => ({ label: MONTH_STATUS_LABEL[s], value: fmt(p[s]), color: STATUS_COLOR[s] }))} /> : null;
               }} />
-              {(["under", "near", "over"] as const).map((s, i) => (
-                <Bar key={s} dataKey={s} stackId="s" fill={STATUS_COLOR[s]} stroke="var(--surface)" strokeWidth={1} maxBarSize={36} radius={i === 2 ? [4, 4, 0, 0] : undefined} isAnimationActive={false} />
+              {STACKED.map((s, i) => (
+                // the status inks are text colours on the card, so the card's own colour clears them as a fill
+                <Bar key={s} dataKey={s} stackId="s" fill={STATUS_COLOR[s]} stroke="var(--surface)" strokeWidth={1} maxBarSize={36} radius={i === 2 ? [4, 4, 0, 0] : undefined} isAnimationActive={false}>
+                  <LabelList valueAccessor={segmentValue(s, STACKED)} content={segmentLabel("var(--surface)")} />
+                  <LabelList valueAccessor={stackTotalValue(s, STACKED)} content={TotalLabel} />
+                </Bar>
               ))}
             </BarChart>
           </ResponsiveContainer>

@@ -450,6 +450,23 @@ main table tbody td {
 main table tbody tr:last-child td {
   border-bottom: none;
 }
+/* a sheet's Total row stands apart from the rows it adds up: the header's
+   band, a firm rule over its first row, the rows' own height, in bold —
+   every sheet's the same, whatever its own utilities (unlayered, so it
+   outranks them); the weight is the row's, so a cell can still set a
+   quieter one. */
+:is(main table, .dt > table) > tfoot > tr {
+  font-weight: 700;
+}
+:is(main table, .dt > table) > tfoot > tr > :is(td, th) {
+  height: 36px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  background-color: var(--surface-2);
+}
+:is(main table, .dt > table) > tfoot > tr:first-child > :is(td, th) {
+  border-top: 1px solid var(--border-strong);
+}
 
 /* every section heading in the app: quiet uppercase label */
 main h2 {
@@ -1224,7 +1241,8 @@ main table thead tr.dt-band th + th[data-group] { border-left: 3px solid var(--s
 .erp-table tbody tr.mat-child:focus-within { background-color: var(--row-selected); }
 .erp-table tbody tr.mat-child-last > td { border-bottom: 2px solid var(--brand); }
 @media screen {
-  .erp-table tfoot.mat-total td { position: sticky; bottom: 0; z-index: 4; background-color: var(--surface-2); border-top: 1px solid var(--border-strong); font-weight: 700; padding-top: 6px; padding-bottom: 6px; }
+  /* the Total row's look is every sheet's (main table tfoot); this one stays pinned to the foot */
+  .erp-table tfoot.mat-total td { position: sticky; bottom: 0; z-index: 4; }
   .erp-table tfoot.mat-total td.stick { z-index: 14; }
 }
 

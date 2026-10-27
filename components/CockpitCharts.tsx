@@ -1,11 +1,12 @@
 "use client";
 
 import {
-  Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, CartesianGrid, ComposedChart, LabelList, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { CAT, Legend, TRACK, TipBox, fmt, pct } from "@/components/charts/kit";
+import { CAT, Legend, TONE_COLOR, TRACK, TipBox, catInk, fmt, pct } from "@/components/charts/kit";
+import { LABEL_HEADROOM, PlotText, fitsColumn, onColumn, segmentLabel, segmentValue, stackTotalValue, TotalLabel, type LabelBox } from "@/components/charts/labels";
 import { formatDate } from "@/lib/domain/format";
-import { OUTPUT_GROUP_LABEL, STAGES, STAGE_LABEL } from "@/lib/domain/kpis";
+import { OUTPUT_GROUP_LABEL, STAGES, STAGE_LABEL, efficiencyBand } from "@/lib/domain/kpis";
 import type { StageDay } from "@/lib/domain/planningDashboard";
 import type { ProductivityPoint } from "@/lib/domain/floorKpis";
 
@@ -115,9 +116,28 @@ export interface OutputPoint {
   values: Record<string, number>;
 }
 
+/** The day axis under the output chart: the date, and under it a second
+ *  row for the day's efficiency (EfficiencyLabel). */
+const DAY_AXIS_H = 38;
+const EFF_ROW = 31;
+
+/** A day's efficiency under its column, in its status's ink — every column
+ *  wide enough to hold it, whichever dates the axis keeps. */
+function EfficiencyLabel(p: LabelBox) {
+  const e = typeof p.value === "number" ? p.value : null;
+  const band = efficiencyBand(e);
+  const w = Number(p.width ?? 0);
+  if (!band || !fitsColumn(w, pct(e!))) return null;
+  // written by the column's lowest segment, so its foot is the axis
+  const foot = Number(p.y) + Number(p.height ?? 0);
+  return <PlotText x={Number(p.x) + w / 2} y={foot + EFF_ROW} textAnchor="middle" fontWeight={700} fill={TONE_COLOR[band]}>{pct(e!)}</PlotText>;
+}
+
 /** Each recorded day's output in standard hours, group by group (a
  *  department, or a line on the plant's dashboard), against the man-hours the
- *  shift log booked — one unit, one axis. A group keeps its slot of the palette. */
+ *  shift log booked — one unit, one axis. A group keeps its slot of the palette.
+ *  Each segment carries its hours, the column the day's earned total, and the
+ *  day's efficiency sits under the column in its status colour. */
 export function OutputChart({ days, groups, labels = OUTPUT_GROUP_LABEL, groupWord = "department", height = 260, onDay }: {
   days: readonly OutputPoint[]; groups: readonly string[]; labels?: Record<string, string>; groupWord?: string;
   height?: number;
@@ -128,19 +148,20 @@ export function OutputChart({ days, groups, labels = OUTPUT_GROUP_LABEL, groupWo
   const color = Object.fromEntries(groups.map((g, i) => [g, CAT[i % CAT.length]])) as Record<string, string>;
   const name = (g: string) => labels[g] ?? g;
   // the groups' hours flattened for the bars, the point itself kept for the tooltip
-  const data = days.map((d) => ({ ...d.values, dateISO: d.dateISO, earnedH: d.earnedH, workedH: d.workedH, efficiency: d.efficiency, values: d.values, label: ddmm(d.dateISO) }));
+  const data = days.map((d) => ({ ...d.values, dateISO: d.dateISO, earnedH: d.earnedH, workedH: d.workedH, efficiency: d.efficiency, values: d.values }));
+  const h0 = (v: number) => fmt(v, 0);
   return (
     <div className="space-y-2">
       <Legend items={[
         ...groups.map((g) => ({ label: name(g), color: color[g] })),
         { label: "Man-hours booked", color: "var(--foreground)", line: true },
       ]} />
-      <div className={`viz w-full min-w-0 ${onDay ? "cursor-pointer" : ""}`} style={{ height }} role="group" aria-label={`Output over ${days.length} recorded days, in standard hours by ${groupWord}, against the man-hours booked`}>
+      <div className={`viz w-full min-w-0 ${onDay ? "cursor-pointer" : ""}`} style={{ height }} role="group" aria-label={`Output over ${days.length} recorded days, in standard hours by ${groupWord}, against the man-hours booked, with each day's efficiency under it`}>
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }} barCategoryGap="22%"
+          <ComposedChart data={data} margin={{ top: LABEL_HEADROOM, right: 12, left: 0, bottom: 0 }} barCategoryGap="22%"
             onClick={onDay ? (st) => { const i = Number(st.activeTooltipIndex); if (Number.isInteger(i) && data[i]) onDay(data[i].dateISO); } : undefined}>
             <CartesianGrid vertical={false} />
-            <XAxis dataKey="label" tick={TICK} axisLine={AXIS} tickLine={false} interval="preserveStartEnd" minTickGap={12} />
+            <XAxis dataKey="dateISO" tickFormatter={ddmm} tick={TICK} height={DAY_AXIS_H} axisLine={AXIS} tickLine={false} interval="preserveStartEnd" minTickGap={4} />
             <YAxis tick={TICK} axisLine={false} tickLine={false} width={44} tickFormatter={(v: number) => fmt(v, 0)} />
             <Tooltip
               cursor={{ fill: "var(--surface-2)" }}
@@ -161,7 +182,11 @@ export function OutputChart({ days, groups, labels = OUTPUT_GROUP_LABEL, groupWo
               }}
             />
             {groups.map((g, i) => (
-              <Bar key={g} dataKey={g} stackId="out" fill={color[g]} stroke="var(--surface)" strokeWidth={1} isAnimationActive={false} radius={i === groups.length - 1 ? [4, 4, 0, 0] : undefined} />
+              <Bar key={g} dataKey={g} stackId="out" fill={color[g]} stroke="var(--surface)" strokeWidth={1} isAnimationActive={false} radius={i === groups.length - 1 ? [4, 4, 0, 0] : undefined}>
+                <LabelList valueAccessor={segmentValue(g, groups, { format: h0 })} content={segmentLabel(catInk(i % CAT.length), color[g])} />
+                <LabelList valueAccessor={stackTotalValue(g, groups, h0)} content={TotalLabel} />
+                <LabelList valueAccessor={onColumn(g, groups, (r) => (typeof r.efficiency === "number" ? r.efficiency : ""), "foot")} content={EfficiencyLabel} />
+              </Bar>
             ))}
             <Line type="monotone" dataKey="workedH" stroke="var(--foreground)" strokeWidth={2} dot={{ r: 3, strokeWidth: 2, stroke: "var(--surface)", fill: "var(--foreground)" }} isAnimationActive={false} />
           </ComposedChart>

@@ -17,6 +17,7 @@ import { SHEET_COUNT_RULE, isSheetCount, jobsBySheet, manualIdOf, roundSheets, t
 import { SheetJobLine } from "@/components/SheetJobLine";
 import { SheetJobDetails } from "@/components/SheetJobDetails";
 import { factoryDayISO } from "@/lib/domain/dates";
+import { TONE_BAR } from "@/components/charts/kit";
 
 // 🏭 The machine load board on a department's worklist — one card per
 // machine: what it is on NOW, what waits behind it, and how many hours the
@@ -51,7 +52,6 @@ function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 }
 
-const TONE_BAR: Record<"ok" | "warn" | "bad", string> = { ok: "bg-ok-fg", warn: "bg-warn-fg", bad: "bg-bad-fg" };
 const TONE_INK: Record<"ok" | "warn" | "bad", string> = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" };
 
 /** The board's sheet jobs by id — a queue line that is one is counted in sheets. */

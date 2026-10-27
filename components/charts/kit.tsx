@@ -31,6 +31,10 @@ export const TRACK = "color-mix(in srgb, var(--viz-1) 16%, var(--surface))";
 
 /** Text in a status's own ink — always beside a word that says the same. */
 export const TONE_TEXT = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" } as const;
+/** A bar filled in a status's own ink. */
+export const TONE_BAR = { ok: "bg-ok-fg", warn: "bg-warn-fg", bad: "bg-bad-fg" } as const;
+/** A status's own ink as a colour value, for a figure drawn on a chart. */
+export const TONE_COLOR = { ok: "var(--ok-fg)", warn: "var(--warn-fg)", bad: "var(--bad-fg)" } as const;
 /** A cell filled in a status's own colours — a heatmap's band, with its number on it. */
 export const TONE_CELL = { ok: "bg-ok-bg text-ok-fg", warn: "bg-warn-bg text-warn-fg", bad: "bg-bad-bg text-bad-fg" } as const;
 
@@ -379,6 +383,23 @@ export function HeatScale({ max, format = (v: number) => fmt(v) }: { max: number
       {steps.map((s) => <span key={s} className="inline-block w-5 h-2.5 rounded-sm" style={heat(s * max, max)} />)}
       <span>more{max > 0 ? ` (max ${format(max)})` : ""}</span>
     </div>
+  );
+}
+
+/** A rate against a standard of 100% in a table cell (an efficiency): its
+ *  figure in its status's ink, and beside it a short bar in the same colour
+ *  with the standard ticked, full at `max` — so a column of them reads at a
+ *  glance which rows are short of the standard and by how much. */
+export function RateBar({ value, tone, max = 1.3, children }: { value: number | null; tone: "ok" | "warn" | "bad" | null; max?: number; children: React.ReactNode }) {
+  const w = value === null ? 0 : Math.max(0, Math.min(1, value / max)) * 100;
+  return (
+    <span className="flex items-center justify-end gap-2">
+      <span className="relative h-1.5 w-14 shrink-0 rounded-full bg-surface-3" aria-hidden>
+        {value !== null && <span className={`fx-fill absolute inset-y-0 left-0 rounded-full ${tone ? TONE_BAR[tone] : "bg-[var(--viz-other)]"}`} style={{ width: `${w}%` }} />}
+        <span className="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded bg-foreground" style={{ left: `${100 / max}%` }} />
+      </span>
+      <span className={`tabnum font-bold min-w-[3.25rem] text-right ${tone ? TONE_TEXT[tone] : "text-muted"}`}>{children}</span>
+    </span>
   );
 }
 
