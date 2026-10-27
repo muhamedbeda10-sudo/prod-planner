@@ -1586,7 +1586,9 @@ main .composer textarea:focus, .composer textarea:focus { outline: none; box-sha
 .ai-md .ai-field-label { color: var(--muted); font-size: var(--fs-sm); font-weight: 600; padding-top: 1px; white-space: nowrap; }
 .ai-md .ai-field-value { min-width: 0; overflow-wrap: anywhere; }
 .ai-md hr + ul, .ai-md ul + hr { margin-top: 0.75rem; }
-.ai-md .md-table tbody tr:hover td, .ai-md .md-table tbody tr:nth-child(even):hover td { background: var(--row-hover); }
+/* the tables read row by row */
+.ai-md .md-table tbody tr:nth-child(even) td { background: var(--zebra); }
+.ai-md .md-table tbody tr:hover td { background: var(--row-hover); }
 .ai-md code { font-size: 0.875em; }
 /* a long table folds to its first rows; the foot carries the count, the fold and the export */
 .ai-md .md-table-folded .md-table tbody tr.md-row-over { display: none; }
@@ -1594,7 +1596,7 @@ main .composer textarea:focus, .composer textarea:focus { outline: none; box-sha
 .ai-md .md-table-foot .btn { padding-inline: 6px; min-height: 26px; }
 html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: table-row; }
 /* a callout: the assistant's ⚠️ / ✅ / ❌ line, in its tone, in both themes */
-.ai-callout { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0; padding: 8px 12px; border-radius: 10px; border: 1px solid transparent; font-size: var(--fs-body); line-height: 1.5; }
+.ai-callout { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0; padding: 8px 12px; border-radius: 10px; border: 1px solid transparent; border-inline-start-width: 3px; font-size: var(--fs-body); line-height: 1.5; }
 .ai-callout > div > p { margin: 0; }
 .ai-callout-icon { flex-shrink: 0; margin-top: 2px; }
 .ai-callout-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: color-mix(in srgb, var(--warn-fg) 25%, transparent); }
@@ -1602,22 +1604,24 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 .ai-callout-bad { background: var(--bad-bg); color: var(--bad-fg); border-color: color-mix(in srgb, var(--bad-fg) 22%, transparent); }
 .ai-callout-info { background: var(--info-bg); color: var(--info-fg); border-color: color-mix(in srgb, var(--info-fg) 22%, transparent); }
 .ai-callout strong { color: inherit; }
-/* a callout's tone runs down its start edge too, so it reads at a glance */
-.ai-callout { border-inline-start-width: 3px; border-inline-start-color: currentColor; }
+/* its tone runs down its start edge in full, so it reads at a glance — after
+   the tones, whose border-color would take it back */
+.ai-callout { border-inline-start-color: currentColor; }
 
 /* an answer's sections: each heading carries the icon of what it is about
    (Summary, Causes, Suggestions …) in its tone, over a hairline */
 .ai-md .ai-h { display: flex; align-items: center; gap: var(--sp-2); font-weight: 700; line-height: 1.3; color: var(--foreground); }
 .ai-md .ai-h-major { margin: 18px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); font-size: 1.07em; }
 .ai-md .ai-h-minor { margin: 14px 0 6px; font-size: 1em; }
-.ai-md .ai-h-icon { display: grid; place-items: center; flex-shrink: 0; width: 26px; height: 26px; border-radius: var(--r-md); color: var(--h-tone); background: color-mix(in srgb, var(--h-tone) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--h-tone) 22%, transparent); }
-.ai-md .ai-h-minor .ai-h-icon { width: 22px; height: 22px; border-radius: var(--r-sm); }
-.ai-tone-brand { --h-tone: var(--brand-ink); }
-.ai-tone-info { --h-tone: var(--info-fg); }
-.ai-tone-warn { --h-tone: var(--warn-fg); }
-.ai-tone-bad { --h-tone: var(--bad-fg); }
-.ai-tone-ok { --h-tone: var(--ok-fg); }
-.ai-tone-muted { --h-tone: var(--muted); }
+/* the icon is a soft .tone-tile, its glyph in the tone */
+.ai-md .ai-h-icon { --tile: 26px; --tile-r: var(--r-md); color: var(--tone); }
+.ai-md .ai-h-minor .ai-h-icon { --tile: 22px; --tile-r: var(--r-sm); }
+.ai-tone-brand { --tone: var(--brand-ink); }
+.ai-tone-info { --tone: var(--info-fg); }
+.ai-tone-warn { --tone: var(--warn-fg); }
+.ai-tone-bad { --tone: var(--bad-fg); }
+.ai-tone-ok { --tone: var(--ok-fg); }
+.ai-tone-muted { --tone: var(--muted); }
 /* the answer itself — the first lines of a longer answer — stands out as its
    lead; a line followed by its scope alone (or a fence still being named) is
    a short answer and stays plain */
@@ -1633,8 +1637,6 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 .ai-md .ai-ol > li::before { content: counter(ai-ol); content: counter(ai-ol) / ""; position: absolute; inset-inline-start: -32px; top: 0.05em; min-width: 22px; height: 22px; padding-inline: 4px; border-radius: 999px; display: grid; place-items: center; font-size: var(--fs-label); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--brand-ink); background: var(--brand-light); border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent); }
 .ai-md li > p { margin: 0; }
 .ai-md li > .ai-ul, .ai-md li > .ai-ol { margin: 5px 0 2px; }
-/* the tables read row by row */
-.ai-md .md-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
 
 /* the "looked up" line under an answer */
 .ai-lookups { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: var(--fs-sm); color: var(--muted); }

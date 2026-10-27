@@ -10,6 +10,7 @@ import { humanizeKey, looksLikeColumn, readableDate } from "@/lib/domain/fieldNa
 import { isEvidenceAnchor, safeHref } from "@/lib/domain/aiEvidence";
 import { fileLinkKind } from "@/lib/domain/aiFiles";
 import { scopeLineOf } from "@/lib/domain/aiAnswer";
+import { writesArabic } from "@/lib/domain/ai";
 import { calloutOf, columnKind, FIGURE_UNITS, groupedFigure, sectionOf, TABLE_FOLD_AT, withoutCalloutMark, withoutLeadingEmoji, type SectionKind } from "@/lib/domain/aiTable";
 import { downloadXlsx } from "@/components/ExportButton";
 
@@ -98,7 +99,7 @@ function withoutMark(nodes: ReactNode, strip: (text: string) => string = without
  *  when it holds an Arabic word at all (an "MO 4471 — مستني صاج" line reads
  *  as the Arabic it is), else left to right — an English line in an Arabic
  *  answer keeps its full stop at its end. */
-const itemDirection = (text: string): "rtl" | "ltr" => (/[؀-ۿݐ-ݿ]/.test(text) ? "rtl" : "ltr");
+const itemDirection = (text: string): "rtl" | "ltr" => (writesArabic(text) ? "rtl" : "ltr");
 
 /** The elements that make a list item more than a line of text. */
 const BLOCKS = new Set(["p", "ul", "ol", "pre", "table", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "hr"]);
@@ -137,7 +138,7 @@ function SectionHead({ level, node, children }: { level: "major" | "minor"; node
   const Tag = level === "major" ? "h3" : "h4";
   return (
     <Tag dir="auto" className={`ai-h ai-h-${level} ai-tone-${tone}`}>
-      <span className="ai-h-icon" aria-hidden><Icon size={level === "major" ? 15 : 13} /></span>
+      <span className="tone-tile tone-tile-soft ai-h-icon" aria-hidden><Icon size={level === "major" ? 15 : 13} /></span>
       <span className="min-w-0">{words}</span>
     </Tag>
   );
@@ -210,6 +211,11 @@ function MdTable({ node, children, dir }: { node: HastNode | undefined; children
   );
 }
 
+/** A Markdown heading of the level given, as a section's head. */
+const heading = (level: "major" | "minor"): Components["h1"] => function Heading({ children, node }) {
+  return <SectionHead level={level} node={node as HastNode | undefined}>{children}</SectionHead>;
+};
+
 function components(streaming: boolean, ownFiles: boolean): Components {
   return {
     p: ({ children, node }) => {
@@ -239,7 +245,7 @@ function components(streaming: boolean, ownFiles: boolean): Components {
       const label = labelOf(item);
       if (label === null) {
         // a line of text reads in its own direction, its bullet on the list's side
-        const inline = !(item?.children ?? []).some((c) => c.tagName !== undefined && BLOCKS.has(c.tagName));
+        const inline = !(item?.children ?? []).some((c) => BLOCKS.has(c.tagName ?? ""));
         return <li>{inline ? <span dir={itemDirection(textOf(item))}>{children}</span> : children}</li>;
       }
       // the bold label becomes the row's first cell; what follows it, its value
@@ -252,10 +258,10 @@ function components(streaming: boolean, ownFiles: boolean): Components {
         </li>
       );
     },
-    h1: ({ children, node }) => <SectionHead level="major" node={node as HastNode | undefined}>{children}</SectionHead>,
-    h2: ({ children, node }) => <SectionHead level="major" node={node as HastNode | undefined}>{children}</SectionHead>,
-    h3: ({ children, node }) => <SectionHead level="minor" node={node as HastNode | undefined}>{children}</SectionHead>,
-    h4: ({ children, node }) => <SectionHead level="minor" node={node as HastNode | undefined}>{children}</SectionHead>,
+    h1: heading("major"),
+    h2: heading("major"),
+    h3: heading("minor"),
+    h4: heading("minor"),
     // a link into the app is a link; anything outside is shown, not followed —
     // a row of data could tell the model to put figures in an address. A file
     // the assistant made is a button in the chat it was made in; shared onward
