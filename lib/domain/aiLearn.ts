@@ -11,7 +11,7 @@
 //   routing    "Auto": the model picked per question — the cheap one for a
 //              plain look-up, the strongest for analysis, plans and files.
 
-import { AI_MODELS, aiModel } from "./ai";
+import { AI_MODELS } from "./ai";
 
 // ---------------------------------------------------------------- memory
 
@@ -77,8 +77,9 @@ export function checkFeedback(rating: unknown, note: unknown, turn: unknown): { 
 /** The question and the answer of the n-th answer in a chat's turns — and,
  *  when the screen's count is off (an answer that failed before it was kept
  *  still shows there), the answer whose words the screen sent, the latest
- *  first. `turn` is the answer's place as kept. */
-export function answerOf(turns: readonly { role: "user" | "assistant"; text: string }[], n: number, head?: string): { turn: number; question: string; answer: string } | null {
+ *  first. `turn` is the answer's place as kept; `model` the one that wrote
+ *  it, where the turns carry it. */
+export function answerOf(turns: readonly { role: "user" | "assistant"; text: string; model?: string }[], n: number, head?: string): { turn: number; question: string; answer: string; model?: string } | null {
   const answers: { turn: number; at: number }[] = [];
   turns.forEach((t, i) => {
     if (t.role === "assistant") answers.push({ turn: answers.length, at: i });
@@ -88,7 +89,7 @@ export function answerOf(turns: readonly { role: "user" | "assistant"; text: str
   const hit = answers[n] && matches(answers[n]) ? answers[n] : lead ? [...answers].reverse().find(matches) : undefined;
   if (!hit) return null;
   const q = [...turns.slice(0, hit.at)].reverse().find((t) => t.role === "user");
-  return { turn: hit.turn, question: (q?.text ?? "").slice(0, AI_FEEDBACK_LIMITS.question), answer: turns[hit.at].text.slice(0, AI_FEEDBACK_LIMITS.answer) };
+  return { turn: hit.turn, question: (q?.text ?? "").slice(0, AI_FEEDBACK_LIMITS.question), answer: turns[hit.at].text.slice(0, AI_FEEDBACK_LIMITS.answer), model: turns[hit.at].model };
 }
 
 /** A playbook rule drafted from a correction — the owner edits it before saving. */
@@ -152,16 +153,16 @@ export function parseVerdict(text: string): { pass: boolean; why: string } {
 
 // ---------------------------------------------------------------- routing
 
-/** The model setting that picks a model per question. */
-export const AI_AUTO_MODEL = "auto";
-
-/** The chat's model setting as a person reads it. */
-export function modelChoiceLabel(id: string): string {
-  return id === AI_AUTO_MODEL ? "Auto" : aiModel(id).label;
-}
-
-/** The models from the cheapest up — the ladder a chat never steps down. */
+/** The models from the cheapest up. */
 export const BY_STRENGTH = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] as const;
+
+/** What Auto gives each model, as the owner's settings say it (routeModel,
+ *  and depthPlan for Quick and Deep). */
+export const AUTO_MODEL_USE: Record<(typeof BY_STRENGTH)[number], string> = {
+  "claude-haiku-5-5": "Every Quick question, and short look-ups on Standard — a figure, a list, a status.",
+  "claude-sonnet-5-5": "Changes to prepare and longer questions on Standard.",
+  "claude-opus-5-5": "Every Deep question, and analysis, plans, reports and attached files on Standard.",
+};
 
 /** Analysis, plans, comparisons, reviews, forecasts — the strongest model. */
 const DEEP = /\b(why|analy[sz]e|analysis|compare|comparison|plan|schedule|simulat\w*|scenario|optimi[sz]\w*|recommend\w*|suggest\w*|forecast\w*|predict\w*|review|report|root cause|bottleneck|what if|strategy|improve\w*|trend\w*)\b|ليه|ليش|لماذا|حلل|تحليل|قارن|مقارن|خط[ةه]|جدول[ةه]|سيناريو|اقترح|اقتراح|توقع|مراجع[ةه]|تقرير|سبب|ازاي احسن|تحسين|اتجاه|عنق الزجاج/i;
@@ -170,19 +171,15 @@ const WRITE = /\b(record|add|create|change|update|set|assign|move|delete|remove|
 
 /** The model for one question under "Auto": the strongest for analysis, a
  *  file or a long question; the middle one for a change to prepare; the
- *  cheapest for a short look-up. Within a chat it never steps down — its
- *  earlier answers were the stronger model's. */
-export function routeModel(question: string, o: { files?: number; current?: string | null } = {}): string {
+ *  cheapest for a short look-up. Each question is routed on its own — a chat
+ *  moved up for a hard question comes back down for the next look-up (its
+ *  earlier answers stay in the history whatever model wrote them). */
+export function routeModel(question: string, o: { files?: number } = {}): string {
   const q = question.trim();
   let pick: (typeof BY_STRENGTH)[number];
   if ((o.files ?? 0) > 0 || q.length > 280 || DEEP.test(q)) pick = "claude-opus-5-5";
   else if (WRITE.test(q) || q.length > 120) pick = "claude-sonnet-5-5";
   else pick = "claude-haiku-5-5";
-  // a chat on a model outside the ladder (one offered once, or added later) keeps it
-  if (o.current && !(BY_STRENGTH as readonly string[]).includes(o.current) && AI_MODELS.some((m) => m.id === o.current)) return o.current;
-  const was = BY_STRENGTH.indexOf((o.current ?? "") as (typeof BY_STRENGTH)[number]);
-  const now = BY_STRENGTH.indexOf(pick);
-  const chosen = was > now ? BY_STRENGTH[was] : pick;
   // a model the app no longer offers falls back to the strongest
-  return AI_MODELS.some((m) => m.id === chosen) ? chosen : AI_MODELS[0].id;
+  return AI_MODELS.some((m) => m.id === pick) ? pick : AI_MODELS[0].id;
 }

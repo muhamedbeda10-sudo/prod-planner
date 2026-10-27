@@ -16,7 +16,7 @@ import { reserveChatTurn } from "@/lib/server/ai/chatReservation";
 import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
 import { factoryDayISO } from "@/lib/domain/dates";
 import type { WorkingScenario } from "@/lib/server/ai/tools/types";
-import { AI_AUTO_MODEL, memoryNote, routeModel } from "@/lib/domain/aiLearn";
+import { memoryNote, routeModel } from "@/lib/domain/aiLearn";
 import { DEFAULT_AI_DEPTH, depthPlan, isAiDepth } from "@/lib/domain/aiAnswer";
 import { compactHistory } from "@/lib/domain/aiHistory";
 import { memoriesOf } from "@/lib/server/ai/memory";
@@ -29,11 +29,12 @@ import { memoriesOf } from "@/lib/server/ai/memory";
 //   {type:"text", delta}    — a piece of the answer
 //   {type:"action", action} — a change it prepared (or made), as its card
 //   {type:"done", costUsd, totalMs?, error?}
-// The question may say how deep to go (depth: quick | standard | deep —
-// lib/domain/aiAnswer depthPlan), inside the owner's settings. A right-click's
-// "Ask AI" (explain: true) only explains what is on the screen, and sends the
-// page's own text unread by the person — so it gets the reading tools alone:
-// nothing written on the page can have it prepare a change.
+// The chat is on Auto: each question takes the model it needs, and may say
+// how deep to go (depth: quick | standard | deep — lib/domain/aiAnswer
+// depthPlan), which sets its effort. A right-click's "Ask AI" (explain: true)
+// only explains what is on the screen, and sends the page's own text unread
+// by the person — so it gets the reading tools alone: nothing written on the
+// page can have it prepare a change.
 // The chat's working what-if (keep_scenario) is read off the conversation
 // and handed to the tools. The access and the month's caps are checked before
 // anything is spent; the question, the answer and what it cost are kept when
@@ -94,23 +95,15 @@ export async function POST(request: Request) {
   const files = await questionFiles(user.id, fileIds, existing?.id ?? null);
   if (!files.ok) return fail(400, files.error);
 
-  // "Auto": the model this question needs — never weaker than the chat's own;
-  // then the depth the person asked for (Quick / Standard / Deep) on top
-  const auto = settings.model === AI_AUTO_MODEL;
-  const routed = auto ? routeModel(question, { files: files.files.length, current: existing?.model }) : settings.model;
+  // Auto: the model this question needs, then the depth the person asked for
+  // (Quick / Standard / Deep) — its effort and calls. Each question on its own
+  // model: a chat moved up for one hard question comes back down after it.
+  const routed = routeModel(question, { files: files.files.length });
   const depth = isAiDepth(body.depth) ? body.depth : DEFAULT_AI_DEPTH;
-  const { model, effort, maxCalls } = depthPlan(depth, { model: settings.model, effort: settings.effort, maxCalls: settings.maxCalls, auto, routed, current: existing?.model ?? null });
+  const { model, effort, maxCalls } = depthPlan(depth, { routed, maxCalls: settings.maxCalls });
   const reservation = await reserveChatTurn({ userId: user.id, question, model, existing, now: new Date(), runningWindowMs: (maxDuration + 30) * 1000 });
   if (!reservation) return fail(429, "One question at a time — wait for the answer, then ask again.");
-  const { usage } = reservation;
-  let { conversation } = reservation;
-  if (conversation.model !== model) {
-    // stepped up to a stronger model (Auto, or a Deep question): the chat goes on with it
-    [conversation] = await Promise.all([
-      prisma.aiConversation.update({ where: { id: conversation.id }, data: { model } }),
-      prisma.aiUsage.update({ where: { id: usage.id }, data: { model } }),
-    ]);
-  }
+  const { usage, conversation } = reservation;
   try {
     await linkFiles(user.id, fileIds, conversation.id);
     // logged before the first call, finished after the last — what the caps
@@ -156,12 +149,12 @@ export async function POST(request: Request) {
             open = false; // the page went away — the answer is still kept
           }
         };
-        send({ type: "start", conversationId: conversation.id, title: conversation.title, model: conversation.model });
+        send({ type: "start", conversationId: conversation.id, title: conversation.title, model });
 
         const startedAt = Date.now();
         const result = await ask({
           apiKey,
-          model: conversation.model,
+          model,
           // the person's Stop (the connection closed) stops the model too;
           // what was written is kept, and the question's turn is freed
           signal: request.signal,
@@ -198,7 +191,7 @@ export async function POST(request: Request) {
           return null;
         });
         if (!result) return;
-        const cost = costUsd(conversation.model, result.tokens);
+        const cost = costUsd(model, result.tokens);
         // a question the model refused to read keeps its files as lines only —
         // a file it cannot take would be refused again with every later question
         const names = new Map(files.files.map((f) => [f.id, f.name]));

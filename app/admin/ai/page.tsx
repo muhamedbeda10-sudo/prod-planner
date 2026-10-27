@@ -61,7 +61,6 @@ export default async function AiAdminPage() {
         keyReadable: !s.apiKeyEnc || apiKeyOf(s) !== null,
         keyHint: s.apiKeyHint,
         enabled: s.enabled,
-        chat: { model: s.model, effort: s.effort },
         auto: { model: s.autoModel, effort: s.autoEffort },
         plantCap: s.monthlyUsd,
         plantDayCap: s.dailyUsd,

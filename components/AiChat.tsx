@@ -60,8 +60,7 @@ interface Turn extends AiChatTurn {
   remembered?: string[];
   /** The steps of a live answer — each look-up or change with its timing. */
   steps?: AiStep[];
-  /** The model that wrote it, how long it took and what it cost — a live answer's. */
-  model?: string;
+  /** How long it took and what it cost — a live answer's. */
   ms?: number;
   cost?: number;
   /** Stopped by the person before it finished. */
