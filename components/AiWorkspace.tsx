@@ -2,9 +2,10 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, BookOpen, Bot, Brain, Clock, History, Maximize2, MessageSquare, Minimize2, Plus, Settings, X } from "lucide-react";
+import { ArrowLeft, BookOpen, Bot, Brain, Clock, History, Maximize2, MessageSquare, Minimize2, PanelLeftClose, PanelLeftOpen, Plus, Settings, X } from "lucide-react";
 import { AiChat, type ChatListApi } from "@/components/AiChat";
 import { ChatList } from "@/components/AiChatList";
+import { AiSidebar, useAiSide } from "@/components/AiSidebar";
 import { AutomationsView } from "@/components/AutomationsView";
 import { PlaybookView } from "@/components/PlaybookView";
 import { MemoryDialog } from "@/components/AiFeedback";
@@ -17,7 +18,8 @@ import type { AiActionView } from "@/lib/domain/aiActions";
 
 // The assistant's window: one head — who it is, what is open, and the
 // buttons (new chat, chats, playbook, automations, settings, expand, close) —
-// over the chat. In the large window a sidebar lists the chats beside it; in
+// over the chat. In the large window a sidebar lists the chats beside it —
+// dragged wider or narrower, hidden and shown from the head (AiSidebar); in
 // the corner card and on a phone the chats open in place of the chat, with
 // Back. The chat stays mounted through every switch (an answer being written
 // keeps coming, a typed question is kept); the automations read again each
@@ -97,6 +99,7 @@ export function AiWorkspace({
   // the corner card or on a phone) is the chat there
   const view: AiView = large && asked === "history" ? "chat" : asked;
   const [chat, setChat] = useState<ChatListApi | null>(null);
+  const [side, setSide] = useAiSide();
 
   // the chat's list of conversations, read fresh when it first shows
   const chatData = useTabData(loadAiChat, hasChat && visible && !initialChat, false);
@@ -134,7 +137,20 @@ export function AiWorkspace({
         <div className="flex items-center gap-0.5 shrink-0">
           {hasChat && <HeadBtn icon={Plus} label="New chat" onClick={newChat} disabled={!!chat?.busy} />}
           {hasChat && !large && <HeadBtn icon={History} label="Chats" on={view === "history"} onClick={() => onView(view === "history" ? "chat" : "history")} />}
-          {hasChat && large && <HeadBtn icon={History} label="Chats" on={view === "chat"} onClick={() => onView("chat")} />}
+          {hasChat && large && (
+            <HeadBtn
+              icon={side.open ? PanelLeftClose : PanelLeftOpen}
+              label="List of chats"
+              on={side.open}
+              // from the playbook or the automations it brings the chat back, with its list
+              onClick={() => {
+                if (view !== "chat") {
+                  onView("chat");
+                  if (!side.open) setSide({ ...side, open: true });
+                } else setSide({ ...side, open: !side.open });
+              }}
+            />
+          )}
           {hasChat && <HeadBtn icon={Brain} label="What it remembers about you" on={memoryOpen} onClick={() => setMemoryOpen(true)} />}
           {tabs.includes("playbook") && <HeadBtn icon={BookOpen} label="Playbook" on={view === "playbook"} onClick={() => onView("playbook")} />}
           {tabs.includes("automations") && <HeadBtn icon={Clock} label="Automations" on={view === "automations"} onClick={() => onView("automations")} />}
@@ -152,9 +168,9 @@ export function AiWorkspace({
 
       <div className="flex flex-1 min-h-0">
         {large && (
-          <aside key="side" className="ai-side">
+          <AiSidebar key="side" side={side} onChange={setSide}>
             <ChatList api={chat} onPick={pickChat} onNew={newChat} />
-          </aside>
+          </AiSidebar>
         )}
 
         <div key="main" className="flex-1 min-w-0 relative">
@@ -187,7 +203,7 @@ export function AiWorkspace({
             <div role="tabpanel" hidden={view !== "automations"} className="absolute inset-0">
               <Pane title="Automations" onBack={back}>
                 {automations.data ? (
-                  <div className={large ? "max-w-3xl mx-auto" : ""}>
+                  <div className={large ? "max-w-4xl mx-auto" : ""}>
                     <AutomationsView
                       automations={automations.data.automations}
                       canTime={automations.data.allowed}
@@ -206,7 +222,7 @@ export function AiWorkspace({
             <div role="tabpanel" hidden={view !== "playbook"} className="absolute inset-0">
               <Pane title="Playbook" onBack={back}>
                 {playbook.data ? (
-                  <div className={large ? "max-w-3xl mx-auto" : ""}>
+                  <div className={large ? "max-w-4xl mx-auto" : ""}>
                     <PlaybookView rules={playbook.data.rules} canEdit={playbook.data.canEdit} left={playbook.data.left} onChanged={playbook.reload} />
                   </div>
                 ) : (

@@ -207,6 +207,7 @@ describe("automations 2.0 — tasks, escalation, ready-made ones", () => {
     const base = { name: "x", trigger: "condition", conditionSql: 'SELECT 1 AS key', action: "notify", message: "m" } as const;
     expect(checkAutomation({ ...base, escalateAfterMin: 120 })).toMatchObject({ ok: true, config: { escalateAfterMin: 120 } });
     expect(checkAutomation({ ...base, escalateAfterMin: 7 })).toMatchObject({ ok: false });
+    expect(checkAutomation({ ...base, escalateAfterMin: 0 })).toMatchObject({ ok: true, config: { escalateAfterMin: null } });
     expect(checkAutomation({ name: "x", trigger: "schedule", times: ["07:00"], action: "notify", message: "m", escalateAfterMin: 120 })).toMatchObject({ ok: true, config: { escalateAfterMin: null } });
   });
   it("fills a task from its template — an event's blanks and a row's columns", () => {
@@ -253,5 +254,9 @@ describe("automations 2.0 — tasks, escalation, ready-made ones", () => {
   it("offers ready-made automations that are all valid as they stand", () => {
     for (const r of AUTOMATION_RECIPES) expect(checkAutomation(r.config), r.id).toMatchObject({ ok: true });
     expect(new Set(AUTOMATION_RECIPES.map((r) => r.id)).size).toBe(AUTOMATION_RECIPES.length);
+  });
+  it("refuses a configuration of the wrong shape instead of throwing", () => {
+    expect(checkAutomation({ name: "x", trigger: "event", eventTypes: "order.held" as unknown as string[], action: "notify", message: "m" })).toMatchObject({ ok: false });
+    expect(checkAutomation({ name: "x", trigger: "schedule", times: "07:00" as unknown as string[], action: "notify", message: "m" })).toMatchObject({ ok: false });
   });
 });

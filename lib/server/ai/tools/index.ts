@@ -21,6 +21,7 @@ import { CALENDAR_TOOLS } from "./calendar";
 import { WORKER_TOOLS } from "./workers";
 import { MACHINE_LIST_TOOLS } from "./machineList";
 import { AUTOMATION_TOOLS } from "./automations";
+import { AUTOMATION_IDEA_TOOLS } from "./automationIdeas";
 import { TASK_TOOLS } from "./tasks";
 import { CHAT_TOOLS } from "./chat";
 import { PLAYBOOK_TOOLS } from "./playbook";
@@ -33,7 +34,6 @@ import { SETUP_TOOLS } from "./setup";
 import { USER_TOOLS } from "./users";
 import { IMPORT_TOOLS } from "./imports";
 import { MEMORY_TOOLS } from "./memory";
-import { WATCHDOG_TOOLS } from "./watchdog";
 import { makeSheetTool } from "./sheets";
 import type { AiTool, AnyReadTool, AnyWriteTool } from "./types";
 
@@ -62,6 +62,7 @@ export const AI_TOOLS: readonly AiTool[] = [
   ...WORKER_TOOLS,
   ...MACHINE_LIST_TOOLS,
   ...AUTOMATION_TOOLS,
+  ...AUTOMATION_IDEA_TOOLS,
   ...TASK_TOOLS,
   ...CHAT_TOOLS,
   ...PLAYBOOK_TOOLS,
@@ -74,7 +75,6 @@ export const AI_TOOLS: readonly AiTool[] = [
   ...IMPORT_TOOLS,
   ...USER_TOOLS,
   ...MEMORY_TOOLS,
-  ...WATCHDOG_TOOLS,
   makeSheetTool,
 ];
 

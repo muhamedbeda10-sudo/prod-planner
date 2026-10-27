@@ -16,8 +16,6 @@ import { removeScheduler, setupScheduler, tickUrlFor } from "@/lib/server/automa
 import { AI_CHECK_LIMITS, checkAiCheck } from "@/lib/domain/aiLearn";
 import { savePlaybookEntry } from "@/lib/server/ai/playbook";
 import { runCheck, type CheckRun } from "@/lib/server/ai/checks";
-import { getWatchSettings, runWatch } from "@/lib/server/watchdog";
-import { cleanWatchOptions } from "@/lib/domain/watchdog";
 
 // The AI assistant's settings — the owner's alone, like Users & Permissions:
 // the Claude API key, who may use it and how much of the month's spend.
@@ -335,42 +333,5 @@ export async function runAiCheck(id: number): Promise<CheckRun> {
   } catch (e) {
     console.error("AI: a quality check failed", e);
     return { ok: false, error: apiErrorText(e) };
-  }
-}
-
-// ---- The watchdog ----
-
-/** Its switch, time, thresholds, who gets the report and the AI's lines. */
-export async function saveWatchSettings(fd: FormData): Promise<AiActionResult> {
-  const g = await requireOwner();
-  if (g.error) return { ok: false, error: g.error };
-  const at = String(fd.get("at") ?? "");
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(at)) return { ok: false, error: "The time is HH:MM." };
-  const o = cleanWatchOptions({
-    dropPct: fd.get("dropPct"), absencePct: fd.get("absencePct"), chronicDays: fd.get("chronicDays"), chronicOf: fd.get("chronicOf"), lateMinDays: fd.get("lateMinDays"),
-  });
-  if ("error" in o) return { ok: false, error: o.error };
-  const wanted = String(fd.get("recipients") ?? "").split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0);
-  const recipientIds = wanted.length ? (await prisma.user.findMany({ where: { id: { in: wanted }, active: true }, select: { id: true } })).map((u) => u.id) : [];
-  await getWatchSettings();
-  await prisma.watchSettings.update({
-    where: { id: 1 },
-    data: { enabled: fd.get("enabled") === "1", at, ...o, recipientIds, aiSummary: fd.get("aiSummary") === "1", updatedBy: g.user!.name },
-  });
-  revalidatePath("/admin/ai");
-  return { ok: true, message: "Watchdog saved." };
-}
-
-/** Run it now: what is new today is sent at once. */
-export async function runWatchNow(): Promise<AiActionResult> {
-  const g = await requireOwner();
-  if (g.error) return { ok: false, error: g.error };
-  try {
-    const r = await runWatch({ now: new Date(), force: true });
-    revalidatePath("/admin/ai");
-    return { ok: true, message: r.found ? `${r.found} new finding${r.found === 1 ? "" : "s"} — sent to the inbox.` : "Nothing new to report right now." };
-  } catch (e) {
-    console.error("watchdog: a run from the settings failed", e);
-    return { ok: false, error: e instanceof Error ? e.message : "The run failed." };
   }
 }

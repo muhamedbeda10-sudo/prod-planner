@@ -1525,6 +1525,10 @@ model AiSettings {
   // again when it comes off).
   actionsPaused     Boolean   @default(false)
   automationsPaused Boolean   @default(false)
+  // The week (its Saturday) the assistant last suggested automation ideas
+  // for — or "week@day" while that day's try runs or after it failed: it
+  // claims the weekly round, so a busy scheduler never runs it twice.
+  ideasWeekISO      String?
   // The automations' clock: the database's own scheduler (pg_cron) calls the
   // tick endpoint every minute with a secret; its SHA-256 is kept here, the
   // secret itself only in that job. lastTickAt: the last tick that ran —
@@ -1794,47 +1798,6 @@ model AiCheck {
   @@index([active])
 }
 
-// The watchdog's settings (one row): each working morning from `at`, it looks
-// for orders heading late, output under its usual and absence, and sends what
-// it found to the people listed (none: the owner). lastRunISO claims the day,
-// so a busy scheduler never runs it twice.
-model WatchSettings {
-  id           Int       @id @default(1)
-  enabled      Boolean   @default(true)
-  at           String    @default("07:15")
-  dropPct      Int       @default(30)
-  absencePct   Int       @default(15)
-  chronicDays  Int       @default(3)
-  chronicOf    Int       @default(5)
-  lateMinDays  Int       @default(1)
-  recipientIds Int[]     @default([])
-  // a few lines by the assistant over the findings (Haiku; costs a little)
-  aiSummary    Boolean   @default(true)
-  lastRunISO   String?
-  lastRunAt    DateTime?
-  lastFindings Int       @default(0)
-  updatedBy    String?
-  updatedAt    DateTime  @updatedAt
-}
-
-// One thing the watchdog found on one day — kept so a re-run says nothing
-// twice, the assistant can read the week's findings, and a finding turned
-// into a task remembers it.
-model WatchFinding {
-  id        Int      @id @default(autoincrement())
-  dayISO    String
-  key       String
-  kind      String // late | output | absence
-  severity  String // critical | warn
-  title     String
-  detail    String
-  mo        String?
-  createdAt DateTime @default(now())
-
-  @@unique([dayISO, key])
-  @@index([createdAt])
-}
-
 // What the assistant sends a person: a report an automation wrote, a message
 // someone's automation sends them, a suggestion with its changes ready to
 // approve (actionIds — the AiAction rows, the person's own to decide). The
@@ -2095,6 +2058,22 @@ model Automation {
 
   @@index([enabled, nextRunAt])
   @@index([ownerId])
+}
+
+// An automation the assistant suggested from what happens in the plant — a
+// few each week, shown above the ready-made ones. It goes to nobody until a
+// person turns it on; dismissedBy: the people who set it aside.
+model AutomationIdea {
+  id          Int      @id @default(autoincrement())
+  title       String
+  desc        String
+  why         String
+  group       String // Quality | Production | Orders | Reports | Tasks
+  config      Json // the automation, checked (lib/domain/automations.ts)
+  dismissedBy Int[]    @default([])
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 // What happened in the app, as its own actions record it once done — who did

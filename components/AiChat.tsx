@@ -597,7 +597,7 @@ export function AiChat({
           {turns.length === 0 ? (
             <Welcome tabId={tab?.id ?? null} tabLabel={tab?.label ?? null} actions={quick} onAction={(a) => void runQuick(a)} onPick={(q) => (canAsk ? askQuestion(q) : setInput(q))} disabled={!canAsk || busy} compact={compact} />
           ) : (
-            <div className="max-w-3xl mx-auto space-y-6">
+            <div className={`${compact ? "max-w-3xl" : "max-w-4xl"} mx-auto space-y-6`}>
               {turns.map((t, i) =>
                 t.role === "user" ? (
                   <div key={i} className="ai-turn flex flex-col items-end gap-1.5">
@@ -650,7 +650,7 @@ export function AiChat({
             askQuestion(input);
           }}
         >
-          <div className="max-w-3xl mx-auto">
+          <div className={`${compact ? "max-w-3xl" : "max-w-4xl"} mx-auto`}>
             <div className="mb-1.5 flex justify-end">
               <div className="seg seg-sm ai-depth" role="group" aria-label="How deep to work the next question">
                 {AI_DEPTHS.map((d) => {
