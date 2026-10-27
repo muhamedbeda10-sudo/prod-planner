@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-assistant-tiles-select-chats",
+    dateISO: "2026-10-27",
+    title: "The assistant: tiles for what it can do, and pick several chats to pin or delete",
+    where: "AI assistant",
+    href: "/ai",
+    body: "A new chat opens on tiles for what the assistant can do: Build a report, Draw a chart, Excel file, What if…, Plan to a deadline, Morning briefing, What looks wrong, Why did it change?, Scan a paper sheet and New automation. Click one and fill a short form — the topic, the period or dates, the department, the line, and whether you want a summary, an Excel file, a PDF or charts — and the assistant gets the question written for you. The ✨ button beside the paperclip brings the same tiles back in the middle of a chat. The list of chats is redesigned: each chat shows when it was last used, and Select (or Ctrl + click on a chat) ticks several at once — Shift + click ticks a run — to pin or delete them together, after one confirmation that names them.",
+  },
+  {
     id: "2026-10-27-assistant-excel-sheet-per-value-totals",
     dateISO: "2026-10-27",
     title: "The assistant's Excel files: a sheet per thickness, only the filled rows, and a Total row on each sheet",

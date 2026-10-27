@@ -2,15 +2,16 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, BookOpen, Bot, Brain, Clock, History, Maximize2, MessageSquare, Minimize2, Plus, Search, Settings, X } from "lucide-react";
-import { AiChat, ConvRow, GROUPS, groupOf, type ChatListApi } from "@/components/AiChat";
+import { ArrowLeft, BookOpen, Bot, Brain, Clock, History, Maximize2, MessageSquare, Minimize2, Plus, Settings, X } from "lucide-react";
+import { AiChat, type ChatListApi } from "@/components/AiChat";
+import { ChatList } from "@/components/AiChatList";
 import { AutomationsView } from "@/components/AutomationsView";
 import { PlaybookView } from "@/components/PlaybookView";
 import { MemoryDialog } from "@/components/AiFeedback";
 import type { AiFeedbackRating } from "@/lib/domain/aiLearn";
-import { EmptyState } from "@/components/primitives";
 import { loadAiChat, loadAutomations, loadPlaybook } from "@/app/ai/panel/actions";
 import { Loading, useTabData } from "@/components/useTabData";
+import { usePhone } from "@/components/floatWindow";
 import type { AiChatTurn } from "@/lib/domain/ai";
 import type { AiActionView } from "@/lib/domain/aiActions";
 
@@ -51,7 +52,7 @@ export function HeadBtn({ icon: Icon, label, on = false, badge = 0, onClick, dis
 }
 
 /** A pane that is not the chat: Back to it, its name, then its content. */
-export function Pane({ title, onBack, children, padded = true }: { title: string; onBack: () => void; children: ReactNode; padded?: boolean }) {
+export function Pane({ title, onBack, children, padded = true, scroll = true }: { title: string; onBack: () => void; children: ReactNode; padded?: boolean; /** Off: the content scrolls its own parts. */ scroll?: boolean }) {
   return (
     <div className="flex flex-col h-full">
       <div className="ai-pane-head">
@@ -60,34 +61,14 @@ export function Pane({ title, onBack, children, padded = true }: { title: string
         </button>
         <span className="text-sm font-semibold">{title}</span>
       </div>
-      <div className={`flex-1 min-h-0 overflow-y-auto ${padded ? "p-3 md:p-4" : ""}`}>{children}</div>
+      <div className={`flex-1 min-h-0 ${scroll ? "overflow-y-auto" : "flex flex-col"} ${padded ? "p-3 md:p-4" : ""}`}>{children}</div>
     </div>
-  );
-}
-
-/** The chats, grouped by day, the open one lit. */
-function ChatList({ api, q, onPick }: { api: ChatListApi | null; q: string; onPick: (id: number) => void }) {
-  if (!api) return <Loading error={null} onRetry={() => undefined} />;
-  const needle = q.trim().toLowerCase();
-  const convs = needle ? api.convs.filter((c) => c.title.toLowerCase().includes(needle)) : api.convs;
-  if (convs.length === 0) return <EmptyState compact icon={Bot} title={needle ? "No chat matches" : "No chats yet"} hint={needle ? undefined : "Your questions will be kept here."} />;
-  const now = new Date();
-  const grouped = GROUPS.map((g) => ({ g, items: convs.filter((c) => groupOf(c.updatedAt, now, c.pinned) === g) })).filter((x) => x.items.length > 0);
-  return (
-    <nav className="px-1.5 pb-2">
-      {grouped.map(({ g, items }) => (
-        <div key={g}>
-          <div className="conv-group">{g}</div>
-          {items.map((c) => <ConvRow key={c.id} c={c} active={c.id === api.activeId} busy={api.busy} onOpen={() => onPick(c.id)} onRemove={() => api.remove(c)} onRename={() => api.rename(c)} onPin={() => api.pin(c)} />)}
-        </div>
-      ))}
-    </nav>
   );
 }
 
 export function AiWorkspace({
   tabs,
-  view,
+  view: asked,
   onView,
   layout,
   visible = true,
@@ -112,8 +93,10 @@ export function AiWorkspace({
 }) {
   const hasChat = tabs.includes("chat");
   const large = layout === "large";
+  // the large window has the chats beside the chat: "history" (left open in
+  // the corner card or on a phone) is the chat there
+  const view: AiView = large && asked === "history" ? "chat" : asked;
   const [chat, setChat] = useState<ChatListApi | null>(null);
-  const [q, setQ] = useState("");
 
   // the chat's list of conversations, read fresh when it first shows
   const chatData = useTabData(loadAiChat, hasChat && visible && !initialChat, false);
@@ -143,7 +126,7 @@ export function AiWorkspace({
     <div className="flex flex-col h-full min-h-0 bg-surface">
       {memoryOpen && <MemoryDialog onClose={() => setMemoryOpen(false)} />}
       <header className="ai-pop-head">
-        <span className="ai-pop-logo"><Bot size={18} aria-hidden /></span>
+        <span className={`ai-pop-logo ${chat?.busy ? "ai-pop-logo-busy" : ""}`}><Bot size={18} aria-hidden /></span>
         <div className="min-w-0 flex-1">
           <div className="ai-pop-title">AI assistant</div>
           <div className="ai-pop-sub" dir="auto">{subtitle}</div>
@@ -170,18 +153,7 @@ export function AiWorkspace({
       <div className="flex flex-1 min-h-0">
         {large && (
           <aside key="side" className="ai-side">
-            <div className="flex items-center gap-2 px-3 pt-3 pb-1 shrink-0">
-              <History size={15} className="text-muted" aria-hidden />
-              <span className="text-sm font-semibold flex-1">Chats</span>
-              <button type="button" className="icon-btn" onClick={newChat} disabled={!!chat?.busy} title="New chat" aria-label="New chat"><Plus size={15} /></button>
-            </div>
-            <div className="relative p-2 shrink-0">
-              <Search size={14} className="absolute start-4 top-1/2 -translate-y-1/2 text-muted pointer-events-none" aria-hidden />
-              <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chats…" aria-label="Search chats" className="w-full ps-8 pe-2 py-1.5 text-sm" />
-            </div>
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              <ChatList api={chat} q={q} onPick={pickChat} />
-            </div>
+            <ChatList api={chat} onPick={pickChat} onNew={newChat} />
           </aside>
         )}
 
@@ -196,7 +168,7 @@ export function AiWorkspace({
                   initial={chatInit.open}
                   compact={!large}
                   syncUrl={syncUrl}
-                  listInside={false}
+                  canAutomate={tabs.includes("automations")}
                   onApi={setChat}
                 />
               ) : (
@@ -206,15 +178,8 @@ export function AiWorkspace({
           )}
           {hasChat && visited.has("history") && (
             <div role="tabpanel" hidden={view !== "history"} className="absolute inset-0">
-              <Pane title="Chats" onBack={back} padded={false}>
-                <div className="p-2 border-b flex gap-2">
-                  <div className="relative flex-1">
-                    <Search size={14} className="absolute start-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" aria-hidden />
-                    <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chats…" aria-label="Search chats" className="w-full ps-8 pe-2 py-1.5 text-sm" />
-                  </div>
-                  <button type="button" className="btn btn-primary btn-sm" onClick={newChat} disabled={!!chat?.busy}><Plus size={14} aria-hidden /> New chat</button>
-                </div>
-                <ChatList api={chat} q={q} onPick={pickChat} />
+              <Pane title="Chats" onBack={back} padded={false} scroll={false}>
+                <ChatList api={chat} onPick={pickChat} onNew={newChat} heading={false} />
               </Pane>
             </div>
           )}
@@ -256,12 +221,14 @@ export function AiWorkspace({
   );
 }
 
-/** The /ai page: the large window laid into the page, the chat in the address bar. */
+/** The /ai page: the large window laid into the page, the chat in the address
+ *  bar — on a phone the chats open in place of the chat, as in the window. */
 export function AiWorkspacePage({ tabs, initialChat, settings }: { tabs: AiTab[]; initialChat: InitialChat; settings: boolean }) {
   const [view, setView] = useState<AiView>("chat");
+  const phone = usePhone();
   return (
     <div className="h-[calc(100dvh-5.5rem)] md:h-[calc(100dvh-6.5rem)] min-h-[420px] bg-surface border rounded-xl overflow-hidden shadow-[var(--shadow-sm)]">
-      <AiWorkspace tabs={tabs} view={view} onView={setView} layout="large" isOwner={settings} initialChat={initialChat} syncUrl />
+      <AiWorkspace tabs={tabs} view={view} onView={setView} layout={phone ? "phone" : "large"} isOwner={settings} initialChat={initialChat} syncUrl />
     </div>
   );
 }

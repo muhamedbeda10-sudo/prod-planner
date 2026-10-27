@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The chat's own actions (app/ai/actions.ts): an answer shared on — to
 // colleagues' inboxes under the inbox's own key and caps, kept as one's own
-// report, or posted in the team chat as text — and a chat renamed or pinned,
-// only one's own.
+// report, or posted in the team chat as text — and chats renamed, pinned or
+// deleted, only one's own.
 
 const h = vi.hoisted(() => ({
-  prisma: { aiConversation: { updateMany: vi.fn() }, user: { findMany: vi.fn() }, chatGroup: { findMany: vi.fn() }, aiInboxItem: { count: vi.fn() } },
+  prisma: { aiConversation: { updateMany: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn() }, aiFeedback: { deleteMany: vi.fn() }, $executeRaw: vi.fn(), $transaction: vi.fn(), user: { findMany: vi.fn() }, chatGroup: { findMany: vi.fn() }, aiInboxItem: { count: vi.fn() } },
   me: { id: 7, name: "Sara" },
   perms: new Set<string>(),
   hidden: new Set<string>(),
@@ -26,7 +26,7 @@ vi.mock("@/lib/server/ai/memory", () => ({ forgetFor: vi.fn(), memoriesOf: vi.fn
 vi.mock("@/lib/server/inbox", () => ({ deliverToInbox: h.deliver }));
 vi.mock("@/app/chat/actions", () => ({ sendChatMessage: h.send }));
 
-import { loadAiShareTargets, pinAiConversation, renameAiConversation, shareAiAnswer, shareAiAnswerToChat } from "@/app/ai/actions";
+import { deleteAiConversations, loadAiShareTargets, pinAiConversations, renameAiConversation, shareAiAnswer, shareAiAnswerToChat } from "@/app/ai/actions";
 
 const answer = "**Ten late** ([Source](#ai-source-a)).\n\n```followups\n[\"Why?\"]\n```";
 
@@ -93,9 +93,31 @@ describe("a chat's name and place", () => {
     expect(h.prisma.aiConversation.updateMany).toHaveBeenCalledWith({ where: { id: 4, userId: 7 }, data: { title: "Welding week 43" } });
     expect((await renameAiConversation(4, "x".repeat(81))).ok).toBe(false);
     expect((await renameAiConversation(4, "  ")).ok).toBe(false);
-    expect(await pinAiConversation(4, true)).toEqual({ ok: true });
-    expect(h.prisma.aiConversation.updateMany).toHaveBeenLastCalledWith({ where: { id: 4, userId: 7 }, data: { pinned: true } });
-    h.prisma.aiConversation.updateMany.mockResolvedValue({ count: 0 });
-    expect((await pinAiConversation(9, true)).ok).toBe(false);
+  });
+
+  it("pins only the person's own chats, without touching when they were last used", async () => {
+    h.prisma.aiConversation.findMany.mockResolvedValue([{ id: 4 }]);
+    h.prisma.$executeRaw.mockResolvedValue(1);
+    expect(await pinAiConversations([4, 9, 4, -1], true)).toEqual({ ok: true, changed: [4] });
+    expect(h.prisma.aiConversation.findMany).toHaveBeenCalledWith({ where: { id: { in: [4, 9] }, userId: 7 }, select: { id: true } });
+    // raw SQL: a client update would stamp updatedAt
+    expect(h.prisma.aiConversation.updateMany).not.toHaveBeenCalled();
+    const [, pinned, ids, userId] = h.prisma.$executeRaw.mock.calls[0];
+    expect([pinned, ids, userId]).toEqual([true, [4], 7]);
+    expect((await pinAiConversations([], true)).ok).toBe(false);
+  });
+
+  it("deletes only the person's own chats, with their ratings, together", async () => {
+    h.prisma.aiConversation.findMany.mockResolvedValue([{ id: 4 }]);
+    h.prisma.$transaction.mockResolvedValue([]);
+    expect(await deleteAiConversations([4, 9])).toEqual({ ok: true, deleted: [4] });
+    expect(h.prisma.aiConversation.deleteMany).toHaveBeenCalledWith({ where: { id: { in: [4] }, userId: 7 } });
+    expect(h.prisma.aiFeedback.deleteMany).toHaveBeenCalledWith({ where: { conversationId: { in: [4] } } });
+    expect(h.prisma.$transaction).toHaveBeenCalledTimes(1);
+    // none of theirs: nothing deleted
+    h.prisma.aiConversation.findMany.mockResolvedValue([]);
+    expect(await deleteAiConversations([9])).toEqual({ ok: true, deleted: [] });
+    expect(h.prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect((await deleteAiConversations("1,2" as unknown as number[])).ok).toBe(false);
   });
 });
