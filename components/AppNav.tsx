@@ -566,7 +566,7 @@ export function AppNav({
               onOpen={inboxPanel && !isActive("/inbox") ? inboxPanel.toggle : undefined}
             />
             {/* chat is a glance, not a destination — an icon here with its
-                unread badge, opening a panel over whatever page you are on */}
+                unread badge, docking the chat beside whatever page you are on */}
             <div className={canSee("/chat") ? "hidden md:block" : "hidden"}>
               <ChatDock me={{ id: user.id, name: user.name }} unread={unreadChat} />
             </div>

@@ -253,7 +253,7 @@ function ProductTotals({ d }: { d: OdooDashboardData }) {
   const data = d.totals.map((t) => ({ series: t.series, qty: t.qty, label: `${fmt(t.qty)}  ·  ${t.share}%` }));
   return (
     <ChartScroller minWidth={360} height={Math.max(160, 30 + data.length * 36)}>
-      <BarChart className="viz-rows" data={data} layout="vertical" margin={{ top: 4, right: 84, left: 8, bottom: 0 }} barCategoryGap="35%">
+      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 84, left: 8, bottom: 0 }} barCategoryGap="35%">
         <CartesianGrid horizontal={false} />
         <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="series" tick={{ fontSize: 12 }} width={100} axisLine={false} tickLine={false} />

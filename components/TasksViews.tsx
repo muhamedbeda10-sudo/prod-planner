@@ -10,6 +10,7 @@ import {
   type DueFilter, type PersonLoad, type TaskFilter,
 } from "@/lib/domain/tasks";
 import type { TaskSummary } from "@/lib/server/tasks";
+import { Meter } from "@/components/Meter";
 
 // The Tasks tab's other ways of looking at the same tasks — a board by
 // state, a month by due day, the team's load — and the pieces they share:
@@ -72,13 +73,10 @@ export function peopleOf(list: readonly TaskSummary[]): { id: number; name: stri
 /** A checklist's progress: a thin bar and "2/5". */
 export function StepsBar({ steps, wide = false }: { steps: { done: number; total: number }; wide?: boolean }) {
   if (steps.total === 0) return null;
-  const pct = Math.round((steps.done / steps.total) * 100);
   return (
     <span className={`inline-flex items-center gap-1.5 ${wide ? "w-full" : ""}`} title={`${steps.done} of ${steps.total} steps ticked`}>
       {!wide && <ListChecks size={12} className="text-muted shrink-0" aria-hidden />}
-      <span className={`task-progress ${wide ? "flex-1" : "w-14"}`} role="progressbar" aria-valuenow={steps.done} aria-valuemin={0} aria-valuemax={steps.total} aria-label="Steps ticked">
-        <span className={steps.done === steps.total ? "task-progress-full" : ""} style={{ width: `${pct}%` }} />
-      </span>
+      <Meter value={steps.done / steps.total} color={steps.done === steps.total ? "var(--ok-fg)" : "var(--brand)"} size="sm" label="Steps ticked" valueText={`${steps.done} of ${steps.total}`} className={wide ? "flex-1" : "w-14"} />
       <span className="tabnum text-[11px] text-muted">{steps.done}/{steps.total}</span>
     </span>
   );
@@ -273,7 +271,7 @@ export function TaskTeam({ team, onPick, owner }: { team: PersonLoad[]; onPick: 
                 </td>
                 <td className="px-3 py-1.5 text-end tabnum font-semibold">{p.open}</td>
                 <td className="px-3 py-1.5 hidden sm:table-cell">
-                  <span className="task-progress w-full block" aria-hidden><span className={p.late > 0 ? "task-progress-late" : ""} style={{ width: `${Math.round((p.open / most) * 100)}%` }} /></span>
+                  <Meter value={p.open / most} color={p.late > 0 ? "var(--bad-fg)" : "var(--brand)"} size="sm" />
                 </td>
                 <td className={`px-3 py-1.5 text-end tabnum ${p.late > 0 ? "text-bad-fg font-bold" : "text-muted"}`}>{p.late}</td>
                 <td className="px-3 py-1.5 text-end tabnum">{p.dueThisWeek}</td>

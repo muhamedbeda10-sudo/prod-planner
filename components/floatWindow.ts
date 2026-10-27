@@ -2,12 +2,12 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 
-// What the app's floating windows — the AI assistant and the inbox — share:
+// What the app's floating windows — the AI assistant, the inbox and the chat — share:
 // their state kept in this browser's storage (so each reopens as it was left,
 // after a reload too), the phone test, one window open at a time, and the
 // page behind a large window (or a phone's whole-screen one) held still.
 
-export type FloatName = "ai" | "inbox";
+export type FloatName = "ai" | "inbox" | "chat";
 
 const PHONE = "(max-width: 767px)";
 
@@ -99,7 +99,9 @@ export function useCloseWhenOtherOpens(name: FloatName, open: boolean, close: ()
 // when none does, whichever order they open and close in
 const holding = new Set<FloatName>();
 
-/** While `modal`, the page behind does not scroll; Escape closes the window while it shows. */
+/** While `modal` (expanded, or on a phone), the page behind does not scroll
+ *  and Escape closes the window from anywhere; docked beside the page it
+ *  takes Escape from inside itself only (FloatDock). */
 export function useWindowChrome(name: FloatName, shown: boolean, modal: boolean, close: () => void): void {
   useEffect(() => {
     if (modal) holding.add(name);
@@ -112,11 +114,11 @@ export function useWindowChrome(name: FloatName, shown: boolean, modal: boolean,
   }, [name, modal]);
 
   useEffect(() => {
-    if (!shown) return;
+    if (!shown || !modal) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [shown, close]);
+  }, [shown, modal, close]);
 }

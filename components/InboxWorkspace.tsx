@@ -5,7 +5,7 @@ import { Bell, FileText, Inbox, ListChecks, Maximize2, Minimize2, X } from "luci
 import { Tabs } from "@/components/primitives";
 import { DevicePush, InboxView } from "@/components/InboxView";
 import { TasksView } from "@/components/TasksView";
-import { HeadBtn } from "@/components/AiWorkspace";
+import { FloatHead, HeadBtn } from "@/components/FloatDock";
 import { INBOX_CHANGED, onInboxHead } from "@/components/InboxBell";
 import { Loading, useTabData } from "@/components/useTabData";
 import { loadInbox } from "@/app/ai/panel/actions";
@@ -93,20 +93,13 @@ export function InboxWorkspace({
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-surface">
-      <header className="ai-pop-head">
-        <span className="ai-pop-logo"><Inbox size={18} aria-hidden /></span>
-        <div className="min-w-0 flex-1">
-          <div className="ai-pop-title">Inbox</div>
-          <div className="ai-pop-sub">{subtitle}</div>
-        </div>
-        <div className="flex items-center gap-0.5 shrink-0">
+      <FloatHead icon={Inbox} title="Inbox" sub={subtitle}>
           <DevicePush compact />
           {onExpand && layout !== "phone" && layout !== "page" && (
-            <HeadBtn icon={large ? Minimize2 : Maximize2} label={large ? "Back to the corner" : "Expand"} onClick={() => onExpand(!large)} />
+            <HeadBtn icon={large ? Minimize2 : Maximize2} label={large ? "Back to the side" : "Expand"} onClick={() => onExpand(!large)} />
           )}
           {onClose && <HeadBtn icon={X} label="Close" onClick={onClose} />}
-        </div>
-      </header>
+      </FloatHead>
       <Tabs
         label="The inbox"
         className={`shrink-0 ${wide ? "px-2" : ""}`}

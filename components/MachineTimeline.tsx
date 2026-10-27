@@ -37,7 +37,7 @@ function Block({ b, horizon, word }: { b: TimelineBlock; horizon: number; word: 
   ].join(" · ");
   return (
     <span
-      className={`fx-fill absolute top-1 bottom-1 rounded-[3px] border overflow-hidden text-[10px] leading-none flex items-center px-1 ${tone}`}
+      className={`absolute top-1 bottom-1 rounded-[3px] border overflow-hidden text-[10px] leading-none flex items-center px-1 ${tone}`}
       style={{ left: `${left}%`, width: `${Math.min(width, 100 - left)}%` }}
       title={title}
     >

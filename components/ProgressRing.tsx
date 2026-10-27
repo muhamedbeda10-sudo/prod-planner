@@ -2,6 +2,7 @@
    The ring is a plain SVG donut: radius 15.9155 gives a circumference of
    exactly 100, so the dash array IS the percentage and no maths leaks into the
    markup. Rotated -90° so it fills clockwise from twelve o'clock. */
+import { Meter } from "@/components/Meter";
 
 const R = 15.9155; // circumference = 2πR = 100
 
@@ -31,7 +32,7 @@ export function Ring({ pct, size = 40 }: { pct: number | null; size?: number }) 
           strokeLinecap="round"
           strokeDasharray={`${f * 100} 100`}
           transform="rotate(-90 20 20)"
-          className="transition-all duration-500"
+          className="transition-[stroke-dasharray] duration-500"
         />
       )}
       <text
@@ -96,9 +97,7 @@ export function RingCard({
               {pct === null ? "—" : `${Math.round(f * 100)}%`}
             </span>
           </div>
-          <div className="kpi-bar mt-1.5" aria-hidden>
-            <span style={{ width: `${f * 100}%`, background: complete ? "var(--ok-fg)" : `var(--kpi-progress, ${ringColor(pct)})` }} />
-          </div>
+          <Meter value={f} color={complete ? "var(--ok-fg)" : `var(--kpi-progress, ${ringColor(pct)})`} size="sm" className="mt-1.5" />
           <div className="kpi-detail mt-1 flex items-baseline gap-2 text-[10.5px] tabnum whitespace-nowrap min-w-0">
             <span className="text-muted truncate min-w-0"><b className="text-foreground font-semibold">{done.toLocaleString("en-US")}</b> / {need.toLocaleString("en-US")} {note}</span>
             <span className="ms-auto shrink-0 font-semibold" style={{ color: leftColor }}>{leftText}</span>
@@ -125,9 +124,7 @@ export function RingCard({
             <b className="text-foreground font-semibold">{done.toLocaleString("en-US")}</b> / {need.toLocaleString("en-US")}
           </span>
         </div>
-        <div className="kpi-bar mt-1.5" aria-hidden>
-          <span style={{ width: `${f * 100}%`, background: ringColor(pct) }} />
-        </div>
+        <Meter value={f} color={ringColor(pct)} size="sm" className="mt-1.5" />
         <div className="mt-1 text-[10.5px] font-semibold tabnum" style={{ color: leftColor }}>{leftText}</div>
       </div>
       </>

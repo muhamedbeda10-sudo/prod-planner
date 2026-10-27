@@ -3,7 +3,8 @@
 import { useRef } from "react";
 
 // The edge a panel is dragged by to make it wider or narrower — the chats
-// beside the assistant's chat (AiSidebar) and the docked assistant (AiPanel).
+// beside the assistant's chat (AiSidebar) and a docked window, the assistant
+// or the inbox (FloatDock).
 // The arrow keys move it a step, Home and End to its narrowest and widest,
 // and a double-click puts it back to its usual width. While a drag goes the
 // owner draws the width `onMove` is given; it is kept once the drag ends.

@@ -9,6 +9,7 @@
   --r-sm: 6px; /* controls, badges, buttons */
   --r-md: 8px; /* cards, table frames, toolbars */
   --r-lg: 12px; /* dialogs, panels */
+  --bar-h: 49px; /* the green bar (components/AppNav): h-12 and its border */
   --fs-label: 11px; /* table headers, filter labels — uppercase, tracked */
   --fs-sm: 12px; /* secondary text, badges */
   --fs-body: 13px; /* table body and controls — the floor for data */
@@ -434,9 +435,6 @@ main table thead th.on-tint {
   color: var(--foreground) !important;
 }
 
-main table tbody tr {
-  transition: background-color 0.12s ease;
-}
 /* only rows with data cells light up: a row of only <th> is a header inside
    the body (the weekly plan's per-day heads) and keeps its own colour */
 main table tbody tr:has(> td):hover {
@@ -915,7 +913,6 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   /* whichever row the pointer happens to rest on when Print is pressed must not
      come out tinted — in dark mode that row printed as a black band */
   main table tbody tr:hover { background-color: transparent !important; }
-  main table tbody tr:hover > td:first-child { box-shadow: none !important; }
 }
 
 /* ---- sticky table headers: long tables scroll inside their card and the
@@ -1051,8 +1048,14 @@ main select.ctl { padding-right: 1.6rem; }
 .kpi-code { font-size: var(--fs-body); font-weight: 750; letter-spacing: 0.02em; color: var(--foreground); }
 .kpi-name { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi-value { font-size: var(--fs-kpi); line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-.kpi-bar { height: 4px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
-.kpi-bar > span { display: block; height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+/* ---- the one progress bar (components/Meter.tsx): the fill in
+   --meter-color on a track that is a tint of the same hue, in both themes;
+   an optional tick (.meter-mark) where it should be ---- */
+.meter { --meter-color: var(--viz-1); position: relative; display: block; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--meter-color) 16%, var(--surface)); }
+.meter-sm { height: 4px; }
+.meter-lg { height: 10px; }
+.meter-fill { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: inherit; background: var(--meter-color); }
+.meter-mark { position: absolute; top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: var(--foreground); }
 
 /* ---- dense ERP tables ----
    Rows sit on the card colour (zebra on every other), so a sticky cell can
@@ -1326,9 +1329,11 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
   input, select, textarea { font-size: max(16px, 1em); }
 }
 
-/* ---- the AI assistant (components/AiPanel): a round button in the corner,
-   docked down the right of the screen (the app moves left of it), the whole
-   screen when expanded or on a phone ---- */
+/* ---- the AI assistant (components/AiPanel), the inbox (InboxPanel) and the
+   chat (ChatDock): the assistant's round button in the corner; any of the
+   windows docked down the
+   right of the screen (the app moves left of it — components/FloatDock), the
+   whole screen when expanded or on a phone ---- */
 .ai-fab {
   position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 29; /* under the bar (z-30): the phone drawer covers it */
   width: 56px; height: 56px; border-radius: 999px; display: grid; place-items: center;
@@ -1340,18 +1345,17 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 .ai-fab:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
 .ai-overlay { position: fixed; inset: 0; z-index: 36; background: rgb(0 0 0 / 0.45); backdrop-filter: blur(2px); animation: drawerfade 0.18s ease-out; }
 .ai-pop { position: fixed; z-index: 37; display: flex; flex-direction: column; background: var(--surface); color: var(--foreground); overflow: hidden; }
-.ai-pop-compact {
-  right: 20px; bottom: 20px; width: 480px; max-width: calc(100vw - 40px); height: 740px; max-height: calc(100dvh - 40px);
-  border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 24px 64px rgb(0 0 0 / 0.3), var(--shadow-lg);
-  animation: aipop-in 0.18s ease-out;
-}
-/* docked: top to bottom on the right, as wide as dragged (--ai-dock, set
-   on <html> with html.ai-docked). From a laptop up the app moves left of it;
-   on a narrower tablet it lies over the page's right */
+/* docked (the assistant, the inbox or the chat): top to bottom on the right, as wide as dragged (--ai-dock, set
+   on <html> with html.ai-docked). From a laptop up the app moves left of it */
 .ai-pop-dock {
   top: 0; right: 0; bottom: 0; width: var(--ai-dock);
   border-left: 1px solid var(--border); box-shadow: var(--shadow-lg);
   animation: aidock-in 0.18s ease-out;
+}
+/* on a narrower tablet it lies over the page under the bar, so the bar's
+   buttons (the bell that opens and closes the inbox) stay in reach */
+@media screen and (max-width: 1023px) {
+  .ai-pop-dock { top: var(--bar-h); border-top: 1px solid var(--border); border-top-left-radius: var(--r-lg); }
 }
 /* --ai-dock-push: how far what is pinned to the right of the page moves left with it */
 @media screen and (min-width: 1024px) {
@@ -1369,7 +1373,7 @@ html.ai-resizing body { cursor: col-resize; user-select: none; }
 }
 .ai-pop-phone { inset: 0; }
 @keyframes aipop-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .ai-pop-compact, .ai-pop-dock, .ai-pop-large, .ai-overlay { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ai-pop-dock, .ai-pop-large, .ai-overlay { animation: none; } }
 html.ai-modal { overflow: hidden; }
 .ai-pop-head { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
 .ai-pop-logo { position: relative; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--brand-fill) 55%, var(--viz-2))); color: #fff; flex-shrink: 0; }
@@ -1394,8 +1398,6 @@ html.ai-modal { overflow: hidden; }
 .resize-handle:focus-visible::after { background: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 30%, transparent); }
 @media (prefers-reduced-motion: reduce) { .ai-side { transition: none; } }
 .ai-pane-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-/* the inbox's card hangs under the bell, on the right, below the bar */
-.ai-pop-compact.inbox-pop { top: 56px; bottom: auto; height: min(720px, calc(100dvh - 76px)); max-height: none; }
 
 /* ---- the inbox's popups (components/InboxAlerts): under the bell until read ----
    over the page, under the bar (z-30) — its menus, the phone drawer and the
@@ -1440,10 +1442,6 @@ html.ai-modal { overflow: hidden; }
 .task-event { display: flex; gap: 10px; align-items: flex-start; padding: 7px 10px; border-radius: 10px; background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
 .task-event-icon { width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border); flex-shrink: 0; }
 /* ---- Tasks 2.0: a checklist's progress, the board, the month ---- */
-.task-progress { display: inline-block; height: 5px; border-radius: 999px; background: var(--surface-3); overflow: hidden; vertical-align: middle; }
-.task-progress > span { display: block; height: 100%; border-radius: inherit; background: var(--brand); transition: width 0.2s ease; }
-.task-progress > span.task-progress-full { background: var(--ok-fg); }
-.task-progress > span.task-progress-late { background: var(--bad-fg); }
 .task-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(15rem, 1fr); gap: var(--sp-2); overflow-x: auto; padding-bottom: var(--sp-1); min-height: 0; }
 .task-col { display: flex; flex-direction: column; min-height: 0; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--border); border-top: 3px solid var(--col-tone, var(--border-strong)); }
 .task-col-todo { --col-tone: var(--border-strong); }
@@ -1511,8 +1509,8 @@ html.ai-modal { overflow: hidden; }
 .empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 44px 16px; gap: 4px; }
 .empty-compact { padding: 28px 12px; }
 .empty-icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 6px;
-  /* the assistant's floating tile: the brand green and its hover step both carry white in both themes; it floats twice, then rests */
-  color: #fff; background: linear-gradient(135deg, var(--brand-fill), var(--brand-dark)); box-shadow: var(--shadow-md); animation: ai-float 4s ease-in-out 2; }
+  /* the assistant's tile: the brand green and its hover step both carry white in both themes; still, so a page full of empty lists costs nothing */
+  color: #fff; background: linear-gradient(135deg, var(--brand-fill), var(--brand-dark)); box-shadow: var(--shadow-md); }
 .empty-compact .empty-icon { width: 36px; height: 36px; border-radius: 10px; }
 .empty-title { font-size: var(--fs-md); font-weight: 700; color: var(--foreground); }
 .empty-hint { font-size: var(--fs-sm); color: var(--muted); max-width: 32rem; line-height: 1.5; }
@@ -1642,8 +1640,8 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 
 /* the empty chat: who it is, what it can do (the tiles), then questions to start from */
 .ai-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
-.ai-hero-logo { position: relative; width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; flex-shrink: 0; color: #fff; background: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--brand-fill) 45%, var(--viz-2))); box-shadow: var(--shadow-md); animation: ai-float 4s ease-in-out infinite; }
-.ai-hero-logo::after { content: ""; position: absolute; inset: -5px; border-radius: 19px; border: 2px solid color-mix(in srgb, var(--brand) 40%, transparent); animation: ai-ring 2.6s ease-out infinite; }
+.ai-hero-logo { position: relative; width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; flex-shrink: 0; color: #fff; background: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--brand-fill) 45%, var(--viz-2))); box-shadow: var(--shadow-md); animation: ai-float 4s ease-in-out 2; }
+.ai-hero-logo::after { content: ""; position: absolute; inset: -5px; border-radius: 19px; border: 2px solid color-mix(in srgb, var(--brand) 40%, transparent); animation: ai-ring 2.6s ease-out 2 forwards; }
 .ai-hero-title { font-size: var(--fs-title); font-weight: 750; line-height: 1.2; margin: 0; text-transform: none; letter-spacing: -0.01em; color: var(--foreground); background: linear-gradient(90deg, var(--brand-ink), color-mix(in srgb, var(--brand-ink) 50%, var(--info-fg))); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .ai-welcome-label { display: flex; align-items: center; gap: 6px; margin: 18px 0 8px; font-size: var(--fs-label); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .ai-welcome > .ai-hero + .ai-welcome-label { margin-top: 0; }
@@ -1790,10 +1788,6 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 /* a few figures side by side even on a phone (a popup's three counts) */
 .kpi-strip.kpi-strip-tight { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
 .kpi-strip.kpi-strip-tight > .kpi { padding: 10px 12px; }
-.kpi-meter { height: 4px; margin-top: 8px; border-radius: 999px; background: color-mix(in srgb, var(--brand) 14%, transparent); overflow: hidden; }
-.kpi-meter > span { display: block; height: 100%; border-radius: 999px; background: var(--brand); }
-.kpi-meter-over { background: color-mix(in srgb, var(--bad-fg) 14%, transparent); }
-.kpi-meter-over > span { background: var(--bad-fg); }
 
 /* ---- a choice among a few: option cards, a segmented control, chips ---- */
 .option { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; }
@@ -1923,10 +1917,6 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 
 @keyframes fx-pop { 0% { opacity: 0; transform: scale(0.5); } 70% { opacity: 1; transform: scale(1.15); } 100% { transform: none; } }
 @keyframes fx-press { 0% { transform: scale(0.92); } 60% { transform: scale(1.04); } 100% { transform: none; } }
-/* a fill revealed from its start (a bar, a meter, a timeline block) or from its foot (a column) — no stretching, so rounded ends and text stay true */
-@keyframes fx-reveal-x { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
-@keyframes fx-reveal-y { from { clip-path: inset(100% 0 0 0); } to { clip-path: inset(0 0 0 0); } }
-@keyframes fx-ring { from { box-shadow: 0 0 0 7px transparent; } }
 @keyframes fx-sweep { from { background-position: 160% 0; } to { background-position: -60% 0; } }
 
 /* the icon square that wears a tone — the brand green when it has none;
@@ -1954,7 +1944,6 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 10px 5px 6px; border-radius: 10px;
   font-size: var(--fs-md); font-weight: 650; line-height: 1.25; text-align: start; color: var(--foreground); cursor: pointer;
   transition: background-color 0.16s ease, transform 0.12s ease;
-  animation: ai-rise 0.3s ease-out backwards;
 }
 /* the light that sweeps across a row (and an assistant tile) under the pointer */
 .ai-cap::after, .menu-row::after {
@@ -1974,25 +1963,23 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 .drawer-link { gap: 12px; width: calc(100% - 16px); margin: 0 8px 1px; padding: 6px 12px 6px 8px; font-size: 15px; font-weight: 600; }
 .menu-row-on .menu-row-hint { color: color-mix(in srgb, var(--brand-ink) 70%, var(--muted)); }
 
-/* one after another: assistant tiles, menu rows, KPIs, section cards */
-.ai-cap:nth-child(2), .menu-row:nth-child(2), .kpi:nth-child(2), .section-card:nth-child(2), .chart-card:nth-child(2), .inbox-item:nth-child(2), .col-card:nth-child(2) { animation-delay: 0.03s; }
-.ai-cap:nth-child(3), .menu-row:nth-child(3), .kpi:nth-child(3), .section-card:nth-child(3), .chart-card:nth-child(3), .inbox-item:nth-child(3), .col-card:nth-child(3) { animation-delay: 0.06s; }
-.ai-cap:nth-child(4), .menu-row:nth-child(4), .kpi:nth-child(4), .section-card:nth-child(4), .chart-card:nth-child(4), .inbox-item:nth-child(4), .col-card:nth-child(4) { animation-delay: 0.09s; }
-.ai-cap:nth-child(5), .menu-row:nth-child(5), .kpi:nth-child(5), .section-card:nth-child(5), .chart-card:nth-child(5), .inbox-item:nth-child(5), .col-card:nth-child(5) { animation-delay: 0.12s; }
-.ai-cap:nth-child(6), .menu-row:nth-child(6), .kpi:nth-child(6), .section-card:nth-child(6), .chart-card:nth-child(6), .inbox-item:nth-child(6), .col-card:nth-child(6) { animation-delay: 0.15s; }
-.ai-cap:nth-child(7), .menu-row:nth-child(7), .kpi:nth-child(7), .section-card:nth-child(7), .chart-card:nth-child(7), .inbox-item:nth-child(7), .col-card:nth-child(7) { animation-delay: 0.18s; }
-.ai-cap:nth-child(8), .menu-row:nth-child(8), .kpi:nth-child(8), .section-card:nth-child(8), .chart-card:nth-child(8), .inbox-item:nth-child(8), .col-card:nth-child(8) { animation-delay: 0.21s; }
-.ai-cap:nth-child(n+9), .menu-row:nth-child(n+9), .kpi:nth-child(n+9), .section-card:nth-child(n+9), .chart-card:nth-child(n+9), .inbox-item:nth-child(n+9), .col-card:nth-child(n+9) { animation-delay: 0.24s; }
+/* one after another: assistant tiles, KPIs, section and chart cards */
+.ai-cap:nth-child(2), .kpi:nth-child(2), .section-card:nth-child(2), .chart-card:nth-child(2), .col-card:nth-child(2) { animation-delay: 0.02s; }
+.ai-cap:nth-child(3), .kpi:nth-child(3), .section-card:nth-child(3), .chart-card:nth-child(3), .col-card:nth-child(3) { animation-delay: 0.04s; }
+.ai-cap:nth-child(4), .kpi:nth-child(4), .section-card:nth-child(4), .chart-card:nth-child(4), .col-card:nth-child(4) { animation-delay: 0.06s; }
+.ai-cap:nth-child(5), .kpi:nth-child(5), .section-card:nth-child(5), .chart-card:nth-child(5), .col-card:nth-child(5) { animation-delay: 0.08s; }
+.ai-cap:nth-child(6), .kpi:nth-child(6), .section-card:nth-child(6), .chart-card:nth-child(6), .col-card:nth-child(6) { animation-delay: 0.1s; }
+.ai-cap:nth-child(n+7), .kpi:nth-child(n+7), .section-card:nth-child(n+7), .chart-card:nth-child(n+7), .col-card:nth-child(n+7) { animation-delay: 0.12s; }
 
 /* a menu's surface — the bar's panels and a right-click — glows from its corner */
 .menu-panel { background-image: radial-gradient(120% 60% at 0% 0%, color-mix(in srgb, var(--brand) 7%, transparent), transparent 60%); }
 
 /* ---- section cards rise in; their icon is a tile of the card's own tone (components/primitives) ---- */
-.section-card { animation: ai-rise 0.35s ease-out backwards; }
+.section-card { animation: ai-rise 0.25s ease-out backwards; }
 
-/* ---- KPI cards: a brand glow from the corner, a lift under the pointer, their bars filling in ---- */
+/* ---- KPI cards: a brand glow from the corner, a lift under the pointer ---- */
 .kpi {
-  animation: ai-rise 0.35s ease-out backwards;
+  animation: ai-rise 0.25s ease-out backwards;
   background-image: radial-gradient(130% 90% at 0% 0%, color-mix(in srgb, var(--brand) 8%, transparent), transparent 60%);
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
 }
@@ -2030,56 +2017,45 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 
 /* ---- counts pop in; empty states, dialogs and the login card rise in ---- */
 .count-badge { animation: fx-pop 0.35s ease-out backwards; }
-.empty { animation: ai-rise 0.4s ease-out backwards; }
+.empty { animation: ai-rise 0.25s ease-out backwards; }
 /* the one dimmed backdrop behind a dialog */
-.modal-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.45); backdrop-filter: blur(2px); animation: drawerfade 0.18s ease-out; }
+.modal-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.45); animation: drawerfade 0.18s ease-out; }
 .modal-box { animation: aipop-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .login-card { animation: ai-rise 0.45s ease-out backwards; }
 
-/* ============ the same motion on tables, charts and filters ============ */
+/* ============ the same motion on charts, bars and filters ============
+   Kept light on purpose: nothing moves inside a table (its rows stay as
+   they were — the data must show at once and scroll smoothly), and every
+   entrance below is opacity or a transform, which the GPU runs on its own.
+   Chart marks and SVG never animate: on SVG that work is the main thread's. */
 
-/* The pointer's answers — instant, so they hold under reduced motion and on paper */
-/* the row under the pointer: a brand bar on its left edge, as a focused row has (.erp-table) */
-main table tbody tr:hover > td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
-/* a chart's card lights; the bar or slice under the pointer stays bright while the rest of its series steps back */
+/* The pointer's answers — instant */
 @media (hover: hover) {
-  main .chart-card:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); box-shadow: 0 8px 22px color-mix(in srgb, var(--brand) 12%, transparent), var(--shadow-sm); }
+  /* a chart's card lights; the bar or slice under the pointer stays bright while the rest of its series steps back */
+  main .chart-card:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); }
   .recharts-bar-rectangles:hover .recharts-bar-rectangle:not(:hover),
   .recharts-pie:hover .recharts-pie-sector:not(:hover) { opacity: 0.45; }
 }
-.chart-card { background-image: radial-gradient(120% 70% at 0% 0%, color-mix(in srgb, var(--brand) 6%, transparent), transparent 55%); }
 
 /* Motion — on screen only, and only for those who have not asked for less:
-   paper always gets the finished table, chart and bar */
-@media screen and (prefers-reduced-motion: no-preference) {
-  /* a table's body fades in — the body, not each row, so sorting or editing a row never blinks it */
-  main table tbody { animation: drawerfade 0.35s ease-out backwards; }
-  /* charts: the card rises in; columns rise from their foot, sideways bars
-     (.viz-rows), lines and areas draw from the left, a pie opens. Each
-     series' group animates, not each bar, so a resize never replays it */
-  .chart-card { animation: ai-rise 0.35s ease-out backwards; transition: border-color 0.18s ease, box-shadow 0.18s ease; }
-  .recharts-bar-rectangles, .fx-fill-up { animation: fx-reveal-y 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s backwards; }
-  .viz-rows .recharts-bar-rectangles, .recharts-line, .recharts-line-dots, .recharts-area,
-  .kpi-bar > span, .kpi-meter > span, .task-progress > span, .fx-fill { animation: fx-reveal-x 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s backwards; }
-  .recharts-pie { transform-box: fill-box; transform-origin: center; animation: aipop-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
-  .recharts-active-dot circle { transform-box: fill-box; transform-origin: center; animation: fx-pop 0.3s ease-out; }
-  .chart-tip, .recharts-default-tooltip { animation: aipop-in 0.16s ease-out; }
-  /* filters: the bar, the date range and a notice rise in; an active filter
-     springs on and its ✕ pops in, turning under the pointer */
-  .toolbar, .date-range, .alert, .inbox-item, .col-card { animation: ai-rise 0.3s ease-out backwards; }
-  .filter-chip-on > select.ctl, .chip-on { animation: fx-press 0.28s ease-out; }
-  .filter-chip-x { animation: fx-pop 0.25s ease-out backwards; transition: rotate 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.12s ease, color 0.12s ease; }
+   paper always gets the finished card and bar */
+@media screen and (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  .chart-card { animation: ai-rise 0.25s ease-out backwards; transition: border-color 0.18s ease; }
+  .chart-tip, .recharts-default-tooltip { animation: aipop-in 0.14s ease-out; }
+  /* an active filter springs on and its ✕ pops in, turning under the pointer */
+  .filter-chip-on > select.ctl, .chip-on { animation: fx-press 0.25s ease-out; }
+  .filter-chip-x { animation: fx-pop 0.2s ease-out backwards; transition: rotate 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.12s ease, color 0.12s ease; }
   .filter-chip-x:hover { rotate: 90deg; }
-  /* a box's focus ring settles in from wider — not in a table cell's editor, the fastest typing path */
-  main :is(input, select, textarea):focus:not(.cell-edit) { animation: fx-ring 0.35s ease-out; }
+  .alert, .col-card { animation: ai-rise 0.25s ease-out backwards; }
   .chip:active, .chip-toggle:active { transform: scale(0.95); }
   main input:is([type="checkbox"], [type="radio"]) { transition: transform 0.12s ease; }
   main input:is([type="checkbox"], [type="radio"]):active:not(:disabled) { transform: scale(0.85); }
 }
 
-@media (prefers-reduced-motion: reduce) {
+/* no decorative motion where it is not wanted (reduced motion) or not worth it (touch tablets on the floor) */
+@media (prefers-reduced-motion: reduce), (hover: none), (pointer: coarse) {
   .menu-row, .menu-row::after, .ai-cap::after, .nav-drop, .section-card, .kpi, .btn-primary,
-  .seg > .on, .segmented > button, .chip-toggle, .option-radio, .empty, .empty-icon, .count-badge,
+  .seg > .on, .segmented > button, .chip-toggle, .option-radio, .empty, .count-badge, .ai-cap, .alert, .col-card,
   .modal-scrim, .modal-box, .login-card { animation: none !important; }
   .tone-tile, .nav-tab, .nav-tab::after, .nav-tab > svg, .tab::after, .tab > svg, .btn, .btn svg, .icon-btn, .icon-btn svg,
   .switch-knob, .kpi, .option, .task-card, .menu-row { transition: none; }

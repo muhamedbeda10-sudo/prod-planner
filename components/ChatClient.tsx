@@ -166,6 +166,10 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
   // bubble sits near the bottom.
   const [menuFor, setMenuFor] = useState<{ id: number; x: number; y: number } | null>(null);
   const [armedDelete, setArmedDelete] = useState<number | null>(null);
+  const closeMenu = () => {
+    setMenuFor(null);
+    setArmedDelete(null);
+  };
 
   const MENU_W = 232;
   const MENU_H = 226;
@@ -266,8 +270,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
     setActive(t);
     setMessages([]);
     setError(null);
-    setMenuFor(null);
-    setArmedDelete(null);
+    closeMenu();
     setPinsOpen(false);
     setLeaveArmed(false);
     setReplyTarget(null);
@@ -402,8 +405,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
   }, [draft, pendingFiles, pendingMo, replyTarget, sending, appendUnique, touchContact]);
 
   const deleteForMe = useCallback(async (id: number) => {
-    setMenuFor(null);
-    setArmedDelete(null);
+    closeMenu();
     const res = await deleteChatMessageForMe(id);
     if (res.ok) setMessages((cur) => cur.filter((m) => m.id !== id));
   }, []);
@@ -512,9 +514,20 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
   );
 
   return (
-    <div className={`flex overflow-hidden bg-surface ${fill ? "h-full" : "h-[calc(100vh-7.75rem)] rounded-xl border shadow-md"}`}>
+    // one column or two by the chat's own width — the page, or the docked window
+    <div
+      className={`@container flex overflow-hidden bg-surface ${fill ? "h-full" : "h-[calc(100vh-7.75rem)] rounded-xl border shadow-md"}`}
+      // Escape shuts an open message menu or the group box first — taken
+      // here, so it does not also close the docked chat around them
+      onKeyDown={(e) => {
+        if (e.key !== "Escape" || (!menuFor && !groupModal)) return;
+        e.preventDefault();
+        closeMenu();
+        setGroupModal(null);
+      }}
+    >
       {/* ===== contacts ===== */}
-      <aside className={`${active !== null ? "hidden md:flex" : "flex"} w-full md:w-72 lg:w-80 shrink-0 flex-col border-r`}>
+      <aside className={`${active !== null ? "hidden @2xl:flex" : "flex"} w-full @2xl:w-72 @4xl:w-80 shrink-0 flex-col border-r`}>
         <div className="px-4 py-3 border-b flex items-center gap-2 bg-surface-2">
           <MessagesSquare size={17} className="text-brand-ink shrink-0" />
           <span className="font-bold text-sm">Chat</span>
@@ -579,7 +592,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
       </aside>
 
       {/* ===== thread ===== */}
-      <section className={`${active === null ? "hidden md:flex" : "flex"} flex-1 min-w-0 flex-col`}>
+      <section className={`${active === null ? "hidden @2xl:flex" : "flex"} flex-1 min-w-0 flex-col`}>
         {activeContact === null ? (
           <div className="flex-1 grid place-items-center p-8" style={{ background: "var(--chat-bg)" }}>
             <EmptyState icon={MessagesSquare} title="Pick a person or a group to start chatting" hint="Direct messages stay between the two of you; groups reach every member." />
@@ -590,7 +603,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
               <button
                 type="button"
                 onClick={() => setActive(null)}
-                className="md:hidden -ml-1 rounded-lg p-1.5 hover:bg-surface transition-colors"
+                className="@2xl:hidden -ml-1 rounded-lg p-1.5 hover:bg-surface transition-colors"
                 aria-label="Back to contacts"
               >
                 <ArrowLeft size={18} />
@@ -669,15 +682,14 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
 
             {/* messages over the textured backdrop */}
             <div
-              className="flex-1 overflow-y-auto px-3 md:px-6 py-3"
+              className="flex-1 overflow-y-auto px-3 @2xl:px-6 py-3"
               style={{
                 background: "var(--chat-bg)",
                 backgroundImage: "radial-gradient(var(--chat-dots) 1px, transparent 1.2px)",
                 backgroundSize: "18px 18px",
               }}
               onClick={() => {
-                setMenuFor(null);
-                setArmedDelete(null);
+                closeMenu();
               }}
               onScroll={() => setMenuFor(null)}
             >
@@ -696,7 +708,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                     )}
                     <div className={`group flex ${mine ? "justify-end" : "justify-start"} mb-1`}>
                       <div
-                        className={`relative max-w-[80%] md:max-w-[65%] rounded-xl px-2.5 pt-1.5 pb-1 text-sm shadow-sm transition-shadow ${
+                        className={`relative max-w-[80%] @2xl:max-w-[65%] rounded-xl px-2.5 pt-1.5 pb-1 text-sm shadow-sm transition-shadow ${
                           highlightId === m.id ? "ring-2 ring-brand" : ""
                         }`}
                         style={{
@@ -973,8 +985,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                 type="button"
                 aria-label="Close menu"
                 onClick={() => {
-                  setMenuFor(null);
-                  setArmedDelete(null);
+                  closeMenu();
                 }}
                 className="fixed inset-0 z-40 cursor-default"
               />

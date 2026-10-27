@@ -13,6 +13,7 @@ import { TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components
 import { SearchBox } from "@/components/FilterControls";
 import { BarChart3 } from "lucide-react";
 import Link from "next/link";
+import { Meter } from "@/components/Meter";
 
 // The CONSUMABLES tab: the store's log of what it hands out — to a
 // department (the limits count it there), naming who asked for it or
@@ -518,9 +519,7 @@ function HandoutSummary({ rows, periodLabel, onClose }: { rows: ConsumableIssueV
     </div>
   );
   const bar = (share: number) => (
-    <div className="h-1 rounded bg-surface-3 overflow-hidden mt-1" aria-hidden>
-      <span className="fx-fill block h-full rounded bg-[var(--info-fg)] opacity-70" style={{ width: `${Math.max(4, share * 100)}%` }} />
-    </div>
+    <Meter value={Math.max(0.04, share)} color="var(--info-fg)" size="sm" className="mt-1" />
   );
   return (
     <Modal title="Summary" sub={`${rows.length} hand-out${rows.length === 1 ? "" : "s"} ${periodLabel}`} onClose={onClose} width="max-w-4xl">
