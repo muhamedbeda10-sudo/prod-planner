@@ -18,6 +18,7 @@ import { AiQuality, type AiQualityData } from "@/components/AiQuality";
 import { AUTO_MODEL_USE, BY_STRENGTH } from "@/lib/domain/aiLearn";
 import { AI_DEPTHS, AI_DEPTH_EFFORT, AI_DEPTH_META } from "@/lib/domain/aiAnswer";
 import { EmptyState, Note, SectionCard, SettingRow, Switch, Tabs } from "@/components/primitives";
+import { toneAt } from "@/lib/domain/tones";
 import type { AutomationView } from "@/lib/server/automations/views";
 import type { SchedulerStatus } from "@/lib/server/automations/scheduler";
 
@@ -233,12 +234,12 @@ export function AiAdmin({ data, clock, automations }: { data: AiAdminData; clock
       </div>
 
       <div className="settings-layout">
-        <nav className="settings-nav tone-cycle" aria-label="AI settings sections">
-          {SECTIONS.map((s) => {
+        <nav className="settings-nav" aria-label="AI settings sections">
+          {SECTIONS.map((s, i) => {
             const on = s.id === section;
             return (
               <button key={s.id} type="button" onClick={() => pick(s.id)} className={`settings-nav-item ${on ? "settings-nav-active" : ""}`} aria-current={on ? "page" : undefined}>
-                <span className="settings-nav-icon tone-tile"><s.icon size={15} aria-hidden /></span>
+                <span className={`settings-nav-icon tone-tile ${toneAt(i)}`}><s.icon size={15} aria-hidden /></span>
                 <span className="min-w-0">
                   <span className="settings-nav-label block">{s.label}</span>
                   <span className="settings-nav-desc block truncate">{s.desc}</span>

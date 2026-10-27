@@ -335,7 +335,7 @@ function ReadyPopup({ close, mo, fresh, material, canEdit, pending, err, onClose
     .filter(Boolean).join(" · ");
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center p-3" role="dialog" aria-modal="true" aria-label="Odoo alerts">
-      <button type="button" aria-label="Later" onClick={onLater} className="modal-scrim absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
+      <button type="button" aria-label="Later" onClick={onLater} className="modal-scrim" />
       <div className="modal-box relative w-full max-w-5xl max-h-[90vh] overflow-y-auto bg-surface text-foreground border rounded-xl shadow-lg">
         <div className="flex items-start gap-3 p-4 border-b">
           <div className="text-2xl leading-none">🔔</div>

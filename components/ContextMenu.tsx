@@ -134,7 +134,7 @@ export function ContextMenu({ x, y, entries: own, target, onClose }: { x: number
     <div
       ref={box}
       role="menu"
-      className="nav-drop nav-drop-fade fixed z-[100] min-w-[14rem] max-w-[20rem] rounded-xl border bg-surface shadow-xl p-1.5 no-print"
+      className="menu-panel animate-[drawerfade_0.14s_ease-out] fixed z-[100] min-w-[14rem] max-w-[20rem] rounded-xl border bg-surface shadow-xl p-1.5 no-print"
       style={{ left: pos.left, top: pos.top }}
       onContextMenu={(e) => e.preventDefault()}
     >

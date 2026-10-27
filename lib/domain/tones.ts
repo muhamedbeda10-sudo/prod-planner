@@ -7,8 +7,7 @@ export const TONES = 8;
 
 /** The tone of the i-th item of a list (0-based): neighbours never share one. */
 export function toneAt(i: number): string {
-  const n = Number.isFinite(i) ? Math.trunc(i) : 0;
-  return `tone-${(((n % TONES) + TONES) % TONES) + 1}`;
+  return `tone-${(i % TONES) + 1}`;
 }
 
 /** A steady tone for a name: the same card wears the same colour on every

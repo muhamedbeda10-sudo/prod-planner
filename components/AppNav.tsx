@@ -167,7 +167,7 @@ const TANK_ONLY = new Set(["/worklist/leak-test", "/barcode"]);
 /** A row of a bar menu in the assistant's tiles' look: a tile in its own
  *  colour, its name, and what it holds under it — read out as the row's
  *  description, not as part of its name. */
-function MenuRow({ href, label, hint, icon: Icon, active, tone, role, className = "" }: { href: string; label: string; hint?: string; icon: Item["icon"]; active: boolean; tone: number; role?: "menuitem"; className?: string }) {
+function MenuRow({ href, label, hint, icon: Icon, active, tone, role, badge, className = "" }: { href: string; label: string; hint?: string; icon: Item["icon"]; active: boolean; tone: number; role?: "menuitem"; badge?: React.ReactNode; className?: string }) {
   const id = useId();
   return (
     <Link
@@ -185,16 +185,6 @@ function MenuRow({ href, label, hint, icon: Icon, active, tone, role, className 
           <span id={`${id}-h`} className="menu-row-hint">{hint}</span>
         </span>
       ) : label}
-    </Link>
-  );
-}
-
-/** One row of the phone's drawer: a tile, its name, a count when it has one. */
-function DrawerLink({ href, label, icon: Icon, active, badge, tone }: { href: string; label: string; icon: Item["icon"]; active: boolean; badge?: React.ReactNode; tone: number }) {
-  return (
-    <Link href={href} className={`menu-row drawer-link ${toneAt(tone)} ${active ? "menu-row-on" : ""}`}>
-      <span className="tone-tile" aria-hidden><Icon size={17} /></span>
-      {label}
       {badge}
     </Link>
   );
@@ -271,7 +261,7 @@ function MenuTab({ ctl, id, label, icon: Icon, active, href, badge, children }: 
           aria-label={label}
           style={{ top: ctl.pos!.top, left: ctl.pos!.left }}
           onMouseEnter={ctl.onKeep}
-          className="nav-drop nav-drop-left fixed w-max min-w-56 max-w-80 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
+          className="nav-drop nav-drop-left menu-panel fixed w-max min-w-56 max-w-80 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
         >
           {children}
         </div>
@@ -477,8 +467,9 @@ export function AppNav({
   // the whole tools menu in order — the desktop menu and the drawer list the same rows in the same colours
   const tools = [...adminLinks, ...(user.isAdmin && canSee(STANDARD_TIMES.href) ? [STANDARD_TIMES] : [])];
   const ownerTools = user.isOwner ? OWNER_TOOLS : [];
-  const showTools = tools.length + ownerTools.length > 0;
-  const adminActive = [...tools, ...ownerTools].some((l) => isActive(l.href));
+  const allTools = [...tools, ...ownerTools];
+  const showTools = allTools.length > 0;
+  const adminActive = allTools.some((l) => isActive(l.href));
 
   return (
     <header className="no-print sticky top-0 z-30 bg-[var(--nav-bg)] text-white border-b border-[var(--nav-border)] shadow-sm">
@@ -598,7 +589,7 @@ export function AppNav({
               {open && (
                 <div
                   role="menu"
-                  className="nav-drop absolute right-0 top-[calc(100%+10px)] w-80 max-h-[calc(100dvh-4.5rem)] overflow-y-auto bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
+                  className="nav-drop menu-panel absolute right-0 top-[calc(100%+10px)] w-80 max-h-[calc(100dvh-4.5rem)] overflow-y-auto bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
                 >
                   {tools.map((l, i) => (
                     <MenuRow key={l.href} role="menuitem" href={l.href} label={l.label} hint={l.desc} icon={l.icon} active={isActive(l.href)} tone={i} />
@@ -669,21 +660,21 @@ export function AppNav({
                   <div key={g.line} role="group" aria-label={`Floor — ${g.label}`}>
                     <p className="drawer-label">Floor · {g.label}</p>
                     {depts.map((d, i) => (
-                      <DrawerLink key={deptHref(d)} href={deptHref(d)} label={d.drawerLabel} icon={d.icon} active={deptOn(d)} tone={i} />
+                      <MenuRow key={deptHref(d)} className="drawer-link" href={deptHref(d)} label={d.drawerLabel} icon={d.icon} active={deptOn(d)} tone={i} />
                     ))}
                   </div>
                 );
               })}
               <p className="drawer-label">Production</p>
               {drawerTabs.map((l, i) => (
-                <DrawerLink key={l.href} href={l.href} label={l.label} icon={l.icon} active={isActive(l.href, l.match)} badge={null} tone={i} />
+                <MenuRow key={l.href} className="drawer-link" href={l.href} label={l.label} icon={l.icon} active={isActive(l.href, l.match)} tone={i} />
               ))}
 
               {/* on desktop these sit behind a tab's own switcher; the drawer
                   has the room to list them, so a phone reaches them in one tap */}
               <p className="drawer-label">More</p>
               {drawerViews.map((l, i) => (
-                <DrawerLink key={l.href} href={l.href} label={l.label} icon={l.icon} active={isActive(l.href, l.match)} badge={l.href === "/chat" ? <UnreadBadge count={unreadChat} /> : l.href === "/odoo" ? odooBadge() : null} tone={i} />
+                <MenuRow key={l.href} className="drawer-link" href={l.href} label={l.label} icon={l.icon} active={isActive(l.href, l.match)} badge={l.href === "/chat" ? <UnreadBadge count={unreadChat} /> : l.href === "/odoo" ? odooBadge() : null} tone={i} />
               ))}
               {ai && (
                 <button
@@ -694,14 +685,14 @@ export function AppNav({
                   }}
                   className={`menu-row drawer-link ${toneAt(drawerViews.length)} ${aiOn ? "menu-row-on" : ""}`}
                 >
-                  <span className="tone-tile" aria-hidden><Bot size={17} /></span>
+                  <span className="tone-tile" aria-hidden><Bot size={16} /></span>
                   AI assistant
                 </button>
               )}
 
               {showTools && <p className="drawer-label">Admin tools</p>}
-              {[...tools, ...ownerTools].map((l, i) => (
-                <DrawerLink key={l.href} href={l.href} label={l.label} icon={l.icon} active={isActive(l.href)} tone={i} />
+              {allTools.map((l, i) => (
+                <MenuRow key={l.href} className="drawer-link" href={l.href} label={l.label} icon={l.icon} active={isActive(l.href)} tone={i} />
               ))}
             </nav>
 

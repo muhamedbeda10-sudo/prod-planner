@@ -1040,7 +1040,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
             type="button"
             aria-label="Close"
             onClick={() => setGroupModal(null)}
-            className="modal-scrim absolute inset-0 bg-black/45 backdrop-blur-[2px]"
+            className="modal-scrim"
           />
           <div className="modal-box relative w-full max-w-sm bg-surface border rounded-xl shadow-lg p-4">
             <div className="flex items-center gap-2 mb-3">

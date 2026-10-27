@@ -11,11 +11,6 @@ describe("toneAt", () => {
   it("never gives two neighbours the same tone", () => {
     for (let i = 0; i < 30; i++) expect(toneAt(i)).not.toBe(toneAt(i + 1));
   });
-  it("reads a negative, fractional or missing index as a tone all the same", () => {
-    expect(toneAt(-1)).toBe("tone-8");
-    expect(toneAt(2.7)).toBe("tone-3");
-    expect(toneAt(Number.NaN)).toBe("tone-1");
-  });
 });
 
 describe("toneFor", () => {

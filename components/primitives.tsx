@@ -113,7 +113,7 @@ export function SectionCard({ icon, title, description, end, children, className
     <section className={`section-card ${className}`}>
       <header className="section-head">
         {/* a tile in the card's own colour, steady across visits */}
-        {icon && <span className={`section-icon tone-tile ${toneFor(typeof title === "string" ? title : typeof description === "string" ? description : "")}`}>{drawIcon(icon, 16)}</span>}
+        {icon && <span className={`section-icon tone-tile ${toneFor(typeof title === "string" ? title : "")}`}>{drawIcon(icon, 16)}</span>}
         <div className="min-w-0 flex-1">
           <h3 className="section-title">{title}</h3>
           {description && <p className="section-desc">{description}</p>}

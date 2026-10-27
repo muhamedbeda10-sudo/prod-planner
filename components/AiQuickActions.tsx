@@ -28,7 +28,7 @@ export function AiQuickGrid({ actions, onPick, disabled = false, compact = false
         const Icon = ICON[a.id];
         return (
           <button key={a.id} type="button" className={`ai-cap ${toneAt(i)}`} onClick={() => onPick(a)} disabled={disabled} title={a.hint}>
-            <span className="ai-cap-icon" aria-hidden><Icon size={17} /></span>
+            <span className="tone-tile ai-cap-icon" aria-hidden><Icon size={17} /></span>
             <span className="ai-cap-text">
               <span className="ai-cap-label">{a.label}</span>
               <span className="ai-cap-hint">{a.hint}</span>

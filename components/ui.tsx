@@ -164,6 +164,3 @@ export function Soi({
  */
 export const SAVE_UNCONFIRMED = "Could not confirm the save — refresh and check the records before trying again.";
 
-/** One row of a dropdown menu — the account menu's: its icon goes in a
- *  `tone-tile` (app/globals.css, "tones and motion"). */
-export const MENU_ROW = "menu-row";
