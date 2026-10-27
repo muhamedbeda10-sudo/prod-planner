@@ -410,7 +410,11 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    nested, else the BOM's rate), per Odoo product code, against the **Physical Material** table — Odoo's SF01 stock and
    the store's count: covered, short (blocks a release), store-short, not listed, or held in KG; and contended when all
    the open orders want more of a code than Odoo holds (stock is not reserved per order). Read only for a person with
-   both the Physical Material and Material screens. Each has a tile under the assistant's "What it can do". Operation
+   both the Physical Material and Material screens. The **Physical Material** screen (`/physical`) shows the same open
+   need beside SF01's stock — **Open need** (≈ where part of it is at the BOM's rate; the orders behind it on hover) and
+   **After need** (Odoo − need) — with a "Short for open orders" card and filter, and names the needed codes missing
+   from the table; its Excel (`physical_stock`) carries both columns. For a person without the Material screen the
+   columns are left out. Each has a tile under the assistant's "What it can do". Operation
    start/finish times, queue/setup/move standards and order-level delay codes are not recorded, so queue time per
    operation is not measured and CR's lead time is the forecast's.
 11. **Consumables** (`/consumables`, a place of the **Material** tab beside the nesting sheets and Physical Material —

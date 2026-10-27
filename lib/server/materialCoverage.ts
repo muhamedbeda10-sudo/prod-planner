@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { applicableItems, ospOf, type Item } from "@/lib/domain/constants";
 import { ITEM_PRODUCT } from "@/lib/domain/odooMirror";
-import type { PartNeed, StockLine } from "@/lib/domain/materialCoverage";
+import { sheetNeeds, type NeedSummary, type PartNeed, type StockLine } from "@/lib/domain/materialCoverage";
 import { getLinesMaterial, type MaterialLineRef, type OrderRef } from "./machineMaterial";
 import { getTrackerSheet } from "./masterTracker";
 import { ledgerItemWhere, withLine } from "./line";
@@ -58,4 +58,10 @@ export async function getStockLines(): Promise<{ lines: StockLine[]; lastChange:
   const rows = await prisma.physicalStock.findMany({ select: { code: true, name: true, uom: true, odoo: true, physical: true, updatedAt: true, updatedBy: true } });
   const newest = rows.reduce<(typeof rows)[number] | null>((a, r) => (!a || r.updatedAt > a.updatedAt ? r : a), null);
   return { lines: rows.map((r) => ({ code: r.code, name: r.name, uom: r.uom, odoo: r.odoo, physical: r.physical })), lastChange: newest ? { atISO: newest.updatedAt.toISOString(), by: newest.updatedBy } : null };
+}
+
+/** The sheets every open order (not on hold) still needs, per product code,
+ *  with the parts that could not be priced. */
+export async function getOpenSheetNeeds(): Promise<NeedSummary> {
+  return sheetNeeds((await getOpenPartNeeds()).parts);
 }

@@ -11,6 +11,7 @@ import { holdLabel } from "@/lib/domain/hold";
 import type { ProductLine } from "@/lib/domain/lines";
 import { round3 } from "@/lib/domain/material";
 import { STATUS_LABEL } from "@/lib/domain/physicalStock";
+import { normCode, type needByStock } from "@/lib/domain/materialCoverage";
 import type { OrderRow } from "@/lib/domain/registryView";
 import { ATTENDANCE_LABEL, ATTENDANCE_TIME, DEFAULT_SHIFT_HOURS, WORK_CENTRE_LABEL, rosterDeptName, rosterLineReading } from "@/lib/domain/shifts";
 import { soiOf } from "@/lib/domain/soi";
@@ -104,19 +105,31 @@ export function materialRows(lines: MaterialPageData["lines"], line: ProductLine
   }));
 }
 
-/** The store's count against Odoo's, with the store's own headers and the gap. */
-export function physicalRows(items: PhysicalStockData["items"]): SheetRow[] {
-  return items.map((i) => ({
+/** The store's count against Odoo's, with the store's own headers and the gap
+ *  — and, given, the sheets the open orders still need and Odoo after them. */
+export function physicalRows(items: PhysicalStockData["items"], need?: ReturnType<typeof needByStock> | null): SheetRow[] {
+  const needCols = (code: string): SheetRow => {
+    const n = need?.byCode[normCode(code)];
+    // a code held in kilos has a need but no after figure — said, never left blank as "nothing needed"
+    return need ? { "Open Orders Need (sheets)": n?.need ?? "", "Odoo After Need": n ? (n.after ?? "n/a (other unit)") : "" } : {};
+  };
+  const rows: SheetRow[] = items.map((i) => ({
     "Product Code": i.code,
     "Product Name": i.name,
     "Physically Stock Internal Store": i.physical,
     UOM: i.uom,
     "SF01 Stock In Odoo": i.odoo,
+    ...needCols(i.code),
     Difference: i.diff,
     Family: i.group,
     Status: STATUS_LABEL[i.status],
     Note: i.note ?? "",
   }));
+  // the codes the open orders need that the table does not carry, after it
+  for (const m of need?.missing ?? []) {
+    rows.push({ "Product Code": m.code, "Product Name": `${m.thicknessMm} mm ${m.material} ${m.sheetSize}`.trim(), "Physically Stock Internal Store": "", UOM: "", "SF01 Stock In Odoo": "", "Open Orders Need (sheets)": m.sheets, "Odoo After Need": "", Difference: "", Family: "", Status: "Not on the table", Note: "" });
+  }
+  return rows;
 }
 
 /** A month of powder scrap: a "Month" row per section and both together, then

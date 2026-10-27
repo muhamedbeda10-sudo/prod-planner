@@ -6,33 +6,47 @@ import { ChevronDown, ChevronRight, Plus, Upload } from "lucide-react";
 import { FilterBar, FilterSelect, SearchBox, useSavedFilter } from "@/components/FilterControls";
 import { CellEditor, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
 import { Modal } from "@/components/Modal";
+import { Tooltip } from "@/components/Tooltip";
 import { createPhysicalItem, deletePhysicalItem, importPhysicalAction, updatePhysicalCell } from "@/app/physical/actions";
 import { STATUS_LABEL, STOCK_GROUPS, summarizeStock, type StockStatus } from "@/lib/domain/physicalStock";
 import { formatDateTime, formatNumber } from "@/lib/domain/format";
+import { normCode, type needByStock, type StockNeed } from "@/lib/domain/materialCoverage";
 import type { PhysicalStockItem } from "@/lib/server/physicalStock";
 
 // PHYSICAL MATERIAL — the store's count beside SF01's stock in Odoo, one row
 // per product code, grouped by family (HR sheet, coil, galvanized, sections).
 // The gap is the store's count minus Odoo's: below zero the store holds less
 // than Odoo says, above it more. The sheet is uploaded straight in; a count
-// is corrected in its cell.
+// is corrected in its cell. Beside Odoo's stock, the sheets the open orders
+// still need (the MATERIAL tab's nesting × the pieces Fabrication owes) and
+// what Odoo holds after them.
 
 const STATUS_PILL: Record<StockStatus, string> = { match: "pill-ok", short: "pill-bad", over: "pill-warn", empty: "pill-muted" };
 
 /** Pieces read whole when they are whole, kilos to the kilo; a fraction keeps two places. */
 const qty = (n: number) => formatNumber(n, Number.isInteger(n) ? 0 : 2);
 
-export function PhysicalStockClient({ items, canEdit, lastUpdate }: {
+type NeedData = ReturnType<typeof needByStock>;
+/** A code the open orders need more of than Odoo holds, or more than the store counted. */
+const needShort = (n: StockNeed | undefined) => n?.status === "short" || n?.status === "store_short";
+
+export function PhysicalStockClient({ items, canEdit, lastUpdate, need, needFailed = false }: {
   items: PhysicalStockItem[];
   canEdit: boolean;
   /** When the store's count was last loaded, and by whom. */
   lastUpdate: { atISO: string; by: string | null } | null;
+  /** The open orders' sheets per code; null when the Material screen is closed to this person. */
+  need: NeedData | null;
+  /** The open need could not be worked out this time. */
+  needFailed?: boolean;
 }) {
   const [q, setQ] = useSavedFilter("physical.q");
   const [group, setGroup] = useSavedFilter("physical.group");
   const [status, setStatus] = useSavedFilter("physical.status");
   const [uom, setUom] = useSavedFilter("physical.uom");
   const [hideEmpty, setHideEmpty] = useSavedFilter("physical.hideEmpty", "1");
+  const [shortOnly, setShortOnly] = useSavedFilter("physical.needShort", "0");
+  const needOf = (i: PhysicalStockItem) => need?.byCode[normCode(i.code)];
   const [folded, setFolded] = useState<Set<string>>(new Set());
 
   const uoms = useMemo(() => [...new Set(items.map((i) => i.uom).filter(Boolean))].sort(), [items]);
@@ -43,22 +57,28 @@ export function PhysicalStockClient({ items, canEdit, lastUpdate }: {
       if (group && i.group !== group) return false;
       if (status && i.status !== status) return false;
       if (uom && i.uom !== uom) return false;
-      if (hideEmpty === "1" && i.status === "empty" && !status) return false;
+      // a saved filter with no need to read (the Material screen closed since) filters nothing
+      if (need && shortOnly === "1" && !needShort(need.byCode[normCode(i.code)])) return false;
+      if (hideEmpty === "1" && i.status === "empty" && !status && !need?.byCode[normCode(i.code)]) return false;
       return true;
     });
-  }, [items, q, group, status, uom, hideEmpty]);
+  }, [items, q, group, status, uom, hideEmpty, shortOnly, need]);
+  const shortCount = useMemo(() => items.filter((i) => needShort(need?.byCode[normCode(i.code)])).length, [items, need]);
+  // none-held codes the open orders need stay on the table, so the chip counts only the ones it hides
+  const emptyHidden = useMemo(() => items.filter((i) => i.status === "empty" && !need?.byCode[normCode(i.code)]).length, [items, need]);
   const all = useMemo(() => summarizeStock(items), [items]);
   const groups = useMemo(
     () => STOCK_GROUPS.map((g) => ({ g, rows: shown.filter((i) => i.group === g) })).filter((x) => x.rows.length > 0),
     [shown]
   );
-  const hasActive = !!(q || group || status || uom || hideEmpty !== "1");
-  const reset = () => { setQ(""); setGroup(""); setStatus(""); setUom(""); setHideEmpty("1"); };
+  const hasActive = !!(q || group || status || uom || hideEmpty !== "1" || (need && shortOnly === "1"));
+  const reset = () => { setQ(""); setGroup(""); setStatus(""); setUom(""); setHideEmpty("1"); setShortOnly("0"); };
   const toggle = (g: string) => setFolded((f) => { const n = new Set(f); if (n.has(g)) n.delete(g); else n.add(g); return n; });
 
   return (
     <div className="space-y-3">
-      <SummaryCards summary={all} onPick={(s) => setStatus(status === s ? "" : s)} picked={status} />
+      <SummaryCards summary={all} onPick={(s) => setStatus(status === s ? "" : s)} picked={status}
+        need={need ? { short: shortCount, missing: need.missing.length, picked: shortOnly === "1", onPick: () => setShortOnly(shortOnly === "1" ? "0" : "1") } : null} />
 
       <FilterBar
         count={shown.length}
@@ -72,8 +92,13 @@ export function PhysicalStockClient({ items, canEdit, lastUpdate }: {
         <FilterSelect label="Status" value={status} onChange={setStatus} options={(Object.keys(STATUS_LABEL) as StockStatus[]).map((s) => ({ value: s, label: STATUS_LABEL[s] }))} />
         {uoms.length > 1 && <FilterSelect label="UOM" value={uom} onChange={setUom} options={uoms.map((u) => ({ value: u, label: u }))} />}
         <button type="button" className="chip-toggle" aria-pressed={hideEmpty === "1"} onClick={() => setHideEmpty(hideEmpty === "1" ? "0" : "1")} title="Codes with nothing in the store and nothing in Odoo">
-          Hide none-held ({all.empty})
+          Hide none-held ({emptyHidden})
         </button>
+        {need && (
+          <button type="button" className="chip-toggle" aria-pressed={shortOnly === "1"} onClick={() => setShortOnly(shortOnly === "1" ? "0" : "1")} title="Codes the open orders need more of than Odoo holds, or than the store counted">
+            Short for open orders ({shortCount})
+          </button>
+        )}
       </FilterBar>
 
       <section className="bg-surface border rounded-[10px] overflow-hidden">
@@ -91,6 +116,8 @@ export function PhysicalStockClient({ items, canEdit, lastUpdate }: {
                   <Th label="UOM" center />
                   <Th label="Store count" full="Physically in the internal store" num group="input" />
                   <Th label="SF01 in Odoo" full="SF01's stock in Odoo" num group="source" />
+                  {need && <Th label="Open need" full="Sheets the open orders still need" hint="The pieces Fabrication still owes on every open order not on hold × the MATERIAL tab's sheets a piece (the actual nesting, or the BOM's rate where not nested yet — marked ≈)." num group="computed" />}
+                  {need && <Th label="After need" full="SF01 in Odoo − open need" hint="Below zero Odoo holds fewer sheets than the open orders still need." num group="computed" />}
                   <Th label="Difference" full="Store count − Odoo" hint="Below zero the store holds less than Odoo says; above zero, more." num group="computed" />
                   <Th label="vs Odoo" full="The difference as a share of Odoo's stock" num group="computed" />
                   <Th label="Status" center />
@@ -111,7 +138,7 @@ export function PhysicalStockClient({ items, canEdit, lastUpdate }: {
                             <span className="text-xs text-muted font-semibold tabnum">· {rows.length} item{rows.length === 1 ? "" : "s"}</span>
                           </button>
                         </td>
-                        <td className="p-2" colSpan={4}>
+                        <td className="p-2" colSpan={need ? 6 : 4}>
                           <span className="flex flex-wrap gap-x-4 text-xs tabnum">
                             {s.byUom.map((u) => (
                               <span key={u.uom} className="text-muted">
@@ -125,7 +152,7 @@ export function PhysicalStockClient({ items, canEdit, lastUpdate }: {
                           {s.over > 0 && <span className="pill pill-warn">{s.over} over</span>}
                         </td>
                       </tr>
-                      {open && rows.map((i) => <StockRow key={i.id} i={i} canEdit={canEdit} />)}
+                      {open && rows.map((i) => <StockRow key={i.id} i={i} canEdit={canEdit} need={need ? needOf(i) ?? null : undefined} />)}
                     </Fragment>
                   );
                 })}
@@ -137,7 +164,20 @@ export function PhysicalStockClient({ items, canEdit, lastUpdate }: {
       <p className="text-xs text-muted">
         {lastUpdate ? <>Last change {formatDateTime(lastUpdate.atISO)}{lastUpdate.by ? ` · ${lastUpdate.by}` : ""}. </> : null}
         A difference under a hundredth of a piece (or a kilo on coils) counts as matching. Totals never add pieces and kilos together.
+        {need && " The open need is in sheets, so codes held in kilos show it without an after figure."}
       </p>
+      {needFailed && <p className="text-xs text-warn-fg">The open orders&apos; need could not be worked out just now — the stock above is complete; reload to try again.</p>}
+      {need && (need.unpriced.noNesting > 0 || need.unpriced.uncoded > 0) && (
+        <p className="text-xs text-muted">
+          Not in the open need: {[need.unpriced.noNesting > 0 && `${need.unpriced.noNesting} part${need.unpriced.noNesting === 1 ? "" : "s"} with no nesting line yet`, need.unpriced.uncoded > 0 && `${need.unpriced.uncoded} nesting line${need.unpriced.uncoded === 1 ? "" : "s"} with no product code`].filter(Boolean).join(" and ")} — the need is at least what is shown.
+        </p>
+      )}
+      {need && need.missing.length > 0 && (
+        <p className="text-xs text-warn-fg">
+          {need.missing.length} code{need.missing.length === 1 ? "" : "s"} the open orders need {need.missing.length === 1 ? "is" : "are"} not on this table:{" "}
+          {need.missing.slice(0, 12).map((m) => `${m.code} (${qty(m.sheets)} sheets)`).join(", ")}{need.missing.length > 12 ? ", …" : ""}.
+        </p>
+      )}
     </div>
   );
 }
@@ -148,7 +188,12 @@ function Gap({ n }: { n: number }) {
   return <b className={n < 0 ? "text-bad-fg" : "text-warn-fg"}>{n > 0 ? "+" : "−"}{qty(Math.abs(n))}</b>;
 }
 
-function SummaryCards({ summary, onPick, picked }: { summary: ReturnType<typeof summarizeStock>; onPick: (s: StockStatus) => void; picked: string }) {
+function SummaryCards({ summary, onPick, picked, need }: {
+  summary: ReturnType<typeof summarizeStock>;
+  onPick: (s: StockStatus) => void;
+  picked: string;
+  need: { short: number; missing: number; picked: boolean; onPick: () => void } | null;
+}) {
   const card = (s: StockStatus | "all", label: string, n: number, tone: string, note: string) => (
     <button
       key={s}
@@ -169,6 +214,14 @@ function SummaryCards({ summary, onPick, picked }: { summary: ReturnType<typeof 
       {card("match", "Matches Odoo", summary.match, "text-ok-fg", "store = SF01")}
       {card("short", "Store short", summary.short, "text-bad-fg", "less on the shelf than in Odoo")}
       {card("over", "Store over", summary.over, "text-warn-fg", "more on the shelf than in Odoo")}
+      {need && (
+        <button type="button" onClick={need.onPick} aria-pressed={need.picked}
+          className={`kpi text-start transition-colors hover:border-brand/60 ${need.picked ? "border-brand ring-2 ring-brand/30" : ""}`}>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-muted">Short for open orders</div>
+          <div className={`kpi-value ${need.short > 0 ? "text-bad-fg" : "text-ok-fg"}`}>{need.short}</div>
+          <div className="text-[11px] text-muted truncate">{need.missing > 0 ? `${need.missing} needed code${need.missing === 1 ? "" : "s"} not on the table` : "need more than Odoo or the store holds"}</div>
+        </button>
+      )}
       {summary.byUom.map((u) => (
         <div key={u.uom} className="kpi">
           <div className="text-[11px] font-bold uppercase tracking-wide text-muted">Total · {u.uom}</div>
@@ -180,7 +233,39 @@ function SummaryCards({ summary, onPick, picked }: { summary: ReturnType<typeof 
   );
 }
 
-function StockRow({ i, canEdit }: { i: PhysicalStockItem; canEdit: boolean }) {
+/** The open need of one code: the sheets, ≈ where part of it is still at the
+ *  BOM's rate, and the orders behind it on hover or focus. */
+function NeedCell({ n }: { n: StockNeed | null }) {
+  if (!n) return <td className="p-2 text-end text-muted">—</td>;
+  return (
+    <td className="p-2 text-end tabnum">
+      <Tooltip content={
+        <span className="block max-w-[18rem] text-xs">
+          <span className="block font-semibold">{n.orders} order{n.orders === 1 ? "" : "s"} need {qty(n.need)} sheets{n.estimated ? " (partly at the BOM's rate)" : ""}</span>
+          {n.jobs.map((j) => <span key={`${j.mo}|${j.item}`} className="block">{j.mo} · {j.item} · {qty(j.sheets)}</span>)}
+          {n.jobCount > n.jobs.length && <span className="block opacity-75">…and {n.jobCount - n.jobs.length} more</span>}
+        </span>
+      }>
+        <span tabIndex={0} className="cursor-help underline decoration-dotted underline-offset-2">{n.estimated ? "≈" : ""}{qty(n.need)}</span>
+      </Tooltip>
+    </td>
+  );
+}
+
+/** Odoo's stock after the need: short red, store-short amber, kilos not comparable. */
+function AfterCell({ n }: { n: StockNeed | null }) {
+  if (!n) return <td className="p-2 text-end text-muted">—</td>;
+  const why = n.after === null ? "Held in another unit — sheets cannot be set against it." : n.status === "store_short" ? "Odoo holds enough, but the store counted fewer than the open orders need." : null;
+  const tone = n.status === "short" ? "text-bad-fg font-bold" : n.status === "store_short" ? "text-warn-fg font-semibold" : n.after === null ? "text-xs text-muted" : "";
+  const value = n.after === null ? "n/a" : `${n.after < 0 ? "−" : ""}${qty(Math.abs(n.after))}`;
+  return (
+    <td className={`p-2 text-end tabnum ${tone}`}>
+      {why ? <Tooltip content={<span className="block max-w-[16rem] text-xs">{why}</span>}><span tabIndex={0} className="cursor-help underline decoration-dotted underline-offset-2">{value}</span></Tooltip> : value}
+    </td>
+  );
+}
+
+function StockRow({ i, canEdit, need }: { i: PhysicalStockItem; canEdit: boolean; need?: StockNeed | null }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
@@ -227,6 +312,7 @@ function StockRow({ i, canEdit }: { i: PhysicalStockItem; canEdit: boolean }) {
       )}
       <td className="p-1 text-end">{num("physical", i.physical)}</td>
       <td className="p-1 text-end">{num("odoo", i.odoo)}</td>
+      {need !== undefined && <><NeedCell n={need} /><AfterCell n={need} /></>}
       <td className="p-2 text-end tabnum"><Gap n={i.diff} /></td>
       <td className="p-2 text-end tabnum text-xs">{i.diffPct === null || i.diff === 0 ? <span className="text-muted">—</span> : <span className={i.diff < 0 ? "text-bad-fg" : "text-warn-fg"}>{i.diffPct > 0 ? "+" : ""}{i.diffPct}%</span>}</td>
       <td className="p-2 text-center"><span className={`pill ${STATUS_PILL[i.status]}`}>{STATUS_LABEL[i.status]}</span></td>
