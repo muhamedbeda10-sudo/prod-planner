@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  aiDecision, aiEffort, aiVisible, blockedTableIn, blockedTablesFor, conversationTitle, costUsd, displayTurns, formatRows, jsonSafe, monthStart, prepareSql, questionContext, readerUrl, usdText, type AiGate,
+  aiDecision, aiEffort, aiVisible, blockedTableIn, blockedTablesFor, conversationTitle, costUsd, displayTurns, withModelsByTime, formatRows, jsonSafe, monthStart, prepareSql, questionContext, readerUrl, usdText, type AiGate,
 } from "./ai";
 
 const gate = (o: Partial<AiGate>): AiGate => ({
@@ -261,5 +261,27 @@ describe("hidden screens close their tables to the assistant", () => {
     expect(blockedTableIn(`SELECT relname FROM pg_catalog.pg_class`, [])).toBeNull();
     // the stop-tracking statistics the app keeps itself are not the planner's
     expect(blockedTableIn(`SELECT count(*) FROM "MasterOrder" WHERE "status" = 'done'`, blocked)).toBeNull();
+  });
+});
+
+describe("withModelsByTime", () => {
+  const at = (min: number) => new Date(Date.UTC(2026, 9, 27, 8, min));
+  const row = (role: string, text: string, min: number) => ({ role, content: [{ type: "text", text }], createdAt: at(min) });
+
+  it("puts under each answer the model of the question it was kept for, moving down as well as up", () => {
+    const rows = [row("user", "Why did welding drop?", 2), row("assistant", "Because…", 2), row("user", "How many open orders?", 5), row("assistant", "12.", 5)];
+    const turns = displayTurns(withModelsByTime(rows, [{ at: at(1), model: "claude-opus-5-5" }, { at: at(4), model: "claude-haiku-5-5" }]));
+    expect(turns.map((t) => t.model)).toEqual([undefined, "claude-opus-5-5", undefined, "claude-haiku-5-5"]);
+  });
+
+  it("never lends a failed attempt's model to the same question asked again", () => {
+    // asked on Deep, failed before anything was kept; asked again on Quick
+    const rows = [row("user", "Status?", 6), row("assistant", "All on time.", 6)];
+    const turns = displayTurns(withModelsByTime(rows, [{ at: at(1), model: "claude-opus-5-5" }, { at: at(5), model: "claude-haiku-5-5" }]));
+    expect(turns[1].model).toBe("claude-haiku-5-5");
+  });
+
+  it("leaves a message kept before any usage row without a model", () => {
+    expect(withModelsByTime([row("assistant", "Old", 1)], [{ at: at(3), model: "claude-opus-5-5" }])[0].model).toBeUndefined();
   });
 });

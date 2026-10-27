@@ -15,11 +15,12 @@ export async function reserveChatTurn(o: {
       at: { gte: new Date(o.now.getTime() - o.runningWindowMs) },
     } });
     if (running > 0) return null;
-    const conversation = o.existing ?? await tx.aiConversation.create({ data: {
-      userId: o.userId, title: conversationTitle(o.question), model: o.model,
-    } });
+    // the chat goes on with this question's model (each question on Auto takes its own)
+    const conversation = !o.existing
+      ? await tx.aiConversation.create({ data: { userId: o.userId, title: conversationTitle(o.question), model: o.model } })
+      : o.existing.model === o.model ? o.existing : await tx.aiConversation.update({ where: { id: o.existing.id }, data: { model: o.model } });
     const usage = await tx.aiUsage.create({ data: {
-      userId: o.userId, conversationId: conversation.id, model: conversation.model, question: o.question.slice(0, 500),
+      userId: o.userId, conversationId: conversation.id, model: o.model, question: o.question.slice(0, 500),
     } });
     return { conversation, usage };
   }, { maxWait: 10_000, timeout: 15_000 });

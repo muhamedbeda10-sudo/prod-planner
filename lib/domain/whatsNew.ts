@@ -23,6 +23,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The rows in the Ready to close popup now carry the same colours as the ODOO log: red when the Material tab has nothing for the row's MO, yellow when some of its lines are not nested yet, green when every line is nested. A legend beside the heading counts the rows in each colour, and hovering a row says what its colour means.",
   },
   {
+    id: "2026-10-27-assistant-auto-depth-effort",
+    dateISO: "2026-10-27",
+    title: "The assistant is always on Auto: Quick, Standard and Deep set how hard it thinks, and every answer names its model",
+    where: "Assistant → beside the box; AI assistant settings → Models",
+    body: "The chat no longer has a model or an effort to pick in the settings. It is always on Auto — Haiku for a short look-up, Sonnet for a change to prepare, Opus for analysis, plans, reports and attached files — and the depth beside the box sets the rest: Quick answers on Haiku at low effort, Standard on the model the question needs at medium effort, Deep on Opus at high effort with more look-ups. Each question takes its own model, so a chat that moved up to Opus for one hard question comes back down to Haiku for the next quick look-up instead of staying on the dearest model. Under every answer — in a chat you reopen too — the model that wrote it is shown. The automations and the morning review keep their own model and effort in the settings.",
+  },
+  {
     id: "2026-10-27-assistant-tiles-select-chats",
     dateISO: "2026-10-27",
     title: "The assistant: tiles for what it can do, and pick several chats to pin or delete",

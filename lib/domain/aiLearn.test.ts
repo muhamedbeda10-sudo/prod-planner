@@ -80,9 +80,8 @@ describe("Auto picks the model per question", () => {
     expect(routeModel("كام؟", { files: 1 })).toBe("claude-opus-5-5");
     expect(routeModel("x ".repeat(200))).toBe("claude-opus-5-5");
   });
-  it("never steps down within a chat", () => {
-    expect(routeModel("How many open orders?", { current: "claude-opus-5-5" })).toBe("claude-opus-5-5");
-    expect(routeModel("Record 4 tanks", { current: "claude-haiku-5-5" })).toBe("claude-sonnet-5-5");
-    expect(routeModel("How many?", { current: "claude-retired-model" })).toBe("claude-haiku-5-5");
+  it("routes each question on its own — a chat comes back down after a hard question", () => {
+    expect(routeModel("Why did welding efficiency drop?")).toBe("claude-opus-5-5");
+    expect(routeModel("How many open orders?")).toBe("claude-haiku-5-5");
   });
 });
