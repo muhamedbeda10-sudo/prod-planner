@@ -28,6 +28,8 @@ interface InboxState {
   large: boolean;
   tab: InboxTab;
   taskId: number | null;
+  /** An item opened from its popup: unfolded and in view. */
+  itemId: number | null;
 }
 
 interface InboxApi {
@@ -35,7 +37,7 @@ interface InboxApi {
   state: InboxState;
   /** Open — or, already open, close. */
   toggle: () => void;
-  open: (o?: { tab?: InboxTab; taskId?: number | null }) => void;
+  open: (o?: { tab?: InboxTab; taskId?: number | null; itemId?: number | null }) => void;
   close: () => void;
   setLarge: (v: boolean) => void;
   setTab: (t: InboxTab) => void;
@@ -65,6 +67,7 @@ export function InboxPanelProvider({ children }: { children: ReactNode }) {
       large: !!s.large,
       tab: s.tab && isInboxTab(s.tab) ? s.tab : "alerts",
       taskId: typeof s.taskId === "number" && s.taskId > 0 ? s.taskId : null,
+      itemId: typeof s.itemId === "number" && s.itemId > 0 ? s.itemId : null,
     };
   }, [raw, openedNow]);
   const pathname = usePathname();
@@ -99,8 +102,8 @@ export function InboxPanelProvider({ children }: { children: ReactNode }) {
     () => ({
       shown,
       state,
-      toggle: () => (shown ? put({ open: false }) : put({ open: true })),
-      open: (o = {}) => put({ open: true, ...(o.tab ? { tab: o.tab } : {}), ...(o.taskId !== undefined ? { taskId: o.taskId } : {}) }),
+      toggle: () => (shown ? put({ open: false }) : put({ open: true, itemId: null })),
+      open: (o = {}) => put({ open: true, itemId: o.itemId ?? null, ...(o.tab ? { tab: o.tab } : {}), ...(o.taskId !== undefined ? { taskId: o.taskId } : {}) }),
       close,
       setLarge: (v) => put({ large: v }),
       setTab: (t) => put({ tab: t }),
@@ -129,6 +132,7 @@ export function InboxPanel() {
           onTab={p.setTab}
           taskId={p.state.taskId}
           onTask={p.setTask}
+          openItem={p.state.itemId}
           visible={p.shown}
           onExpand={p.setLarge}
           onClose={p.close}

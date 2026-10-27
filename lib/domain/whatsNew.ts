@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-inbox-popups-until-read",
+    dateISO: "2026-10-27",
+    title: "Alerts, tasks and automations pop up on the screen until you mark them read",
+    where: "Every page → under the bell",
+    body: "Whatever reaches you — an alert, a task given to you or news on one, a report or a message from an automation — now pops up under the bell on whatever page you are on, with a short chime, and stays there until you deal with it: Open shows it in the inbox, Mark read clears the card, Mark all read clears them all. There is no ✕ — it does not go away by itself, and it comes back after a reload or on another device until you read it. Either way it stays under the bell to come back to. The newest three show at once (one on a phone), the rest counted under them. The inbox itself is tidier: its tabs share the window's width, the filters and Mark all read sit on one row, and the Tasks tab has its views as icons beside For me | I gave and its Open / Done filters in the filter bar. Tasks are now given through the assistant (“give Ahmed a task to …”), so the New button is gone.",
+  },
+  {
     id: "2026-10-26-planning-dashboard-at-risk",
     dateISO: "2026-10-26",
     title: "Planning: All | Transformers | LV Panels, filters in one bar, every line at risk, and the rows behind each figure",

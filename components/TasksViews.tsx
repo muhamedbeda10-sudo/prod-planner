@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { CalendarClock, ChevronLeft, ChevronRight, Flag, ListChecks, Repeat, Search, X } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Columns3, Flag, List, ListChecks, Repeat, Search, Users, X } from "lucide-react";
 import { TableFrame, Th } from "@/components/DataTable";
 import { EmptyState } from "@/components/primitives";
 import { formatDate } from "@/lib/domain/format";
@@ -17,17 +17,18 @@ import type { TaskSummary } from "@/lib/server/tasks";
 
 export type TaskViewId = "list" | "board" | "calendar" | "team";
 
-export const TASK_VIEWS: readonly { id: TaskViewId; label: string }[] = [
-  { id: "list", label: "List" },
-  { id: "board", label: "Board" },
-  { id: "calendar", label: "Calendar" },
-  { id: "team", label: "Team" },
+export const TASK_VIEWS: readonly { id: TaskViewId; label: string; icon: typeof List }[] = [
+  { id: "list", label: "List", icon: List },
+  { id: "board", label: "Board", icon: Columns3 },
+  { id: "calendar", label: "Calendar", icon: CalendarDays },
+  { id: "team", label: "Team", icon: Users },
 ];
 
 const DUE_LABEL: Record<DueFilter, string> = { any: "Any due day", late: "Late", today: "Due today", week: "Due this week", none: "No due day" };
 
-/** Search, priority, person and due day — one toolbar that wraps. */
-export function TaskFilterBar({ f, onChange, people, count }: { f: TaskFilter; onChange: (f: TaskFilter) => void; people: { id: number; name: string }[]; count: number }) {
+/** Search, priority, person and due day — one toolbar that wraps, with
+ *  whatever else narrows the list (open or done) after them. */
+export function TaskFilterBar({ f, onChange, people, count, children }: { f: TaskFilter; onChange: (f: TaskFilter) => void; people: { id: number; name: string }[]; count: number; children?: ReactNode }) {
   const set = <K extends keyof TaskFilter>(k: K, v: TaskFilter[K]) => onChange({ ...f, [k]: v });
   const active = isFiltered(f);
   return (
@@ -48,6 +49,7 @@ export function TaskFilterBar({ f, onChange, people, count }: { f: TaskFilter; o
       <button type="button" className={`chip ${f.priority === "urgent" ? "chip-on" : ""}`} aria-pressed={f.priority === "urgent"} onClick={() => set("priority", f.priority === "urgent" ? "any" : "urgent")}>
         <Flag size={12} aria-hidden /> Urgent
       </button>
+      {children}
       {active && (
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange(NO_FILTER)}>
           <X size={13} aria-hidden /> Clear <span className="text-muted tabnum">({count})</span>

@@ -83,17 +83,6 @@ export interface TaskDetail extends TaskSummary {
   batch: { id: number; status: TaskStatus; assignee: string }[];
 }
 
-export interface TaskTemplateView {
-  id: number;
-  name: string;
-  title: string;
-  details: string;
-  checklist: string[];
-  priority: "normal" | "urgent";
-  people: number[];
-  shared: boolean;
-}
-
 export interface TaskRepeatView {
   id: number;
   title: string;
@@ -111,7 +100,6 @@ export interface TasksData {
   /** Given by this person. */
   sent: TaskSummary[];
   canAssign: boolean;
-  templates: TaskTemplateView[];
   repeats: TaskRepeatView[];
   /** The load of the people this person gives tasks to (the owner: everyone's) — null for someone who gives none. */
   team: PersonLoad[] | null;
@@ -165,16 +153,15 @@ async function listOf(where: Prisma.TaskWhereInput): Promise<SummaryRow[]> {
 }
 
 /** A person's tasks: given to them, and given by them — with their
- *  templates, their repeating tasks, and the load of the people they give
- *  tasks to (the owner sees everyone's). */
+ *  repeating tasks, and the load of the people they give tasks to (the owner
+ *  sees everyone's). */
 export async function tasksData(me: User, now = new Date()): Promise<TasksData> {
   const today = factoryDayISO(now);
   const canAssign = hasPerm(me, ASSIGN_KEY);
-  const [mine, sent, unread, templates, repeats] = await Promise.all([
+  const [mine, sent, unread, repeats] = await Promise.all([
     listOf({ assignees: { some: { userId: me.id } } }),
     listOf({ createdById: me.id }),
     unreadByTask(me.id),
-    prisma.taskTemplate.findMany({ where: { ownerId: me.id }, orderBy: { name: "asc" }, take: 100 }),
     prisma.taskRepeat.findMany({ where: { ownerId: me.id }, orderBy: [{ enabled: "desc" }, { title: "asc" }], take: 100 }),
   ]);
   const names = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(repeats.flatMap((r) => r.people))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
@@ -182,10 +169,6 @@ export async function tasksData(me: User, now = new Date()): Promise<TasksData> 
     mine: mine.map((t) => summaryOf(t, unread.get(t.id) ?? 0, today)),
     sent: sent.map((t) => summaryOf(t, unread.get(t.id) ?? 0, today)),
     canAssign,
-    templates: templates.map((t) => ({
-      id: t.id, name: t.name, title: t.title, details: t.details, checklist: checklistOf(t.checklist).map((x) => x.text),
-      priority: t.priority === "urgent" ? "urgent" : "normal", people: t.people, shared: t.shared,
-    })),
     repeats: repeats.map((r) => ({
       id: r.id, title: r.title, text: describeRepeat(ruleOf(r)), enabled: r.enabled,
       people: r.people.map((id) => ({ id, name: names.get(id) ?? `#${id}` })),

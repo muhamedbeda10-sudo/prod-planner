@@ -54,3 +54,38 @@ export function inboxPreview(markdown: string, max = 180): string {
     .trim();
   return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
 }
+
+/** What the bar's poll says of a person's inbox: how much is not read, and
+ *  the newest unread item (0 for none) — a new item and one read since the
+ *  last look show up even when the count stays the same. */
+export interface InboxHead {
+  unread: number;
+  latestId: number;
+}
+
+export const NO_INBOX_HEAD: InboxHead = { unread: 0, latestId: 0 };
+
+/** Something came or was read since `a` was told. */
+export const headChanged = (a: InboxHead, b: InboxHead): boolean => a.unread !== b.unread || a.latestId !== b.latestId;
+
+/** An unread item as it pops up on the screen until it is marked read. */
+export interface InboxPopupItem {
+  id: number;
+  kind: InboxKind;
+  title: string;
+  /** The body as a line or two of plain text. */
+  preview: string;
+  fromName: string | null;
+  createdAt: string;
+  /** A task's news: the task it is about. */
+  taskId: number | null;
+}
+
+/** The popup cards on the screen at most — the rest is counted under them. */
+export const INBOX_POPUP_SHOWN = 3;
+export const INBOX_POPUP_PREVIEW = 140;
+
+/** The items newer than the newest one already popped — the ones that chime. */
+export function arrivedSince(ids: readonly number[], seenMax: number): number[] {
+  return ids.filter((id) => id > seenMax);
+}

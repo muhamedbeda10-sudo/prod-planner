@@ -14,8 +14,8 @@ import {
   MOVE_NEEDS_TEXT, REPEAT_LIMITS, TASK_LIMITS, TASK_MOVE_LABEL, checklistOf, cleanChecklist, cleanDueDate, cleanRepeat, isClosed, isTaskMove, isTaskStatus, moveTask, nextRepeatDay, tickItem, workingDaysAfter,
 } from "@/lib/domain/tasks";
 
-// Tasks: given by a person with the key for it — by hand or through the
-// assistant — and reported on by the people they were given to, until the
+// Tasks: given by a person with the key for it — through the assistant, an
+// automation or a repeating task — and reported on by the people they were given to, until the
 // giver approves them or cancels them. Each person reads and acts only on
 // the tasks they gave or were given; every move is checked against the
 // task's state as it is in the database at that moment, so two people acting
@@ -256,14 +256,6 @@ export async function loadTask(id: number): Promise<Loaded<{ task: TaskDetail }>
   return { ok: true, task };
 }
 
-/** The people a task can be given to — for the giver's form. */
-export async function loadAssignable(): Promise<Loaded<{ people: { id: number; name: string }[] }>> {
-  const guard = await requirePerm(ASSIGN_KEY);
-  if (guard.error) return { ok: false, error: guard.error };
-  const people = await prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } });
-  return { ok: true, people };
-}
-
 /** Tick or untick a step of a task's checklist — its giver or its people,
  *  while it is open. Written only over the checklist as it was read, so two
  *  people ticking at once never lose each other's tick. */
@@ -311,16 +303,6 @@ export async function setTaskChecklist(fd: FormData): Promise<TaskActionResult> 
   const r = await prisma.task.updateMany({ where: { id, updatedAt: t.updatedAt }, data: { checklist: next as unknown as object, activityAt: new Date() } });
   if (r.count !== 1) return { ok: false, error: "The task changed meanwhile — try again." };
   return { ok: true };
-}
-
-/** Delete one of the person's own task templates. */
-export async function deleteTaskTemplate(fd: FormData): Promise<TaskActionResult> {
-  const me = await getCurrentUser();
-  if (!me) return { ok: false, error: NOT_LOGGED_IN };
-  const id = Number(fd.get("id"));
-  if (!idOk(id)) return { ok: false, error: "Invalid template." };
-  const r = await prisma.taskTemplate.deleteMany({ where: { id, ownerId: me.id } });
-  return r.count === 1 ? { ok: true } : { ok: false, error: "That template is not yours, or it is gone." };
 }
 
 /** Pause a repeating task, or turn it back on (it gives next on its next day from today). */

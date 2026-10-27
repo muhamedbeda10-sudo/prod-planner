@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { BellOff, BellRing, CheckCheck, ChevronDown, ClipboardCheck, FileText, Inbox, Lightbulb, MessageSquare, Trash2 } from "lucide-react";
+import { BellOff, BellRing, CheckCheck, ChevronDown, Inbox, Trash2 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiPrintButton } from "@/components/AiPrint";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
 import { EmptyState } from "@/components/primitives";
 import { INBOX_CHANGED } from "@/components/InboxBell";
+import { INBOX_KIND_LOOK } from "@/components/inboxLook";
 import { deleteInboxItems, markInboxRead } from "@/app/inbox/actions";
 import { pushState, turnPushOff, turnPushOn, type PushState } from "@/lib/pushClient";
 import { INBOX_KIND_LABEL, inboxPreview, type InboxKind } from "@/lib/domain/inbox";
@@ -20,13 +21,6 @@ import type { InboxItemView } from "@/lib/server/ai/panel";
 // notifications switch, and Mark all read.
 
 export type { InboxItemView };
-
-const KIND: Record<InboxKind, { icon: typeof FileText; tone: string; tile: string }> = {
-  report: { icon: FileText, tone: "pill-info", tile: "bg-info-bg text-info-fg" },
-  message: { icon: MessageSquare, tone: "pill-warn", tile: "bg-warn-bg text-warn-fg" },
-  suggestion: { icon: Lightbulb, tone: "pill-ok", tile: "bg-ok-bg text-ok-fg" },
-  task: { icon: ClipboardCheck, tone: "pill-muted", tile: "bg-surface-3 text-muted" },
-};
 
 /** What the inbox lists when it is not told: everything but a task's news,
  *  which is read on the task itself. */
@@ -119,35 +113,35 @@ function Item({ item, actions, open, onToggle, onDelete, onAction }: {
   onAction: (v: AiActionView) => void;
 }) {
   const proposed = actions.filter((a) => a.status === "proposed");
-  const k = KIND[item.kind] ?? KIND.message;
+  const k = INBOX_KIND_LOOK[item.kind] ?? INBOX_KIND_LOOK.message;
   const unread = !item.readAt;
   return (
-    <article id={`item-${item.id}`} className={`rounded-xl border bg-surface transition-shadow ${unread ? "border-[color-mix(in_srgb,var(--brand)_45%,var(--border))] shadow-[var(--shadow-sm)]" : ""}`}>
-      <button type="button" onClick={onToggle} className="w-full text-start flex items-start gap-3 px-3 py-3 sm:px-4" aria-expanded={open}>
-        <span className={`w-9 h-9 rounded-lg grid place-items-center shrink-0 ${k.tile}`} title={INBOX_KIND_LABEL[item.kind]}>
-          <k.icon size={17} aria-hidden />
+    <article id={`item-${item.id}`} className={`inbox-item ${unread ? "inbox-item-unread" : ""}`}>
+      <button type="button" onClick={onToggle} className="w-full text-start flex items-start gap-2.5 px-3 py-2.5" aria-expanded={open}>
+        <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${k.tile}`} title={INBOX_KIND_LABEL[item.kind]}>
+          <k.icon size={16} aria-hidden />
         </span>
         <span className="flex-1 min-w-0">
           {/* the title keeps the line; on a narrow screen the rest wraps under it */}
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className={`min-w-0 flex-[1_1_10rem] truncate text-sm ${unread ? "font-bold" : "font-semibold"}`} dir="auto">
               {item.title}
-              {unread && <span className="inline-block w-2 h-2 ms-2 rounded-full bg-[var(--brand)] align-middle" aria-label="not read" />}
+              {unread && <span className="sr-only"> (not read)</span>}
             </span>
             {proposed.length > 0 && <span className="pill pill-info shrink-0">{proposed.length} to approve</span>}
-            <span className="ms-auto text-[11px] text-muted tabnum shrink-0 whitespace-nowrap">{formatDateTime(item.createdAt)}</span>
+            <span className="ms-auto text-xs text-muted tabnum shrink-0 whitespace-nowrap">{formatDateTime(item.createdAt)}</span>
           </span>
           {!open && (
-            <span className="block mt-0.5 text-[13px] text-muted truncate" dir="auto">
+            <span className="block text-[13px] text-muted truncate" dir="auto">
               {item.fromName && <span className="font-medium text-foreground/80">{item.fromName} · </span>}
               {inboxPreview(item.body, 160)}
             </span>
           )}
         </span>
-        <ChevronDown size={15} className={`text-muted shrink-0 mt-2.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
+        <ChevronDown size={15} className={`text-muted shrink-0 mt-2 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
       </button>
       {open && (
-        <div className="px-3 pb-3 sm:px-4 sm:pb-4 border-t pt-3">
+        <div className="px-3 pb-3 border-t pt-2.5">
           {item.fromName && <p className="text-xs text-muted mb-2" dir="auto">{item.fromName}</p>}
           <AiMarkdown text={item.body} shared className="!text-[14px]" />
           {proposed.length > 1 && <ApproveAll views={proposed} onChange={onAction} />}
@@ -234,9 +228,10 @@ export function InboxView({
   ];
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="no-scrollbar flex items-center gap-1.5 min-w-0">
+    <div className="space-y-2.5">
+      {/* one row: the filters scroll sideways on a narrow window, the buttons keep their place */}
+      <div className="flex items-center gap-2">
+        <div className="no-scrollbar flex flex-1 items-center gap-1.5 min-w-0">
           {items.length > 0 && chips.map((c) => {
             const n = counts[c.id] ?? 0;
             if (c.id !== "all" && n === 0) return null;
@@ -247,10 +242,10 @@ export function InboxView({
             );
           })}
         </div>
-        <div className="ms-auto flex flex-wrap items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           {device && <DevicePush />}
           {unread > 0 && (
-            <button type="button" className="btn btn-sm btn-ghost" onClick={() => readNow(items.filter((i) => !i.readAt).map((i) => i.id))}><CheckCheck size={14} aria-hidden /> Mark all read</button>
+            <button type="button" className="btn btn-sm btn-ghost whitespace-nowrap" onClick={() => readNow(items.filter((i) => !i.readAt).map((i) => i.id))}><CheckCheck size={14} aria-hidden /> Mark all read</button>
           )}
         </div>
       </div>
@@ -264,7 +259,7 @@ export function InboxView({
           />
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {shown.map((it) => (
             <Item
               key={it.id}

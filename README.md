@@ -604,14 +604,18 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      which also schedules the nightly clearing of pg_cron's own run log (a week is kept); until then open pages tick,
      at most once a minute for the whole plant.
    - **Inbox and push** (`/inbox`): reports, messages and suggestions, with Web Push to phones (VAPID keys made on first use,
-     the private half encrypted; only the real push services are posted to). The count rides on the chat's poll.
+     the private half encrypted; only the real push services are posted to). The count rides on the chat's poll, with the
+     newest unread item's id. Every unread item but one a person sent themselves also pops up under the bell on any page
+     (`components/InboxAlerts.tsx`, the newest three, one on a phone) with a chime, until it is marked read or opened — what
+     is unread is kept on the server, so a reload or another device shows it again.
    - **Tasks** (the inbox's Tasks tab, `lib/domain/tasks.ts`, `lib/server/tasks.ts`, `app/tasks/actions.ts`): given by
-     someone with "Tasks — assign" (by hand, through the assistant, an automation or a repeating task), reported on by the
+     someone with "Tasks — assign" (through the assistant, an automation or a repeating task — the tab has no form of its
+     own), reported on by the
      people it was given to, approved or returned by the giver. Views: List, Board (to do / in progress / to review / done),
      Calendar (by due day) and Team (each person's open, late, due this week and to review, and over 30 days the approved,
      the share on time and the days taken; the owner sees everyone's), all under one filter bar (words, due day, person,
      urgent). A task may carry a checklist its giver and people tick (written over the checklist as it was read); a task
-     can be kept as a template (`TaskTemplate`) or repeat by itself (`TaskRepeat`: each working day, on weekdays or a day of
+     can repeat by itself (`TaskRepeat`: each working day, on weekdays or a day of
      the month, a day off moving to the next working day, due so many working days later) — given by the minute tick as
      its giver while they may give tasks. The tick also reminds a task's people on its due day, once after it is late, and
      sends a task late for two days or more to the app's owner, once.

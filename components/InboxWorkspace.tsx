@@ -10,7 +10,7 @@ import { INBOX_CHANGED, INBOX_UNREAD } from "@/components/InboxBell";
 import { Loading, useTabData } from "@/components/useTabData";
 import { loadInbox } from "@/app/ai/panel/actions";
 import { loadTasks } from "@/app/tasks/actions";
-import { INBOX_TAB_LABEL, TAB_KINDS, type InboxTab } from "@/lib/domain/inbox";
+import { INBOX_TAB_LABEL, TAB_KINDS, type InboxHead, type InboxTab } from "@/lib/domain/inbox";
 
 // The inbox's window: its head — what it is, how much is not read, this
 // device's notifications, expand, close — over three tabs: Alerts (messages
@@ -69,7 +69,7 @@ export function InboxWorkspace({
       refreshInbox();
       if (tab === "tasks") refreshTasks();
     };
-    const polled = (e: Event) => setTold({ n: (e as CustomEvent<number>).detail, at: Date.now() });
+    const polled = (e: Event) => setTold({ n: (e as CustomEvent<InboxHead>).detail.unread, at: Date.now() });
     window.addEventListener(INBOX_CHANGED, again);
     window.addEventListener(INBOX_UNREAD, polled);
     return () => {
@@ -85,7 +85,7 @@ export function InboxWorkspace({
 
   const body = (t: Exclude<InboxTab, "tasks">) =>
     inbox.data ? (
-      <div className={`p-3 md:p-4 ${wide ? "max-w-[1600px] mx-auto md:px-6" : ""}`}>
+      <div className={`p-2.5 md:p-3 ${wide ? "max-w-[1600px] mx-auto md:px-5" : ""}`}>
         <InboxView key={`${inbox.version}:${openItem ?? 0}`} items={inbox.data.items} actions={inbox.data.actions} openId={openItem} kinds={TAB_KINDS[t]} device={false} emptyHint={EMPTY_HINT[t]} />
       </div>
     ) : (
@@ -110,7 +110,7 @@ export function InboxWorkspace({
       </header>
       <Tabs
         label="The inbox"
-        className="px-1.5 shrink-0"
+        className={`shrink-0 ${wide ? "px-2" : "tab-strip-fill"}`}
         items={(["alerts", "reports", "tasks"] as const).map((t) => ({ id: t, label: INBOX_TAB_LABEL[t], icon: TAB_ICON[t], count: unread?.[t] ?? 0 }))}
         value={tab}
         onChange={(id) => onTab(id as InboxTab)}
