@@ -2123,3 +2123,96 @@ model KpiSnapshot {
   data      Json
   updatedAt DateTime @default(now()) @updatedAt
 }
+
+// ---- Odoo, read on a schedule (lib/server/odooSync.ts) ----
+//
+// The app READS Odoo — never writes to it. The connection is the owner's to
+// set in Admin → Settings; the sync runs at 09:00 and 13:00 Riyadh time on
+// the working days (Sun–Thu) and on an admin's "Sync now". What it reads is
+// kept in the tables below, apart from the rows people type: a sync never
+// moves a row's status, its MO or its version, so it can never undo or block
+// anyone's edit.
+
+// The connection: one row. The API key is AES-256-GCM encrypted
+// (lib/server/ai/secret.ts) and never sent to a browser; the hint is its last
+// four characters.
+model OdooSettings {
+  id         Int      @id @default(1)
+  url        String   @default("") // https://atcodoo.odoo.com
+  db         String   @default("")
+  login      String   @default("")
+  apiKeyEnc  String   @default("")
+  apiKeyHint String   @default("")
+  // the scheduled runs are on; "Sync now" works either way
+  enabled    Boolean  @default(true)
+  updatedBy  String?
+  updatedAt  DateTime @default(now()) @updatedAt
+}
+
+// One sync: when, why, what it found. `slot` claims a scheduled run
+// ("2026-10-28@09") so two ticks never run the same one; a manual run's slot
+// is unique by its moment.
+model OdooSyncRun {
+  id         Int       @id @default(autoincrement())
+  slot       String    @unique
+  trigger    String // schedule | manual
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  status     String    @default("running") // running | ok | partial | failed
+  // lib/domain/odooSync.ts OdooSyncSummary
+  summary    Json?
+  error      String?
+  startedBy  String?
+
+  @@index([startedAt])
+}
+
+// What Odoo says about each MO the close-out log names (OdooEntry.odooMo),
+// keyed by the name as the log writes it. When Odoo split the order after the
+// clerk typed it, its first batch was renamed "<name>-001" — `currentName` is
+// the name Odoo uses now. `found` false: no MO by either name.
+model OdooMoState {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  found       Boolean   @default(true)
+  currentName String    @default("")
+  odooId      Int?
+  state       String    @default("") // draft | confirmed | progress | to_close | done | cancel
+  productCode String    @default("")
+  qty         Float     @default(0)
+  qtyProduced Float     @default(0)
+  // Odoo's own closing moment (date_finished) when it is done
+  doneAt      DateTime?
+  checkedAt   DateTime  @default(now())
+
+  @@index([state])
+}
+
+// The sub-assembly MOs under each open order, as Odoo links them: a
+// transformer's tank, top cover, core frame, cable box, arrester, monobloc box
+// and fins under its PF01 MO; an LV panel order's own batches. One row per
+// order × child — a child shared by two orders is under both. Rewritten for
+// every open order on each sync; a closed order keeps its last rows.
+model OdooChildMo {
+  id          Int       @id @default(autoincrement())
+  parentMo    String // the order's MO as the app keeps it (MasterOrder.mo)
+  name        String // SF01/MO/15295-002
+  odooId      Int
+  // CF | TC | TN | CB | AR | MB | FN — "" for an LV order's own batch
+  item        String    @default("")
+  productCode String    @default("")
+  qty         Float     @default(0)
+  qtyProduced Float     @default(0)
+  uom         String    @default("")
+  state       String    @default("")
+  doneAt      DateTime?
+  // how the child was tied to the order: direct | origin | qty_match | shared | batch | self
+  linkHow     String    @default("")
+  // the other orders it is shared with (CSV), when it is
+  sharedWith  String    @default("")
+  syncedAt    DateTime  @default(now())
+
+  @@unique([parentMo, odooId])
+  @@index([parentMo, item])
+  @@index([name])
+}

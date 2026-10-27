@@ -28,6 +28,7 @@ import {
 import { factoryDayISO } from "@/lib/domain/dates";
 import { formatDateTime } from "@/lib/domain/format";
 import { EVENT_TAB, eventMatches, eventRow, isTaskEvent, type AppEventView } from "@/lib/domain/appEvents";
+import { runOdooSyncIfDue } from "@/lib/server/odooSync";
 
 // Running automations: the ones due, each claimed so two ticks never run it
 // twice, run as its owner with the owner's permissions as they stand now —
@@ -70,6 +71,9 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
     // here too, whatever finished them last (a paint log, a hold released)
     await settleOrdersAfterOdoo();
   }
+  // Odoo, read at its own hours (09:00 and 13:00 Riyadh, Sun–Thu) — paused
+  // automations or not: it is the plant's data, not an automation
+  await runOdooSyncIfDue(now).catch((e) => console.error("odoo sync: scheduled run failed", e));
   const window = automationWindowOf(settings);
   const inHours = inAutomationWindow(now, window);
   // the tasks past their due day tell their people — inside the plant's

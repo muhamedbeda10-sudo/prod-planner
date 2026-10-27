@@ -11,6 +11,7 @@ import { closeOdooReady, fillOdooMo, odooReadyMaterial, odooRowMaterial, pollOdo
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { ODOO_CHANGED_EVENT, alertKey, pruneSeen, unseenKeys, type ReadyRow } from "@/lib/domain/odooAlerts";
 import { MO_MATERIAL_FLAG, MO_MATERIAL_STATES, moMaterialFlag, type MoMaterialState } from "@/lib/domain/odooMaterial";
+import { ODOO_AGREEMENT_TEXT, odooStateLabel } from "@/lib/domain/odooSync";
 
 // 🔔 The ODOO alerts, for whoever is subscribed:
 // - "needs an MO" (odoo.needMo): a row landed on the log without Odoo's MO —
@@ -297,8 +298,19 @@ function MaterialLegend({ rows, material }: { rows: ReadyRow[]; material: Record
 function MoInput({ r, disabled, onSave }: { r: ReadyRow; disabled: boolean; onSave: (id: number, v: string) => void }) {
   const [v, setV] = useState("");
   const save = () => v.trim() && onSave(r.id, v.trim());
+  const suggest = r.odoo?.suggest ?? [];
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
+    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+      {/* Odoo's open MOs under the closing's order and component — one click books it */}
+      {suggest.map((c) => (
+        <button
+          key={c.name} type="button" disabled={disabled} onClick={() => onSave(r.id, c.name)}
+          className="btn btn-sm btn-secondary ltr"
+          title={`Use ${c.name} — ${odooStateLabel(c.state)}, ${Math.max(0, c.qty - c.qtyProduced)} of ${c.qty} still to make${c.productCode ? ` · ${c.productCode}` : ""}`}
+        >
+          {c.name} <span className="text-muted tabnum">· {Math.max(0, c.qty - c.qtyProduced)}</span>
+        </button>
+      ))}
       <input
         value={v}
         onChange={(e) => setV(e.target.value)}
@@ -378,6 +390,11 @@ function ReadyPopup({ close, mo, fresh, material, canEdit, pending, err, onClose
                 return (
                   <li key={`close-${r.id}`} className={`flex items-center gap-3 px-5 py-3 text-base ${tint}`}>
                     <RowFacts r={r} isNew={isNew} flag={flag} onOpen={onOpen} opening={opening === r.id} />
+                    {r.odoo && r.odoo.agreement !== "agree" && r.odoo.agreement !== "none" && r.odoo.agreement !== "unchecked" && (
+                      <span className={`pill ${r.odoo.agreement === "closedInOdoo" ? "pill-ok" : "pill-warn"} text-[10px] shrink-0`} title={ODOO_AGREEMENT_TEXT[r.odoo.agreement].hint}>
+                        {ODOO_AGREEMENT_TEXT[r.odoo.agreement].label}
+                      </span>
+                    )}
                     <button
                       type="button" className="shrink-0 btn btn-sm btn-primary" disabled={pending || !can(r)} onClick={() => onClose([r.id])}
                       title={can(r) ? "Closed in Odoo — mark it Done" : "You cannot record on this line's ODOO log"}
