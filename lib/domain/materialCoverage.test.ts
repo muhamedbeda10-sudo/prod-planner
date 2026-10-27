@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coverage, normCode, sheetNeeds, stockCheck, type PartNeed, type StockLine } from "./materialCoverage";
+import { coverage, needByStock, normCode, sheetNeeds, stockCheck, type PartNeed, type StockLine } from "./materialCoverage";
 import type { LineSheetSpec } from "./machineMaterial";
 
 const spec = (code: string, perUnit: number, o: Partial<LineSheetSpec> = {}): LineSheetSpec => ({ material: "Steel", materialCode: code, thicknessMm: 3, sheetSize: "1220*2440", perUnit, actual: true, ...o });
@@ -69,5 +69,19 @@ describe("the release checklist's material line", () => {
   });
   it("nothing left to cut needs no sheets", () => {
     expect(stockCheck([], gaps)).toMatchObject({ status: "ok", detail: expect.stringContaining("Nothing is left to cut") });
+  });
+});
+
+describe("the need beside each stock line", () => {
+  it("keys the open work's need by the table's code, and lists what the table lacks", () => {
+    const needs = sheetNeeds([
+      part("A", "TN", 10, [spec("c1", 1), spec("C9", 2)]),
+      part("B", "TC", 30, [spec("C1", 1)]),
+      part("D", "CB", 3, []),
+    ]);
+    const r = needByStock(needs, [stock("C1", 25), stock("C2", 5)]);
+    expect(r.byCode).toEqual({ C1: expect.objectContaining({ need: 40, after: -15, status: "short", orders: 2, jobCount: 2, jobs: [{ mo: "B", item: "TC", sheets: 30 }, { mo: "A", item: "TN", sheets: 10 }] }) });
+    expect(r.missing).toEqual([expect.objectContaining({ code: "C9", sheets: 20 })]);
+    expect(r.unpriced).toEqual({ noNesting: 1, uncoded: 0 });
   });
 });

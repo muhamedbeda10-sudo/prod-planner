@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-physical-open-need",
+    dateISO: "2026-10-27",
+    title: "Physical Material shows what the open orders need",
+    where: "Material → Physical Material",
+    href: "/physical",
+    body: "Beside SF01 in Odoo, two new columns: Open need — the sheets the open orders still need of each code, by the nesting (≈ where a job is not nested yet; rest on it to see the orders behind it) — and After need, what Odoo holds once they are cut, red when it falls short. A Short for open orders card and filter pick out the codes to order, and the codes the orders need that are missing from the table are named under it. The assistant's Excel of the screen carries both columns.",
+  },
+  {
     id: "2026-10-27-material-against-odoo-stock",
     dateISO: "2026-10-27",
     title: "The assistant checks the sheets against Odoo's stock",

@@ -5,7 +5,8 @@ vi.mock("server-only", () => ({}));
 import { ITEMS } from "@/lib/domain/constants";
 import type { LogRow } from "@/lib/domain/dailyLogView";
 import { orderRowOf, type RegistryOrder } from "@/lib/domain/registryView";
-import { dailyLogRows, downtimeRows, lvTraceRows, masterTrackerRows, odooDailyRows, odooLogRows, registryRows, rosterRows } from "@/lib/server/sheets";
+import { dailyLogRows, downtimeRows, lvTraceRows, masterTrackerRows, odooDailyRows, odooLogRows, physicalRows, registryRows, rosterRows } from "@/lib/server/sheets";
+import { stockView } from "@/lib/domain/physicalStock";
 import type { DowntimeDay } from "@/lib/server/downtime";
 import type { LvTraceResult } from "@/lib/server/lvTrace";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
@@ -119,5 +120,23 @@ describe("lvTraceRows", () => {
   it("is the timeline, a row each", () => {
     const t = { timeline: [{ dateISO: "2026-10-26", mo: null, stage: "Punch", qty: 4, by: null, source: "worklist", note: null }] } as unknown as LvTraceResult;
     expect(lvTraceRows(t)).toEqual([{ Date: "2026-10-26", MO: "", Stage: "Punch", Qty: 4, By: "", Source: "worklist", Note: "" }]);
+  });
+});
+
+describe("physicalRows", () => {
+  const item = (code: string, odoo: number) => ({ ...stockView({ code, name: `${code} sheet`, uom: "PC", physical: odoo, odoo }), id: 1, note: null, updatedBy: null, updatedAtISO: "" });
+  it("adds the open orders' need and Odoo after it only when given", () => {
+    const items = [item("C1", 25), item("C2", 5)];
+    expect(physicalRows(items)[0]).not.toHaveProperty("Open Orders Need (sheets)");
+    const need = {
+      byCode: { C1: { need: 40, after: -15, status: "short" as const, estimated: false, orders: 2, jobCount: 2, jobs: [] }, C2: { need: 3, after: null, status: "not_comparable" as const, estimated: false, orders: 1, jobCount: 1, jobs: [] } },
+      missing: [{ code: "C9", material: "Steel", thicknessMm: 5, sheetSize: "1220*2440", sheets: 12 }],
+      unpriced: { noNesting: 0, uncoded: 0 },
+    };
+    const rows = physicalRows([...items, item("C3", 1)], need);
+    expect(rows[0]).toMatchObject({ "SF01 Stock In Odoo": 25, "Open Orders Need (sheets)": 40, "Odoo After Need": -15 });
+    expect(rows[1]).toMatchObject({ "Open Orders Need (sheets)": 3, "Odoo After Need": "n/a (other unit)" });
+    expect(rows[2]).toMatchObject({ "Open Orders Need (sheets)": "", "Odoo After Need": "" });
+    expect(rows[3]).toMatchObject({ "Product Code": "C9", "Open Orders Need (sheets)": 12, Status: "Not on the table" });
   });
 });
