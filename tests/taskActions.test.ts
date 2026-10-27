@@ -173,7 +173,7 @@ describe("postTaskUpdate", () => {
   });
 });
 
-describe("Tasks 2.0 — giving with steps, repeating, kept as a template", () => {
+describe("Tasks 2.0 — giving with steps and repeating", () => {
   const give = { title: "Clean bay 2", people: "9" };
   beforeEach(() => {
     h.prisma.user.findMany.mockResolvedValue([{ id: SARA.id, name: "Sara" }]);
@@ -218,9 +218,9 @@ describe("Tasks 2.0 — giving with steps, repeating, kept as a template", () =>
     expect(h.prisma.taskTemplate.create).not.toHaveBeenCalled();
   });
 
-  it("keeps it as a template when named", async () => {
-    await createTask(form({ ...give, checklist: "Sweep\nMop", templateName: "Bay clean" }));
-    expect(h.prisma.taskTemplate.create.mock.calls[0][0].data).toMatchObject({ ownerId: OWNER.id, name: "Bay clean", title: "Clean bay 2", checklist: ["Sweep", "Mop"], people: [9] });
+  it("gives it without keeping a template — templates went with the tab's form", async () => {
+    expect(await createTask(form({ ...give, checklist: "Sweep\nMop", templateName: "Bay clean" }))).toMatchObject({ ok: true });
+    expect(h.prisma.taskTemplate.create).not.toHaveBeenCalled();
   });
 });
 

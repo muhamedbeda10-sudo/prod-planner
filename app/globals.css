@@ -1332,6 +1332,40 @@ html.ai-modal { overflow: hidden; }
 /* the inbox's card hangs under the bell, on the right, below the bar */
 .ai-pop-compact.inbox-pop { top: 56px; bottom: auto; height: min(720px, calc(100dvh - 76px)); max-height: none; }
 
+/* ---- the inbox's popups (components/InboxAlerts): under the bell until read ----
+   over the page, under the bar (z-30) — its menus, the phone drawer and the
+   chat's window live in the bar, so they cover the cards — and under the
+   assistant's and the inbox's windows */
+.inbox-alerts {
+  position: fixed; top: 60px; right: var(--sp-4); z-index: 29;
+  width: min(400px, calc(100vw - 2 * var(--sp-3)));
+  max-height: calc(100dvh - 76px); overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.inbox-alert {
+  display: flex; gap: var(--sp-3); padding: var(--sp-3);
+  background: var(--surface); color: var(--foreground);
+  border: 1px solid var(--border); border-inline-start: 4px solid var(--brand);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+  animation: aipop-in 0.2s ease-out;
+}
+.inbox-alert-tile { width: 32px; height: 32px; border-radius: var(--r-md); display: grid; place-items: center; flex-shrink: 0; }
+.inbox-alert-title { font-size: var(--fs-body); font-weight: 700; line-height: 1.3; min-width: 0; overflow-wrap: anywhere; }
+.inbox-alert-body { margin-top: var(--sp-1); font-size: var(--fs-body); line-height: 1.45; color: var(--muted); }
+.inbox-alert-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
+.inbox-alerts-foot {
+  display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-2);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+}
+@media (max-width: 639px) {
+  .inbox-alerts { top: 56px; right: var(--sp-2); left: var(--sp-2); width: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .inbox-alert { animation: none; } }
+/* an item in the inbox's list: a card; one not read has the brand bar on its side */
+.inbox-item { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); transition: background-color 0.12s ease; }
+.inbox-item > button:hover { background: var(--surface-2); border-radius: inherit; }
+.inbox-item-unread { border-inline-start: 4px solid var(--brand); }
+
 /* ---- tasks (components/TasksView): the list, a task's thread ---- */
 .task-row { display: block; width: 100%; text-align: start; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid transparent; transition: background-color 0.12s ease, border-color 0.12s ease; }
 .task-row:hover { background: var(--surface-2); }

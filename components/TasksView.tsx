@@ -3,25 +3,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle, ArrowLeft, Ban, CalendarClock, Check, CheckCircle2, ClipboardCheck, FileText, Flag, ListChecks, Loader2, Paperclip, Pause, Pencil, Play, Plus, Repeat, RotateCcw, Search, Send, Trash2, Undo2, Users, X,
+  AlertTriangle, ArrowLeft, Ban, CalendarClock, Check, CheckCircle2, ClipboardCheck, FileText, Flag, ListChecks, Loader2, Paperclip, Pause, Pencil, Play, Repeat, RotateCcw, Search, Send, Trash2, Undo2, Users, X,
 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
-import { EmptyState, Switch } from "@/components/primitives";
-import { INBOX_CHANGED } from "@/components/InboxBell";
+import { EmptyState } from "@/components/primitives";
+import { tellInboxChanged } from "@/components/InboxBell";
 import { useConfirm } from "@/components/DataTable";
 import { ChecklistEditor, StepsBar, TASK_VIEWS, TaskBoard, TaskCalendar, TaskFilterBar, TaskTeam, peopleOf, type TaskViewId } from "@/components/TasksViews";
 import {
-  createTask, deleteTaskRepeat, deleteTaskTemplate, loadAssignable, loadTask, markTaskSeen, postTaskUpdate, setTaskChecklist, setTaskRepeatEnabled, tickTaskStep,
+  deleteTaskRepeat, loadTask, markTaskSeen, postTaskUpdate, setTaskChecklist, setTaskRepeatEnabled, tickTaskStep,
 } from "@/app/tasks/actions";
 import { compressImage } from "@/lib/imageCompress";
 import { traceHref } from "@/lib/domain/links";
 import { formatDate, formatDateTime } from "@/lib/domain/format";
 import { factoryDayISO } from "@/lib/domain/dates";
 import {
-  MOVE_NEEDS_TEXT, NO_FILTER, isFiltered, REPEAT_LIMITS, TASK_LIMITS, TASK_MOVE_LABEL, TASK_STATUS_LABEL, TASK_STATUS_TONE, describeRepeat, filterTasks, isClosed,
-  type RepeatEvery, type RepeatRule, type TaskFilter, type TaskMove,
+  MOVE_NEEDS_TEXT, NO_FILTER, isFiltered, TASK_LIMITS, TASK_MOVE_LABEL, TASK_STATUS_LABEL, TASK_STATUS_TONE, filterTasks, isClosed,
+  type TaskFilter, type TaskMove,
 } from "@/lib/domain/tasks";
-import type { TaskDetail, TaskRepeatView, TaskSummary, TasksData, TaskTemplateView, TaskUpdateView } from "@/lib/server/tasks";
+import type { TaskDetail, TaskRepeatView, TaskSummary, TasksData, TaskUpdateView } from "@/lib/server/tasks";
 import type { StoredFile } from "@/lib/server/uploads";
 
 // The inbox's Tasks tab: the tasks given to the person and those they gave,
@@ -31,7 +31,7 @@ import type { StoredFile } from "@/lib/server/uploads";
 // beside the open task; in the corner card and on a phone the task opens in
 // its place, with Back.
 
-const changed = () => window.dispatchEvent(new Event(INBOX_CHANGED));
+const changed = tellInboxChanged;
 
 type Which = "mine" | "sent";
 type Show = "open" | "closed";
@@ -468,6 +468,7 @@ function TaskPane({ id, onBack, onChanged, onOpen }: { id: number; onBack?: () =
                   rows={2}
                   maxLength={TASK_LIMITS.update}
                   placeholder={task.role.doer ? "How far did you get? Add a photo…" : "Write to them…"}
+                  aria-label="Update on the task"
                   className="flex-1 min-w-0 resize-none text-sm px-2.5 py-1.5"
                   dir="auto"
                   disabled={pending}
@@ -499,251 +500,6 @@ function TaskPane({ id, onBack, onChanged, onOpen }: { id: number; onBack?: () =
         </div>
       )}
     </div>
-  );
-}
-
-// ------------------------------------------------------------------ giving one
-
-const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const EVERY_LABEL: Record<RepeatEvery, string> = { day: "Each working day", week: "On weekdays", month: "Monthly" };
-
-function TaskForm({ onDone, onCancel, templates, onTemplatesChanged }: { onDone: (ids: number[]) => void; onCancel: () => void; templates: TaskTemplateView[]; onTemplatesChanged: () => void }) {
-  const [people, setPeople] = useState<{ id: number; name: string }[] | null>(null);
-  const [loadErr, setLoadErr] = useState<string | null>(null);
-  const [chosen, setChosen] = useState<number[]>([]);
-  const [q, setQ] = useState("");
-  const [shared, setShared] = useState(false);
-  const [urgent, setUrgent] = useState(false);
-  const [title, setTitle] = useState("");
-  const [details, setDetails] = useState("");
-  const [steps, setSteps] = useState<string[]>([]);
-  const [repeatOn, setRepeatOn] = useState(false);
-  const [repeat, setRepeat] = useState<RepeatRule>({ every: "day", weekdays: [], monthDay: 1, dueDays: 0 });
-  const [keep, setKeep] = useState(false);
-  const [keepName, setKeepName] = useState("");
-  const [askDelete, confirmDialog] = useConfirm();
-  const [msg, setMsg] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-  const picked = usePicked();
-  const today = factoryDayISO(new Date());
-
-  useEffect(() => {
-    let live = true;
-    loadAssignable()
-      .then((r) => live && (r.ok ? setPeople(r.people) : setLoadErr(r.error)))
-      .catch(() => live && setLoadErr("Could not load the people — check the connection."));
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  const shown = useMemo(() => {
-    const n = q.trim().toLowerCase();
-    return (people ?? []).filter((p) => !n || p.name.toLowerCase().includes(n));
-  }, [people, q]);
-  const toggle = (id: number) => setChosen((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : xs.length >= TASK_LIMITS.people ? xs : [...xs, id]));
-
-  const applyTemplate = (t: TaskTemplateView) => {
-    setTitle(t.title);
-    setDetails(t.details);
-    setSteps(t.checklist);
-    setUrgent(t.priority === "urgent");
-    setShared(t.shared);
-    const active = new Set((people ?? []).map((p) => p.id));
-    setChosen(t.people.filter((id) => active.has(id)));
-  };
-  const dropTemplate = async (t: TaskTemplateView) => {
-    if (!(await askDelete({ title: `Delete the template “${t.name}”?`, body: "The tasks given from it stay as they are.", confirmLabel: "Delete template", danger: true }))) return;
-    const fd = new FormData();
-    fd.set("id", String(t.id));
-    const r = await deleteTaskTemplate(fd).catch(() => ({ ok: false, error: "Not deleted — check the connection." }));
-    if (!r.ok) setMsg(r.error ?? "Not deleted.");
-    onTemplatesChanged();
-  };
-
-  const submit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (chosen.length === 0) {
-      setMsg("Choose who it is for.");
-      return;
-    }
-    if (repeatOn && repeat.every === "week" && repeat.weekdays.length === 0) {
-      setMsg("Choose the days of the week it comes on.");
-      return;
-    }
-    if (keep && !keepName.trim()) {
-      setMsg("Name the template — or untick “Keep as a template”.");
-      return;
-    }
-    const fd = new FormData(e.currentTarget);
-    fd.set("title", title);
-    fd.set("details", details);
-    fd.set("people", chosen.join(","));
-    fd.set("shared", shared && chosen.length > 1 ? "1" : "0");
-    fd.set("priority", urgent ? "urgent" : "normal");
-    fd.set("checklist", JSON.stringify(steps));
-    if (repeatOn) fd.set("repeat", JSON.stringify(repeat));
-    if (keep) fd.set("templateName", keepName.trim());
-    for (const f of picked.files) fd.append("files", f);
-    setMsg(null);
-    start(async () => {
-      const r = await createTask(fd).catch(() => ({ ok: false, error: "Not sent — check the connection and try again.", ids: undefined }));
-      if (!r.ok || !r.ids) {
-        setMsg(r.error ?? "Not given.");
-        return;
-      }
-      if (keep) onTemplatesChanged();
-      onDone(r.ids);
-    });
-  };
-
-  const names = (people ?? []).filter((p) => chosen.includes(p.id)).map((p) => p.name);
-
-  return (
-    <form onSubmit={submit} className="flex flex-col h-full min-h-0">
-      <div className="ai-pane-head">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}><ArrowLeft size={15} aria-hidden /> Back</button>
-        <span className="text-sm font-semibold">New task</span>
-      </div>
-      <div className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4 space-y-3">
-        {templates.length > 0 && (
-          <div>
-            <span className="field-label">Start from a template</span>
-            <div className="flex flex-wrap gap-1.5">
-              {templates.map((t) => (
-                <span key={t.id} className="chip !pe-1">
-                  <button type="button" className="font-semibold" onClick={() => applyTemplate(t)} disabled={!people} title={`Fill in “${t.title}”`} dir="auto">{t.name}</button>
-                  <button type="button" className="p-0.5 rounded-full hover:bg-surface-3" onClick={() => void dropTemplate(t)} aria-label={`Delete the template ${t.name}`} title="Delete template"><X size={11} /></button>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-        <label className="block">
-          <span className="field-label">What is to be done</span>
-          <input name="title" required maxLength={TASK_LIMITS.title} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Clean bay 2 before the audit" className="w-full px-2.5 py-1.5 text-sm" dir="auto" />
-        </label>
-        <label className="block">
-          <span className="field-label">Details <span className="font-normal text-muted">— optional</span></span>
-          <textarea name="details" rows={3} maxLength={TASK_LIMITS.details} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What counts as done, what to send back (a photo of the result…)" className="w-full px-2.5 py-1.5 text-sm resize-y" dir="auto" />
-        </label>
-        <div>
-          <span className="field-label">Checklist <span className="font-normal text-muted">— optional; they tick each step</span></span>
-          <ChecklistEditor value={steps} onChange={setSteps} disabled={pending} />
-        </div>
-        <div>
-          <span className="field-label">For</span>
-          {names.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {names.map((n, i) => (
-                <span key={n} className="inline-flex items-center gap-1 rounded-full bg-brand-light text-brand-ink text-xs font-semibold ps-2.5 pe-1 py-0.5">
-                  {n}
-                  <button type="button" className="p-0.5 rounded-full hover:bg-black/10" onClick={() => toggle(chosen[i])} aria-label={`Remove ${n}`}><X size={11} /></button>
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="rounded-lg border overflow-hidden">
-            <div className="relative border-b">
-              <Search size={14} className="absolute start-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" aria-hidden />
-              <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search people…" aria-label="Search people" className="w-full ps-8 pe-2 py-1.5 text-sm border-0 rounded-none" />
-            </div>
-            <div className="max-h-44 overflow-y-auto">
-              {loadErr ? <p className="p-3 text-xs text-bad-fg">{loadErr}</p>
-                : !people ? <p className="p-3 text-xs text-muted flex items-center gap-2"><Loader2 size={13} className="animate-spin" aria-hidden /> Loading…</p>
-                : shown.length === 0 ? <p className="p-3 text-xs text-muted">Nobody matches.</p>
-                : shown.map((p) => (
-                  <label key={p.id} className="flex items-center gap-2.5 px-3 py-1.5 text-sm hover:bg-surface-2 cursor-pointer">
-                    <input type="checkbox" checked={chosen.includes(p.id)} onChange={() => toggle(p.id)} />
-                    <span dir="auto">{p.name}</span>
-                  </label>
-                ))}
-            </div>
-          </div>
-        </div>
-        {chosen.length > 1 && (
-          <div>
-            <span className="field-label">{chosen.length} people</span>
-            <div className="segmented w-full">
-              <button type="button" aria-pressed={!shared} onClick={() => setShared(false)}>One task each</button>
-              <button type="button" aria-pressed={shared} onClick={() => setShared(true)}>One shared task</button>
-            </div>
-            <p className="text-xs text-muted mt-1.5">{shared ? "They work on it together and see each other's updates; it is done when you approve it once." : "Each gets their own copy, reports on it and is approved on their own."}</p>
-          </div>
-        )}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <label className="block">
-            <span className="field-label">Due day <span className="font-normal text-muted">— optional</span></span>
-            <input name="due" type="date" min={today} className="w-full px-2 py-1.5 text-sm tabnum" />
-          </label>
-          <label className="block">
-            <span className="field-label">Order <span className="font-normal text-muted">— optional</span></span>
-            <input name="mo" maxLength={60} placeholder="MO" className="w-full px-2 py-1.5 text-sm ltr" />
-          </label>
-          <div>
-            <span className="field-label">Priority</span>
-            <div className="segmented w-full">
-              <button type="button" aria-pressed={!urgent} onClick={() => setUrgent(false)}>Normal</button>
-              <button type="button" aria-pressed={urgent} onClick={() => setUrgent(true)}>Urgent</button>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-xl border px-3 py-2.5 space-y-2">
-          <div className="flex items-center gap-2">
-            <Switch on={repeatOn} onChange={setRepeatOn} label="Repeat it" size="sm" />
-            <span className="text-sm font-semibold inline-flex items-center gap-1.5"><Repeat size={14} aria-hidden /> Repeat it by itself</span>
-          </div>
-          {repeatOn && (
-            <>
-              <div className="segmented segmented-stack w-full">
-                {(Object.keys(EVERY_LABEL) as RepeatEvery[]).map((e) => (
-                  <button key={e} type="button" aria-pressed={repeat.every === e} onClick={() => setRepeat((r) => ({ ...r, every: e }))}>{EVERY_LABEL[e]}</button>
-                ))}
-              </div>
-              {repeat.every === "week" && (
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Days of the week">
-                  {WEEKDAY_SHORT.map((d, n) => (
-                    <button key={d} type="button" className={`chip ${repeat.weekdays.includes(n) ? "chip-on" : ""}`} aria-pressed={repeat.weekdays.includes(n)}
-                      onClick={() => setRepeat((r) => ({ ...r, weekdays: r.weekdays.includes(n) ? r.weekdays.filter((x) => x !== n) : [...r.weekdays, n].sort() }))}>{d}</button>
-                  ))}
-                </div>
-              )}
-              <div className="flex flex-wrap items-center gap-3 text-sm">
-                {repeat.every === "month" && (
-                  <label className="inline-flex items-center gap-1.5">On day
-                    <input type="number" min={1} max={31} value={repeat.monthDay ?? 1} onChange={(e) => e.target.value !== "" && setRepeat((r) => ({ ...r, monthDay: Math.min(31, Math.max(1, Math.round(Number(e.target.value)))) }))} className="w-16 text-end tabnum px-2 py-1" />
-                  </label>
-                )}
-                <label className="inline-flex items-center gap-1.5">Each one due
-                  <input type="number" min={0} max={REPEAT_LIMITS.dueDays} value={repeat.dueDays} onChange={(e) => e.target.value !== "" && setRepeat((r) => ({ ...r, dueDays: Math.min(REPEAT_LIMITS.dueDays, Math.max(0, Math.round(Number(e.target.value)))) }))} className="w-16 text-end tabnum px-2 py-1" />
-                  working days after it is given
-                </label>
-              </div>
-              <p className="text-xs text-muted">{repeat.every !== "week" || repeat.weekdays.length ? `${describeRepeat(repeat)}. ` : ""}This first one is given now (due as they will be, unless you set a due day); the next ones come by themselves on the morning of their day — a Friday or holiday moves to the next working day. Pause or stop it under I gave → Repeating.</p>
-            </>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} /> Keep as a template
-          </label>
-          {keep && <input value={keepName} onChange={(e) => setKeepName(e.target.value)} maxLength={60} placeholder="Template name, e.g. Weekly bay clean" aria-label="Template name" className="flex-1 min-w-[12rem] px-2.5 py-1 text-sm" dir="auto" />}
-        </div>
-        <div className="flex items-center gap-2">
-          <AttachButton picked={picked} disabled={pending} />
-          <span className="text-xs text-muted">Photos or files to go with it</span>
-        </div>
-        <PickedFiles picked={picked} />
-        {confirmDialog}
-      </div>
-      <div className="border-t p-2.5 flex items-center justify-end gap-2 shrink-0">
-        {msg && <span className="text-xs font-semibold text-bad-fg me-auto">{msg}</span>}
-        <button type="button" className="btn btn-sm btn-ghost" onClick={onCancel} disabled={pending}>Cancel</button>
-        <button type="submit" className="btn btn-sm btn-primary" disabled={pending || picked.busy}>
-          {pending ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Send size={14} aria-hidden />} Give the task
-        </button>
-      </div>
-    </form>
   );
 }
 
@@ -818,7 +574,6 @@ export function TasksView({
   const giver = data.canAssign || data.sent.length > 0;
   const [which, setWhich] = useState<Which>(() => (!giver || data.mine.some((t) => !isClosed(t.status)) || data.sent.length === 0 ? "mine" : "sent"));
   const [show, setShow] = useState<Show | "repeating">("open");
-  const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState<TaskFilter>(NO_FILTER);
   const [view, setViewState] = useState<TaskViewId>(() => {
     try {
@@ -859,24 +614,24 @@ export function TasksView({
   ) : (
     <span className="text-sm font-semibold flex-1">Tasks for me</span>
   );
-  const newButton = data.canAssign && (
-    <button type="button" className="btn btn-sm btn-primary shrink-0" onClick={() => setCreating(true)}>
-      <Plus size={14} aria-hidden /> New
-    </button>
-  );
-  const viewSwitch = (
-    <div className="segmented" role="group" aria-label="View">
-      {views.map((v) => <button key={v.id} type="button" aria-pressed={current === v.id} onClick={() => setView(v.id)}>{v.label}</button>)}
-    </div>
-  );
+  // the views by their icons beside For me | I gave (the list's narrow
+  // column, the corner card); spelled out where the board has the width
+  const viewSwitch = (icons: boolean) =>
+    views.length > 1 && (
+      <div className="segmented shrink-0" role="group" aria-label="View">
+        {views.map((v) => (
+          <button key={v.id} type="button" aria-pressed={current === v.id} onClick={() => setView(v.id)} title={v.label} aria-label={icons ? v.label : undefined}>
+            <v.icon size={14} aria-hidden />{!icons && <span className="ms-1">{v.label}</span>}
+          </button>
+        ))}
+      </div>
+    );
 
   const listPane = (
     <div className="flex flex-col h-full min-h-0">
       <div className="p-2.5 space-y-2 border-b shrink-0">
-        <div className="flex items-center gap-2">{whichSwitch}{newButton}</div>
-        {!split && views.length > 1 && <div className="overflow-x-auto">{viewSwitch}</div>}
-        <TaskFilterBar f={filter} onChange={setFilter} people={people} count={filtered.length} />
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex items-center gap-2">{whichSwitch}{viewSwitch(true)}</div>
+        <TaskFilterBar f={filter} onChange={setFilter} people={people} count={filtered.length}>
           <button type="button" className={`chip ${show === "open" ? "chip-on" : ""}`} aria-pressed={show === "open"} onClick={() => setShow("open")}>Open<span className="chip-count">{openCount(filtered)}</span></button>
           <button type="button" className={`chip ${show === "closed" ? "chip-on" : ""}`} aria-pressed={show === "closed"} onClick={() => setShow("closed")}>Done & cancelled</button>
           {which === "sent" && (data.repeats.length > 0 || data.canAssign) && (
@@ -884,7 +639,7 @@ export function TasksView({
               <Repeat size={12} aria-hidden /> Repeating{data.repeats.length > 0 && <span className="chip-count">{data.repeats.filter((r) => r.enabled).length}</span>}
             </button>
           )}
-        </div>
+        </TaskFilterBar>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-1.5">
         {show === "repeating" && which === "sent" ? (
@@ -894,7 +649,7 @@ export function TasksView({
             compact
             icon={filtering ? Search : ClipboardCheck}
             title={filtering ? "No task matches" : show === "closed" ? "Nothing closed yet" : which === "mine" ? "No tasks for you" : "No open tasks you gave"}
-            hint={filtering ? "Change the search or the filters, or clear them." : show === "open" && which === "sent" && data.canAssign ? "Give one here, or ask the assistant: “give Ahmed a task to …”." : show === "open" && which === "mine" ? "Tasks given to you land here, and on this device when notifications are on." : undefined}
+            hint={filtering ? "Change the search or the filters, or clear them." : show === "open" && which === "sent" && data.canAssign ? "Ask the assistant to give one: “give Ahmed a task to …”." : show === "open" && which === "mine" ? "Tasks given to you land here, and on this device when notifications are on." : undefined}
             action={filtering ? <button type="button" className="btn btn-sm" onClick={() => setFilter(NO_FILTER)}>Clear filters</button> : undefined}
           />
         ) : (
@@ -906,20 +661,7 @@ export function TasksView({
     </div>
   );
 
-  const detail: ReactNode = creating ? (
-    <TaskForm
-      templates={data.templates}
-      onTemplatesChanged={onChanged}
-      onCancel={() => setCreating(false)}
-      onDone={(ids) => {
-        setCreating(false);
-        setWhich("sent");
-        setShow("open");
-        onChanged();
-        if (ids.length === 1) onOpen(ids[0]);
-      }}
-    />
-  ) : openId ? (
+  const detail: ReactNode = openId ? (
     <TaskPane key={openId} id={openId} onBack={split && current === "list" ? undefined : () => onOpen(null)} onChanged={onChanged} onOpen={onOpen} />
   ) : null;
 
@@ -938,7 +680,7 @@ export function TasksView({
     const main = (
       <div className="flex flex-col h-full min-h-0">
         <div className="p-2.5 space-y-2 border-b shrink-0">
-          <div className="flex flex-wrap items-center gap-2">{viewSwitch}{current !== "team" && whichSwitch}{newButton}</div>
+          <div className="flex flex-wrap items-center gap-2">{current !== "team" && whichSwitch}{viewSwitch(!split)}</div>
           {current !== "team" && <TaskFilterBar f={filter} onChange={setFilter} people={people} count={filtered.length} />}
         </div>
         <div className="flex-1 min-h-0 overflow-auto p-2.5">{body}</div>
@@ -956,10 +698,7 @@ export function TasksView({
   if (!split) return detail ?? listPane;
   return (
     <div className="flex h-full min-h-0">
-      <div className="w-[360px] shrink-0 border-e min-h-0 flex flex-col">
-        {views.length > 1 && <div className="px-2.5 pt-2.5 overflow-x-auto">{viewSwitch}</div>}
-        <div className="flex-1 min-h-0">{listPane}</div>
-      </div>
+      <div className="w-[360px] shrink-0 border-e min-h-0">{listPane}</div>
       <div className="flex-1 min-w-0 min-h-0">
         {detail ?? <div className="h-full grid place-items-center"><EmptyState icon={ClipboardCheck} title="Choose a task" hint="Its details, its checklist, its updates and photos, and what you can do on it open here." /></div>}
       </div>

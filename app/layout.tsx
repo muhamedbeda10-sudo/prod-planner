@@ -6,6 +6,7 @@ import { AppNav } from "@/components/AppNav";
 import { AutomationTicker } from "@/components/AutomationTicker";
 import { AiPanel, AiPanelProvider } from "@/components/AiPanel";
 import { AskAiAnywhere } from "@/components/AskAi";
+import { InboxAlerts } from "@/components/InboxAlerts";
 import { InboxPanel, InboxPanelProvider } from "@/components/InboxPanel";
 import { TouchLongPress } from "@/components/TouchLongPress";
 import { UpdateNotice } from "@/components/UpdateNotice";
@@ -20,6 +21,7 @@ import { WHATS_NEW_PREF_KEYS } from "@/lib/domain/userPrefs";
 import { ownLine } from "@/lib/server/line";
 import { aiVisibleFor } from "@/lib/server/ai/access";
 import { inboxState } from "@/lib/server/inbox";
+import { NO_INBOX_HEAD } from "@/lib/domain/inbox";
 import { getNeedingMo, getReadyToClose } from "@/lib/server/odooAlerts";
 import { ODOO_ALERTS_PERM, ODOO_NEED_MO_PERM } from "@/lib/domain/odooAlerts";
 import { THEME_INIT_SCRIPT } from "@/components/themeInit";
@@ -54,7 +56,7 @@ export default async function RootLayout({
   const user = await getCurrentUser(); // null on /login (proxy guards the rest)
   const [unreadChat, settings, prefs, ai, inbox] = user
     ? await Promise.all([getChatUnreadCount(user.id), getSettings(), getUserPrefs(user.id, WHATS_NEW_PREF_KEYS), aiVisibleFor(user), inboxState(user.id)])
-    : [0, null, {}, false, { unread: 0, any: false }];
+    : [0, null, {}, false, { ...NO_INBOX_HEAD, any: false }];
   // the ODOO alerts — "ready to close" and "needs an MO" — for whoever is
   // subscribed to either
   const perms = user ? userPerms(user) : new Set<string>();
@@ -100,6 +102,7 @@ export default async function RootLayout({
           {user && <AiPanel isOwner={user.isOwner} />}
           {user && <AskAiAnywhere />}
           {user && <InboxPanel />}
+          {user && <InboxAlerts initial={{ unread: inbox.unread, latestId: inbox.latestId }} />}
         </main>
         </InboxPanelProvider>
         </AiPanelProvider>

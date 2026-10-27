@@ -7,7 +7,8 @@ import {
   type ChatAttachment, type ChatInboxItem, type ChatContact, type ChatMessageDTO, type ChatMessageState,
   type ChatReplyRef, type ThreadKind,
 } from "@/lib/server/chat";
-import { unreadInboxCount } from "@/lib/server/inbox";
+import { inboxHead } from "@/lib/server/inbox";
+import type { InboxHead } from "@/lib/domain/inbox";
 import { broadcast } from "@/lib/server/realtimeBroadcast";
 import { chatTopic } from "@/lib/domain/chatTopic";
 import { CHAT_MESSAGE_MAX } from "@/lib/domain/chatTopic";
@@ -456,10 +457,10 @@ export async function pollChatInbox(afterId: number): Promise<{
   latestId?: number;
   /** The assistant's inbox (the bell) rides on the same poll — one request,
    *  not two, from every open page. */
-  inboxUnread?: number;
+  inbox?: InboxHead;
 }> {
   const me = await getCurrentUser();
   if (!me || !Number.isInteger(afterId)) return { ok: false };
-  const [chat, inboxUnread] = await Promise.all([getChatInbox(me.id, afterId), unreadInboxCount(me.id).catch(() => undefined)]);
-  return { ok: true, ...chat, ...(inboxUnread === undefined ? {} : { inboxUnread }) };
+  const [chat, inbox] = await Promise.all([getChatInbox(me.id, afterId), inboxHead(me.id).catch(() => undefined)]);
+  return { ok: true, ...chat, ...(inbox === undefined ? {} : { inbox }) };
 }
