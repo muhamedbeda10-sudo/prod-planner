@@ -1311,7 +1311,8 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 }
 
 /* ---- the AI assistant (components/AiPanel): a round button in the corner,
-   a card in the corner, the whole screen when expanded or on a phone ---- */
+   docked down the right of the screen (the app moves left of it), the whole
+   screen when expanded or on a phone ---- */
 .ai-fab {
   position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 29; /* under the bar (z-30): the phone drawer covers it */
   width: 56px; height: 56px; border-radius: 999px; display: grid; place-items: center;
@@ -1328,6 +1329,23 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
   border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 24px 64px rgb(0 0 0 / 0.3), var(--shadow-lg);
   animation: aipop-in 0.18s ease-out;
 }
+/* docked: top to bottom on the right, as wide as dragged (--ai-dock, set
+   on <html> with html.ai-docked). From a laptop up the app moves left of it;
+   on a narrower tablet it lies over the page's right */
+.ai-pop-dock {
+  top: 0; right: 0; bottom: 0; width: var(--ai-dock);
+  border-left: 1px solid var(--border); box-shadow: var(--shadow-lg);
+  animation: aidock-in 0.18s ease-out;
+}
+/* --ai-dock-push: how far what is pinned to the right of the page moves left with it */
+@media screen and (min-width: 1024px) {
+  html.ai-docked { --ai-dock-push: var(--ai-dock); }
+  html.ai-docked body { margin-right: var(--ai-dock); }
+}
+.ai-dock-handle { left: 0; width: 6px; }
+.ai-dock-handle::after { left: 0; }
+html.ai-resizing body { cursor: col-resize; user-select: none; }
+@keyframes aidock-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
 /* The assistant and the inbox expand edge to edge. */
 .ai-pop-large {
   inset: 0; height: 100dvh;
@@ -1335,7 +1353,7 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 }
 .ai-pop-phone { inset: 0; }
 @keyframes aipop-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .ai-pop-compact, .ai-pop-large, .ai-overlay { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ai-pop-compact, .ai-pop-dock, .ai-pop-large, .ai-overlay { animation: none; } }
 html.ai-modal { overflow: hidden; }
 .ai-pop-head { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
 .ai-pop-logo { position: relative; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--brand-fill) 55%, var(--viz-2))); color: #fff; flex-shrink: 0; }
@@ -1350,11 +1368,14 @@ html.ai-modal { overflow: hidden; }
 .ai-side { position: relative; width: var(--ai-side-w, 300px); max-width: 50%; flex-shrink: 0; border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; background: var(--surface-2); min-height: 0; transition: width 0.2s ease; }
 .ai-side-closed { width: 0; border-inline-end-width: 0; overflow: hidden; }
 .ai-side-dragging { transition: none; user-select: none; }
-.ai-side-handle { position: absolute; top: 0; bottom: 0; inset-inline-end: -4px; z-index: 3; width: 8px; cursor: col-resize; touch-action: none; }
-.ai-side-handle::after { content: ""; position: absolute; top: 0; bottom: 0; inset-inline-start: 3px; width: 2px; border-radius: 2px; background: transparent; transition: background-color 0.15s ease; }
-.ai-side-handle:hover::after, .ai-side-dragging .ai-side-handle::after { background: var(--brand); }
-.ai-side-handle:focus-visible { outline: none; }
-.ai-side-handle:focus-visible::after { background: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 30%, transparent); }
+.ai-side-handle { inset-inline-end: -4px; width: 8px; }
+.ai-side-handle::after { inset-inline-start: 3px; }
+/* the edge a panel is dragged by (components/ResizeHandle): a brand line on hover, while dragged and on focus */
+.resize-handle { position: absolute; top: 0; bottom: 0; z-index: 3; cursor: col-resize; touch-action: none; }
+.resize-handle::after { content: ""; position: absolute; top: 0; bottom: 0; width: 2px; border-radius: 2px; background: transparent; transition: background-color 0.15s ease; }
+.resize-handle:hover::after, .ai-side-dragging .resize-handle::after, html.ai-resizing .ai-pop-dock .resize-handle::after { background: var(--brand); }
+.resize-handle:focus-visible { outline: none; }
+.resize-handle:focus-visible::after { background: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 30%, transparent); }
 @media (prefers-reduced-motion: reduce) { .ai-side { transition: none; } }
 .ai-pane-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 /* the inbox's card hangs under the bell, on the right, below the bar */
@@ -1365,7 +1386,7 @@ html.ai-modal { overflow: hidden; }
    chat's window live in the bar, so they cover the cards — and under the
    assistant's and the inbox's windows */
 .inbox-alerts {
-  position: fixed; top: 60px; right: var(--sp-4); z-index: 29;
+  position: fixed; top: 60px; right: calc(var(--sp-4) + var(--ai-dock-push, 0px)); z-index: 29;
   width: min(400px, calc(100vw - 2 * var(--sp-3)));
   max-height: calc(100dvh - 76px); overflow-y: auto;
   display: flex; flex-direction: column; gap: var(--sp-2);
