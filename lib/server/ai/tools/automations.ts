@@ -25,7 +25,7 @@ import { formOf, type ReadTool, type ToolCtx, type WriteTool } from "./types";
 const HHMM = { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$" } as const;
 const PEOPLE = { type: "array", maxItems: AUTOMATION_LIMITS.recipients, items: { type: "string", minLength: 1, maxLength: 80 }, description: "Who receives it, by their name on the users list; leave out for the person alone. Include the person too if they want it as well." } as const;
 
-const CONFIG_PROPS: ObjectSchema["properties"] = {
+export const CONFIG_PROPS: ObjectSchema["properties"] = {
   name: { type: "string", minLength: 1, maxLength: AUTOMATION_LIMITS.name, description: "A short name the person will know it by." },
   trigger: { type: "string", enum: ["schedule", "condition", "event"], description: "schedule = at times of day; condition = when a query finds new rows; event = the moment something happens in the app (eventTypes)." },
   eventTypes: {

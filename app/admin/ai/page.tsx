@@ -7,7 +7,6 @@ import { AI_PERM_KEYS, parsePerms } from "@/lib/domain/permissions";
 import { AiAdmin } from "@/components/AiAdmin";
 import { schedulerStatus } from "@/lib/server/automations/scheduler";
 import { automationViews } from "@/lib/server/automations/views";
-import { getWatchSettings } from "@/lib/server/watchdog";
 
 export const metadata = { title: "AI assistant settings — ATC" };
 export const dynamic = "force-dynamic";
@@ -38,7 +37,7 @@ export default async function AiAdminPage() {
     prisma.aiUsage.findMany({ orderBy: { at: "desc" }, take: 60, include: { user: { select: { name: true } } } }),
   ]);
   const since30 = new Date(now.getTime() - 30 * 86_400_000);
-  const [changes, clock, automations, feedback, rated30, checks, openCount, watch] = await Promise.all([
+  const [changes, clock, automations, feedback, rated30, checks, openCount] = await Promise.all([
     prisma.aiAction.findMany({ orderBy: { id: "desc" }, take: 80, include: { user: { select: { name: true } } } }),
     schedulerStatus(),
     automationViews({}),
@@ -46,7 +45,6 @@ export default async function AiAdminPage() {
     prisma.aiFeedback.groupBy({ by: ["rating"], where: { createdAt: { gte: since30 } }, _count: { _all: true } }),
     prisma.aiCheck.findMany({ orderBy: { id: "asc" } }),
     prisma.aiFeedback.count({ where: { status: "new", rating: "down" } }),
-    getWatchSettings(),
   ]);
   const accessOf = new Map(access.map((a) => [a.userId, a]));
   const usageOf = new Map(byUser.map((u) => [u.userId, u]));
@@ -122,11 +120,6 @@ export default async function AiAdminPage() {
           totalMs: r.totalMs,
           firstTokenMs: r.firstTokenMs,
         })),
-        watchdog: {
-          enabled: watch.enabled, at: watch.at, dropPct: watch.dropPct, absencePct: watch.absencePct, chronicDays: watch.chronicDays, chronicOf: watch.chronicOf,
-          lateMinDays: watch.lateMinDays, recipientIds: watch.recipientIds, aiSummary: watch.aiSummary, lastRunAt: watch.lastRunAt?.toISOString() ?? null,
-          lastFindings: watch.lastFindings, people: users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name, isOwner: u.isOwner })),
-        },
         meId: me.id,
         quality: {
           feedback: feedback.map((f) => ({

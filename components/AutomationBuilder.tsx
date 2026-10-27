@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Eye, Plus, Sparkles, X } from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { Eye, Lightbulb, Plus, Sparkles, X } from "lucide-react";
 import { previewAutomation, saveAutomation } from "@/app/automations/actions";
+import { automationIdeas, dismissAutomationIdea, suggestIdeasNow, type IdeasData } from "@/app/automations/ideaActions";
+import { Badge } from "@/components/Badge";
 import { Modal } from "@/components/Modal";
-import { Note, Switch } from "@/components/primitives";
+import { EmptyState, Note, Switch } from "@/components/primitives";
 import {
   AUTOMATION_LIMITS, AUTOMATION_RECIPES, CHECK_EVERY, ESCALATE_AFTER, WEEKDAY_NAMES, minutesText,
-  type AutomationAction, type AutomationConfig, type AutomationInput, type AutomationRecipe, type AutomationTrigger, type ScheduleDays,
+  type AutomationAction, type AutomationConfig, type AutomationInput, type AutomationTrigger, type ScheduleDays,
 } from "@/lib/domain/automations";
 import { APP_EVENTS, APP_EVENT_TYPES } from "@/lib/domain/appEvents";
 
@@ -265,12 +267,14 @@ export function AutomationBuilder({ id, initial, people, onClose, onSaved }: {
   );
 }
 
-/** The ready-made automations — one picked opens the builder filled in. */
-export function RecipeGallery({ onPick, onClose }: { onPick: (r: AutomationRecipe) => void; onClose: () => void }) {
+/** The ready-made automations — one picked opens the builder filled in —
+ *  under the ideas the assistant suggested lately. */
+export function RecipeGallery({ onPick, onClose }: { onPick: (r: { config: AutomationInput }) => void; onClose: () => void }) {
   const groups = [...new Set(AUTOMATION_RECIPES.map((r) => r.group))];
   return (
     <Modal title={<span className="inline-flex items-center gap-2"><Sparkles size={18} aria-hidden /> Ready-made automations</span>} sub="Pick one — you choose who it goes to, and can change anything before it is on." onClose={onClose} focusField={false} width="max-w-3xl">
       <div className="space-y-4">
+        <IdeasSection onPick={onPick} />
         {groups.map((g) => (
           <section key={g}>
             <h3 className="text-xs font-bold text-muted mb-1.5">{g}</h3>
@@ -286,5 +290,74 @@ export function RecipeGallery({ onPick, onClose }: { onPick: (r: AutomationRecip
         ))}
       </div>
     </Modal>
+  );
+}
+
+/** What the assistant suggested lately from what happens in the plant — new
+ *  ones each week; each can be set aside, and the plant's owner can ask for
+ *  more now. */
+function IdeasSection({ onPick }: { onPick: (r: { config: AutomationInput }) => void }) {
+  const [data, setData] = useState<IdeasData | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [suggesting, startSuggest] = useTransition();
+  const [dismissing, startDismiss] = useTransition();
+  const load = useCallback(
+    () => automationIdeas().then(setData, () => setData({ ok: false, error: "The ideas could not be read — try again.", ideas: [], canSuggest: false })),
+    [],
+  );
+  useEffect(() => {
+    load();
+  }, [load]);
+  const suggest = () => startSuggest(async () => {
+    setMsg(null);
+    const r = await suggestIdeasNow();
+    setMsg({ ok: r.ok, text: r.ok ? r.message ?? "Done." : r.error ?? "The ideas could not be written." });
+    if (r.ok) await load();
+  });
+  const dismiss = (id: number) => startDismiss(async () => {
+    const fd = new FormData();
+    fd.set("id", String(id));
+    const r = await dismissAutomationIdea(fd);
+    if (r.ok) setData((d) => d && { ...d, ideas: d.ideas.filter((i) => i.id !== id) });
+    else setMsg({ ok: false, text: r.error ?? "It could not be set aside." });
+  });
+  return (
+    <section aria-labelledby="automation-ideas" aria-busy={!data || suggesting}>
+      <div className="flex flex-wrap items-center gap-2 mb-1.5">
+        <h3 id="automation-ideas" className="text-xs font-bold text-muted inline-flex items-center gap-1.5"><Lightbulb size={14} aria-hidden /> The assistant suggests</h3>
+        <span className="text-xs text-muted">New ones each week, from what happens in the plant.</span>
+        {data?.canSuggest && (
+          <button type="button" className="btn btn-secondary btn-sm ms-auto" disabled={suggesting} onClick={suggest}>
+            <Sparkles size={14} aria-hidden /> {suggesting ? "Thinking…" : "Suggest new ones"}
+          </button>
+        )}
+      </div>
+      <Note msg={msg ?? (data && !data.ok ? { ok: false, text: data.error ?? "The ideas could not be read." } : null)} className="mb-1.5" />
+      {!data ? (
+        <p className="text-sm text-muted">Reading the ideas…</p>
+      ) : data.ok && data.ideas.length === 0 ? (
+        <div className="rounded-xl border border-dashed">
+          <EmptyState compact icon={Lightbulb} title="No ideas for you right now" hint="The assistant suggests new ones each week." />
+        </div>
+      ) : (
+        <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(15rem,1fr))]">
+          {data.ideas.map((i) => (
+            <div key={i.id} className="relative">
+              <button type="button" className="w-full h-full text-start border rounded-xl ps-3 pe-9 py-2.5 bg-surface hover:bg-surface-2 hover:border-[var(--border-strong)]" onClick={() => onPick(i)}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-sm font-bold" dir="auto">{i.title}</span>
+                  {i.isNew && <Badge tone="info">New</Badge>}
+                </span>
+                <span className="block text-xs text-muted mt-0.5" dir="auto">{i.desc}</span>
+                {i.why && <span className="block text-xs text-muted mt-1" dir="auto"><span className="font-semibold">Why: </span>{i.why}</span>}
+              </button>
+              <button type="button" className="icon-btn absolute top-1.5 end-1.5" disabled={dismissing} onClick={() => dismiss(i.id)} aria-label={`Not for me: ${i.title}`} title="Not for me">
+                <X size={14} aria-hidden />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

@@ -15,7 +15,6 @@ import {
 } from "@/app/admin/ai/actions";
 import { AutomationsView } from "@/components/AutomationsView";
 import { AiQuality, type AiQualityData } from "@/components/AiQuality";
-import { WatchdogCard, type WatchdogData } from "@/components/WatchdogCard";
 import { AUTO_MODEL_USE, BY_STRENGTH } from "@/lib/domain/aiLearn";
 import { AI_DEPTHS, AI_DEPTH_EFFORT, AI_DEPTH_META } from "@/lib/domain/aiAnswer";
 import { EmptyState, Note, SectionCard, SettingRow, Switch, Tabs } from "@/components/primitives";
@@ -76,7 +75,6 @@ export interface AiAdminData {
   quality: AiQualityData;
   /** The owner looking — the automations theirs to edit. */
   meId: number;
-  watchdog: WatchdogData;
 }
 
 type Msg = { ok: boolean; text: string } | null;
@@ -546,7 +544,6 @@ function AutomationsSection({ data, clock, automations }: { data: AiAdminData; c
         </div>
         <div className="space-y-4">
           <HoursCard data={data} />
-          <WatchdogCard data={data.watchdog} />
         </div>
       </div>
       <SectionCard
