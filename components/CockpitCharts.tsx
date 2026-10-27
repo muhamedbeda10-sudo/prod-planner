@@ -81,7 +81,7 @@ export function LvMonthChart({ stages, panels, expectedShare }: { stages: { stag
       <Legend items={[{ label: "Done", color: ACCENT }, { label: "Still to do", color: TRACK }, { label: `Even pace today: ${fmt(pace)}`, color: "var(--foreground)", line: true }]} />
       <div className="viz w-full min-w-0" style={{ height: 280 }} role="group" aria-label={`The month's ${panels} panels by stage against an even pace of ${pace} today`}>
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data} layout="vertical" margin={{ top: 16, right: 16, left: 4, bottom: 0 }} barCategoryGap="28%">
+          <ComposedChart className="viz-rows" data={data} layout="vertical" margin={{ top: 16, right: 16, left: 4, bottom: 0 }} barCategoryGap="28%">
             <CartesianGrid horizontal={false} />
             <XAxis type="number" domain={[0, panels]} tick={TICK} axisLine={AXIS} tickLine={false} allowDecimals={false} />
             <YAxis type="category" dataKey="stage" tick={TICK} axisLine={false} tickLine={false} width={72} />

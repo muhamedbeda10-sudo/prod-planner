@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-motion-tables-charts-filters",
+    dateISO: "2026-10-27",
+    title: "Tables, charts and filters move like the rest of the app",
+    where: "Every table, chart and filter bar",
+    body: "A table now fades in, and the row under the pointer grows a green bar on its left edge. Charts rise in on their card: columns grow from their foot, sideways bars, lines and areas draw from the left, and a pie opens; the bar or slice under the pointer stays bright while the others step back, and the tooltip pops in. Progress bars, meters and the machine timeline fill in from the start. In the filter bar, a filter springs on when it is set, its ✕ pops in and turns under the pointer, a box's border turns green under the pointer and its focus ring settles in. Printing always gets the finished chart, and with the device set to reduce motion everything stays still.",
+  },
+  {
     id: "2026-10-27-tiles-and-motion-app-wide",
     dateISO: "2026-10-27",
     title: "The assistant's coloured tiles and motion, across the whole app",

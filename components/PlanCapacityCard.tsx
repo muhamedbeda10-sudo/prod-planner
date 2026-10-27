@@ -58,7 +58,7 @@ export function PlanCapacityCard({ check }: { check: PlanCapacityCheck | null })
                   <span className="ms-auto pill tabnum !h-[18px] text-[10px]" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span>
                 </div>
                 <div className="mt-1 h-1 rounded-full bg-surface-3 overflow-hidden" aria-hidden>
-                  <div className="h-full rounded-full" style={{ width: `${f * 100}%`, background: tone.fg }} />
+                  <div className="fx-fill h-full rounded-full" style={{ width: `${f * 100}%`, background: tone.fg }} />
                 </div>
               </div>
             );
