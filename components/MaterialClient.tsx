@@ -488,7 +488,7 @@ export function MaterialClient({ lines, month, canImport, product = "TR", odooBy
                 ) : (
                 <>
                 <GroupBand spans={[
-                  { span: 3, label: <GroupLegend groups={["source", "computed"]} />, className: "stick stick-end", style: { "--stick-left": "0rem", "--stick-w": "29.25rem" } as React.CSSProperties },
+                  { span: 3, label: <GroupLegend groups={["source", "computed"]} />, className: "stick stick-end", style: STICK_ALL },
                   { span: 11, group: "source" },
                   { span: 1, group: "computed" },
                   { span: 2, group: "source" },

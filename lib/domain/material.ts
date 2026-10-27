@@ -451,7 +451,6 @@ export interface MaterialSoiGroup {
   sheetsUsed: number | null;
   actualWeightKg: number | null;
   difference: number | null;
-  forProduced: number | null;
 }
 
 const sumOf = (xs: (number | null)[]): number | null => {
@@ -480,7 +479,6 @@ export function groupMaterialBySoi(lines: MaterialLineView[]): MaterialSoiGroup[
       sheetsUsed: sumOf(ordered.map((l) => l.sheetsUsed)),
       actualWeightKg: sumOf(ordered.map((l) => l.actualWeightKg)),
       difference: sumOf(ordered.map((l) => l.difference)),
-      forProduced: sumOf(ordered.map((l) => l.forProduced)),
     };
   });
 }

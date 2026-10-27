@@ -8,12 +8,12 @@ import { MANUAL_BOM, MANUAL_ITEM, manualMo } from "@/lib/domain/manualJob";
 import type { RosterDept } from "@/lib/domain/shifts";
 import { userMessage } from "@/lib/server/errors";
 
-// Rows of the ODOO log, the physical stock, the shift
-// roster, the standard times and the accounts' access exactly as they stand
-// — what the assistant's change card compares before a change runs, and what
-// its undo writes back, every column and an ODOO row's notes included. The
-// screens' own actions stamp things as they go (the moment a row was closed,
-// a rate typed by hand, who recorded it), and some leave no way back at all
+// Rows of the ODOO log, the physical stock, the shift roster, the standard
+// times and the accounts' access exactly as they stand — what the assistant's
+// change card compares before a change runs, and what its undo writes back,
+// every column and an ODOO row's notes included. The screens' own actions
+// stamp things as they go (the moment a row was closed, who recorded it),
+// and some leave no way back at all
 // (a stage's capacity cannot be unset, an account's assistant not taken
 // away), so the opposite action would not put a row back as it was; this does.
 //
