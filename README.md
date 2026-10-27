@@ -188,8 +188,9 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
 7. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
    close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status, plus Notes. Two people work a row: the
    clerk types it in (or imports the sheet — its first seven columns, the same MO on the same day
-   updated, never doubled); the planner then moves the Status in place (Pending, Done, Blocked …) —
-   moving it to Done stamps the moment, shown under the pill and exported as "Done at" — and
+   updated, never doubled); the planner then ticks the Status in place — ✓ Done or ✗ Cancelled, a second click opens it
+   again; ✗ only once a note says why — marking it Done stamps the moment, shown under the marks and
+   exported as "Done at" — and
    keeps Notes on it — a list with time and author, each deletable on its own. A filter row (search across
    SOI, FG-CODE, MO, product and notes; product; status; closing; with/without notes) sticks between visits,
    as does the day. **The day's counts are themselves filters** — clicking "19 not closed" narrows to those
@@ -543,8 +544,13 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      follow-ups are left out) and 👍 / 👎. The depth beside the box — Quick / Standard / Deep — sets the effort, the
      model and the calls for one question (`depthPlan`: Quick is Haiku at low effort, Standard the model Auto routes the
      question to at medium, Deep Opus at high with half again the calls); the chat has no model or effort setting of its
-     own. An empty chat suggests questions for the screen it is opened on
-     (`AI_PAGE_SUGGESTIONS`). Chats can be pinned and renamed. Before a long chat is sent back to the model, the big
+     own. An empty chat opens on what the assistant can do — tiles for a report, a chart, an Excel file, a
+     what-if, a plan to a deadline, the morning briefing, what looks wrong, why an efficiency moved, a scanned paper
+     sheet and (for whoever may) a new automation (`lib/domain/aiQuickActions.ts`): a tile's short form (topic, period,
+     department, line, the form of the answer) writes the question, and the composer's ✨ brings the tiles back in a
+     chat already going — then the questions for the screen it is opened on (`AI_PAGE_SUGGESTIONS`). Chats can be
+     pinned and renamed; "Select" (or Ctrl/⌘ + click, Shift + click for a run) ticks several to pin or delete together
+     (`deleteAiConversations` / `pinAiConversations`, the person's own only). Before a long chat is sent back to the model, the big
      results of every question but the last two are folded to a note that keeps their source (`compactHistory`), so the
      chat goes on to 200 messages and the prompt cache keeps hitting on the folded prefix. Stop closes the connection, which
      stops the model too: what was written is kept in the chat with a note, and the question's turn is freed. A chat
@@ -574,7 +580,13 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      a day's attendance and machine stops) — or the rows of one read-only SELECT, up to 50,000 rows. Any of them can be
      laid out in the same file (`lib/domain/sheetLayout.ts`): `nonBlank` keeps the rows with given columns filled,
      `splitBy` puts each value of a column on its own sheet (a sheet per thickness, up to 50), and `totals` closes each
-     sheet with a Total row over the columns named. Each screen's sheet
+     sheet with a Total row over the columns named. Every workbook the app writes — these, and the Floor's and the
+     chat's Export buttons (the writer is fetched on the first press) — comes in the house style
+     (`lib/domain/sheetStyle.ts`, `lib/excel/workbook.ts`, on `exceljs`): a coloured, frozen header with filters,
+     fitted columns, number formats, banded rows, a bold Total row, set to print a page wide; the values are written as
+     they are (a text is never a formula). The assistant's `style` adds what the person asks for — a title, a header
+     colour, cells or rows coloured by a rule, a colour scale, data bars, a number format, bold or frozen columns — as
+     live Excel rules. Each screen's sheet
      follows the screen's own access (its tab; the Orders Registry and the consumables' edits the admin's). The workbook
      is kept as the person's own file in their chat (`AiFile`, same limits and 14 days), and the answer carries two
      buttons: download it, or `/ai/print/[id]` — every sheet of it under the company header with the print dialog open. A

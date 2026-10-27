@@ -5,7 +5,8 @@ import { withLine } from "@/lib/server/line";
 import { readOdooRows, restoreOdooRows, type OdooRowSnapshot } from "@/lib/server/rowSnapshots";
 import { addOdooNote, createOdooEntry, deleteOdooEntry, deleteOdooNote, setOdooFgCode, setOdooMo, setOdooStatus, updateOdooEntry, updateOdooGroup } from "@/app/odoo/actions";
 import { linePermKey } from "@/lib/domain/permissions";
-import { ODOO_STATUSES, isDoneStatus } from "@/lib/domain/odoo";
+import { CANCEL_NEEDS_NOTE, ODOO_STATUSES, isCancelledStatus, isDoneStatus } from "@/lib/domain/odoo";
+import { cancelRefused } from "@/lib/server/odooRules";
 import { cell } from "@/lib/domain/aiActions";
 import { answerOf, formOf, type WriteTool } from "./types";
 
@@ -40,7 +41,7 @@ export const setOdooStatusTool: WriteTool<{ ids: number[]; status: string }> = {
   kind: "write",
   name: "set_odoo_status",
   title: "Set the status of ODOO rows",
-  description: "Move the status of one or more ODOO log rows (Done closes them now; a row Done already keeps the moment it was closed).",
+  description: "Move the status of one or more ODOO log rows (Done closes them now; a row Done already keeps the moment it was closed). Cancelled needs a note with the reason on the row first — add_odoo_note, then cancel.",
   area: "data",
   // a closing, or several rows at once, waits for the click
   risk: (i) => (i.ids.length > 3 || isDoneStatus(i.status) ? "high" : "low"),
@@ -51,6 +52,8 @@ export const setOdooStatusTool: WriteTool<{ ids: number[]; status: string }> = {
     if ("error" in got) return got;
     const moving = got.rows.filter((r) => r.status !== i.status);
     if (moving.length === 0) return { error: `Every row is ${i.status} already.` };
+    // the tab's rule, said before the card rather than after the click
+    if (await cancelRefused(moving.map((r) => r.id), i.status, moving.map((r) => r.status))) return { error: CANCEL_NEEDS_NOTE };
     return {
       title: `${moving.length} ODOO row(s) → ${i.status}`,
       summary: `Set ${moving.length} ODOO row(s) to "${i.status}".`,
@@ -177,7 +180,7 @@ export const addOdooEntryTool: WriteTool<AddInput> = {
   kind: "write",
   name: "add_odoo_entry",
   title: "Add an ODOO row",
-  description: "Add a row to the ODOO log — one close attempt: the day, the product, Odoo's MO and the quantity (status MO to be close unless said).",
+  description: "Add a row to the ODOO log — one close attempt: the day, the product, Odoo's MO and the quantity (status MO to be close unless said; never Cancelled — a row is cancelled only once a note says why).",
   area: "data",
   risk: "low",
   tabs: TABS,
@@ -197,6 +200,7 @@ export const addOdooEntryTool: WriteTool<AddInput> = {
   },
   async describe(i, ctx) {
     if (!hasPerm(ctx.user, linePermKey(i.line, "odoo"))) return { error: NO_RIGHT };
+    if (isCancelledStatus(i.status)) return { error: CANCEL_NEEDS_NOTE };
     const twin = await prisma.odooEntry.count({ where: { odooMo: i.odooMo.trim().toUpperCase(), date: new Date(`${i.date}T00:00:00Z`) } });
     return {
       title: `New ODOO row ${i.odooMo.toUpperCase()}`,

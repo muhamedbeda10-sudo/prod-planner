@@ -52,6 +52,14 @@ import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import { MAX_SHEET_ROWS, makeSheetTool } from "@/lib/server/ai/tools/sheets";
 import { printableSheets, storeMadeWorkbook } from "@/lib/server/ai/files";
+import { workbookBytes } from "@/lib/excel/workbook";
+
+/** A made workbook's bytes, as the assistant keeps them. */
+async function madeBytes(...a: Parameters<typeof workbookBytes>) {
+  const r = await workbookBytes(...a);
+  if (!r.ok) throw new Error(r.error);
+  return r.data;
+}
 import { checkToolInput, toolsFor } from "@/lib/server/ai/tools";
 
 const user = (o: Partial<User> = {}) => ({ id: 7, name: "Sara", isAdmin: false, ...o }) as User;
@@ -203,7 +211,8 @@ describe("make_excel", () => {
     const r = await makeSheetTool.run({ sheet: "query", sql: `SELECT * FROM "MasterOrder"`, name: "My/odd:name" }, ctxOf());
     expect(JSON.parse(r.text).file).toBe("My-odd-name.xlsx");
     expect(h.rows).toHaveBeenCalledWith(`SELECT * FROM "MasterOrder"`, MAX_SHEET_ROWS);
-    expect(keptSheet().rows[0]).toEqual({ mo: "A", qty: 3, done: "yes", extra: "{\"a\":1}", note: "" });
+    // an empty value is an empty cell
+    expect(keptSheet().rows[0]).toEqual({ mo: "A", qty: 3, done: "yes", extra: "{\"a\":1}" });
     h.rows.mockResolvedValue({ ok: true, truncated: true, rows: [] });
     expect(await makeSheetTool.run({ sheet: "query", sql: "SELECT 1" }, ctxOf())).toEqual({ ok: false, text: expect.stringContaining("narrow it") });
     expect(await makeSheetTool.run({ sheet: "query", sql: `SELECT * FROM "ShiftEntry"` }, ctxOf({ hidden: new Set(["shifts"]) }))).toEqual({ ok: false, text: expect.stringContaining("not opened") });
@@ -236,12 +245,29 @@ describe("make_excel", () => {
     expect(XLSX.utils.sheet_to_json(wb.Sheets["3 mm"])).toEqual([
       { mo: "A", thickness_mm: 3, bom: 4, actual: 5, delta: 1 },
       { mo: "D", thickness_mm: 3, bom: 1, actual: 2, delta: 1 },
-      { mo: "Total", thickness_mm: "", bom: 5, actual: 7, delta: 2 },
+      { mo: "Total", bom: 5, actual: 7, delta: 2 },
     ]);
     expect(await makeSheetTool.run({ sheet: "query", sql: "SELECT 1", totals: ["weight"] }, ctxOf())).toEqual({ ok: false, text: expect.stringContaining("its columns are: mo, thickness_mm") });
     h.prisma.aiFile.create.mockClear();
     h.rows.mockResolvedValue({ ok: true, truncated: false, rows: [{ mo: "C", actual: null }] });
     expect(JSON.parse((await makeSheetTool.run({ sheet: "query", sql: "SELECT 1", nonBlank: ["actual"] }, ctxOf())).text)).toMatchObject({ rows: 0 });
+    expect(h.prisma.aiFile.create).not.toHaveBeenCalled();
+  });
+
+  it("styles the file as asked — a title over the scope, a rule on the rows — and refuses a column the sheet does not have", async () => {
+    h.rows.mockResolvedValue({ ok: true, truncated: false, rows: [{ mo: "A", late: 3 }, { mo: "B", late: 0 }] });
+    const r = await makeSheetTool.run({ sheet: "query", sql: "SELECT 1", style: { title: "Late orders", highlight: [{ column: "late", when: "gt", value: 0, color: "red", row: true }] } }, ctxOf());
+    expect(r.ok).toBe(true);
+    const grid = XLSX.utils.sheet_to_json(XLSX.read(h.prisma.aiFile.create.mock.calls.at(-1)![0].data.data, { type: "array" }).Sheets.Sheet1, { header: 1 });
+    expect(grid.slice(0, 5)).toEqual([["Late orders"], ["2 rows of a query"], [], ["mo", "late"], ["A", 3]]);
+    h.prisma.aiFile.create.mockClear();
+    expect(await makeSheetTool.run({ sheet: "query", sql: "SELECT 1", style: { bold: ["weight"] } }, ctxOf())).toEqual({ ok: false, text: expect.stringContaining('no column "weight" — its columns are: mo, late') });
+    expect(h.prisma.aiFile.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a file too big to keep before writing it", async () => {
+    h.rows.mockResolvedValue({ ok: true, truncated: false, rows: Array.from({ length: 30_001 }, (_, i) => Object.fromEntries(Array.from({ length: 20 }, (_, c) => [`c${c}`, i]))) });
+    expect(await makeSheetTool.run({ sheet: "query", sql: "SELECT 1" }, ctxOf())).toEqual({ ok: false, text: expect.stringContaining("600,000 in one file") });
     expect(h.prisma.aiFile.create).not.toHaveBeenCalled();
   });
 
@@ -257,7 +283,8 @@ describe("make_excel", () => {
     expect(checkToolInput(makeSheetTool, { sheet: "nothing" })).toMatchObject({ ok: false });
     expect(checkToolInput(makeSheetTool, { sheet: "plan_tracker", line: "LV" })).toMatchObject({ ok: true });
     // every sheet takes the layout
-    expect(checkToolInput(makeSheetTool, { sheet: "physical_stock", splitBy: "Code", totals: ["Qty"], nonBlank: ["Qty"] })).toMatchObject({ ok: true });
+    expect(checkToolInput(makeSheetTool, { sheet: "physical_stock", splitBy: "Code", totals: ["Qty"], nonBlank: ["Qty"], style: { theme: "blue", colorScale: [{ column: "Qty", better: "higher" }] } })).toMatchObject({ ok: true });
+    expect(checkToolInput(makeSheetTool, { sheet: "physical_stock", style: { theme: "pink" } })).toMatchObject({ ok: false });
   });
 
   it("is offered in a chat, even with the changes paused, and never unattended", () => {
@@ -348,5 +375,22 @@ describe("the workbook kept, and its printout", () => {
       { sheet: "3 mm", header: ["MO", "Qty"], rows: [["C", "3"], ["Total", "3"]], total: 2 },
     ]);
     expect((await printableSheets(7, 42, 3))!.sheets.map((s) => s.rows.length)).toEqual([2, 1]);
+  });
+
+  it("finds the title of a one-column file, and prints a sheet someone titled as it is", async () => {
+    h.prisma.aiFile.findFirst.mockResolvedValue({ name: "mo.xlsx", kind: "excel", data: await madeBytes([{ name: "S", rows: [{ MO: "A" }] }], { title: "MOs" }), createdAt: new Date() });
+    expect(await printableSheets(7, 42, 10)).toMatchObject({ title: ["MOs"], sheets: [{ header: ["MO"], rows: [["A"]], total: 1 }] });
+    const ws = XLSX.utils.aoa_to_sheet([["Monthly plan"], ["MO", "Qty"], ["A", 1]]);
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Plan");
+    h.prisma.aiFile.findFirst.mockResolvedValue({ name: "plan.xlsx", kind: "excel", data: new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer), createdAt: new Date() });
+    expect(await printableSheets(7, 42, 10)).toMatchObject({ title: [], sheets: [{ header: ["Monthly plan", ""], rows: [["MO", "Qty"], ["A", "1"]], total: 2 }] });
+  });
+
+  it("prints a made file's title lines apart from its table, its numbers as the file formats them", async () => {
+    const data = await madeBytes([{ name: "Qty", rows: [{ MO: "A", Qty: 12000 }, { MO: "Total", Qty: 12000 }] }], { title: "HR nested", subtitle: "October" });
+    h.prisma.aiFile.findFirst.mockResolvedValue({ name: "hr.xlsx", kind: "excel", data, createdAt: new Date("2026-10-26T08:00:00Z") });
+    expect(await printableSheets(7, 42, 10)).toMatchObject({ title: ["HR nested", "October"], sheets: [{ sheet: "Qty", header: ["MO", "Qty"], rows: [["A", "12,000"], ["Total", "12,000"]], total: 2 }] });
   });
 });

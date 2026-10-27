@@ -4,20 +4,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
   AlertCircle, ArrowDown, BarChart3, Bot, Brain, Boxes, Check, ChevronRight, Clock, Copy, CornerDownRight, Crosshair, Factory, FileSpreadsheet, FileText, Image as ImageIcon,
-  Layers, ListChecks, Loader2, PanelLeft, Paperclip, Pencil, Pin, PinOff, Plus, RotateCcw, ScanLine, Search, Send, Share2, Sparkles, Square, Telescope, Trash2, X, Zap,
+  Layers, ListChecks, Loader2, Paperclip, RotateCcw, ScanLine, Search, Send, Share2, Sparkles, Square, Telescope, X, Zap,
 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
 import { AiPrintButton } from "@/components/AiPrint";
 import { aiFileHref } from "@/lib/domain/links";
-import { EmptyState } from "@/components/primitives";
-import { useAsk } from "@/components/DataTable";
+import { useAsk, useConfirm } from "@/components/DataTable";
+import { Modal } from "@/components/Modal";
+import { AiQuickGrid } from "@/components/AiQuickActions";
 import { ShareDialog } from "@/components/AiShare";
-import { deleteAiConversation, discardAiFile, loadAiConversation, pinAiConversation, renameAiConversation, uploadAiFile } from "@/app/ai/actions";
+import { deleteAiConversations, discardAiFile, loadAiConversation, pinAiConversations, renameAiConversation, uploadAiFile } from "@/app/ai/actions";
 import { loadAiChat } from "@/app/ai/panel/actions";
 import { AI_MAX_QUESTION, aiModel, usdText, type AiChatTurn, type AiStep } from "@/lib/domain/ai";
 import { AI_CONVERSATION_TITLE_MAX, AI_DEPTHS, AI_DEPTH_META, DEFAULT_AI_DEPTH, followupsOf, hasPageSuggestions, isAiDepth, suggestionsFor, withoutFollowups, type AiDepth } from "@/lib/domain/aiAnswer";
-import { factoryDaysBefore } from "@/lib/domain/dates";
+import { composeQuickQuestion, quickActionsFor, type AiQuickAction } from "@/lib/domain/aiQuickActions";
 import { durationText } from "@/lib/domain/format";
 import { AI_FILE_ACCEPT, AI_FILE_LIMITS, AI_IMAGE_MAX_SIDE, AI_IMAGE_QUALITY, SCAN_SHEET_QUESTION, fileSizeText } from "@/lib/domain/aiFiles";
 import { compressImage } from "@/lib/imageCompress";
@@ -33,10 +34,9 @@ import { AiSources } from "@/components/AiSources";
 import { AnswerRating } from "@/components/AiFeedback";
 import type { AiFeedbackRating } from "@/lib/domain/aiLearn";
 
-// The AI assistant's chat: the person's conversations on the side (a drawer
-// below a laptop's width, and always in the narrow side panel; the pinned
-// ones first, each one renamed or pinned from its row), the open one in the
-// middle, the answer streaming in as it is written — the steps it takes as a
+// The AI assistant's chat: the open conversation (whoever holds the chat draws
+// the list of them — components/AiChatList — from `onApi`), the answer
+// streaming in as it is written — the steps it takes as a
 // timeline (each look-up with its time and its rows, folded once the answer
 // is in), the changes it prepares as cards to approve, the next questions
 // it offers as chips, and a bar under it naming the model, the time and (for
@@ -49,7 +49,10 @@ import type { AiFeedbackRating } from "@/lib/domain/aiLearn";
 // to the app first (a photo shrunk to what reads well), and the question
 // carries its number; the photo shows on the question after. A question
 // handed over from elsewhere on the page (a cockpit decision's "Ask") lands
-// in the box, for the person to send.
+// in the box, for the person to send. An empty chat opens on what the
+// assistant can do — tiles for a report, a chart, an Excel file, a what-if…
+// (lib/domain/aiQuickActions), each with a short form — and the composer's ✨
+// brings the same tiles back in a chat already going.
 
 interface Turn extends AiChatTurn {
   error?: string;
@@ -82,9 +85,17 @@ export interface ChatListApi {
   busy: boolean;
   open: (id: number) => void;
   newChat: () => void;
-  remove: (c: Conv) => void;
-  rename: (c: Conv) => void;
-  pin: (c: Conv) => void;
+  /** Delete these chats, once the person confirms — whether they went, and why not when it failed. */
+  removeMany: (list: Conv[]) => Promise<ListResult>;
+  rename: (c: Conv) => Promise<ListResult>;
+  /** Pin (or unpin) these chats together — whether it worked. */
+  pinMany: (list: Conv[], pinned: boolean) => Promise<ListResult>;
+}
+
+/** What a move on the list came to: done, or the reason it failed (none when the person cancelled). */
+export interface ListResult {
+  ok: boolean;
+  error?: string;
 }
 
 /** A file attached and kept, waiting for the question it goes with. */
@@ -102,18 +113,6 @@ const SUGGESTION_ICONS = [ListChecks, Clock, Factory, Boxes, BarChart3, Layers];
 const DEPTH_ICON: Record<AiDepth, typeof Zap> = { quick: Zap, standard: Crosshair, deep: Telescope };
 const DEPTH_KEY = "ai:depth";
 
-/** Which group of the list a conversation sits in, by when it was last used —
- *  counted in factory days, so the server and a browser in any zone agree. */
-export function groupOf(iso: string, now: Date, pinned = false): string {
-  if (pinned) return "Pinned";
-  const ago = factoryDaysBefore(new Date(iso), now);
-  if (ago <= 0) return "Today";
-  if (ago === 1) return "Yesterday";
-  if (ago <= 7) return "Previous 7 days";
-  return "Earlier";
-}
-export const GROUPS = ["Pinned", "Today", "Yesterday", "Previous 7 days", "Earlier"];
-
 /** "Opus 5.5" — the model as the answer's bar names it. */
 const modelShort = (id: string) => aiModel(id).label.replace(/^Claude\s+/, "");
 
@@ -124,20 +123,19 @@ export function AiChat({
   initial,
   compact = false,
   syncUrl = true,
-  listInside = true,
+  canAutomate = false,
   onApi,
 }: {
   isOwner: boolean;
   status: AiChatStatus;
   conversations: Conv[];
   initial: { id: number; turns: AiChatTurn[]; actions: AiActionView[]; ratings?: Record<number, AiFeedbackRating> } | null;
-  /** Narrow (the side panel): the chats are always a drawer. */
+  /** Narrow (the corner card, a phone): the tiles and questions in fewer columns. */
   compact?: boolean;
   /** Keep the open chat in the address bar (the /ai page). */
   syncUrl?: boolean;
-  /** Draw the list of chats and the chat's own head here; off, whoever holds
-   *  the chat draws them from `onApi`. */
-  listInside?: boolean;
+  /** The person may make automations — the "New automation" tile shows. */
+  canAutomate?: boolean;
   /** Told the list and its moves whenever they change. */
   onApi?: (api: ChatListApi) => void;
 }) {
@@ -156,7 +154,7 @@ export function AiChat({
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<string | null>(null);
   const [spent, setSpent] = useState({ user: status.userSpent, plant: status.plantSpent, userToday: status.userSpentToday, plantToday: status.plantSpentToday });
-  const [sideOpen, setSideOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending[]>([]);
   const [uploading, setUploading] = useState(0);
@@ -176,10 +174,13 @@ export function AiChat({
   const delta = useRef("");
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ask, askDialog] = useAsk();
-  // the prompt as a ref: `ask` is made anew each render, and the list's
+  const [confirmIt, confirmDialog] = useConfirm();
+  // the prompts as refs: they are made anew each render, and the list's
   // moves must keep their identity (the window keeps them in state)
   const askRef = useRef(ask);
   askRef.current = ask;
+  const confirmRef = useRef(confirmIt);
+  confirmRef.current = confirmIt;
 
   const capReached =
     (status.userCap > 0 && spent.user >= status.userCap) ||
@@ -234,8 +235,11 @@ export function AiChat({
   // figure must not be interrupted by every token of the next answer.
   useEffect(() => {
     const el = scroller.current;
-    if (el && following.current) el.scrollTop = el.scrollHeight;
-    else if (el) setShowLatest(true);
+    if (!el) return;
+    // an empty chat opens on its tiles, at the top
+    if (turns.length === 0) el.scrollTop = 0;
+    else if (following.current) el.scrollTop = el.scrollHeight;
+    else setShowLatest(true);
   }, [turns, live]);
 
   useEffect(() => () => { if (flushTimer.current) clearTimeout(flushTimer.current); }, []);
@@ -267,7 +271,6 @@ export function AiChat({
     async (id: number) => {
       if (busy) return;
       setLoadErr(null);
-      setSideOpen(false);
       const r = await loadAiConversation(id);
       if (!r.ok) {
         setLoadErr(r.error ?? "Could not open it.");
@@ -293,18 +296,27 @@ export function AiChat({
     setActions({});
     setRatings({});
     setLoadErr(null);
-    setSideOpen(false);
     setUrl(null);
     box.current?.focus();
   }, [busy, setUrl]);
 
-  const remove = useCallback(
-    async (c: Conv) => {
-      if (busy || !confirm(`Delete the chat "${c.title}"? What it cost stays in the usage log.`)) return;
-      const r = await deleteAiConversation(c.id);
-      if (!r.ok) return setLoadErr(r.error ?? "Could not delete it.");
-      setConvs((all) => all.filter((x) => x.id !== c.id));
-      if (activeId === c.id) newChat();
+  const removeMany = useCallback(
+    async (list: Conv[]) => {
+      if (busy || list.length === 0) return { ok: false };
+      const ok = await confirmRef.current({
+        title: list.length === 1 ? "Delete this chat?" : `Delete ${list.length} chats?`,
+        body: "They go for good, with their answers and ratings. What they cost stays in the usage log.",
+        items: list.map((c) => c.title),
+        confirmLabel: list.length === 1 ? "Delete" : `Delete ${list.length}`,
+        danger: true,
+      });
+      if (!ok) return { ok: false };
+      const r = await deleteAiConversations(list.map((c) => c.id)).catch(() => null);
+      if (!r?.ok) return { ok: false, error: r?.error ?? "Could not delete them — try again." };
+      const gone = new Set(r.deleted ?? []);
+      setConvs((all) => all.filter((x) => !gone.has(x.id)));
+      if (activeId !== null && gone.has(activeId)) newChat();
+      return { ok: true };
     },
     [busy, activeId, newChat],
   );
@@ -317,27 +329,30 @@ export function AiChat({
         confirmLabel: "Rename",
       });
       const title = v?.title.replace(/\s+/g, " ").trim().slice(0, AI_CONVERSATION_TITLE_MAX);
-      if (!title || title === c.title) return;
-      const r = await renameAiConversation(c.id, title);
-      if (!r.ok) return setLoadErr(r.error ?? "Could not rename it.");
+      if (!title || title === c.title) return { ok: false };
+      const r = await renameAiConversation(c.id, title).catch(() => null);
+      if (!r?.ok) return { ok: false, error: r?.error ?? "Could not rename it — try again." };
       setConvs((all) => all.map((x) => (x.id === c.id ? { ...x, title } : x)));
+      return { ok: true };
     },
     [],
   );
 
-  const pin = useCallback(async (c: Conv) => {
-    const pinned = !c.pinned;
-    const r = await pinAiConversation(c.id, pinned);
-    if (!r.ok) return setLoadErr(r.error ?? "Could not pin it.");
-    setConvs((all) => all.map((x) => (x.id === c.id ? { ...x, pinned } : x)));
+  const pinMany = useCallback(async (list: Conv[], pinned: boolean) => {
+    if (list.length === 0) return { ok: false };
+    const r = await pinAiConversations(list.map((c) => c.id), pinned).catch(() => null);
+    if (!r?.ok) return { ok: false, error: r?.error ?? "Could not pin them — try again." };
+    const changed = new Set(r.changed ?? []);
+    setConvs((all) => all.map((x) => (changed.has(x.id) ? { ...x, pinned } : x)));
+    return { ok: true };
   }, []);
 
   const activeTitle = convs.find((c) => c.id === activeId)?.title ?? null;
 
   // the list outside the chat follows it
   useEffect(() => {
-    onApi?.({ convs, activeId, activeTitle, busy, open, newChat, remove, rename, pin });
-  }, [onApi, convs, activeId, activeTitle, busy, open, newChat, remove, rename, pin]);
+    onApi?.({ convs, activeId, activeTitle, busy, open, newChat, removeMany, rename, pinMany });
+  }, [onApi, convs, activeId, activeTitle, busy, open, newChat, removeMany, rename, pinMany]);
 
   function handle(ev: { type: string; [k: string]: unknown }, question: string) {
     if (ev.type === "start") {
@@ -524,19 +539,32 @@ export function AiChat({
     else void askRefFn.current(q, undefined, { explain: true });
   }, [autoAsk, activeId, turns.length, busy, canAsk, uploading, pending.length]);
 
-  const of = (v: number, cap: number) => (cap > 0 ? `${usdText(v)} / ${usdText(cap)}` : usdText(v));
-  const meter = [
-    status.userDayCap > 0 && `today ${of(spent.userToday, status.userDayCap)}`,
-    `month ${of(spent.user, status.userCap)}`,
-    isOwner && (status.plantCap > 0 || status.plantDayCap > 0) && `plant ${status.plantDayCap > 0 ? `today ${of(spent.plantToday, status.plantDayCap)}` : of(spent.plant, status.plantCap)}`,
-  ].filter(Boolean).join(" · ");
+  // what the assistant can do: a tile's form, then its question — sent at
+  // once, unless the box holds a draft or files of the person's own (then it
+  // joins them there, for the person to send)
+  const quick = useMemo(() => quickActionsFor({ automations: canAutomate }), [canAutomate]);
+  async function runQuick(a: AiQuickAction) {
+    setQuickOpen(false);
+    if (a.id === "scan") {
+      camera.current?.click();
+      return;
+    }
+    let values: Record<string, string> = {};
+    if (a.fields.length > 0) {
+      const v = await askRef.current({ title: a.label, body: a.hint, fields: a.fields, confirmLabel: a.confirmLabel ?? "Ask" });
+      if (!v) return;
+      values = v;
+    }
+    const q = composeQuickQuestion(a.id, values);
+    // the form was open a while: read the chat as it is now, not as it was at the click
+    if (q) sendQuick.current(q);
+  }
+  const sendQuick = useRef<(q: string) => void>(() => {});
+  sendQuick.current = (q: string) => {
+    if (!canAsk || busy || sending.current || uploading > 0 || input.trim() || pending.length > 0) putInBox(q);
+    else void askQuestion(q);
+  };
 
-  // the conversations: beside the chat on a wide screen, a drawer over it in
-  // the side panel and below a laptop's width
-  const drawerCls = compact
-    ? `${sideOpen ? "flex absolute z-20 inset-y-0 start-0 w-[min(18rem,85%)] shadow-2xl border-e" : "hidden"}`
-    : `${sideOpen ? "flex fixed z-50 inset-y-0 start-0 w-[min(20rem,85vw)] shadow-2xl" : "hidden"} lg:static lg:z-auto lg:flex lg:w-64 lg:shadow-none lg:border-e`;
-  const narrowOnly = compact ? "" : "lg:hidden";
   // each answer's place among the chat's answers — what a 👍 / 👎 is kept by
   const answerNo: number[] = [];
   let answers = 0;
@@ -544,59 +572,21 @@ export function AiChat({
     answerNo.push(answers);
     if (t.role === "assistant") answers += 1;
   }
-  const now = new Date();
-  const grouped = GROUPS.map((g) => ({ g, items: convs.filter((c) => groupOf(c.updatedAt, now, c.pinned) === g) })).filter((x) => x.items.length > 0);
   const lastQuestion = [...turns].reverse().find((t) => t.role === "user")?.text ?? "";
   const tab = tabForPath(pathname);
 
   return (
     <div className="ai-chat relative flex h-full min-h-[380px]">
       {askDialog}
-      {listInside && sideOpen && (
-        <button
-          type="button"
-          aria-label="Close the chats"
-          className={compact ? "absolute inset-0 z-10 bg-black/45" : "lg:hidden fixed inset-0 z-40 bg-black/45"}
-          onClick={() => setSideOpen(false)}
-        />
-      )}
-      {listInside && (
-      <aside className={`${drawerCls} shrink-0 flex-col bg-surface overflow-hidden`}>
-        <div className="p-2 flex gap-1.5">
-          <button type="button" className="btn btn-primary btn-sm flex-1" onClick={newChat} disabled={busy}>
-            <Plus size={15} /> New chat
-          </button>
-          {/* .btn sets its own display, so the hiding goes on a wrapper */}
-          <span className={narrowOnly}>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSideOpen(false)} aria-label="Close the chats"><X size={16} /></button>
-          </span>
-        </div>
-        <nav className="flex-1 overflow-y-auto px-1.5 pb-2">
-          {convs.length === 0 && <EmptyState icon={Bot} title="No chats yet" hint="Your questions will be kept here." compact />}
-          {grouped.map(({ g, items }) => (
-            <div key={g}>
-              <div className="conv-group">{g}</div>
-              {items.map((c) => <ConvRow key={c.id} c={c} active={c.id === activeId} busy={busy} onOpen={() => open(c.id)} onRemove={() => remove(c)} onRename={() => rename(c)} onPin={() => pin(c)} />)}
-            </div>
-          ))}
-        </nav>
-      </aside>
+      {confirmDialog}
+      {quickOpen && (
+        <Modal title="What the assistant can do" onClose={() => setQuickOpen(false)} width="max-w-3xl">
+          <AiQuickGrid actions={quick} onPick={(a) => void runQuick(a)} disabled={!canAsk} compact />
+        </Modal>
       )}
 
       {/* the open conversation */}
       <section className="flex-1 min-w-0 flex flex-col bg-surface overflow-hidden">
-        {listInside && (
-        <div className={`${narrowOnly} flex items-center gap-1 px-1.5 py-1 border-b`}>
-          <button type="button" className="icon-btn" onClick={() => setSideOpen(true)} aria-label="Chats" title="Chats">
-            <PanelLeft size={16} />
-          </button>
-          <div className="flex-1 min-w-0 text-[13px] font-semibold truncate px-1" dir="auto">{activeTitle ?? "New chat"}</div>
-          <button type="button" className="icon-btn" onClick={newChat} disabled={busy} aria-label="New chat" title="New chat">
-            <Plus size={16} />
-          </button>
-        </div>
-        )}
-
         <div ref={scroller} onScroll={() => {
           const el = scroller.current;
           if (!el) return;
@@ -605,12 +595,12 @@ export function AiChat({
         }} className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 md:px-8 md:py-6">
           {loadErr && <p className="text-sm font-semibold text-bad-fg mb-3">{loadErr}</p>}
           {turns.length === 0 ? (
-            <Welcome tabId={tab?.id ?? null} tabLabel={tab?.label ?? null} onPick={(q) => (canAsk ? askQuestion(q) : setInput(q))} disabled={!canAsk || busy} compact={compact} />
+            <Welcome tabId={tab?.id ?? null} tabLabel={tab?.label ?? null} actions={quick} onAction={(a) => void runQuick(a)} onPick={(q) => (canAsk ? askQuestion(q) : setInput(q))} disabled={!canAsk || busy} compact={compact} />
           ) : (
             <div className="max-w-3xl mx-auto space-y-6">
               {turns.map((t, i) =>
                 t.role === "user" ? (
-                  <div key={i} className="flex flex-col items-end gap-1.5">
+                  <div key={i} className="ai-turn flex flex-col items-end gap-1.5">
                     {t.files && t.files.length > 0 && (
                       <div className="flex flex-wrap justify-end gap-1.5 max-w-[88%] sm:max-w-[78%]">
                         {t.files.map((f) => <SentFile key={f.id} file={f} />)}
@@ -661,8 +651,7 @@ export function AiChat({
           }}
         >
           <div className="max-w-3xl mx-auto">
-            <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <p className="text-[11px] text-muted min-w-0 flex-1">{line === "LV" ? "LV panels" : "Transformers"}{tab ? ` · ${tab.label} · page context included` : ""}</p>
+            <div className="mb-1.5 flex justify-end">
               <div className="seg seg-sm ai-depth" role="group" aria-label="How deep to work the next question">
                 {AI_DEPTHS.map((d) => {
                   const Icon = DEPTH_ICON[d];
@@ -683,7 +672,7 @@ export function AiChat({
                 </span>
               </div>
             )}
-            <div className={`composer ${!canAsk ? "opacity-60" : ""}`}>
+            <div className={`composer ${!canAsk ? "opacity-60" : ""} ${busy ? "composer-busy" : ""}`}>
               <textarea
                 ref={box}
                 value={input}
@@ -711,6 +700,16 @@ export function AiChat({
                 className="w-full min-w-0 resize-none text-base leading-relaxed"
               />
               <div className="flex items-center gap-1.5 px-2 pb-2">
+                <button
+                  type="button"
+                  className="icon-btn ai-quick-btn"
+                  onClick={() => setQuickOpen(true)}
+                  disabled={!canAsk || busy}
+                  aria-label="What the assistant can do"
+                  title="What the assistant can do — a report, a chart, an Excel file, a what-if, a plan to a deadline…"
+                >
+                  <Sparkles size={16} />
+                </button>
                 <input ref={picker} type="file" accept={AI_FILE_ACCEPT} multiple hidden onChange={(e) => void attach(e.target.files)} />
                 <button
                   type="button"
@@ -747,9 +746,6 @@ export function AiChat({
                     <span className="text-xs text-muted inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Sending…</span>
                   )}
                   {fileErr && <span className="text-xs font-semibold text-bad-fg" dir="auto">{fileErr}</span>}
-                  {!fileErr && uploading === 0 && pending.length === 0 && (
-                    <span className="hidden sm:inline text-[11px] text-muted tabnum ms-auto" title="What the assistant cost you">{meter}</span>
-                  )}
                 </div>
                 {busy ? (
                   <button type="button" className="composer-stop shrink-0" onClick={stop} aria-label="Stop the answer" title="Stop the answer (Esc) — what is written stays">
@@ -769,42 +765,19 @@ export function AiChat({
   );
 }
 
-/** One chat in the list: open it, and — on hover, or always on a touch
- *  screen — rename, pin or delete it. */
-export function ConvRow({ c, active, busy, onOpen, onRemove, onRename, onPin }: { c: Conv; active: boolean; busy: boolean; onOpen: () => void; onRemove: () => void; onRename: () => void; onPin: () => void }) {
-  return (
-    <div className={`conv-item ${active ? "conv-item-active" : ""}`}>
-      <button type="button" onClick={onOpen} className="flex-1 min-w-0 text-start px-2.5 py-1.5 flex items-center gap-1.5" disabled={busy}>
-        {c.pinned && <Pin size={11} className="shrink-0 text-muted" aria-label="Pinned" />}
-        <span className={`text-[13px] truncate ${active ? "font-semibold text-brand-ink" : "font-medium"}`} dir="auto">{c.title}</span>
-      </button>
-      <button type="button" onClick={onRename} disabled={busy} className="conv-del icon-btn" title="Rename this chat" aria-label={`Rename the chat ${c.title}`}>
-        <Pencil size={13} />
-      </button>
-      <button type="button" onClick={onPin} disabled={busy} className="conv-del icon-btn" title={c.pinned ? "Unpin" : "Pin to the top"} aria-label={`${c.pinned ? "Unpin" : "Pin"} the chat ${c.title}`} aria-pressed={!!c.pinned}>
-        {c.pinned ? <PinOff size={13} /> : <Pin size={13} />}
-      </button>
-      <button type="button" onClick={onRemove} disabled={busy} className="conv-del icon-btn icon-btn-danger me-1" title="Delete this chat" aria-label={`Delete the chat ${c.title}`}>
-        <Trash2 size={13} />
-      </button>
-    </div>
-  );
-}
-
-function Welcome({ tabId, tabLabel, onPick, disabled, compact }: { tabId: string | null; tabLabel: string | null; onPick: (q: string) => void; disabled: boolean; compact: boolean }) {
+function Welcome({ tabId, tabLabel, actions, onAction, onPick, disabled, compact }: { tabId: string | null; tabLabel: string | null; actions: readonly AiQuickAction[]; onAction: (a: AiQuickAction) => void; onPick: (q: string) => void; disabled: boolean; compact: boolean }) {
   const suggestions = suggestionsFor(tabId);
   const own = !!tabLabel && hasPageSuggestions(tabId);
   return (
-    <div className={`max-w-2xl mx-auto ${compact ? "pt-6" : "pt-4 sm:pt-10 md:pt-16"}`}>
-      <div className="flex flex-col items-center text-center gap-2">
-        <span className="w-12 h-12 rounded-2xl bg-brand-light text-brand-ink grid place-items-center shrink-0">
-          <Bot size={24} />
-        </span>
-        <h2 className="!text-xl !font-bold !normal-case !tracking-normal !text-foreground !mb-0">Ask about the plant</h2>
-        <p className="text-sm text-muted max-w-md">Orders, output, machines, material, Odoo, shifts — answered from the live data, with its sources. Changes it prepares wait for your approval.</p>
+    <div className={`ai-welcome mx-auto ${compact ? "max-w-2xl pt-1" : "max-w-5xl pt-1 sm:pt-4"}`}>
+      <div className="ai-hero">
+        <span className="ai-hero-logo" aria-hidden><Bot size={24} /></span>
+        <h2 className="ai-hero-title">Ask about the plant</h2>
       </div>
-      {own && <p className="mt-6 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">For {tabLabel}</p>}
-      <div className={`grid grid-cols-1 ${compact ? "" : "sm:grid-cols-2"} gap-2 ${own ? "" : "mt-6"}`}>
+      <p className="ai-welcome-label"><Sparkles size={12} aria-hidden /> What it can do</p>
+      <AiQuickGrid actions={actions} onPick={onAction} disabled={disabled} compact={compact} />
+      <p className="ai-welcome-label">{own ? `Ask about ${tabLabel}` : "Or just ask"}</p>
+      <div className={`ai-suggests ${compact ? "" : "ai-suggests-2"}`}>
         {suggestions.map((q, i) => {
           const Icon = SUGGESTION_ICONS[i % SUGGESTION_ICONS.length];
           return (
@@ -814,11 +787,12 @@ function Welcome({ tabId, tabLabel, onPick, disabled, compact }: { tabId: string
               disabled={disabled}
               onClick={() => onPick(q)}
               dir="auto"
-              // a phone and the side panel show the first four
-              className={`${i >= 4 ? (compact ? "hidden" : "hidden sm:flex") : "flex"} text-start border rounded-xl px-3 py-2.5 text-sm bg-surface hover:bg-surface-2 hover:border-[var(--border-strong)] transition-colors disabled:opacity-60 items-start gap-2.5`}
+              // a phone and the corner card show the first four
+              className={`ai-suggest ${i >= 4 ? (compact ? "hidden" : "hidden sm:flex") : "flex"}`}
             >
-              <span className="w-7 h-7 rounded-lg bg-surface-2 text-muted grid place-items-center shrink-0"><Icon size={14} /></span>
-              <span className="leading-snug pt-1">{q}</span>
+              <Icon size={14} className="ai-suggest-icon" aria-hidden />
+              <span className="leading-snug">{q}</span>
+              <CornerDownRight size={13} className="ai-suggest-go" aria-hidden />
             </button>
           );
         })}
@@ -884,8 +858,8 @@ function Live({ text, since }: { text: string; since: number | undefined }) {
   }, [since]);
   return (
     <div className="ai-live" dir="auto" role="status">
-      <Loader2 size={14} className="animate-spin shrink-0" aria-hidden />
-      <span>{text}…</span>
+      <span className="ai-dots" aria-hidden><span /><span /><span /></span>
+      <span className="ai-live-text">{text}…</span>
       {elapsed !== null && <span className="ai-live-time">{elapsed}s</span>}
     </div>
   );
@@ -924,7 +898,7 @@ function Answer({
   const printable = useMemo(() => withoutFollowups(turn.text), [turn.text]);
   const title = question.length > 90 ? `${question.slice(0, 89)}…` : question || "AI assistant";
   return (
-    <div className="flex gap-3">
+    <div className="ai-turn flex gap-3">
       <div className="hidden sm:grid w-7 h-7 rounded-lg bg-brand-light text-brand-ink place-items-center shrink-0 mt-0.5">
         <Bot size={15} />
       </div>

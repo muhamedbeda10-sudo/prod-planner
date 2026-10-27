@@ -48,6 +48,7 @@ import { WEEKLY_STAGES, filterWeeklyDays, weeklyMetricOf, weeklyPlanRows, weekly
 import { runAiRows } from "../reader";
 import { roomProblem, storeMadeWorkbook } from "../files";
 import { MAX_SPLIT_SHEETS, columnsOf, isTotalRow, layoutSheets } from "@/lib/domain/sheetLayout";
+import { MARK_COLORS, MARK_OPERATORS, NUMBER_FORMATS, SHEET_THEMES, type SheetStyleInput } from "@/lib/domain/sheetStyle";
 import { TRACKER_FILTER_SCHEMA, trackerFiltersFor } from "./planning";
 import { MATERIAL_SCOPE_PROPERTIES, materialScopeProblem, materialScopeRequest, type MaterialScopeInput } from "./materialDashboard";
 import type { ReadResult, ReadTool, ToolCtx } from "./types";
@@ -62,6 +63,8 @@ import type { ReadResult, ReadTool, ToolCtx } from "./types";
 /** The most rows one sheet carries — far more than any screen lists. */
 export const MAX_SHEET_ROWS = 50_000;
 const MAX_ROWS_TEXT = MAX_SHEET_ROWS.toLocaleString("en-US");
+/** The most cells one file carries — a formatted workbook past it is over the file size limit. */
+const MAX_SHEET_CELLS = 600_000;
 
 /** The daily log's own history the data guard judges an entry against, as
  *  the screen loads it (app/handover/page.tsx). */
@@ -70,7 +73,7 @@ const GUARD_HISTORY = 2000;
 const STAGE_VALUES = WEEKLY_STAGES.map((o) => o.value);
 
 /** The inputs every sheet takes: its file name and how its rows are laid out. */
-const COMMON = ["sheet", "name", "splitBy", "totals", "nonBlank"] as const;
+const COMMON = ["sheet", "name", "splitBy", "totals", "nonBlank", "style"] as const;
 type Param = Exclude<keyof Input, (typeof COMMON)[number]>;
 
 /** Each sheet: the screen it comes from (its tab), whether it is the admin's,
@@ -130,12 +133,55 @@ interface Input extends MaterialScopeInput {
   splitBy?: string;
   totals?: string[];
   nonBlank?: string[];
+  style?: SheetStyleInput;
 }
 
 /** A sheet made: its rows and the file's name, or why there is none. */
 type Made = { rows: SheetRow[]; name: string; sheet: string; scope: string } | { error: string };
 
 const str = (maxLength: number, description: string) => ({ type: "string" as const, minLength: 1, maxLength, description });
+/** A column of the sheet, as it heads it — every input that names one. */
+const COLUMN = str(100, "A column, as the sheet heads it.");
+const COLUMNS = (description: string, maxItems = 20) => ({ type: "array" as const, items: COLUMN, minItems: 1, maxItems, description });
+
+/** How the file looks, past the house style every file already has. */
+const STYLE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  description: "How the file looks, past the house style every file has — only what the person asks for; the same on every sheet of the file.",
+  properties: {
+    title: str(120, "A title over the table on each sheet (\"HR sheets nested — October 2026\")."),
+    subtitle: str(200, "A line under the title; the sheet's scope when left out."),
+    theme: { type: "string", enum: Object.keys(SHEET_THEMES), description: "The header's colour (green is the company's, the default)." },
+    banded: { type: "boolean", description: "Banded rows (default true)." },
+    formats: {
+      type: "array", maxItems: 30, description: `A column's number format: ${Object.entries(NUMBER_FORMATS).map(([k, v]) => `${k} ${v}`).join(", ")} — percent for a share kept as a fraction (0.85), percentNumber for a figure already in per cent (85).`,
+      items: { type: "object", additionalProperties: false, required: ["column", "format"], properties: { column: COLUMN, format: { type: "string", enum: Object.keys(NUMBER_FORMATS) } } },
+    },
+    highlight: {
+      type: "array", maxItems: 20, description: "Colour the cells (or, with row, the whole row) where a column's value meets a rule — a live Excel rule: gt/gte/lt/lte/between (value, value2) on numbers, eq/ne/contains on text or a number, blank/notBlank. The first rule that matches wins.",
+      items: {
+        type: "object", additionalProperties: false, required: ["column", "when", "color"],
+        properties: {
+          column: COLUMN,
+          when: { type: "string", enum: [...MARK_OPERATORS] },
+          value: { type: "number", description: "The number the column is compared with (gt, gte, lt, lte, between, eq, ne)." },
+          value2: { type: "number", description: "between: the other end." },
+          text: { type: "string", minLength: 1, maxLength: 100, description: "The text the column is compared with (eq, ne, contains)." },
+          color: { type: "string", enum: Object.keys(MARK_COLORS) },
+          row: { type: "boolean", description: "Colour the whole row, not just the cell." },
+        },
+      },
+    },
+    colorScale: {
+      type: "array", maxItems: 10, description: "A red–yellow–green scale over a column of numbers; better says which end is green.",
+      items: { type: "object", additionalProperties: false, required: ["column", "better"], properties: { column: COLUMN, better: { type: "string", enum: ["higher", "lower"] } } },
+    },
+    dataBars: COLUMNS("Columns of numbers drawn as bars in their cells."),
+    bold: COLUMNS("Columns written in bold."),
+    freezeColumns: { type: "integer", minimum: 0, maximum: 3, description: "How many first columns stay in view while scrolling sideways." },
+  },
+} as const;
 const DAY = { type: "string" as const, format: "date" as const };
 
 export const makeSheetTool: ReadTool<Input> = {
@@ -146,8 +192,9 @@ export const makeSheetTool: ReadTool<Input> = {
   description:
     "Make an Excel file (.xlsx) for the person to download or print — the screens have no Export button any more, so this is how anyone gets a sheet of the app's data. Call it whenever they ask for an Excel, a sheet, an export, a download, a file, or a printout of a list. Each `sheet` builds EXACTLY the sheet the screen's old Export button made — its loader, its filters, its columns and headers, so the file drops back into the office's workbooks — and takes only its own inputs: " +
     Object.entries(SHEETS).map(([k, v]) => `${k}: ${v.about}`).join("; ") +
-    `. Use \`query\` only when no screen sheet fits (any columns, joins, totals): one SELECT, double-quoted names, the same read-only rules as query_database, up to ${MAX_ROWS_TEXT} rows. The result gives the file's download and print links: ALWAYS put both in your answer as Markdown links, e.g. [Download plan-tracker.xlsx](${aiFileHref(12)}) · [Print](${aiPrintHref(12)}), and say in one line what it holds (rows, scope). Never paste the rows into the answer — the file carries them. ` +
-    `Any sheet can also be laid out: nonBlank keeps only the rows whose given columns are filled (\"what was actually nested\" → nonBlank ["Actual sheets"]); splitBy puts each value of a column on its own sheet of the same file (a sheet per thickness, up to ${MAX_SPLIT_SHEETS}); totals closes each sheet with a Total row summing the given columns (the quantities and the difference — never a thickness, a rate, a share, or a per-MO figure repeated on each of its lines such as Units or Closed qty). Name the columns exactly as the sheet heads them; a wrong name comes back with the sheet's columns. One file with all of it — never a file per sheet.`,
+    `. Use \`query\` only when no screen sheet fits (any columns, joins, totals): one SELECT, double-quoted names, the same read-only rules as query_database, up to ${MAX_ROWS_TEXT} rows. Any file holds at most ${MAX_SHEET_CELLS.toLocaleString("en-US")} cells (rows × columns) — ask for the columns that matter on a long sheet. The result gives the file's download and print links: ALWAYS put both in your answer as Markdown links, e.g. [Download plan-tracker.xlsx](${aiFileHref(12)}) · [Print](${aiPrintHref(12)}), and say in one line what it holds (rows, scope). Never paste the rows into the answer — the file carries them. ` +
+    `Any sheet can also be laid out: nonBlank keeps only the rows whose given columns are filled (\"what was actually nested\" → nonBlank ["Actual sheets"]); splitBy puts each value of a column on its own sheet of the same file (a sheet per thickness, up to ${MAX_SPLIT_SHEETS}); totals closes each sheet with a Total row summing the given columns (the quantities and the difference — never a thickness, a rate, a share, or a per-MO figure repeated on each of its lines such as Units or Closed qty). Name the columns exactly as the sheet heads them; a wrong name comes back with the sheet's columns. One file with all of it — never a file per sheet. ` +
+    "Every file comes in the house style already (coloured frozen header with filters, fitted columns, number formats, banded rows, a bold Total row, print set up). When the person asks for it to look a certain way — a title, another colour, cells or rows coloured by a rule (over a limit red, done green), a colour scale, data bars, a number format, bold or frozen columns — add style; never invent styling they did not ask for beyond a title that says what the file holds.",
   schema: {
     type: "object",
     additionalProperties: false,
@@ -178,9 +225,10 @@ export const makeSheetTool: ReadTool<Input> = {
       basis: { type: "string", enum: ["closed", "logged"], description: "odoo_daily: count by the day closed (default) or the day logged." },
       address: { type: "string", maxLength: 600, description: "consumables_dashboard: the dashboard's address query, exactly as on the screen — e.g. \"from=2026-10-01&to=2026-10-26&dept=WeldingTX&status=over\" (dept, item c<id> or t:<typed name>, link linked|unlinked, status over|near|within|none); empty for today with no filter." },
       sql: str(20000, "query: one SELECT statement — no semicolons, no writes."),
-      splitBy: str(100, "Any sheet: a column whose every value gets its own sheet in the file (\"Thickness mm\" → 2 mm, 3 mm, …), in order."),
-      totals: { type: "array", items: { type: "string", minLength: 1, maxLength: 100 }, minItems: 1, maxItems: 30, description: "Any sheet: the columns a Total row at the end of each sheet adds up." },
-      nonBlank: { type: "array", items: { type: "string", minLength: 1, maxLength: 100 }, minItems: 1, maxItems: 10, description: "Any sheet: keep only the rows with these columns filled." },
+      splitBy: { ...COLUMN, description: "Any sheet: a column whose every value gets its own sheet in the file (\"Thickness mm\" → 2 mm, 3 mm, …), in order." },
+      totals: COLUMNS("Any sheet: the columns a Total row at the end of each sheet adds up.", 30),
+      nonBlank: COLUMNS("Any sheet: keep only the rows with these columns filled.", 10),
+      style: STYLE_SCHEMA,
     },
   },
   parse(raw) {
@@ -214,6 +262,8 @@ async function keep(i: Input, made: Exclude<Made, { error: string }>, ctx: ToolC
   if (made.rows.length === 0) return { ok: true, text: JSON.stringify({ rows: 0, scope: made.scope, note: "Nothing matches, so no file was made — say so, and offer a wider scope." }) };
   if (made.rows.length > MAX_SHEET_ROWS) return { ok: false, text: `That is ${made.rows.length.toLocaleString("en-US")} rows — at most ${MAX_ROWS_TEXT} in one file. Narrow it (a shorter period, a filter) or make it in parts.` };
   const laidOut = Boolean(i.splitBy || i.totals || i.nonBlank);
+  // a title's subtitle is the sheet's scope unless one is given
+  const style = i.style?.title && !i.style.subtitle ? { ...i.style, subtitle: made.scope } : i.style;
   // a sheet's own closing Total row (the Production sheet's, a query's) is neither split nor added in again
   const ownTotal = isTotalRow(made.rows.at(-1));
   const data = ownTotal ? made.rows.slice(0, -1) : made.rows;
@@ -222,7 +272,11 @@ async function keep(i: Input, made: Exclude<Made, { error: string }>, ctx: ToolC
   const rows = laidOut ? laid.sheets.reduce((n, s) => n + s.rows.length, 0) : data.length;
   const left = laid.dropped ? `${laid.dropped} rows with a blank in ${i.nonBlank!.join(", ")} are not in the file` : undefined;
   if (rows === 0) return { ok: true, text: JSON.stringify({ rows: 0, scope: made.scope, left, note: "Nothing is left once the blank rows are out, so no file was made — say so." }) };
-  const stored = await storeMadeWorkbook(ctx, i.name ?? made.name, laid.sheets.map((s) => ({ name: s.name, rows: s.total ? [...s.rows, s.total] : s.rows })));
+  const sheets = laid.sheets.map((s) => ({ name: s.name, rows: s.total ? [...s.rows, s.total] : s.rows }));
+  // past this a file is over its size limit anyway — refused before it is written, not after
+  const cells = sheets.reduce((n, s) => n + s.rows.length * columnsOf(s.rows).length, 0);
+  if (cells > MAX_SHEET_CELLS) return { ok: false, text: `That is ${cells.toLocaleString("en-US")} cells — at most ${MAX_SHEET_CELLS.toLocaleString("en-US")} in one file. Narrow it (a shorter period, fewer columns, a filter) or make it in parts.` };
+  const stored = await storeMadeWorkbook(ctx, i.name ?? made.name, sheets, style);
   if (!stored.ok) return { ok: false, text: stored.error };
   const download = aiFileHref(stored.file.id);
   const print = aiPrintHref(stored.file.id);

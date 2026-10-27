@@ -15,7 +15,7 @@ import { hasPerm, hiddenTabsOf } from "@/lib/server/auth";
 import { deliverToInbox } from "@/lib/server/inbox";
 import { sendMessageFromPerson } from "@/lib/server/inboxMessage";
 import { sendChatMessage } from "@/app/chat/actions";
-import { AI_CONVERSATION_TITLE_MAX, chatTextOf, withoutFollowups, withoutSourceLinks } from "@/lib/domain/aiAnswer";
+import { AI_CONVERSATION_TITLE_MAX, chatIdsOf, chatTextOf, withoutFollowups, withoutSourceLinks } from "@/lib/domain/aiAnswer";
 import { INBOX_BODY_MAX, INBOX_TITLE_MAX } from "@/lib/domain/inbox";
 import { CHAT_MESSAGE_MAX } from "@/lib/domain/chatTopic";
 import { AUTOMATIONS_KEY } from "@/lib/server/automations/store";
@@ -93,13 +93,22 @@ export async function renameAiConversation(id: number, title: string): Promise<{
   return r.count > 0 ? { ok: true } : { ok: false, error: "That conversation is not there any more." };
 }
 
-/** Keep a chat at the top of the list — or let it go back in order. */
-export async function pinAiConversation(id: number, pinned: boolean): Promise<{ ok: boolean; error?: string }> {
+/** Of these chats, the ones that are the person's own. */
+async function ownChatIds(userId: number, ids: unknown): Promise<number[]> {
+  const wanted = chatIdsOf(ids);
+  if (wanted.length === 0) return [];
+  return (await prisma.aiConversation.findMany({ where: { id: { in: wanted }, userId }, select: { id: true } })).map((c) => c.id);
+}
+
+/** Pin or unpin chats — only the person's own — at the top of the list, or back in order. */
+export async function pinAiConversations(ids: number[], pinned: boolean): Promise<{ ok: boolean; changed?: number[]; error?: string }> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: NOT_LOGGED_IN };
-  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "Which chat?" };
-  const r = await prisma.aiConversation.updateMany({ where: { id, userId: user.id }, data: { pinned: !!pinned } });
-  return r.count > 0 ? { ok: true } : { ok: false, error: "That conversation is not there any more." };
+  if (chatIdsOf(ids).length === 0) return { ok: false, error: "Pick the chats first." };
+  const own = await ownChatIds(user.id, ids);
+  // raw: an update through the client would stamp updatedAt, and pinning is not using the chat
+  if (own.length > 0) await prisma.$executeRaw`UPDATE "AiConversation" SET "pinned" = ${!!pinned} WHERE "id" = ANY(${own}::int[]) AND "userId" = ${user.id}`;
+  return { ok: true, changed: own };
 }
 
 /** Who an answer can be sent to: colleagues' inboxes — for someone who may
@@ -173,14 +182,20 @@ export async function shareAiAnswerToChat(o: { kind: "user" | "group"; to: numbe
   return r.ok ? { ok: true, ...(cut ? { cut } : {}) } : { ok: false, error: r.error ?? "Could not send it." };
 }
 
-export async function deleteAiConversation(id: number): Promise<{ ok: boolean; error?: string }> {
+/** Delete several chats at once — only the person's own, with the ratings
+ *  that quoted them, together. What they cost stays in the usage log. */
+export async function deleteAiConversations(ids: number[]): Promise<{ ok: boolean; deleted?: number[]; error?: string }> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: NOT_LOGGED_IN };
-  // what it cost stays in the usage log, and what it changed in the
-  // assistant's log; the chat goes, and the ratings that quoted it
-  const gone = await prisma.aiConversation.deleteMany({ where: { id, userId: user.id } });
-  if (gone.count > 0) await prisma.aiFeedback.deleteMany({ where: { conversationId: id } });
-  return { ok: true };
+  if (chatIdsOf(ids).length === 0) return { ok: false, error: "Pick the chats to delete." };
+  const own = await ownChatIds(user.id, ids);
+  if (own.length > 0) {
+    await prisma.$transaction([
+      prisma.aiFeedback.deleteMany({ where: { conversationId: { in: own } } }),
+      prisma.aiConversation.deleteMany({ where: { id: { in: own }, userId: user.id } }),
+    ]);
+  }
+  return { ok: true, deleted: own };
 }
 
 /** Whoever the assistant was closed to since it prepared a change cannot

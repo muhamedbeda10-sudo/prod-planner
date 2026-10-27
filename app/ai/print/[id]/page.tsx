@@ -32,7 +32,8 @@ export default async function AiPrintPage({ params }: { params: Promise<{ id: st
   const [chat, f] = await Promise.all([chatStatusFor(me), printableSheets(me.id, id, PRINT_ROWS)]);
   if (!chat.visible) redirect("/");
   if (!f) notFound();
-  const title = f.name.replace(/\.xlsx$/i, "");
+  // the file's own title when it has one, else its name
+  const title = f.title[0] ?? f.name.replace(/\.xlsx$/i, "");
   const laid = f.sheets.map((s) => ({ s, ...footOf(s) }));
   // the rows the file holds — each sheet's Total row not counted, as the assistant's answer counts them
   const all = laid.reduce((n, l) => n + l.count, 0);
@@ -40,11 +41,12 @@ export default async function AiPrintPage({ params }: { params: Promise<{ id: st
   const total = formatNumber(all);
   const many = f.sheets.length > 1;
   const rowsText = `${many ? `${f.sheets.length} sheets · ` : ""}${total} rows`;
+  const subtitle = [f.title[1], many ? null : f.sheets[0].sheet, rowsText].filter(Boolean).join(" · ");
 
   return (
     <div className="space-y-3">
       <AutoPrint />
-      <PrintHeader title={title} subtitle={many ? rowsText : `${f.sheets[0].sheet} · ${rowsText}`} date={formatDateTime(f.createdAt)} />
+      <PrintHeader title={title} subtitle={subtitle} date={formatDateTime(f.createdAt)} />
       <PageHead
         title={title}
         sub={`${total} rows`}
@@ -54,7 +56,7 @@ export default async function AiPrintPage({ params }: { params: Promise<{ id: st
         </>}
       >
         <span className="font-semibold">{title}</span>
-        <span className="text-muted text-sm tabnum">{rowsText} · made {formatDateTime(f.createdAt)}</span>
+        <span className="text-muted text-sm tabnum">{f.title[1] ? `${f.title[1]} · ` : ""}{rowsText} · made {formatDateTime(f.createdAt)}</span>
       </PageHead>
       {all > printed && (
         <p className="text-sm font-semibold text-warn-fg" role="status">This printout carries the first {formatNumber(printed)} of {total} rows. Download the Excel file for all of them.</p>

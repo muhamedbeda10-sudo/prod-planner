@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AI_DEFAULT_SUGGESTIONS, chatTextOf, depthPlan, followupsOf, hasPageSuggestions, scopeLineOf, suggestionsFor, withoutFollowups, withoutSourceLinks } from "./aiAnswer";
+import { AI_CHATS_BULK_MAX, AI_DEFAULT_SUGGESTIONS, chatIdsOf, chatTextOf, depthPlan, followupsOf, hasPageSuggestions, scopeLineOf, suggestionsFor, withoutFollowups, withoutSourceLinks } from "./aiAnswer";
 
 describe("follow-up questions in an answer", () => {
   it("reads the JSON list of the last followups block, at most three, no duplicates", () => {
@@ -68,5 +68,19 @@ describe("an answer as the team chat takes it", () => {
   it("drops charts, follow-ups and source links, and flattens tables and marks", () => {
     const md = "**Ten late** ([Source](#ai-source-a)).\n\n| MO | Days |\n|---|---:|\n| 4471 | 3 |\n\n```chart\n{\"type\":\"kpi\"}\n```\n\n> ⚠️ Check it\n\n```followups\n[\"Why?\"]\n```";
     expect(chatTextOf(md)).toBe("Ten late.\n\nMO · Days\n4471 · 3\n\n⚠️ Check it");
+  });
+});
+
+describe("chatIdsOf", () => {
+  it("keeps whole positive ids once each and drops the rest", () => {
+    expect(chatIdsOf([3, 3, 7, 0, -2, 1.5, "4", null, Number.NaN, 9])).toEqual([3, 7, 9]);
+  });
+  it("reads nothing from what is not a list", () => {
+    expect(chatIdsOf("1,2")).toEqual([]);
+    expect(chatIdsOf(undefined)).toEqual([]);
+  });
+  it("stops at the bulk limit", () => {
+    const many = Array.from({ length: AI_CHATS_BULK_MAX + 50 }, (_, i) => i + 1);
+    expect(chatIdsOf(many)).toHaveLength(AI_CHATS_BULK_MAX);
   });
 });

@@ -4,7 +4,10 @@ import * as XLSX from "xlsx";
 import type { AiFile, User } from "@prisma/client";
 import type Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
-import { AI_FILE_LIMITS, aiFileKind, cleanFileName, madeFileName, sheetNamesOf, fileRefId, fileSizeText, filesToSend, isSeenKind, questionSeenProblem, type AiFileKind, type AttachedFile, type SeenImageType } from "@/lib/domain/aiFiles";
+import { AI_FILE_LIMITS, XLSX_TYPE, aiFileKind, cleanFileName, madeFileName, fileRefId, fileSizeText, filesToSend, isSeenKind, questionSeenProblem, type AiFileKind, type AttachedFile, type SeenImageType } from "@/lib/domain/aiFiles";
+import { MAX_TITLE_LINES, type SheetStyleInput } from "@/lib/domain/sheetStyle";
+import type { WorkbookSheet } from "@/lib/excel/workbook";
+import { streamedWorkbookBytes } from "@/lib/server/excel";
 import type { ToolCtx } from "./tools/types";
 
 // The files people attach in the assistant's chat (lib/domain/aiFiles.ts has
@@ -79,25 +82,27 @@ export async function storeAiFile(user: User, file: File, now = new Date(), meas
   return { ok: true, file: await insertAiFile({ userId: user.id, name, kind: kind.kind, type: kind.type, tokens, data }) };
 }
 
-/** A workbook the assistant made for the person — written here, kept as
- *  their own file in their chat, under the same size limit as the files they
- *  attach, cleared on the same day. The caller checks the room first
- *  (roomProblem), before it reads what goes on the sheets. Never sent to the
- *  model again: only a question's own attachments are. */
+/** A workbook the assistant made for the person — written in the house
+ *  style and the style asked for (lib/excel/workbook.ts), kept as their own
+ *  file in their chat, under the same size limit as the files they attach,
+ *  cleared on the same day. The caller checks the room first (roomProblem),
+ *  before it reads what goes on the sheets; a style that does not fit them
+ *  is refused before anything is written. Never sent to the model again: only a question's own
+ *  attachments are. */
 export async function storeMadeWorkbook(
   ctx: Pick<ToolCtx, "user" | "conversationId">,
   name: string,
-  sheets: readonly { name: string; rows: readonly Record<string, unknown>[] }[],
+  sheets: readonly WorkbookSheet[],
+  style?: SheetStyleInput,
 ): Promise<(StoreResult & { ok: false }) | (StoreResult & { ok: true; sheets: string[] })> {
   if (ctx.conversationId === null) return { ok: false, error: "A file is made only in a chat the person is in." };
-  const wb = XLSX.utils.book_new();
-  const names = sheetNamesOf(sheets.map((s) => s.name));
-  sheets.forEach((s, i) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s.rows as Record<string, unknown>[]), names[i]));
-  const data = new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx", compression: true }) as ArrayBuffer);
+  const made = await streamedWorkbookBytes(sheets, style);
+  if (!made.ok) return made;
+  const { data, names } = made;
   if (data.length > AI_FILE_LIMITS.maxBytes) return { ok: false, error: `That sheet comes to ${fileSizeText(data.length)} — at most ${fileSizeText(AI_FILE_LIMITS.maxBytes)} a file. Narrow it (a shorter period, fewer orders) or split it in two.` };
   const file = await insertAiFile({
     userId: ctx.user.id, conversationId: ctx.conversationId, name: madeFileName(name), kind: "excel",
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", tokens: null, data,
+    type: XLSX_TYPE, tokens: null, data,
   });
   return { ok: true, file, sheets: names };
 }
@@ -211,37 +216,53 @@ export interface PrintableSheet {
  *  header row and the rows under it, as the sheet shows them — at most
  *  `limit` rows over all of them. Null when there is no such file of theirs,
  *  or it is not a sheet. */
-export async function printableSheets(userId: number, id: number, limit: number): Promise<{ name: string; sheets: PrintableSheet[]; createdAt: Date } | null> {
+export async function printableSheets(userId: number, id: number, limit: number): Promise<{ name: string; title: string[]; sheets: PrintableSheet[]; createdAt: Date } | null> {
   const f = await prisma.aiFile.findFirst({ where: { id, userId }, select: { name: true, kind: true, data: true, createdAt: true } });
   if (!f || isSeenKind(f.kind)) return null;
   // only the rows printed are read — each sheet's count comes from its own range
   let wb: XLSX.WorkBook;
   try {
-    wb = XLSX.read(f.data, { type: "array", dense: true, sheetRows: limit + 1 });
+    wb = XLSX.read(f.data, { type: "array", dense: true, sheetRows: limit + 2 + MAX_TITLE_LINES });
   } catch {
     return null;
   }
   let left = limit;
+  // every sheet of a file carries the same title: the first one's is the file's
+  let title: string[] = [];
   const sheets: PrintableSheet[] = [];
-  for (const sheet of wb.SheetNames) {
+  wb.SheetNames.forEach((sheet, index) => {
     const ws = wb.Sheets[sheet];
-    if (!ws) continue;
+    if (!ws) return;
     const full = ws["!fullref"] ?? ws["!ref"];
     const range = full ? XLSX.utils.decode_range(full) : null;
-    const total = range ? Math.max(0, range.e.r - range.s.r) : 0;
+    const top = tableTop(wb, ws, index);
+    if (sheets.length === 0) title = top.title;
+    const total = range ? Math.max(0, range.e.r - top.headerRow) : 0;
     // past the rows printed, only the sheet's size is read
-    const [header = [], ...rows] = textGrid(ws, { rows: Math.max(0, left) + 1 });
+    const [header = [], ...rows] = textGrid(ws, { from: top.headerRow, rows: Math.max(0, left) + 1 });
     sheets.push({ sheet, header, rows, total });
     left -= rows.length;
-  }
-  return sheets.length === 0 ? null : { name: f.name, sheets, createdAt: f.createdAt };
+  });
+  return sheets.length === 0 ? null : { name: f.name, title, sheets, createdAt: f.createdAt };
+}
+
+/** Where a sheet's table starts — the row its print titles repeat (a made
+ *  workbook's, lib/excel/workbook.ts), else its first — and the title lines
+ *  over it. */
+function tableTop(wb: XLSX.WorkBook, ws: XLSX.WorkSheet, index: number): { title: string[]; headerRow: number } {
+  const printTitles = wb.Workbook?.Names?.find((d) => d.Name === "_xlnm.Print_Titles" && d.Sheet === index)?.Ref;
+  const repeated = printTitles ? /\$(\d+):\$\d+$/.exec(printTitles) : null;
+  const headerRow = repeated ? Math.min(Number(repeated[1]) - 1, MAX_TITLE_LINES + 1) : 0;
+  const title = headerRow > 0 ? textGrid(ws, { rows: headerRow }).map((r) => r[0]?.trim() ?? "").filter(Boolean) : [];
+  return { title, headerRow };
 }
 
 /** A sheet as text, cell by cell, as it shows them (formatted values, dates as dates). */
-function textGrid(ws: XLSX.WorkSheet | undefined, o: { blankrows?: boolean; rows?: number } = {}): string[][] {
+function textGrid(ws: XLSX.WorkSheet | undefined, o: { blankrows?: boolean; from?: number; rows?: number } = {}): string[][] {
   if (!ws?.["!ref"]) return [];
-  // at most `rows` rows, the rest never formatted
+  // from a row on, at most `rows` rows — the rest never formatted
   const range = XLSX.utils.decode_range(ws["!ref"]);
+  if (o.from !== undefined) range.s.r = Math.max(range.s.r, o.from);
   if (o.rows !== undefined) range.e.r = Math.min(range.e.r, range.s.r + o.rows - 1);
   return XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: "", blankrows: o.blankrows ?? false, range }).map((r) => r.map((c) => String(c ?? "")));
 }
