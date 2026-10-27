@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-assistant-chats-resize-hide",
+    dateISO: "2026-10-27",
+    title: "The assistant: widen, narrow or hide the list of chats",
+    where: "AI assistant → the list of chats",
+    href: "/ai",
+    body: "Drag the edge of the list of chats to make it wider or narrower (the arrow keys work on it too, and a double-click puts it back to its usual width). The list button beside New chat at the top hides the list and shows it again (from the playbook or the automations it brings the chat back), and dragging it all the way in hides it too — the chat takes the room, and answers now use more of the width. Your choice is kept on this browser.",
+  },
+  {
     id: "2026-10-27-assistant-tiles-select-chats",
     dateISO: "2026-10-27",
     title: "The assistant: tiles for what it can do, and pick several chats to pin or delete",
