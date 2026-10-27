@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Camera, LogOut, Sparkles, Trash2 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { InstallApp } from "@/components/InstallApp";
-import { MENU_ROW } from "@/components/ui";
 import { useWhatsNew } from "@/components/WhatsNew";
 import { AVATAR_PX, avatarColor, initials } from "@/lib/domain/avatar";
 import { signOut } from "@/lib/signOut";
@@ -116,7 +115,7 @@ export function UserMenu({ user, whatsNewSeen }: {
       </button>
 
       {open && (
-        <div role="menu" className="nav-drop absolute right-0 top-[calc(100%+10px)] w-64 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40">
+        <div role="menu" className="nav-drop menu-panel absolute right-0 top-[calc(100%+10px)] w-64 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40">
           <div className="flex items-center gap-3 px-3 py-2.5">
             <Avatar id={user.id} name={user.name} url={user.avatarUrl} size={44} />
             <div className="min-w-0">
@@ -125,20 +124,20 @@ export function UserMenu({ user, whatsNewSeen }: {
             </div>
           </div>
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
-          <button type="button" role="menuitem" className={MENU_ROW} disabled={pending} onClick={() => fileRef.current?.click()}>
-            <Camera size={17} className="shrink-0 text-muted" />
+          <button type="button" role="menuitem" className={`menu-row tone-2`} disabled={pending} onClick={() => fileRef.current?.click()}>
+            <span className="tone-tile tone-tile-sm" aria-hidden><Camera size={15} /></span>
             {pending ? "Saving…" : user.avatarUrl ? "Change photo" : "Add your photo"}
           </button>
           {user.avatarUrl && (
-            <button type="button" role="menuitem" className={MENU_ROW} disabled={pending} onClick={() => run(removeAvatar)}>
-              <Trash2 size={17} className="shrink-0 text-muted" />
+            <button type="button" role="menuitem" className={`menu-row tone-8`} disabled={pending} onClick={() => run(removeAvatar)}>
+              <span className="tone-tile tone-tile-sm" aria-hidden><Trash2 size={15} /></span>
               Remove photo
             </button>
           )}
           {err && <div className="px-3 pb-1 text-xs text-bad-fg">{err}</div>}
           <div className="border-t my-1" />
-          <button type="button" role="menuitem" className={MENU_ROW} onClick={() => { setOpen(false); news.show(); }}>
-            <Sparkles size={17} className="shrink-0 text-muted" />
+          <button type="button" role="menuitem" className={`menu-row tone-3`} onClick={() => { setOpen(false); news.show(); }}>
+            <span className="tone-tile tone-tile-sm" aria-hidden><Sparkles size={15} /></span>
             What&apos;s new
             {news.count > 0 && <span className="count-badge count-badge-alert ms-auto">{news.count}</span>}
           </button>
@@ -146,8 +145,8 @@ export function UserMenu({ user, whatsNewSeen }: {
           <InstallApp row />
           <div className="border-t my-1" />
           <form action={signOut}>
-            <button type="submit" role="menuitem" className={`${MENU_ROW} text-bad-fg`}>
-              <LogOut size={17} className="shrink-0" />
+            <button type="submit" role="menuitem" className={`menu-row menu-row-danger`}>
+              <span className="tone-tile tone-tile-sm" aria-hidden><LogOut size={15} /></span>
               Sign out
             </button>
           </form>

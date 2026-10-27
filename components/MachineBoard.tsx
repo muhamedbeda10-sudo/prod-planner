@@ -329,7 +329,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
       </div>
       {pct !== null && (
         <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden" title={c.days === null ? "" : `${c.days} working day(s) of work ahead — the bar is five days wide`}>
-          <div className={`h-full ${tone ? TONE_BAR[tone] : "bg-muted"}`} style={{ width: `${pct}%` }} />
+          <div className={`fx-fill h-full ${tone ? TONE_BAR[tone] : "bg-muted"}`} style={{ width: `${pct}%` }} />
         </div>
       )}
       {!bySheets && roundSheets(c.unpricedPcs - counts.sheets) > 0 && <div className="text-[10px] text-warn-fg">{roundSheets(c.unpricedPcs - counts.sheets)} pcs with no standard time — hours undercounted</div>}

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useAiPanel } from "@/components/AiPanel";
 import { pageName, readAiTarget } from "@/lib/aiTarget";
 import { explainQuestion, type AiTarget } from "@/lib/domain/aiExplain";
+import { toneAt } from "@/lib/domain/tones";
 
 // A right-click menu for a table row. The row decides what goes in it — a
 // list of entries built at open time — so a new action is one more entry,
@@ -129,12 +130,11 @@ export function ContextMenu({ x, y, entries: own, target, onClose }: { x: number
     p.onSubmit(text.trim());
   };
 
-  const item = "w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 rounded-md transition-colors";
   return createPortal(
     <div
       ref={box}
       role="menu"
-      className="fixed z-[100] min-w-[14rem] max-w-[20rem] rounded-xl border bg-surface shadow-xl p-1.5 no-print"
+      className="menu-panel animate-[drawerfade_0.14s_ease-out] fixed z-[100] min-w-[14rem] max-w-[20rem] rounded-xl border bg-surface shadow-xl p-1.5 no-print"
       style={{ left: pos.left, top: pos.top }}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -159,18 +159,19 @@ export function ContextMenu({ x, y, entries: own, target, onClose }: { x: number
         entries.map((e, i) => {
           if (isSep(e)) return <div key={`sep${i}`} className="my-1 border-t" />;
           if (isHeading(e)) return <div key={`h${i}`} className="px-3 pt-1 pb-1.5 text-[11px] font-bold text-muted uppercase tracking-wide truncate">{e.heading}</div>;
-          const tone = e.danger ? "text-bad-fg hover:bg-bad-bg" : "hover:bg-surface-2";
-          const cls = `${item} ${e.disabled ? "opacity-40 cursor-not-allowed" : `${tone} cursor-pointer`}`;
+          // each entry a soft tile in a colour of its own — the glyph is an emoji, which keeps its own
+          const cls = `menu-row menu-row-sm ${e.danger ? "menu-row-danger" : toneAt(i)}`;
+          const glyph = <span className="tone-tile tone-tile-sm tone-tile-soft text-sm" aria-hidden>{e.icon}</span>;
           if (e.href && !e.disabled) {
             return (
               <Link key={e.key} href={e.href} role="menuitem" className={cls} title={e.hint} onClick={onClose}>
-                <span className="w-5 text-center">{e.icon}</span>{e.label}
+                {glyph}{e.label}
               </Link>
             );
           }
           return (
             <button key={e.key} type="button" role="menuitem" className={cls} title={e.hint} disabled={e.disabled} onClick={() => run(e)}>
-              <span className="w-5 text-center">{e.icon}</span>{e.label}{e.prompt && <span className="text-muted">…</span>}
+              {glyph}{e.label}{e.prompt && <span className="text-muted">…</span>}
             </button>
           );
         })

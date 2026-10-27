@@ -23,6 +23,20 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The assistant no longer opens as a card over the corner of the page. It opens down the whole right side of the screen, from the top to the bottom, and the app — the green bar and the page — moves left into the rest, so the table or dashboard you are on and the chat are both seen in full at once. Drag the assistant's left edge to make it wider or narrower (the arrow keys work on it too, and a double-click puts it back to its usual width); the width is kept on this browser. Fill screen still makes it the whole screen, and Back to the side brings it back. On a phone it still opens over the whole screen, and on a narrow tablet it opens down the right over the page.",
   },
   {
+    id: "2026-10-27-motion-tables-charts-filters",
+    dateISO: "2026-10-27",
+    title: "Tables, charts and filters move like the rest of the app",
+    where: "Every table, chart and filter bar",
+    body: "A table now fades in, and the row under the pointer grows a green bar on its left edge. Charts rise in on their card: columns grow from their foot, sideways bars, lines and areas draw from the left, and a pie opens; the bar or slice under the pointer stays bright while the others step back, and the tooltip pops in. Progress bars, meters and the machine timeline fill in from the start. In the filter bar, a filter springs on when it is set, its ✕ pops in and turns under the pointer, a box's border turns green under the pointer and its focus ring settles in. Printing always gets the finished chart, and with the device set to reduce motion everything stays still.",
+  },
+  {
+    id: "2026-10-27-tiles-and-motion-app-wide",
+    dateISO: "2026-10-27",
+    title: "The assistant's coloured tiles and motion, across the whole app",
+    where: "Every screen — the tabs' menus on the top bar, the phone's menu, the account and right-click menus, cards, buttons and dialogs",
+    body: "The look of the assistant's \"What it can do\" tiles is now the whole app's. Resting on a tab of the top bar opens its places as coloured tiles, each with a line saying what it holds; the admin tools, the account menu, the phone's menu and the right-click menu of a table row look the same, and each row lights up in its colour with a sweep of light and its icon tipping up under the pointer. Section cards wear a coloured tile and rise in one after another; KPI cards glow from the corner, lift under the pointer and fill their bars as they appear; buttons lift and press; tabs grow their underline from the middle; switches, segments and counts spring into place; dialogs and pages fade in. With the device set to reduce motion, everything stays still.",
+  },
+  {
     id: "2026-10-27-material-sheet-import-only",
     dateISO: "2026-10-27",
     title: "Material: the sheet changes only by uploading it",

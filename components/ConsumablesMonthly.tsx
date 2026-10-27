@@ -41,7 +41,7 @@ function UseBar({ used, allowance, status }: { used: number; allowance: number |
   return (
     <div className="min-w-[7rem]">
       <div className="relative h-2 rounded-full bg-surface-2">
-        <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${(used / top) * 100}%`, background: STATUS_COLOR[status] }} />
+        <div className="fx-fill absolute inset-y-0 left-0 rounded-full" style={{ width: `${(used / top) * 100}%`, background: STATUS_COLOR[status] }} />
         <div className="absolute -top-0.5 -bottom-0.5 w-0.5 bg-[var(--foreground)]" style={{ left: `calc(${(allowance / top) * 100}% - 1px)` }} />
       </div>
       <div className="text-[11px] tabnum text-muted mt-0.5">{pct(used / allowance)}</div>
