@@ -83,6 +83,9 @@ describe("isTotalRow", () => {
     expect(isTotalRow({ MO: "A", Status: "Total" })).toBe(false);
     expect(isTotalRow({ MO: "Totals" })).toBe(false);
     expect(isTotalRow(undefined)).toBe(false);
+    // what an Export button hands over may hold anything
+    expect(isTotalRow({ A: 1, B: null, C: true, D: new Date(0) })).toBe(false);
+    expect(isTotalRow({ A: null, B: "Total" })).toBe(true);
   });
 });
 

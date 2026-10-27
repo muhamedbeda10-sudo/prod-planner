@@ -3,19 +3,32 @@
 import { useState } from "react";
 import { FileSpreadsheet } from "lucide-react";
 
-/** Writes the rows to an .xlsx and hands it to the browser. SheetJS is
- *  loaded on this first call (see below). */
+/** Writes the rows to an .xlsx in the house style (lib/excel/workbook.ts) —
+ *  or, for a .csv, plain — and hands it to the browser. The writer is loaded
+ *  on this first call (see below). */
 export async function downloadXlsx(rows: Record<string, unknown>[], filename: string, sheetName = "Sheet1") {
-  const XLSX = await import("xlsx");
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  XLSX.writeFile(wb, filename);
+  if (/\.csv$/i.test(filename)) {
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sheetName);
+    XLSX.writeFile(wb, filename);
+    return;
+  }
+  const { workbookBytes, XLSX_TYPE } = await import("@/lib/excel/workbook");
+  const made = await workbookBytes([{ name: sheetName, rows }]);
+  if (!made.ok) throw new Error(made.error);
+  const url = URL.createObjectURL(new Blob([made.data], { type: XLSX_TYPE }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  // the download has its bytes once the click is handled
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// SheetJS is a quarter of a megabyte — far more than any page it sits on.
-// It is fetched the first time someone actually presses Export, never on
-// page load, so a dozen tabs open faster for a button most visits never use.
+// The writer is a megabyte — far more than any page it sits on. It is
+// fetched the first time someone actually presses Export, never on page
+// load, so a dozen tabs open faster for a button most visits never use.
 export function ExportButton({
   rows,
   filename,
