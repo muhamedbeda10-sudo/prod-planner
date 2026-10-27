@@ -3,6 +3,8 @@
 // person reads goes through here, so a date or a quantity looks the same on
 // every page.
 
+import { factoryDaysBefore } from "./dates";
+
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -29,6 +31,9 @@ function dayParts(day: string | Date): Parts | null {
 
 const thisYear = (now: Date) => factoryParts(now).y;
 
+/** "4 Oct" in the current year, "4 Oct 2025" otherwise. */
+const dayMonth = (p: Parts, now: Date) => (p.y === thisYear(now) ? `${p.d} ${MONTHS[p.m]}` : `${p.d} ${MONTHS[p.m]} ${p.y}`);
+
 /** A day: "Sun 4 Oct" in the current year, "Sat 4 Oct 2025" otherwise.
  *  An empty or malformed value reads "—". */
 export function formatDate(day: string | Date | null | undefined, now: Date = new Date()): string {
@@ -46,8 +51,7 @@ export function formatDateTime(at: string | Date | null | undefined, now: Date =
   const d = typeof at === "string" ? new Date(at) : at;
   if (Number.isNaN(d.getTime())) return typeof at === "string" ? at : "—";
   const p = factoryParts(d);
-  const day = p.y === thisYear(now) ? `${p.d} ${MONTHS[p.m]}` : `${p.d} ${MONTHS[p.m]} ${p.y}`;
-  return `${day} ${p.hh}:${p.mm}`;
+  return `${dayMonth(p, now)} ${p.hh}:${p.mm}`;
 }
 
 /** A day with no weekday, for tight chart axes: "4 Oct" (year added when it
@@ -56,7 +60,22 @@ export function formatDayShort(day: string | Date | null | undefined, now: Date 
   if (!day) return "—";
   const p = dayParts(day);
   if (!p) return typeof day === "string" ? day : "—";
-  return p.y === thisYear(now) ? `${p.d} ${MONTHS[p.m]}` : `${p.d} ${MONTHS[p.m]} ${p.y}`;
+  return dayMonth(p, now);
+}
+
+/** When something was last touched, as a list shows it beside its name:
+ *  "09:28" on today's factory day, the weekday within the past week, else
+ *  "4 Oct" (year added when it is not the current one). */
+export function formatWhenShort(at: string | Date | null | undefined, now: Date = new Date()): string {
+  if (!at) return "—";
+  const d = typeof at === "string" ? new Date(at) : at;
+  if (Number.isNaN(d.getTime())) return "—";
+  const p = factoryParts(d);
+  // the same count of factory days the chat list groups by
+  const ago = factoryDaysBefore(d, now);
+  if (ago <= 0) return `${p.hh}:${p.mm}`;
+  if (ago < 7) return DAYS[p.wd];
+  return dayMonth(p, now);
 }
 
 // ---- numbers ----

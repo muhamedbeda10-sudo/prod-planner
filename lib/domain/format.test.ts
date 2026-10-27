@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { durationText, formatDate, formatDateTime, formatDayShort, formatNumber, formatField, formatQty } from "./format";
+import { durationText, formatDate, formatDateTime, formatDayShort, formatNumber, formatField, formatQty, formatWhenShort } from "./format";
 
 const now = new Date("2026-10-06T09:00:00Z");
 
@@ -68,5 +68,25 @@ describe("durationText", () => {
     expect(durationText(59_600)).toBe("1m 00s");
     expect(durationText(119_600)).toBe("2m 00s");
     expect(durationText(9_960)).toBe("10s");
+  });
+});
+
+describe("formatWhenShort", () => {
+  // Tue 27 Oct 2026, 11:00 in Cairo (summer time, UTC+3, until the end of October)
+  const now = new Date("2026-10-27T08:00:00Z");
+  it("reads the time on today's factory day", () => {
+    expect(formatWhenShort("2026-10-27T07:28:00Z", now)).toBe("10:28");
+    // 23:30 UTC on the 26th is already the 27th in Cairo
+    expect(formatWhenShort("2026-10-26T23:30:00Z", now)).toBe("02:30");
+  });
+  it("reads the weekday within the past week, then the day", () => {
+    expect(formatWhenShort("2026-10-26T10:00:00Z", now)).toBe("Mon");
+    expect(formatWhenShort("2026-10-21T10:00:00Z", now)).toBe("Wed");
+    expect(formatWhenShort("2026-10-20T10:00:00Z", now)).toBe("20 Oct");
+    expect(formatWhenShort("2025-12-30T10:00:00Z", now)).toBe("30 Dec 2025");
+  });
+  it("reads a dash for nothing or nonsense", () => {
+    expect(formatWhenShort(null, now)).toBe("—");
+    expect(formatWhenShort("not a date", now)).toBe("—");
   });
 });
