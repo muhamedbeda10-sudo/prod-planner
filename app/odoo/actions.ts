@@ -9,7 +9,8 @@ import { requirePerm } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
 import { isProductLine, type ProductLine } from "@/lib/domain/lines";
 import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
-import { isDoneStatus } from "@/lib/domain/odoo";
+import { CANCEL_NEEDS_NOTE, isCancelledStatus, isDoneStatus } from "@/lib/domain/odoo";
+import { cancelRefused } from "@/lib/server/odooRules";
 import { importOdooSheet, type OdooImportResult } from "@/lib/server/odoo";
 import { UserError, userMessage } from "@/lib/server/errors";
 
@@ -134,6 +135,8 @@ export async function createOdooEntry(formData: FormData): Promise<OdooActionRes
   const f = read(formData);
   const bad = validate(f);
   if (bad) return { ok: false, error: bad };
+  // a new row has no note yet, so it cannot start cancelled
+  if (isCancelledStatus(f.status)) return { ok: false, error: CANCEL_NEEDS_NOTE };
 
   const created = await prisma.odooEntry.create({
     data: {
@@ -171,6 +174,7 @@ export async function updateOdooEntry(formData: FormData): Promise<OdooActionRes
   if (version && version.getTime() !== prev.updatedAt.getTime()) return { ok: false, error: STALE };
   const bad = validate(f, prev.ledgerId !== null);
   if (bad) return { ok: false, error: bad };
+  if (await cancelRefused([id], f.status, [prev.status])) return { ok: false, error: CANCEL_NEEDS_NOTE };
   const res = await prisma.odooEntry.updateMany({
     where: { id, updatedAt: prev.updatedAt },
     data: {
@@ -240,6 +244,7 @@ export async function setOdooStatus(formData: FormData): Promise<OdooActionResul
   if (!status) return { ok: false, error: "Pick a status." };
   const prev = await prisma.odooEntry.findMany({ where: { id: { in: ids } }, select: { id: true, status: true, doneAt: true } });
   if (prev.length === 0) return { ok: false, error: "That row no longer exists." };
+  if (await cancelRefused(ids, status, prev.map((p) => p.status))) return { ok: false, error: CANCEL_NEEDS_NOTE };
   // the planner closing a row is closing it NOW, whatever day it was logged —
   // but a row already Done keeps the moment it was closed on
   const now = new Date();
@@ -272,9 +277,13 @@ export async function addOdooNote(formData: FormData): Promise<OdooActionResult>
 export async function deleteOdooNote(formData: FormData): Promise<OdooActionResult> {
   const noteId = Number(formData.get("noteId"));
   if (!Number.isInteger(noteId)) return { ok: false, error: "Invalid note." };
-  const note = await prisma.odooNote.findUnique({ where: { id: noteId }, select: { entryId: true } });
+  const note = await prisma.odooNote.findUnique({ where: { id: noteId }, select: { entryId: true, entry: { select: { status: true, _count: { select: { notes: true } } } } } });
   const guard = await guardRows(note ? [note.entryId] : []);
   if (guard.error) return { ok: false, error: guard.error };
+  // a cancelled row keeps the reason it was cancelled for
+  if (note && isCancelledStatus(note.entry.status) && note.entry._count.notes <= 1) {
+    return { ok: false, error: "This note is why the row was cancelled — reopen the row before deleting it." };
+  }
   await prisma.odooNote.deleteMany({ where: { id: noteId } });
   revalidateOdoo();
   return { ok: true };
@@ -312,6 +321,7 @@ export async function updateOdooGroup(formData: FormData): Promise<OdooActionRes
     if (prev.some((p) => seen.get(p.id) !== undefined && new Date(seen.get(p.id)!).getTime() !== p.updatedAt.getTime())) return { ok: false, error: STALE };
   }
   if (!f.odooMo && prev.some((p) => p.ledgerId === null)) return { ok: false, error: "Enter the Odoo MO number." };
+  if (await cancelRefused(ids, f.status, prev.map((p) => p.status))) return { ok: false, error: CANCEL_NEEDS_NOTE };
   const by = guard.user?.name ?? null;
   const now = new Date();
   // all or nothing: a row that moved between the check and the write rolls

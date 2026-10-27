@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-odoo-status-tick-or-cross",
+    dateISO: "2026-10-27",
+    title: "ODOO log: Status is a ✓ or a ✗ — and a row is cancelled only with a note",
+    where: "ODOO log → Status",
+    href: "/odoo",
+    body: "The Status column no longer opens a list. Each row has two marks: ✓ marks it Done (closed now) and ✗ cancels it. ✗ stays greyed until the row has a note saying why — add the note first, then cancel. Click a lit mark again to open the row back to MO to be close (a Done row asks first, because it forgets the moment it was closed). A row still carrying an older word such as Pending or Blocked shows it beside the marks until you tick one. The Add and Edit forms offer the same three statuses, and the assistant follows the same rule. While a row is cancelled, its last note cannot be deleted.",
+  },
+  {
     id: "2026-10-27-inbox-popups-until-read",
     dateISO: "2026-10-27",
     title: "Alerts, tasks and automations pop up on the screen until you mark them read",
