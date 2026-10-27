@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 import { ResizeHandle } from "@/components/ResizeHandle";
 import type { FloatName } from "@/components/floatWindow";
 import { AI_DOCK_DEFAULT, AI_DOCK_MIN, AI_DOCK_STEP, clampDockWidth, dockMax } from "@/lib/domain/aiDock";
@@ -133,5 +134,30 @@ export function FloatWindow({
         {children}
       </section>
     </div>
+  );
+}
+
+/** The window's head: its logo (a ring breathes around it while `busy`),
+ *  its name and a line under it, then its buttons. */
+export function FloatHead({ icon: Icon, title, sub, busy = false, children }: { icon: LucideIcon; title: string; sub: ReactNode; busy?: boolean; children: ReactNode }) {
+  return (
+    <header className="ai-pop-head">
+      <span className={`ai-pop-logo ${busy ? "ai-pop-logo-busy" : ""}`}><Icon size={18} aria-hidden /></span>
+      <div className="min-w-0 flex-1">
+        <div className="ai-pop-title">{title}</div>
+        <div className="ai-pop-sub" dir="auto">{sub}</div>
+      </div>
+      <div className="flex items-center gap-0.5 shrink-0">{children}</div>
+    </header>
+  );
+}
+
+/** One button of the head: an icon, its name as the tooltip, lit when its view is open. */
+export function HeadBtn({ icon: Icon, label, on = false, badge = 0, onClick, disabled }: { icon: LucideIcon; label: string; on?: boolean; badge?: number; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} className={`icon-btn icon-btn-md ai-head-btn ${on ? "icon-btn-on" : ""}`} title={label} aria-label={badge > 0 ? `${label} — ${badge} not read` : label} aria-pressed={on}>
+      <Icon size={17} />
+      {badge > 0 && <span className="count-badge count-badge-alert">{badge > 99 ? "99+" : badge}</span>}
+    </button>
   );
 }

@@ -166,6 +166,10 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
   // bubble sits near the bottom.
   const [menuFor, setMenuFor] = useState<{ id: number; x: number; y: number } | null>(null);
   const [armedDelete, setArmedDelete] = useState<number | null>(null);
+  const closeMenu = () => {
+    setMenuFor(null);
+    setArmedDelete(null);
+  };
 
   const MENU_W = 232;
   const MENU_H = 226;
@@ -266,8 +270,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
     setActive(t);
     setMessages([]);
     setError(null);
-    setMenuFor(null);
-    setArmedDelete(null);
+    closeMenu();
     setPinsOpen(false);
     setLeaveArmed(false);
     setReplyTarget(null);
@@ -402,8 +405,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
   }, [draft, pendingFiles, pendingMo, replyTarget, sending, appendUnique, touchContact]);
 
   const deleteForMe = useCallback(async (id: number) => {
-    setMenuFor(null);
-    setArmedDelete(null);
+    closeMenu();
     const res = await deleteChatMessageForMe(id);
     if (res.ok) setMessages((cur) => cur.filter((m) => m.id !== id));
   }, []);
@@ -520,8 +522,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
       onKeyDown={(e) => {
         if (e.key !== "Escape" || (!menuFor && !groupModal)) return;
         e.preventDefault();
-        setMenuFor(null);
-        setArmedDelete(null);
+        closeMenu();
         setGroupModal(null);
       }}
     >
@@ -688,8 +689,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                 backgroundSize: "18px 18px",
               }}
               onClick={() => {
-                setMenuFor(null);
-                setArmedDelete(null);
+                closeMenu();
               }}
               onScroll={() => setMenuFor(null)}
             >
@@ -985,8 +985,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                 type="button"
                 aria-label="Close menu"
                 onClick={() => {
-                  setMenuFor(null);
-                  setArmedDelete(null);
+                  closeMenu();
                 }}
                 className="fixed inset-0 z-40 cursor-default"
               />
