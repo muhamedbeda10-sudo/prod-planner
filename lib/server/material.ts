@@ -26,10 +26,12 @@ type Row = {
   note: string | null; recordedBy: string | null; updatedAt: Date;
 };
 
-function toView(r: Row, producedAuto: number | null = null): MaterialLineView {
+/** `lv`: only the panels' tab counts units produced — a transformer line's
+ *  old typed quantity is no longer shown or costed. */
+function toView(r: Row, lv: boolean, producedAuto: number | null = null): MaterialLineView {
   const forJob = sheetsForJob(r.sheetsPerUnit, r.units);
-  // typed wins; else the tracker's painted count on the line's own order
-  const producedUsed = r.producedQty ?? producedAuto;
+  // the sheet's count; else the tracker's painted count on the line's own order
+  const producedUsed = lv ? (r.producedQty ?? producedAuto) : null;
   return {
     producedAuto,
     producedUsed,
@@ -55,7 +57,8 @@ function toView(r: Row, producedAuto: number | null = null): MaterialLineView {
  *  filed under its plan month, or everything ("all"). */
 export async function getMaterialData(month: string): Promise<MaterialPageData> {
   const line = await getActiveLine(); // one product line at a time
-  const [rows, odoo] = await Promise.all([
+  const lv = line === "LV";
+  const [rows, odoo, paintedByMo] = await Promise.all([
     prisma.materialUsage.findMany({
       where: month === "all" ? { line } : { month, line },
       // the sheet's own order — its rows come back the way they were laid out;
@@ -63,10 +66,9 @@ export async function getMaterialData(month: string): Promise<MaterialPageData> 
       orderBy: [{ month: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
     }),
     prisma.odooEntry.findMany({ where: { line, odooMo: { not: "" } }, select: { odooMo: true, status: true }, orderBy: { date: "asc" } }),
+    lv ? lvPaintedByMo() : Promise.resolve(new Map<string, number>()),
   ]);
-
-  const paintedByMo = line === "LV" ? await lvPaintedByMo() : new Map<string, number>();
-  const lines = rows.map((r) => toView(r, line === "LV" && r.mo ? (paintedByMo.get(r.mo) ?? 0) : null));
+  const lines = rows.map((r) => toView(r, lv, lv && r.mo ? (paintedByMo.get(r.mo) ?? 0) : null));
 
   // the latest row of an MO speaks for it
   const odooByMo: Record<string, string> = {};
