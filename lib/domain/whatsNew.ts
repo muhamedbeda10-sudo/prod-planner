@@ -23,6 +23,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "All the progress bars in the app are now one bar: the fill in its colour on a lighter track of the same colour, the same thickness for the same job, and a tick where it should reach (a target, a limit, an allowance). Before, each screen drew its own — some on a grey track, some thinner, some with no tick. The motion was also trimmed so it never slows a screen down: on a touch screen (the floor's tablets and phones) nothing animates at all; elsewhere tables no longer fade in or mark the row under the pointer, the marks inside a chart and the progress bars no longer draw themselves, menu rows no longer arrive one by one, cards appear faster, a box no longer animates its focus ring, a chart card no longer glows or casts a shadow under the pointer (its border still turns green), a dialog no longer blurs the page behind it, and an empty list's icon and the assistant's logo stay still.",
   },
   {
+    id: "2026-10-27-inbox-docked-right",
+    dateISO: "2026-10-27",
+    title: "The inbox opens down the right side too, beside the app",
+    where: "Inbox → the bell in the bar",
+    body: "The inbox no longer hangs as a card under the bell. Like the assistant, it opens down the whole right side of the screen, from the top to the bottom, and the app moves left into the rest, so the page you are on stays in full view while you read your alerts, reports and tasks. Drag its left edge to make it wider or narrower (the arrow keys work on it too, and a double-click puts it back to its usual width); the width is kept on this browser. Expand still makes it the whole screen, and Back to the side brings it back. On a phone it still opens over the whole screen, and on a narrow tablet it opens down the right under the bar, over the page — the assistant does too now, so the bell and the bar stay in reach. Escape closes either of them from inside it; Escape in the page beside them is left to the page.",
+  },
+  {
     id: "2026-10-27-assistant-docked-right",
     dateISO: "2026-10-27",
     title: "The assistant opens down the right side, and the app moves over beside it",
