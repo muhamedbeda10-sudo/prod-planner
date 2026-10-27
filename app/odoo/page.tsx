@@ -29,8 +29,10 @@ export default async function OdooPage({
   const line = await getActiveLine();
 
   const sp = await searchParams;
-  // every day by default (the log opens on the whole period), one day, or a from..to period
-  const scope = parseOdooScope(sp.day ?? "all", factoryDayISO(new Date()));
+  // the last 30 days by default (the whole log grows without end and made the
+  // page heavy), "All days" (?day=all), one day, or a from..to period
+  const today = factoryDayISO(new Date());
+  const scope = parseOdooScope(sp.day ?? `${addDaysISO(today, -29)}..${today}`, today);
   const day = odooScopeKey(scope);
   // the dashboard lives in the Dashboards tab now — an old ?view=dashboard link
   // lands there with its period, basis and picks
@@ -43,7 +45,6 @@ export default async function OdooPage({
   const { entries, days, knownSois, nesting, soiBoms, soiMos, lv, totalRows, openRows } = await getOdooData(scope);
 
   // the strip runs from the first logged day (a month back at least) to today
-  const today = factoryDayISO(new Date());
   const oldest = days.length ? days[days.length - 1] : today;
   const min = [oldest, addDaysISO(today, -30)].sort()[0];
   const sel = scope.kind === "all" ? { from: null, to: null } : scope.kind === "day" ? { from: scope.iso, to: scope.iso } : { from: scope.from, to: scope.to };

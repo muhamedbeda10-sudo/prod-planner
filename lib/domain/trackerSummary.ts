@@ -26,6 +26,13 @@ export function masterProgress(row: MasterSummaryRow): "complete" | "inprogress"
   return "notstarted";
 }
 
+/** Closed orders pile up month after month: the tracker page sends them only
+ *  when the Status filter asks for them (?closed=1), and their count always. */
+export function openFirst<T extends { status: string }>(sheet: readonly T[], withClosed: boolean) {
+  const open = sheet.filter((r) => r.status !== "closed");
+  return { rows: withClosed ? [...sheet] : open, hasClosed: withClosed, closedTotal: sheet.length - open.length };
+}
+
 /** Shared by the UI and the assistant: neither reinterprets the other's filters. */
 export function filterMasterTracker<T extends MasterSummaryRow>(rows: readonly T[], f: TrackerFilters): T[] {
   const needle = (f.q ?? "").trim().toUpperCase();

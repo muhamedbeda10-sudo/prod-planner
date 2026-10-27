@@ -211,7 +211,7 @@ export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }
   return (
     <>
       <FilterBar count={filtered.length} total={rows.length} onReset={reset} hasActive={hasActive} head={head}>
-        <SearchBox value={q} onChange={setQ} placeholder="Search BOM…" />
+        <SearchBox value={q} onChange={setQ} placeholder="Search BOM…" settle />
         <SelectFilter label={line === "LV" ? "Stage" : "Dept"} value={dept} onChange={setDept} options={(line === "LV" ? [...LV_CHAIN] : LOG_DEPTS).map((d) => ({ value: d, label: deptLabel(d) }))} />
         {line !== "LV" && <SelectFilter label="Item" value={item} onChange={setItem} options={ITEMS.map((i) => ({ value: i, label: i }))} />}
         {flaggedCount > 0 && (

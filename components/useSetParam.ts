@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 
 /** The current address's query with some parameters set (empty removes them) — for a link that changes several at once. */
 export function withParams(params: URLSearchParams, set: Record<string, string | null>): string {
@@ -55,4 +55,20 @@ export function useHrefWith() {
     },
     [pathname, params]
   );
+}
+
+/** The Plan Tracker's closed orders: the server sends them only while the
+ *  address asks (?closed=1), so the address follows the Status filter both
+ *  ways — back on Open, they stop riding along on every save's re-render.
+ *  True while the rows asked for are still on their way. */
+export function useClosedRows(wanted: boolean, sent: boolean): boolean {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  useEffect(() => {
+    if (wanted === sent) return;
+    const q = withParams(params, { closed: wanted ? "1" : null });
+    router.replace(q === "?" ? pathname : `${pathname}${q}`, { scroll: false });
+  }, [wanted, sent, pathname, router, params]);
+  return wanted && !sent;
 }

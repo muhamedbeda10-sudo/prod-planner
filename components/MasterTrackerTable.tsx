@@ -2,6 +2,7 @@
 
 import { traceHref } from "@/lib/domain/links";
 import { Fragment, useMemo, useRef, useState, useTransition } from "react";
+import { useClosedRows } from "@/components/useSetParam";
 import Link from "next/link";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { decidePlanQty, setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setGroupOrderSpec, setGroupFins, setOrderPriority, setOrderHold, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
@@ -11,7 +12,7 @@ import { LineSwitch } from "@/components/LineSwitch";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
 import { TrackerScope, type TrackerFilter } from "@/components/TrackerScope";
 import { PrintScope } from "@/components/PrintHeader";
-import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
+import { SearchBox, SelectFilter, FilterSelect, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle } from "@/components/PlanViewToggle";
 import { ITEMS, ITEM_NAME, DEPTS, isPaintExempt, deptLabel, FINISHING_LABEL, type Item, type Dept } from "@/lib/domain/constants";
 import { agreedSpec, capsFor, finsGroup, isFullyDelivered, spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
@@ -217,6 +218,8 @@ function CellInput({ col, value, selectAll, label, onChange, onCommit, onCancel 
 
 export function MasterTrackerTable({
   rows,
+  hasClosed,
+  closedTotal,
   features = [],
   editableDepts = [],
   prefs = {},
@@ -224,6 +227,10 @@ export function MasterTrackerTable({
   /** This person's saved view settings (columns, folded / hidden components). */
   prefs?: UserPrefs;
   rows: MasterTrackerRow[];
+  /** Whether `rows` carries the closed orders too (asked for with ?closed=1). */
+  hasClosed: boolean;
+  /** How many closed orders there are, sent or not. */
+  closedTotal: number;
   /** The tracker feature-permission keys this user holds (admin = all):
    *  tracker.status / tracker.components / tracker.qty / tracker.priority / tracker.push */
   features?: string[];
@@ -366,7 +373,11 @@ export function MasterTrackerTable({
   const [q, setQ] = useSavedFilter("tracker.q");
   const [progress, setProgress] = useSavedFilter("tracker.progress");
   const [urgent, setUrgent] = useSavedFilter("tracker.urgent");
-  const [status, setStatus] = useSavedFilter("tracker.status"); // lifecycle: every order shows unless the planner narrows it
+  // lifecycle: open orders unless the planner asks for more ("" = open, as on
+  // the panels). Closed ones only come from the server when asked for: they
+  // pile up month after month and made the sheet heavy.
+  const [status, setStatus] = useSavedFilter("tracker.status");
+  const closedLoading = useClosedRows(status === "closed" || status === "all", hasClosed);
   const [month, setMonth] = useSavedFilter("tracker.month"); // monthly plan (import source), "" = all months
   // stage scope: only the picked depts' columns per item (one or SEVERAL), and
   // the summary cards report the furthest picked stage — the wide table
@@ -402,7 +413,6 @@ export function MasterTrackerTable({
     });
   }
 
-  const closedCount = useMemo(() => rows.filter((r) => r.status === "closed").length, [rows]);
   const holdCount = useMemo(() => rows.filter((r) => r.hold.onHold).length, [rows]);
 
   // Orders the customer has received in full. Closing them one at a time was
@@ -446,21 +456,23 @@ export function MasterTrackerTable({
   const months = useMemo(() => {
     const seen = new Set<string>();
     for (const r of rows) for (const m of r.months) seen.add(m);
+    // a saved month whose orders are all closed keeps its option
+    if (month && month !== "—") seen.add(month);
     return [...seen].sort((a, b) => monthKey(b) - monthKey(a));
-  }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
-  const hasNoMonth = useMemo(() => rows.some((r) => r.months.length === 0), [rows]);
+  }, [rows, month]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hasNoMonth = useMemo(() => month === "—" || rows.some((r) => r.months.length === 0), [rows, month]);
 
   const filtered = useMemo(
-    () => filterMasterTracker(rows, { q, month, status, progress, urgent }),
+    () => filterMasterTracker(rows, { q, month, status: status === "all" ? "" : status || "open", progress, urgent }),
     [rows, q, month, status, progress, urgent]
   );
 
-  const hasActive = !!(q || progress || urgent || month || scoped || status);
+  const hasActive = !!(q || progress || urgent || month || scoped || (status && status !== "open"));
   const resetFilters = () => { setQ(""); setProgress(""); setUrgent(""); setStatus(""); setMonth(""); setStage(""); };
   const activeFilters: TrackerFilter[] = [];
   if (q) activeFilters.push({ key: "q", label: "Search", value: q, onClear: () => setQ("") });
   if (month) activeFilters.push({ key: "month", label: "Plan month", value: month === "—" ? "No month" : month, onClear: () => setMonth("") });
-  if (status) activeFilters.push({ key: "status", label: "Status", value: status === "hold" ? "On hold" : status === "closed" ? "Closed" : "Open", onClear: () => setStatus("") });
+  if (status && status !== "open") activeFilters.push({ key: "status", label: "Status", value: status === "hold" ? "On hold" : status === "closed" ? "Closed" : "All", onClear: () => setStatus("") });
   if (progress) activeFilters.push({ key: "progress", label: "Progress", value: progress === "complete" ? "Complete" : progress === "inprogress" ? "In progress" : "Not started", onClear: () => setProgress("") });
   if (urgent) activeFilters.push({ key: "urgent", label: "Urgent", value: "Urgent only", onClear: () => setUrgent("") });
   for (const s of STAGE_OPTS.filter((o) => stages.includes(o.value))) activeFilters.push({ key: s.value, label: "Dept", value: s.label, onClear: () => toggleStage(s.value) });
@@ -734,7 +746,7 @@ export function MasterTrackerTable({
           <>
             <LineSwitch />
             <PlanViewToggle value="monthly" />
-            <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / Customer / KVA…" wide />
+            <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / Customer / KVA…" wide settle />
           </>
         }
       >
@@ -768,14 +780,16 @@ export function MasterTrackerTable({
             })}
           </div>
         </div>
-        <SelectFilter
+        <FilterSelect
           label="Status"
-          value={status}
-          onChange={setStatus}
+          value={status || "open"}
+          emptyValue="open"
+          onChange={(v) => setStatus(v === "open" ? "" : v)}
           options={[
             { value: "open", label: "Open" },
-            { value: "closed", label: `Closed (${closedCount})` },
+            { value: "closed", label: `Closed (${closedTotal})` },
             { value: "hold", label: `On hold (${holdCount})` },
+            { value: "all", label: "All" },
           ]}
         />
         <SelectFilter
@@ -854,7 +868,7 @@ export function MasterTrackerTable({
           <tbody>
             {filtered.length === 0 && (
               <tr><td colSpan={tableCols} className="p-4 text-center text-muted">
-                {rows.length === 0 ? "No orders yet — import a monthly plan." : "No rows match the filters."}
+                {closedLoading ? "Loading closed orders…" : rows.length === 0 && closedTotal === 0 ? "No orders yet — import a monthly plan." : "No rows match the filters."}
               </td></tr>
             )}
             {groups.map(([gBom, members]) => {

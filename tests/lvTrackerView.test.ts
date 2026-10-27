@@ -46,7 +46,7 @@ const rows = [
 ];
 
 function render() {
-  return renderToStaticMarkup(createElement(LvTrackerTable, { rows, editableStages: [], canStatus: false }));
+  return renderToStaticMarkup(createElement(LvTrackerTable, { rows, hasClosed: true, closedTotal: 1, editableStages: [], canStatus: false }));
 }
 /** The sheet the assistant makes of the LV tracker under the screen's filters. */
 function sheet() {
@@ -121,12 +121,14 @@ describe("transformer tracker summary", () => {
   it.each([
     ["q", "BOM-A", 5, 10],
     ["status", "closed", 0, 30],
+    ["status", "", 25, 30], // open orders by default
+    ["status", "all", 25, 60],
     ["progress", "complete", 20, 20],
     ["urgent", "yes", 5, 10],
     ["q", "no match", 0, 0],
   ])("scopes component cards to the %s filter", (key, value, done, need) => {
     filters[`tracker.${key}`] = value;
-    renderToStaticMarkup(createElement(MasterTrackerTable, { rows: transformerRows }));
+    renderToStaticMarkup(createElement(MasterTrackerTable, { rows: transformerRows, hasClosed: true, closedTotal: 0 }));
     expect(cards.mock.calls.map(([props]) => props)).toHaveLength(ITEMS.length);
     for (const [props] of cards.mock.calls) expect(props).toMatchObject({ done, need, compact: true });
   });

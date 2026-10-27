@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useLineKey } from "@/components/LineContext";
 import { Search, X, FilterX, SlidersHorizontal } from "lucide-react";
 
@@ -48,33 +48,77 @@ export function useSavedFilter(rawKey: string, initial = "") {
   return [value, set] as const;
 }
 
+/** How long typing has to pause before a `settle` search filters the table. */
+const SETTLE_MS = 250;
+
 export function SearchBox({
   value,
   onChange,
   placeholder = "Search BOM / MO / KVA…",
   wide = false,
+  settle = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   /** The page's main search, in a toolbar's first row — room for its hint. */
   wide?: boolean;
+  /** For a table of thousands of rows: the box answers every key, and the
+   *  table filters once typing pauses (or on Enter / leaving the box) instead
+   *  of re-rendering on each letter. */
+  settle?: boolean;
 }) {
+  const [text, setText] = useState(value);
+  // a change from outside (Reset filters, a chip's ✕) shows in the box
+  const [shown, setShown] = useState(value);
+  if (value !== shown) {
+    setShown(value);
+    setText(value);
+  }
+  const latest = useRef(onChange);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pending = useRef<string | null>(null);
+  const flush = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    if (pending.current !== null) latest.current(pending.current);
+    pending.current = null;
+  }, []);
+  // what was typed goes to the filter it was typed for: before the setter
+  // changes (the other line's filters) or the box leaves the page
+  useEffect(() => {
+    latest.current = onChange;
+    return flush;
+  }, [onChange, flush]);
+  const change = (v: string) => {
+    setText(v);
+    if (!settle || v === "") {
+      pending.current = null;
+      if (timer.current) clearTimeout(timer.current);
+      onChange(v);
+      return;
+    }
+    pending.current = v;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(flush, SETTLE_MS);
+  };
   return (
     <div className="relative col-span-2 sm:col-span-1 max-sm:w-full max-sm:basis-full">
       <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
       <input
         type="search"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        value={settle ? text : value}
+        onChange={(e) => change(e.target.value)}
+        onBlur={flush}
+        onKeyDown={(e) => { if (e.key === "Enter") flush(); }}
         placeholder={placeholder}
         aria-label={placeholder}
         className={`ctl pl-8 pr-7 w-full ${wide ? "sm:w-80" : "sm:w-60"} [&::-webkit-search-cancel-button]:hidden`}
       />
-      {value && (
+      {(settle ? text : value) && (
         <button
           type="button"
-          onClick={() => onChange("")}
+          onClick={() => change("")}
           className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted hover:text-foreground rounded p-0.5 transition-colors"
           title="Clear"
           aria-label="Clear search"
