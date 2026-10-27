@@ -15,9 +15,8 @@ export function dockMax(screen = Number.POSITIVE_INFINITY): number {
   return Math.max(AI_DOCK_MIN, Math.min(AI_DOCK_MAX, screen - AI_DOCK_PAGE_MIN));
 }
 
-/** A width the assistant can take on a screen `screen` pixels wide. */
-export function clampDockWidth(width: unknown, screen = Number.POSITIVE_INFINITY): number {
-  const max = dockMax(screen);
+/** A width the assistant can take, no wider than `max` (dockMax of the screen). */
+export function clampDockWidth(width: unknown, max = AI_DOCK_MAX): number {
   if (typeof width !== "number" || !Number.isFinite(width)) return Math.min(AI_DOCK_DEFAULT, max);
   return Math.round(Math.min(max, Math.max(AI_DOCK_MIN, width)));
 }

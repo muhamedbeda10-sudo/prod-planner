@@ -1319,27 +1319,21 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
   animation: aipop-in 0.18s ease-out;
 }
 /* docked: top to bottom on the right, as wide as dragged (--ai-dock, set
-   on <html> with html.ai-docked). From a laptop up the body takes the rest
-   and scrolls itself; on a narrower tablet it lies over the page's right */
+   on <html> with html.ai-docked). From a laptop up the app moves left of it;
+   on a narrower tablet it lies over the page's right */
 .ai-pop-dock {
-  top: 0; right: 0; bottom: 0; width: var(--ai-dock, 440px);
+  top: 0; right: 0; bottom: 0; width: var(--ai-dock);
   border-left: 1px solid var(--border); box-shadow: var(--shadow-lg);
   animation: aidock-in 0.18s ease-out;
 }
-/* --ai-dock-push: how far what is pinned to the right of the page moves left
-   with it; --chat-pop-max: the bar's chat window (components/ChatDock),
-   hanging left from its icon, stays inside the narrowed page */
+/* --ai-dock-push: how far what is pinned to the right of the page moves left with it */
 @media screen and (min-width: 1024px) {
-  html.ai-docked { overflow: hidden; --ai-dock-push: var(--ai-dock, 440px); --chat-pop-max: calc(100vw - var(--ai-dock, 440px) - 9rem); }
-  html.ai-docked body { height: 100dvh; overflow-y: auto; margin-right: var(--ai-dock, 440px); }
+  html.ai-docked { --ai-dock-push: var(--ai-dock); }
+  html.ai-docked body { margin-right: var(--ai-dock); }
 }
-.ai-dock-handle { position: absolute; top: 0; bottom: 0; left: 0; z-index: 3; width: 6px; cursor: col-resize; touch-action: none; }
-.ai-dock-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; border-radius: 2px; background: transparent; transition: background-color 0.15s ease; }
-.ai-dock-handle:hover::after, .ai-pop-dragging .ai-dock-handle::after { background: var(--brand); }
-.ai-dock-handle:focus-visible { outline: none; }
-.ai-dock-handle:focus-visible::after { background: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 30%, transparent); }
-.ai-pop-dragging { user-select: none; }
-html:has(.ai-pop-dragging) body { cursor: col-resize; user-select: none; }
+.ai-dock-handle { left: 0; width: 6px; }
+.ai-dock-handle::after { left: 0; }
+html.ai-resizing body { cursor: col-resize; user-select: none; }
 @keyframes aidock-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
 /* The assistant and the inbox expand edge to edge. */
 .ai-pop-large {
@@ -1363,11 +1357,14 @@ html.ai-modal { overflow: hidden; }
 .ai-side { position: relative; width: var(--ai-side-w, 300px); max-width: 50%; flex-shrink: 0; border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; background: var(--surface-2); min-height: 0; transition: width 0.2s ease; }
 .ai-side-closed { width: 0; border-inline-end-width: 0; overflow: hidden; }
 .ai-side-dragging { transition: none; user-select: none; }
-.ai-side-handle { position: absolute; top: 0; bottom: 0; inset-inline-end: -4px; z-index: 3; width: 8px; cursor: col-resize; touch-action: none; }
-.ai-side-handle::after { content: ""; position: absolute; top: 0; bottom: 0; inset-inline-start: 3px; width: 2px; border-radius: 2px; background: transparent; transition: background-color 0.15s ease; }
-.ai-side-handle:hover::after, .ai-side-dragging .ai-side-handle::after { background: var(--brand); }
-.ai-side-handle:focus-visible { outline: none; }
-.ai-side-handle:focus-visible::after { background: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 30%, transparent); }
+.ai-side-handle { inset-inline-end: -4px; width: 8px; }
+.ai-side-handle::after { inset-inline-start: 3px; }
+/* the edge a panel is dragged by (components/ResizeHandle): a brand line on hover, while dragged and on focus */
+.resize-handle { position: absolute; top: 0; bottom: 0; z-index: 3; cursor: col-resize; touch-action: none; }
+.resize-handle::after { content: ""; position: absolute; top: 0; bottom: 0; width: 2px; border-radius: 2px; background: transparent; transition: background-color 0.15s ease; }
+.resize-handle:hover::after, .ai-side-dragging .resize-handle::after, html.ai-resizing .ai-pop-dock .resize-handle::after { background: var(--brand); }
+.resize-handle:focus-visible { outline: none; }
+.resize-handle:focus-visible::after { background: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 30%, transparent); }
 @media (prefers-reduced-motion: reduce) { .ai-side { transition: none; } }
 .ai-pane-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 /* the inbox's card hangs under the bell, on the right, below the bar */

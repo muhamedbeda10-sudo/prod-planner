@@ -242,8 +242,10 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
           role="dialog"
           aria-label="Chat"
           // Anchored to the icon on desktop; on a phone it takes the screen,
-          // where a corner panel would be unusable.
-          className="fixed inset-x-2 bottom-2 top-14 z-50 flex flex-col rounded-xl border bg-surface text-foreground shadow-xl overflow-hidden md:absolute md:inset-auto md:right-0 md:top-[calc(100%+10px)] md:w-[860px] md:max-w-[min(92vw,var(--chat-pop-max,92vw))] md:h-[min(640px,calc(100vh-7rem))]"
+          // where a corner panel would be unusable. Hanging left from the
+          // icon (about 9rem in from the bar's end), it stays inside the page
+          // when the assistant is docked beside it.
+          className="fixed inset-x-2 bottom-2 top-14 z-50 flex flex-col rounded-xl border bg-surface text-foreground shadow-xl overflow-hidden md:absolute md:inset-auto md:right-0 md:top-[calc(100%+10px)] md:w-[860px] md:max-w-[min(92vw,calc(100vw_-_var(--ai-dock-push,0px)_-_9rem))] md:h-[min(640px,calc(100vh-7rem))]"
         >
           <div className="flex items-center gap-2 px-3 py-2 border-b bg-surface-2 shrink-0">
             <MessagesSquare size={15} className="text-brand-ink" />

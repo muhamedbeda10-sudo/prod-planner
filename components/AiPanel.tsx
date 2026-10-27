@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Bot } from "lucide-react";
@@ -8,7 +8,8 @@ import type { AiLayout, AiTab, AiView } from "@/components/AiWorkspace";
 import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens, usePhone, useWindowChrome } from "@/components/floatWindow";
 import { useInboxPanel } from "@/components/InboxPanel";
 import { handToAssistant } from "@/lib/aiAsk";
-import { AI_DOCK_DEFAULT, AI_DOCK_MAX, AI_DOCK_MIN, AI_DOCK_STEP, clampDockWidth, dockMax } from "@/lib/domain/aiDock";
+import { AI_DOCK_DEFAULT, AI_DOCK_MIN, AI_DOCK_STEP, clampDockWidth, dockMax } from "@/lib/domain/aiDock";
+import { ResizeHandle } from "@/components/ResizeHandle";
 
 // The workspace (the chat, its Markdown and its charts) is the heaviest thing
 // this layout could ship, and every page carries the button. So it is split
@@ -170,55 +171,29 @@ export function AiPanelProvider({ config, children }: { config: AiPanelConfig; c
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
 
-// the screen's width, for the docked assistant to leave the page room
+// the widest the docked assistant may be on this screen — a snapshot that
+// changes only when that does, so resizing a wide window draws nothing new
 function subscribeResize(cb: () => void) {
   window.addEventListener("resize", cb);
   return () => window.removeEventListener("resize", cb);
 }
-const screenWidth = () => window.innerWidth;
-const noScreen = () => Number.POSITIVE_INFINITY;
-
-// from a laptop up the body is the page's scroller while docked (globals.css)
-const PUSH = "(min-width: 1024px)";
+const screenMax = () => dockMax(window.innerWidth);
+const serverMax = () => dockMax();
 
 /** While docked, the app — its bar and the page — moves left of the
- *  assistant: from a laptop up the body takes the rest of the screen and
- *  scrolls itself, so its scrollbar sits beside the assistant rather than
- *  past it. Where the page was scrolled to carries over, at every switch of
- *  the element that scrolls it (opened, closed, the window resized across). */
-function useDock(width: number | null) {
-  const docked = width !== null;
-  useLayoutEffect(() => {
-    // the width the person dragged it to: no token can hold it
-    if (width !== null) document.documentElement.style.setProperty("--ai-dock", `${width}px`);
-  }, [width]);
+ *  assistant (globals.css, from a laptop up). */
+function useDock(docked: boolean, width: number) {
   useLayoutEffect(() => {
     if (!docked) return;
     const html = document.documentElement;
-    const body = document.body;
-    const mq = window.matchMedia(PUSH);
-    const scroller = () => (mq.matches ? body : html);
-    let y = html.scrollTop;
+    // the width the person dragged it to: no token can hold it
+    html.style.setProperty("--ai-dock", `${width}px`);
     html.classList.add("ai-docked");
-    scroller().scrollTop = y;
-    // only the page's own scroller counts — not a table's, nor the one just left
-    const onScroll = (e: Event) => {
-      if (e.target === (mq.matches ? body : document)) y = scroller().scrollTop;
-    };
-    const onChange = () => {
-      scroller().scrollTop = y;
-    };
-    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
-    mq.addEventListener("change", onChange);
     return () => {
-      document.removeEventListener("scroll", onScroll, { capture: true });
-      mq.removeEventListener("change", onChange);
-      y = scroller().scrollTop;
       html.classList.remove("ai-docked");
       html.style.removeProperty("--ai-dock");
-      html.scrollTop = y;
     };
-  }, [docked]);
+  }, [docked, width]);
 }
 
 /** The round button in the corner, and the window itself — placed inside
@@ -228,34 +203,22 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
   const p = useAiPanel();
   const inbox = useInboxPanel();
   const phone = usePhone();
-  const screen = useSyncExternalStore(subscribeResize, screenWidth, noScreen);
+  const max = useSyncExternalStore(subscribeResize, screenMax, serverMax);
   const [made, setMade] = useState(false);
-  // the width while its edge is dragged: drawn on the window alone — the
-  // page is laid out again once, when the drag ends and the width is kept
-  const [live, setLive] = useState<number | null>(null);
-  const drag = useRef<{ x: number; width: number; pointer: number; handle: HTMLElement } | null>(null);
-  const liveNow = useRef<number | null>(null);
+  const pop = useRef<HTMLElement>(null);
   if (p?.shown && !made) setMade(true);
   const layout: AiLayout = phone ? "phone" : p?.state.large ? "large" : "compact";
-  const docked = !!p && !p.aiPage && p.shown && layout === "compact";
-  const kept = clampDockWidth(p?.state.width, screen);
-  const width = live ?? kept;
-  useDock(docked ? kept : null);
+  const width = clampDockWidth(p?.state.width, max);
+  useDock(!!p?.shown && layout === "compact", width);
   if (!p || p.aiPage) return null;
   const { state } = p;
-  const keepWidth = (w: number) => store.write({ ...state, width: clampDockWidth(w, screen) });
-
-  const setLiveWidth = (w: number | null) => {
-    liveNow.current = w;
-    setLive(w);
-  };
-  const endDrag = (commit: boolean) => {
-    const d = drag.current;
-    if (!d) return;
-    drag.current = null;
-    if (d.handle.hasPointerCapture(d.pointer)) d.handle.releasePointerCapture(d.pointer);
-    if (commit && liveNow.current !== null) keepWidth(liveNow.current);
-    setLiveWidth(null);
+  const keepWidth = (w: number) => store.write({ ...state, width: clampDockWidth(w, max) });
+  // while its edge is dragged the width is drawn on the window alone — the
+  // page is laid out again once, when the drag ends and the width is kept
+  const drawWidth = (w: number | null) => {
+    document.documentElement.classList.toggle("ai-resizing", w !== null);
+    if (w === null) pop.current?.style.removeProperty("--ai-dock");
+    else pop.current?.style.setProperty("--ai-dock", `${w}px`);
   };
 
   // automations and the playbook open in the large window on a wide screen
@@ -276,50 +239,32 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
         <div hidden={!p.shown} className="no-print">
           {layout === "large" && p.shown && <div className="ai-overlay" onClick={p.close} aria-hidden />}
           <section
+            ref={pop}
             role="dialog"
             aria-modal={layout !== "compact"}
             aria-label="AI assistant"
-            className={`ai-pop ${layout === "compact" ? "ai-pop-dock" : `ai-pop-${layout}`} ${live !== null ? "ai-pop-dragging" : ""}`}
-            style={live !== null ? ({ "--ai-dock": `${live}px` } as CSSProperties) : undefined}
+            className={`ai-pop ${layout === "compact" ? "ai-pop-dock" : `ai-pop-${layout}`}`}
           >
             {layout === "compact" && (
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize the assistant"
-                aria-valuemin={AI_DOCK_MIN}
-                aria-valuemax={dockMax(screen)}
-                aria-valuenow={width}
-                tabIndex={0}
+              <ResizeHandle
+                label="Resize the assistant"
+                width={width}
+                min={AI_DOCK_MIN}
+                max={max}
+                step={AI_DOCK_STEP}
+                grows="left"
                 className="ai-dock-handle"
-                title="Drag to resize — double-click for the usual width"
-                onPointerDown={(e) => {
-                  if (e.button !== 0) return;
-                  e.preventDefault();
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  drag.current = { x: e.clientX, width, pointer: e.pointerId, handle: e.currentTarget };
-                  setLiveWidth(width);
+                onMove={(w) => {
+                  const to = clampDockWidth(w, max);
+                  drawWidth(to);
+                  return to;
                 }}
-                onPointerMove={(e) => {
-                  const d = drag.current;
-                  // dragged left, it grows: the page gives it the room
-                  if (d) setLiveWidth(clampDockWidth(d.width + d.x - e.clientX, screen));
+                onEnd={(w) => {
+                  keepWidth(w);
+                  drawWidth(null);
                 }}
-                onPointerUp={() => endDrag(true)}
-                onPointerCancel={() => endDrag(true)}
-                onLostPointerCapture={() => endDrag(true)}
-                onDoubleClick={() => keepWidth(AI_DOCK_DEFAULT)}
-                onKeyDown={(e) => {
-                  const to =
-                    e.key === "ArrowLeft" ? width + AI_DOCK_STEP
-                    : e.key === "ArrowRight" ? width - AI_DOCK_STEP
-                    : e.key === "Home" ? AI_DOCK_MIN
-                    : e.key === "End" ? AI_DOCK_MAX
-                    : null;
-                  if (to === null) return;
-                  e.preventDefault();
-                  keepWidth(to);
-                }}
+                onSet={keepWidth}
+                onReset={() => keepWidth(AI_DOCK_DEFAULT)}
               />
             )}
             <AiWorkspace

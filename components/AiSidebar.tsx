@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { ResizeHandle } from "@/components/ResizeHandle";
 import { floatStore } from "@/components/floatWindow";
 import { AI_SIDE_DEFAULT, AI_SIDE_MAX, AI_SIDE_MIN, AI_SIDE_STEP, clampSideWidth, dragSide, parseAiSide, type AiSideState } from "@/lib/domain/aiSidebar";
 
@@ -22,26 +23,10 @@ export function useAiSide(): [AiSideState, (next: AiSideState) => void] {
 
 export function AiSidebar({ side, onChange, children }: { side: AiSideState; onChange: (next: AiSideState) => void; children: ReactNode }) {
   const box = useRef<HTMLElement>(null);
-  const drag = useRef<{ x: number; width: number; pointer: number; handle: HTMLElement } | null>(null);
   // the width while a drag is going: drawn, not kept until it ends
-  const [live, setLiveState] = useState<number | null>(null);
-  // the same, for the handlers of one frame — the state is the last render's
-  const liveNow = useRef<number | null>(null);
-  const setLive = (w: number | null) => {
-    liveNow.current = w;
-    setLiveState(w);
-  };
+  const [live, setLive] = useState<number | null>(null);
   const room = () => box.current?.parentElement?.clientWidth ?? window.innerWidth;
   const width = live ?? clampSideWidth(side.width);
-
-  const endDrag = (commit: boolean) => {
-    const d = drag.current;
-    if (!d) return;
-    drag.current = null;
-    if (d.handle.hasPointerCapture(d.pointer)) d.handle.releasePointerCapture(d.pointer);
-    if (commit && liveNow.current !== null) onChange({ width: liveNow.current, open: true });
-    setLive(null);
-  };
 
   return (
     <aside
@@ -53,49 +38,31 @@ export function AiSidebar({ side, onChange, children }: { side: AiSideState; onC
       inert={!side.open}
     >
       {children}
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize the chats"
-        aria-valuemin={AI_SIDE_MIN}
-        aria-valuemax={AI_SIDE_MAX}
-        aria-valuenow={width}
-        tabIndex={0}
+      <ResizeHandle
+        label="Resize the chats"
+        width={width}
+        min={AI_SIDE_MIN}
+        max={AI_SIDE_MAX}
+        step={AI_SIDE_STEP}
+        grows="right"
         className="ai-side-handle"
-        title="Drag to resize — double-click for the usual width"
-        onPointerDown={(e) => {
-          if (e.button !== 0) return;
-          e.preventDefault();
-          e.currentTarget.setPointerCapture(e.pointerId);
-          drag.current = { x: e.clientX, width, pointer: e.pointerId, handle: e.currentTarget };
-          setLive(width);
-        }}
-        onPointerMove={(e) => {
-          const d = drag.current;
-          if (!d) return;
-          const next = dragSide(d.width + e.clientX - d.x, room(), d.width);
-          if (next.open) setLive(next.width);
-          else {
-            // pulled shut: the drag ends here, and the list hides at the width it had
-            endDrag(false);
-            onChange(next);
+        onMove={(w, from) => {
+          const next = dragSide(w, room(), from);
+          if (next.open) {
+            setLive(next.width);
+            return next.width;
           }
+          // pulled shut: the drag ends here, and the list hides at the width it had
+          setLive(null);
+          onChange(next);
+          return null;
         }}
-        onPointerUp={() => endDrag(true)}
-        onPointerCancel={() => endDrag(true)}
-        onLostPointerCapture={() => endDrag(true)}
-        onDoubleClick={() => onChange({ width: AI_SIDE_DEFAULT, open: true })}
-        onKeyDown={(e) => {
-          const to =
-            e.key === "ArrowRight" ? width + AI_SIDE_STEP
-            : e.key === "ArrowLeft" ? width - AI_SIDE_STEP
-            : e.key === "Home" ? AI_SIDE_MIN
-            : e.key === "End" ? AI_SIDE_MAX
-            : null;
-          if (to === null) return;
-          e.preventDefault();
-          onChange({ width: clampSideWidth(to, room()), open: true });
+        onEnd={(w) => {
+          onChange({ width: w, open: true });
+          setLive(null);
         }}
+        onSet={(w) => onChange({ width: clampSideWidth(w, room()), open: true })}
+        onReset={() => onChange({ width: AI_SIDE_DEFAULT, open: true })}
       />
     </aside>
   );
