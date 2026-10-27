@@ -34,26 +34,19 @@ describe("the scope line", () => {
 });
 
 describe("the depth of a question", () => {
-  const owner = { model: "claude-sonnet-5-5", effort: "medium", maxCalls: 14, auto: false, routed: "claude-haiku-5-5" };
-  it("standard is the owner's setting (the routed model on Auto)", () => {
-    expect(depthPlan("standard", owner)).toEqual({ model: "claude-sonnet-5-5", effort: "medium", maxCalls: 14 });
-    expect(depthPlan("standard", { ...owner, auto: true })).toEqual({ model: "claude-haiku-5-5", effort: "medium", maxCalls: 14 });
+  it("Standard takes the model routed for the question at medium effort", () => {
+    expect(depthPlan("standard", { routed: "claude-haiku-5-5", maxCalls: 14 })).toEqual({ model: "claude-haiku-5-5", effort: "medium", maxCalls: 14 });
+    expect(depthPlan("standard", { routed: "claude-opus-5-5", maxCalls: 14 })).toEqual({ model: "claude-opus-5-5", effort: "medium", maxCalls: 14 });
   });
-  it("quick keeps a chosen model, takes the cheapest on Auto, and thinks a step less", () => {
-    expect(depthPlan("quick", owner)).toEqual({ model: "claude-sonnet-5-5", effort: "low", maxCalls: 14 });
-    expect(depthPlan("quick", { ...owner, auto: true, routed: "claude-opus-5-5" })).toEqual({ model: "claude-haiku-5-5", effort: "low", maxCalls: 14 });
-    expect(depthPlan("quick", { ...owner, effort: "low" }).effort).toBe("low");
+  it("Quick takes the cheapest model at low effort", () => {
+    expect(depthPlan("quick", { routed: "claude-opus-5-5", maxCalls: 14 })).toEqual({ model: "claude-haiku-5-5", effort: "low", maxCalls: 14 });
   });
-  it("deep keeps the owner's chosen model, takes the strongest on Auto, thinks two steps harder with half again the calls", () => {
-    expect(depthPlan("deep", owner)).toEqual({ model: "claude-sonnet-5-5", effort: "xhigh", maxCalls: 21 });
-    expect(depthPlan("deep", { ...owner, auto: true })).toEqual({ model: "claude-opus-5-5", effort: "xhigh", maxCalls: 21 });
-    expect(depthPlan("deep", { ...owner, effort: "max", maxCalls: 28 })).toEqual({ model: "claude-sonnet-5-5", effort: "max", maxCalls: 30 });
+  it("Deep takes the strongest model at high effort with half again the calls, up to the cap", () => {
+    expect(depthPlan("deep", { routed: "claude-haiku-5-5", maxCalls: 14 })).toEqual({ model: "claude-opus-5-5", effort: "high", maxCalls: 21 });
+    expect(depthPlan("deep", { routed: "claude-haiku-5-5", maxCalls: 28 }).maxCalls).toBe(30);
   });
-  it("never steps a chat down from the model it is on, and ignores a model the app no longer offers", () => {
-    expect(depthPlan("quick", { ...owner, auto: true, current: "claude-opus-5-5" }).model).toBe("claude-opus-5-5");
-    expect(depthPlan("standard", { ...owner, current: "claude-opus-5-5" }).model).toBe("claude-opus-5-5");
-    expect(depthPlan("deep", { ...owner, auto: true, current: "claude-haiku-5-5" }).model).toBe("claude-opus-5-5");
-    expect(depthPlan("standard", { ...owner, current: "claude-3-retired" }).model).toBe("claude-sonnet-5-5");
+  it("falls back to an offered model for a routed one the app no longer offers", () => {
+    expect(depthPlan("standard", { routed: "claude-3-retired", maxCalls: 14 }).model).toBe("claude-opus-5-5");
   });
 });
 

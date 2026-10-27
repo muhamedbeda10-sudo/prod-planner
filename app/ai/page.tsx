@@ -4,8 +4,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { actionsOfConversation } from "@/lib/server/ai/changes";
 import { chatStatusFor, conversationsOf } from "@/lib/server/ai/panel";
-import { READ_TOOL_TITLES } from "@/lib/server/ai/tools";
-import { displayTurns } from "@/lib/domain/ai";
+import { chatTurnsOf } from "@/lib/server/ai/chatTurns";
 import { AiWorkspacePage, type AiTab } from "@/components/AiWorkspace";
 
 export const metadata = { title: "AI assistant — ATC" };
@@ -31,9 +30,9 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
       ? prisma.aiConversation.findFirst({ where: { id: wanted, userId: user.id }, include: { messages: { orderBy: { id: "asc" } } } })
       : null,
   ]);
-  const [actions, feedback] = open
-    ? await Promise.all([actionsOfConversation(open.id), prisma.aiFeedback.findMany({ where: { conversationId: open.id }, select: { turn: true, rating: true } })])
-    : [[], []];
+  const [actions, feedback, turns] = open
+    ? await Promise.all([actionsOfConversation(open.id), prisma.aiFeedback.findMany({ where: { conversationId: open.id }, select: { turn: true, rating: true } }), chatTurnsOf(open)])
+    : [[], [], []];
   const tabs: AiTab[] = ["chat", ...(hasPerm(user, "ai.automations") ? (["automations"] as const) : []), "playbook"];
 
   return (
@@ -44,7 +43,7 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
         isOwner: user.isOwner,
         status: chat.status,
         conversations,
-        open: open ? { id: open.id, turns: displayTurns(open.messages, READ_TOOL_TITLES), actions, ratings: Object.fromEntries(feedback.map((f) => [f.turn, f.rating as AiFeedbackRating])) } : null,
+        open: open ? { id: open.id, turns, actions, ratings: Object.fromEntries(feedback.map((f) => [f.turn, f.rating as AiFeedbackRating])) } : null,
       }}
     />
   );

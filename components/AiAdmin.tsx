@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Activity, Bot, ChevronDown, ShieldCheck, Sparkles, Clock, Cpu, Gauge, KeyRound, ListChecks, MessageSquare, PlugZap, Save, Settings2, Trash2, Users,
 } from "lucide-react";
-import { AI_CALLS_RANGE, AI_EFFORTS, AI_EFFORT_LABEL, AI_MODELS, aiModel, usdText, type AiEffort } from "@/lib/domain/ai";
+import { AI_CALLS_RANGE, AI_EFFORTS, AI_EFFORT_LABEL, AI_MODELS, aiModel, usdText, type AiEffort, type AiModelDef } from "@/lib/domain/ai";
 import { WEEKDAY_NAMES, describeWindow } from "@/lib/domain/automations";
 import { AI_PERM_GROUPS, permDef } from "@/lib/domain/permissions";
 import { durationText, formatDateTime } from "@/lib/domain/format";
@@ -16,7 +16,8 @@ import {
 import { AutomationsView } from "@/components/AutomationsView";
 import { AiQuality, type AiQualityData } from "@/components/AiQuality";
 import { WatchdogCard, type WatchdogData } from "@/components/WatchdogCard";
-import { AI_AUTO_MODEL, modelChoiceLabel } from "@/lib/domain/aiLearn";
+import { AUTO_MODEL_USE, BY_STRENGTH } from "@/lib/domain/aiLearn";
+import { AI_DEPTHS, AI_DEPTH_EFFORT, AI_DEPTH_META } from "@/lib/domain/aiAnswer";
 import { EmptyState, Note, SectionCard, SettingRow, Switch, Tabs } from "@/components/primitives";
 import type { AutomationView } from "@/lib/server/automations/views";
 import type { SchedulerStatus } from "@/lib/server/automations/scheduler";
@@ -24,7 +25,8 @@ import type { SchedulerStatus } from "@/lib/server/automations/scheduler";
 // The owner's page for the AI assistant: the figures for the day and the
 // month across the top, then its settings in sections — down the side on a
 // wide screen, as tabs on a small one. General (the key and the main
-// switches), Models (the chat's and the automations' model and effort),
+// switches), Models (how the chat's Auto and depths answer, and the
+// automations' model and effort),
 // Limits (the plant's caps per day and month, steps per question),
 // Automations (on/off, the hours they may run in, the morning review, the
 // scheduler, everyone's automations), People (who may use it, what it may do
@@ -53,7 +55,6 @@ export interface AiAdminData {
   keyReadable: boolean;
   keyHint: string;
   enabled: boolean;
-  chat: { model: string; effort: string };
   auto: { model: string; effort: string };
   plantCap: number;
   plantDayCap: number;
@@ -259,8 +260,8 @@ export function AiAdmin({ data, clock, automations }: { data: AiAdminData; clock
           {section === "general" && <GeneralSection data={data} />}
           {section === "models" && (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-              <ModelCard scope="chat" title="Chat" description="Answers the questions people ask it." current={data.chat} />
-              <ModelCard scope="auto" title="Automations & morning review" description="Runs by itself — reports, watches, the morning review." current={data.auto} />
+              <ChatModelCard />
+              <AutomationModelCard current={data.auto} />
             </div>
           )}
           {section === "limits" && <LimitsCard data={data} />}
@@ -379,49 +380,79 @@ const EFFORT_HINT: Record<AiEffort, string> = {
   max: "The hardest problems — slowest, costs the most.",
 };
 
-function ModelCard({ scope, title, description, current }: { scope: "chat" | "auto"; title: string; description: string; current: { model: string; effort: string } }) {
+/** A model's price, in and out — US dollars per million tokens. */
+function ModelPrice({ m, className = "" }: { m: AiModelDef; className?: string }) {
+  return (
+    <span className={`text-xs text-muted tabnum ltr text-end block ${className}`} title="US dollars per million tokens — in / out">
+      ${m.inUsd} / ${m.outUsd}
+      <span className="block">per 1M tokens</span>
+    </span>
+  );
+}
+
+/** The chat is always on Auto, and the depth people pick beside the box
+ *  (Quick / Standard / Deep) sets its effort — nothing to choose here, only
+ *  what it does and what each model costs. */
+function ChatModelCard() {
+  return (
+    <SectionCard
+      icon={MessageSquare}
+      title="Chat"
+      description="Answers the questions people ask it — always on Auto."
+      end={<span className="text-xs text-muted whitespace-nowrap">Auto · effort by depth</span>}
+    >
+      <h4 className="filter-label mb-1 flex items-center gap-1"><Sparkles size={13} aria-hidden /> Auto — the model each question needs</h4>
+      {BY_STRENGTH.map((id) => {
+        const m = aiModel(id);
+        return (
+          <SettingRow key={id} title={m.label} hint={AUTO_MODEL_USE[id]}>
+            <ModelPrice m={m} />
+          </SettingRow>
+        );
+      })}
+      <h4 className="filter-label mt-4 mb-1">Depth — picked beside the box, it sets the effort</h4>
+      {AI_DEPTHS.map((d) => (
+        <SettingRow key={d} title={AI_DEPTH_META[d].label} hint={AI_DEPTH_META[d].hint}>
+          <span className="pill pill-muted whitespace-nowrap">{AI_EFFORT_LABEL[AI_DEPTH_EFFORT[d]]} effort</span>
+        </SettingRow>
+      ))}
+      <p className="text-xs text-muted mt-3">Each question takes its own model: a chat moves up for a hard question and back down for the next look-up. Every answer says which model wrote it.</p>
+    </SectionCard>
+  );
+}
+
+/** The automations' and the morning review's model and effort — an
+ *  instruction that is the same every run keeps one model. */
+function AutomationModelCard({ current }: { current: { model: string; effort: string } }) {
   const r = useRun();
   const [model, setModel] = useState(current.model);
   const [effort, setEffort] = useState<AiEffort>((AI_EFFORTS as readonly string[]).includes(current.effort) ? (current.effort as AiEffort) : "medium");
   const dirty = model !== current.model || effort !== current.effort;
   return (
     <SectionCard
-      icon={scope === "chat" ? MessageSquare : Clock}
-      title={title}
-      description={description}
-      end={<span className="text-xs text-muted whitespace-nowrap">{modelChoiceLabel(current.model)} · {AI_EFFORT_LABEL[current.effort as AiEffort] ?? current.effort}</span>}
+      icon={Clock}
+      title="Automations & morning review"
+      description="Runs by itself — reports, watches, the morning review."
+      end={<span className="text-xs text-muted whitespace-nowrap">{aiModel(current.model).label} · {AI_EFFORT_LABEL[current.effort as AiEffort] ?? current.effort}</span>}
     >
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          r.run(() => setAiModel(fd({ scope, model, effort })));
+          r.run(() => setAiModel(fd({ model, effort })));
         }}
       >
         <fieldset>
           <legend className="filter-label mb-2">Model</legend>
           <div className="space-y-1.5">
-            {scope === "chat" && (
-              <label className={`option ${model === AI_AUTO_MODEL ? "option-on" : ""}`}>
-                <input type="radio" name={`model-${scope}`} value={AI_AUTO_MODEL} checked={model === AI_AUTO_MODEL} onChange={() => setModel(AI_AUTO_MODEL)} className="sr-only" />
-                <span className="option-radio" aria-hidden />
-                <span className="flex-1 min-w-0">
-                  <span className="text-sm font-bold flex items-center gap-1"><Sparkles size={13} aria-hidden /> Auto</span>
-                  <span className="block text-xs text-muted">Picks per question: Haiku for a quick look-up, Sonnet for a change, Opus for analysis, plans and files. A chat never steps down.</span>
-                </span>
-              </label>
-            )}
             {AI_MODELS.map((m) => (
               <label key={m.id} className={`option ${model === m.id ? "option-on" : ""}`}>
-                <input type="radio" name={`model-${scope}`} value={m.id} checked={model === m.id} onChange={() => setModel(m.id)} className="sr-only" />
+                <input type="radio" name="model-auto" value={m.id} checked={model === m.id} onChange={() => setModel(m.id)} className="sr-only" />
                 <span className="option-radio" aria-hidden />
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-bold truncate">{m.label}</span>
                   <span className="block text-xs text-muted truncate">{m.note}</span>
                 </span>
-                <span className="text-xs text-muted tabnum ltr shrink-0 text-end" title="US dollars per million tokens — in / out">
-                  ${m.inUsd} / ${m.outUsd}
-                  <span className="block text-[10px] opacity-80">per 1M tokens</span>
-                </span>
+                <ModelPrice m={m} className="shrink-0" />
               </label>
             ))}
           </div>
@@ -439,7 +470,6 @@ function ModelCard({ scope, title, description, current }: { scope: "chat" | "au
         </fieldset>
         <SaveBar msg={r.msg} pending={r.pending} disabled={!dirty} />
       </form>
-      {scope === "chat" && <p className="text-xs text-muted mt-3">An open chat keeps its model; the effort applies from the next question.</p>}
     </SectionCard>
   );
 }

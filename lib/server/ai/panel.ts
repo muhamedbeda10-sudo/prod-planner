@@ -164,7 +164,7 @@ export async function playbookData(me: User): Promise<{ rules: PlaybookRuleView[
 }
 
 /** Whether this person may open the assistant's own tabs (the chat, the playbook). */
-export async function chatStatusFor(me: User): Promise<{ visible: boolean; status: AiChatStatus; model: string }> {
+export async function chatStatusFor(me: User): Promise<{ visible: boolean; status: AiChatStatus }> {
   const s = await aiStatusFor(me);
-  return { visible: s.visible, status: chatStatusOf(s), model: s.model };
+  return { visible: s.visible, status: chatStatusOf(s) };
 }

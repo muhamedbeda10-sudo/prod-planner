@@ -13,7 +13,7 @@ import { encryptSecret } from "@/lib/server/ai/secret";
 import { testReader } from "@/lib/server/ai/reader";
 import { apiErrorText } from "@/lib/server/ai/agent";
 import { removeScheduler, setupScheduler, tickUrlFor } from "@/lib/server/automations/scheduler";
-import { AI_AUTO_MODEL, AI_CHECK_LIMITS, checkAiCheck } from "@/lib/domain/aiLearn";
+import { AI_CHECK_LIMITS, checkAiCheck } from "@/lib/domain/aiLearn";
 import { savePlaybookEntry } from "@/lib/server/ai/playbook";
 import { runCheck, type CheckRun } from "@/lib/server/ai/checks";
 import { getWatchSettings, runWatch } from "@/lib/server/watchdog";
@@ -99,26 +99,19 @@ export async function setAiEnabled(fd: FormData): Promise<AiActionResult> {
   return done(on ? "The assistant is open to the people ticked below." : "The assistant is closed to everyone but you.");
 }
 
-/** The model and effort of the chat, or of the automations and the morning
- *  review. A chat keeps the model it started on; effort holds from the next question. */
+/** The model and effort of the automations and the morning review. The chat
+ *  is always on Auto, its effort set by the depth people pick per question
+ *  (lib/domain/aiAnswer depthPlan) — nothing of it is stored. */
 export async function setAiModel(fd: FormData): Promise<AiActionResult> {
   const g = await requireOwner();
   if (g.error) return { ok: false, error: g.error };
-  const scope = String(fd.get("scope") ?? "chat");
   const id = String(fd.get("model") ?? "");
   const effort = fd.get("effort");
-  if (scope !== "chat" && scope !== "auto") return { ok: false, error: "Unknown setting." };
-  // "Auto" picks the model per question — the chat's alone: an automation's
-  // instruction is the same every run, so it keeps one model
-  const auto = scope === "chat" && id === AI_AUTO_MODEL;
-  if (!auto && !AI_MODELS.some((m) => m.id === id)) return { ok: false, error: "Unknown model." };
+  if (!AI_MODELS.some((m) => m.id === id)) return { ok: false, error: "Unknown model." };
   if (!isAiEffort(effort)) return { ok: false, error: "Unknown effort." };
   await getAiSettings();
-  await prisma.aiSettings.update({
-    where: { id: 1 },
-    data: { ...(scope === "chat" ? { model: id, effort } : { autoModel: id, autoEffort: effort }), updatedBy: g.user!.name },
-  });
-  return done(`${scope === "chat" ? "Chat" : "Automations"}: ${auto ? "Auto" : aiModel(id).label}, ${AI_EFFORT_LABEL[effort]} effort.`);
+  await prisma.aiSettings.update({ where: { id: 1 }, data: { autoModel: id, autoEffort: effort, updatedBy: g.user!.name } });
+  return done(`Automations: ${aiModel(id).label}, ${AI_EFFORT_LABEL[effort]} effort.`);
 }
 
 function usdOf(v: FormDataEntryValue | null): number | null {

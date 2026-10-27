@@ -10,9 +10,9 @@
 //               as a quiet strip wherever the answer is read, never as prose.
 //   depth       how hard one question is worked: the model and its effort
 //               and the calls it may take, chosen by the person per question
-//               inside what the owner allows.
+//               (Quick / Standard / Deep) — the chat itself is on Auto.
 
-import { AI_EFFORTS, aiEffort, aiModel, AI_MODELS, type AiEffort } from "./ai";
+import { AI_CALLS_RANGE, aiModel, type AiEffort } from "./ai";
 import { BY_STRENGTH } from "./aiLearn";
 import { evidenceAnchor } from "./aiEvidence";
 
@@ -106,41 +106,28 @@ export type AiDepth = (typeof AI_DEPTHS)[number];
 export const DEFAULT_AI_DEPTH: AiDepth = "standard";
 
 export const AI_DEPTH_META: Record<AiDepth, { label: string; hint: string }> = {
-  quick: { label: "Quick", hint: "A fast look-up, thinking less (on the cheapest model, where the owner left the choice to Auto) — a figure, a list, a status." },
-  standard: { label: "Standard", hint: "The owner's usual model and effort — most questions." },
-  deep: { label: "Deep", hint: "Thinks hard with more look-ups (the strongest model, where the owner left the choice to Auto) — analysis, plans, reviews, what-ifs." },
+  quick: { label: "Quick", hint: "A fast look-up on the cheapest model (Haiku), low effort — a figure, a list, a status." },
+  standard: { label: "Standard", hint: "The model the question needs (Haiku for a look-up, Sonnet for a change, Opus for analysis or a file), medium effort — most questions." },
+  deep: { label: "Deep", hint: "The strongest model (Opus), high effort, with more look-ups — analysis, plans, reviews, what-ifs." },
 };
 
 export function isAiDepth(v: unknown): v is AiDepth {
   return typeof v === "string" && (AI_DEPTHS as readonly string[]).includes(v);
 }
 
-const EFFORT_INDEX = (e: AiEffort) => AI_EFFORTS.indexOf(e);
-const rung = (id: string) => (BY_STRENGTH as readonly string[]).indexOf(id);
+/** How hard each depth thinks — the person picks it beside the box, so the
+ *  owner sets no effort for the chat. */
+export const AI_DEPTH_EFFORT: Record<AiDepth, AiEffort> = { quick: "low", standard: "medium", deep: "high" };
 
-/** The model, effort and calls for one question at a depth, inside the
- *  owner's settings. Standard is the owner's (the model routed for the
- *  question on Auto); Quick thinks a step less and, on Auto, takes the
- *  cheapest model; Deep thinks two steps harder with half again the calls
- *  and, on Auto, takes the strongest model. A model the owner chose is the
- *  model, whatever the depth. A chat never steps down: on a stronger model
- *  already (`current`), it keeps it. */
-export function depthPlan(depth: AiDepth, o: { model: string; effort: string; maxCalls: number; auto: boolean; routed: string; current?: string | null }): { model: string; effort: AiEffort; maxCalls: number } {
-  const effort = aiEffort(o.effort);
-  let pick = o.auto ? o.routed : o.model;
-  let e: AiEffort = effort;
-  let maxCalls = o.maxCalls;
-  if (depth === "quick") {
-    if (o.auto) pick = BY_STRENGTH[0];
-    e = AI_EFFORTS[Math.max(0, EFFORT_INDEX(effort) - 1)];
-  } else if (depth === "deep") {
-    if (o.auto) pick = BY_STRENGTH[BY_STRENGTH.length - 1];
-    e = AI_EFFORTS[Math.min(AI_EFFORTS.length - 1, EFFORT_INDEX(effort) + 2)];
-    maxCalls = Math.min(30, Math.ceil(o.maxCalls * 1.5));
-  }
-  const current = o.current && AI_MODELS.some((m) => m.id === o.current) ? o.current : null;
-  const model = current && rung(current) > rung(pick) ? current : aiModel(pick).id;
-  return { model, effort: e, maxCalls };
+/** The model, effort and calls for one question at a depth. The chat is on
+ *  Auto: Standard takes the model routed for the question (routeModel),
+ *  Quick the cheapest and Deep the strongest, with half again the calls.
+ *  Each question takes its own model — a chat moved up for one hard question
+ *  comes back down for the next look-up. */
+export function depthPlan(depth: AiDepth, o: { routed: string; maxCalls: number }): { model: string; effort: AiEffort; maxCalls: number } {
+  const pick = depth === "quick" ? BY_STRENGTH[0] : depth === "deep" ? BY_STRENGTH[BY_STRENGTH.length - 1] : o.routed;
+  const maxCalls = depth === "deep" ? Math.min(AI_CALLS_RANGE.max, Math.ceil(o.maxCalls * 1.5)) : o.maxCalls;
+  return { model: aiModel(pick).id, effort: AI_DEPTH_EFFORT[depth], maxCalls };
 }
 
 // --------------------------------------------------------- page suggestions

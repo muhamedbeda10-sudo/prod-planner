@@ -1493,7 +1493,8 @@ model AiSettings {
   // never sent to a browser; the hint is its last four characters.
   apiKeyEnc         String    @default("")
   apiKeyHint        String    @default("")
-  // The chat's model and effort (low … max — how hard it thinks; lib/domain/ai AI_EFFORTS).
+  // No longer read: the chat is always on Auto, its effort set by the depth
+  // picked per question (lib/domain/aiAnswer depthPlan). Kept with their data.
   model             String    @default("claude-opus-5-5")
   effort            String    @default("medium")
   // The automations' and the morning review's own model and effort.

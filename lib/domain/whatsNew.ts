@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-assistant-auto-depth-effort",
+    dateISO: "2026-10-27",
+    title: "The assistant is always on Auto: Quick, Standard and Deep set how hard it thinks, and every answer names its model",
+    where: "Assistant → beside the box; AI assistant settings → Models",
+    body: "The chat no longer has a model or an effort to pick in the settings. It is always on Auto — Haiku for a short look-up, Sonnet for a change to prepare, Opus for analysis, plans, reports and attached files — and the depth beside the box sets the rest: Quick answers on Haiku at low effort, Standard on the model the question needs at medium effort, Deep on Opus at high effort with more look-ups. Each question takes its own model, so a chat that moved up to Opus for one hard question comes back down to Haiku for the next quick look-up instead of staying on the dearest model. Under every answer — in a chat you reopen too — the model that wrote it is shown. The automations and the morning review keep their own model and effort in the settings.",
+  },
+  {
     id: "2026-10-27-inbox-popups-until-read",
     dateISO: "2026-10-27",
     title: "Alerts, tasks and automations pop up on the screen until you mark them read",

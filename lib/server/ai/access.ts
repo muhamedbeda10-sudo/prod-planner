@@ -47,7 +47,6 @@ export interface AiStatus {
   visible: boolean;
   ok: boolean;
   reason: AiDeny | null;
-  model: string;
   userSpent: number;
   /** The person's own monthly allowance (0 = none of their own). */
   userCap: number;
@@ -87,7 +86,6 @@ export async function aiStatusFor(user: User): Promise<AiStatus> {
     visible: aiVisible(gate),
     ok: d.ok,
     reason: d.ok ? null : d.reason,
-    model: s.model,
     userSpent,
     userCap: user.isOwner ? 0 : access?.monthlyUsd ?? 0,
     userSpentToday,
