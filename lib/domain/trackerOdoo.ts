@@ -49,17 +49,28 @@ function inTrackingWindow(order: Order, trackingFrom: string | null): boolean {
  * against the whole registry BEFORE any month, search or status filter. */
 export function trackerOdooQuantities(orders: readonly Order[], entries: readonly Entry[], ledgers: readonly Ledger[], trackingFrom: string | null = null) {
   const startDate = normalizeOdooTrackingStart(trackingFrom);
+  // an order's plan month and tracking window, worked out once each — the
+  // allocation below asks for them again for every entry it places
+  const rankCache = new Map<Order, number>(), windowCache = new Map<Order, boolean>();
+  const rankOf = (o: Order) => { let r = rankCache.get(o); if (r === undefined) { r = monthRank(odooPlanMonth(o) ?? ""); rankCache.set(o, r); } return r; };
+  const inWindow = (o: Order) => { let w = windowCache.get(o); if (w === undefined) { w = inTrackingWindow(o, trackingFrom); windowCache.set(o, w); } return w; };
   const byMo = new Map(orders.filter((o) => !o.line || o.line === "TR").map((o) => [norm(o.mo), o]));
   const byBom = new Map<string, Order[]>(), bySoi = new Map<string, Order[]>();
+  const push = (map: Map<string, Order[]>, key: string, order: Order) => { const list = map.get(key); if (list) list.push(order); else map.set(key, [order]); };
   for (const order of byMo.values()) {
     const bom = norm(order.bom), soi = norm(order.soi);
-    byBom.set(bom, [...(byBom.get(bom) ?? []), order]);
-    if (soi) bySoi.set(soi, [...(bySoi.get(soi) ?? []), order]);
+    push(byBom, bom, order);
+    if (soi) push(bySoi, soi, order);
   }
+  // each BOM's orders in the order they are filled — the oldest plan first —
+  // sorted once here: every candidate list below is this list or a filter of
+  // it, and a filter keeps the order
+  const fifoOrder = (a: Order, b: Order) => rankOf(a) - rankOf(b) || a.mo.localeCompare(b.mo, undefined, { numeric: true });
+  for (const list of byBom.values()) list.sort(fifoOrder);
   const linked = new Map(ledgers.map((l) => [l.id, l]));
   const tracked = new Set<string>();
   for (const order of byMo.values()) {
-    if (inTrackingWindow(order, trackingFrom)) for (const item of ITEMS) tracked.add(JSON.stringify([order.mo, item]));
+    if (inWindow(order)) for (const item of ITEMS) tracked.add(JSON.stringify([order.mo, item]));
   }
   const itemOf = (entry: Entry, ledger?: Ledger): Item | undefined => {
     // The BOM trace identifies the part through the production record, even
@@ -113,12 +124,12 @@ export function trackerOdooQuantities(orders: readonly Order[], entries: readonl
   pending.sort((a, b) => Number(b.exact) - Number(a.exact) || a.candidates.length - b.candidates.length || a.id - b.id);
   for (const { item, qty, candidates, exact } of pending) {
     let left = qty;
-    const fifo = [...candidates].sort((a, b) => monthRank(odooPlanMonth(a) ?? "") - monthRank(odooPlanMonth(b) ?? "") || a.mo.localeCompare(b.mo, undefined, { numeric: true }));
-    for (const order of fifo) {
+    // already the oldest plan first (byBom is sorted above; one exact order needs none)
+    for (const order of candidates) {
       if (order.eligibleItems && !order.eligibleItems.includes(item)) continue;
       // Linked production MOs are evidence even before tracking began. A
       // project-only quantity cannot be spent on the untracked old backlog.
-      if (!exact && !inTrackingWindow(order, trackingFrom)) continue;
+      if (!exact && !inWindow(order)) continue;
       const room = Math.max(0, order.planQty - (counts.get(order.mo)?.[item] ?? 0));
       const allocated = Math.min(left, room);
       if (allocated > 0) { add(order.mo, item, allocated); left -= allocated; }

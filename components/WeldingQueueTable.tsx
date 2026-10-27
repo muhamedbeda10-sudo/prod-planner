@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import type { WeldQueueRow } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import type { SoiLookup } from "@/lib/server/soi";
@@ -79,7 +78,6 @@ export function WeldingQueueTable({
   const verb = dept === "Welding" ? "weld" : "paint";
   // display name for the upstream dept ("Cut" shows as "Fabrication")
   const upLabel = upstream === "Welded" ? "Welding" : deptLabel(upstream);
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [qty, setQty] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<Record<string, string>>({});
@@ -112,7 +110,6 @@ export function WeldingQueueTable({
       const res = await updateQueueNote(fd);
       if (res.ok) {
         setEditingNote(null);
-        router.refresh();
       } else {
         setNoteMsg(res.error ?? "Failed");
       }
@@ -125,8 +122,7 @@ export function WeldingQueueTable({
     fd.set("id", String(id));
     startTransition(async () => {
       const res = await deleteQueueNote(fd);
-      if (res.ok) router.refresh();
-      else setNoteMsg(res.error ?? "Failed");
+      if (!res.ok) setNoteMsg(res.error ?? "Failed");
     });
   }
   const [openReturn, setOpenReturn] = useState<string | null>(null); // return panel per line
@@ -142,7 +138,6 @@ export function WeldingQueueTable({
       if (res.ok) {
         form.reset();
         setOpenReturn(null);
-        router.refresh();
       } else {
         setRetMsg(res.error ?? "Failed");
       }
@@ -158,7 +153,6 @@ export function WeldingQueueTable({
       const res = await addQueueNote(fd);
       if (res.ok) {
         form.reset();
-        router.refresh();
       } else {
         setNoteMsg(res.error ?? "Failed");
       }
@@ -172,8 +166,7 @@ export function WeldingQueueTable({
     setNoteMsg("");
     startTransition(async () => {
       const res = await setQueueNoteStatus(fd);
-      if (res.ok) router.refresh();
-      else setNoteMsg(res.error ?? "Failed");
+      if (!res.ok) setNoteMsg(res.error ?? "Failed");
     });
   }
 
@@ -273,7 +266,6 @@ export function WeldingQueueTable({
         if (res.serials) setMinted((s) => ({ ...s, [k]: res.serials! }));
         setSavedFlash((s) => ({ ...s, [k]: true }));
         setTimeout(() => setSavedFlash((s) => ({ ...s, [k]: false })), 1800);
-        router.refresh();
       } else {
         setMsg((s) => ({ ...s, [k]: res.error ?? "Failed" }));
       }
@@ -317,7 +309,6 @@ export function WeldingQueueTable({
         if (res.serials) setMinted((s) => ({ ...s, [k]: res.serials! }));
         setSavedFlash((s) => ({ ...s, [k]: true }));
         setTimeout(() => setSavedFlash((s) => ({ ...s, [k]: false })), 1800);
-        router.refresh();
       } else {
         setMsg((s) => ({ ...s, [k]: res.error ?? "Failed" }));
       }
@@ -334,8 +325,7 @@ export function WeldingQueueTable({
     fd.set("item", r.item);
     startTransition(async () => {
       const res = await hideWorklistLine(fd);
-      if (res.ok) router.refresh();
-      else setMsg((s) => ({ ...s, [keyOf(r)]: res.error ?? "Failed" }));
+      if (!res.ok) setMsg((s) => ({ ...s, [keyOf(r)]: res.error ?? "Failed" }));
     });
   }
 

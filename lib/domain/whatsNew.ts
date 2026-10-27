@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-tracker-lighter",
+    dateISO: "2026-10-27",
+    title: "Plan Tracker: lighter and faster to save",
+    where: "Plan Tracker (Transformers, monthly), and saving on the worklists, the Daily log and the ODOO log",
+    href: "/tracker",
+    body: "The monthly Plan Tracker no longer shows the Odoo, ETA, Complete and Left columns — working them out for every order made the sheet heavy. Odoo's closings stay on the ODOO log, the BOM trace and in the assistant, and Achv. still shows each order's progress. The completion forecast (ETA) is no longer shown, so a stage cell is no longer tinted for a late forecast; it also no longer turns bold under the pointer. Saving a figure on the tracker, the worklists, the Daily log or the ODOO log now reloads the page once instead of twice.",
+  },
+  {
     id: "2026-10-27-numbers-on-stacked-charts",
     dateISO: "2026-10-27",
     title: "Stacked charts carry their numbers, and efficiency reads at a glance",

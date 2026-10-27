@@ -3,7 +3,6 @@
 import { Pencil, Trash2 } from "lucide-react";
 
 import { useMemo, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { updateHandover, deleteHandover, bulkDeleteHandover, bulkSetHandoverDate } from "@/app/handover/actions";
 import { factoryDayISO, toISODate } from "@/lib/domain/dates";
 import type { SoiLookup } from "@/lib/server/soi";
@@ -40,7 +39,6 @@ export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }
   soi?: SoiLookup;
 }) {
   const canEditRow = (r: LogRow) => editableDepts.includes(r.dept);
-  const router = useRouter();
   const [editing, setEditing] = useState<number | null>(null);
   const [qty, setQty] = useState("");
   const [date, setDate] = useState("");
@@ -142,7 +140,6 @@ export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }
         const r = await bulkDeleteHandover(fd);
         if (r.ok) {
           setSelected(new Set());
-          router.refresh();
         } else {
           setBulkMsg(r.error ?? "Failed");
         }
@@ -165,7 +162,6 @@ export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }
         if (r.ok) {
           setSelected(new Set());
           setBulkDate("");
-          router.refresh();
         } else {
           setBulkMsg(r.error ?? "Failed");
         }
@@ -186,7 +182,6 @@ export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }
         if (r.ok) {
           setEditing(null);
           setRowErr((s) => ({ ...s, [id]: "" }));
-          router.refresh();
         } else {
           setRowErr((s) => ({ ...s, [id]: r.error ?? "Failed" }));
         }
@@ -204,7 +199,6 @@ export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }
         const r = await deleteHandover(fd);
         if (r.ok) {
           setRowErr((s) => ({ ...s, [id]: "" }));
-          router.refresh();
         } else {
           setRowErr((s) => ({ ...s, [id]: r.error ?? "Failed" }));
         }

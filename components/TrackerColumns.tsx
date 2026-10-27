@@ -154,12 +154,10 @@ export function ColumnMenu<K extends string>({ cols, list, fixed, fixedTitle, ch
 }
 
 /** Where a stage cell stands against what the order needs of it — the class
- *  that gives it its quiet wash. Late orders (the forecast lands after the
- *  delivery date) mark their unfinished cells; urgent AND late reads red. */
-export function stageState(value: number, target: number, late: boolean, urgent: boolean, held: boolean): string {
+ *  that gives it its quiet wash. */
+export function stageState(value: number, target: number, held: boolean): string {
   if (held || value <= 0) return "stage-idle"; // nothing yet: an empty cell
   if (target > 0 && value >= target) return "stage-done"; // quiet, in the success ink
-  if (late) return urgent ? "stage-crit" : "stage-late";
   return "stage-part"; // started, not finished: the warning ink, what is left in the tooltip
 }
 

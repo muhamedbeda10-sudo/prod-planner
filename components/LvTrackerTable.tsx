@@ -4,7 +4,6 @@ import { LineSwitch } from "@/components/LineSwitch";
 import { traceHref } from "@/lib/domain/links";
 import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Check, CheckCheck, ChevronRight, CornerDownRight, Pause } from "lucide-react";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { Num, Soi } from "@/components/ui";
@@ -73,7 +72,6 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
   /** The page head — inside the sheet so only the table scrolls. */
   head?: React.ReactNode;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   // the row's right-click menu — hold, close, trace; the next action is one more entry
   const rowMenu = useContextMenu<MenuTarget>();
@@ -167,7 +165,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
     setCellErr("");
     startTransition(async () => {
       const res = await fn(fd);
-      if (res.ok) { setEditKey(null); after?.(); router.refresh(); }
+      if (res.ok) { setEditKey(null); after?.(); }
       else setCellErr(res.error ?? "Failed");
     });
   }
@@ -222,7 +220,6 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
     startTransition(async () => {
       const res = await closeDeliveredOrders();
       setMsg(res.ok ? `Closed ${res.closed} order(s).` : (res.error ?? "Failed"));
-      if (res.ok) router.refresh();
     });
   }
 
@@ -233,7 +230,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
     const editing = editKey === key;
     const editable = editableStages.includes(stage);
     const added = editing ? Number(editVal) - value : 0;
-    const state = stageState(value, target, false, look.urgent, look.held);
+    const state = stageState(value, target, look.held);
     const meter = editing ? undefined : meterStyle(value, target);
     const words = `${LV_STAGE_LABEL[stage]}: ${stageWords(value, target)}${look.bottleneck ? " · the stage holding this order back" : ""}`;
     return (
@@ -268,7 +265,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
           <button
             type="button" disabled={pending}
             onClick={() => { setEditKey(key); setEditVal(String(value)); setCellErr(""); }}
-            className="print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
+            className="print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 transition-shadow cursor-text"
             title={`${words} — type the new total; the difference is recorded in today's Daily Log`}
           >
             {value > 0 ? value : <span className="print-only">0</span>}

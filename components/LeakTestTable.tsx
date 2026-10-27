@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { TankDTO } from "@/lib/server/tanks";
 import type { WorkerDTO } from "@/lib/server/workers";
@@ -32,7 +31,6 @@ export function LeakTestTable({
   day: string;
   canEdit: boolean;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -83,7 +81,6 @@ export function LeakTestTable({
           return n;
         });
         setFailFor(null);
-        router.refresh();
       } else {
         setMsg(res.error ?? "Failed to save");
       }

@@ -74,10 +74,13 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    edit appends to the row's note rather than replacing it, and a return's own rows — the deduction upstream
    and the re-delivery's credit — are re-dated, never re-quantified by hand: deleting the deduction cancels the
    return, deleting the credit reopens it.
-3. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item Cut/Weld, Complete = MIN,
-   Remaining, Achievement %. Every number is click-through-traceable (`/trace`) to handover rows; the trace's
-   **On Odoo → Closed on** is the real closing moment on the factory clock, as the ODOO tab shows it.
-   Each component ends with a read-only **Odoo** column sourced from Done/Closed quantities in the Odoo tab.
+3. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item stages and Achievement %
+   (completion = MIN over the needed components' final stage). Every number is click-through-traceable
+   (`/trace`) to handover rows; the trace's **On Odoo → Closed on** is the real closing moment on the factory
+   clock, as the ODOO tab shows it. The screen shows no Odoo, ETA, Complete or Left columns — allocating the
+   whole Odoo log and forecasting every order made the sheet heavy (`getTrackerSheet` skips the Odoo work).
+   Odoo's closings per component, allocated as below, are still read by the auto-close, the BOM trace and the
+   assistant's tracker sheet (`getMasterTracker`).
    The BOM trace's **On Odoo** closing rows are the primary source per component; separate imports
    are used only where that component has no linked closing records. The ledger identifies the part
    and planner MO, even if a freely typed product or FG code differs. Project-only quantities fill the
@@ -87,8 +90,7 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    while an explicit linked closing still confirms its own older MO. When the start is unset, quantities
    without an MO remain unallocated. Allocation uses the whole registry before filters: a carried MO
    keeps its original plan month, so it cannot be counted again in a newer month. Excess quantities are
-   flagged separately. Click a figure for the month/MO breakdown and a link to the BOM's On Odoo records.
-   Folded/stage-filtered columns and exports show the same allocation; production stages are unchanged.
+   flagged separately.
    Recording on a MERGED BOM row fills its MOs **one at a time**: the first order is closed to its own chain
    limit before the second is touched, then the third — never spread evenly — and a correction comes back off
    the LAST MOs first. The cell says which MOs the number will land on, in fill order, **before** it is saved;

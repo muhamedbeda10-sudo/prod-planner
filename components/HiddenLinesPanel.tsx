@@ -1,14 +1,12 @@
 "use client";
 
 import { useTransition } from "react";
-import { useRouter } from "next/navigation";
 import type { HiddenLineDTO } from "@/lib/server/worklistExtras";
 import { unhideWorklistLine } from "@/app/worklist/actions";
 
 /** ADMIN — the lines removed from this worklist, with one-click restore.
  *  Collapsed at the bottom of the page so it never distracts the floor. */
 export function HiddenLinesPanel({ rows }: { rows: HiddenLineDTO[] }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   if (rows.length === 0) return null;
 
@@ -20,8 +18,7 @@ export function HiddenLinesPanel({ rows }: { rows: HiddenLineDTO[] }) {
     fd.set("item", r.item);
     startTransition(async () => {
       const res = await unhideWorklistLine(fd);
-      if (res.ok) router.refresh();
-      else alert(res.error ?? "Failed");
+      if (!res.ok) alert(res.error ?? "Failed");
     });
   }
 

@@ -1087,8 +1087,6 @@ main select.ctl { padding-right: 1.6rem; }
    of progress under it — never a solid block of colour ---- */
 .stage-cell { position: relative; }
 .stage-run { color: var(--foreground); }
-.stage-late { background-color: color-mix(in srgb, var(--warn-bg) 75%, transparent); color: var(--warn-fg); }
-.stage-crit { background-color: color-mix(in srgb, var(--bad-bg) 75%, transparent); color: var(--bad-fg); }
 .stage-idle { color: var(--muted); opacity: 0.75; }
 /* the progress hairline: two background layers (fill over track) at the
    foot of the cell — --meter is the share done, set on the cell */
@@ -1099,8 +1097,7 @@ main select.ctl { padding-right: 1.6rem; }
   background-position: 6px calc(100% - 2px), 6px calc(100% - 2px);
   background-repeat: no-repeat;
 }
-.stage-late.stage-meter, .stage-part.stage-meter { --meter-fill: var(--warn-fg); }
-.stage-crit.stage-meter { --meter-fill: var(--bad-fg); }
+.stage-part.stage-meter { --meter-fill: var(--warn-fg); }
 @media print { .stage-meter { background-image: none !important; } }
 }
 
@@ -1260,7 +1257,6 @@ main table thead tr.dt-band th + th[data-group] { border-left: 3px solid var(--s
    cell's shadow over the frozen columns, and the frame keeps 1px off the
    cell edge, where the seam between collapsed borders lets it through */
 .stage-bottleneck::after { content: ""; position: absolute; inset: 1px; border: 2px solid var(--warn-fg); border-radius: 2px; pointer-events: none; }
-.stage-crit.stage-bottleneck::after { border-color: var(--bad-fg); }
 .na-cell {
   position: relative; /* its screen-reader text stays inside the cell, not stretching the page */
   background-image: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--muted) 22%, transparent) 5px 6px);

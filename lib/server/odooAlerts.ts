@@ -19,30 +19,42 @@ async function view(rows: Row[]): Promise<ReadyRow[]> {
   }));
 }
 
-/** Every row, both lines, that has Odoo's MO and is still open — oldest first,
- *  the order they wait in. */
-export async function getReadyToClose(): Promise<ReadyRow[]> {
-  // the closed rows — the bulk of the log, growing for ever — stay in the
-  // database; the domain rule still has the last word on what comes back
-  const rows = await prisma.odooEntry.findMany({
-    where: { NOT: { odooMo: "" }, status: { notIn: [...FINISHED_STATUSES], mode: "insensitive" } },
-    select: SELECT,
+// The two alert lists and the bar's count read the log the same way: the
+// still-open rows with (ready to close) or without (needs an MO) Odoo's MO,
+// oldest first — the order they wait in. The closed rows, the bulk of the
+// log and growing for ever, stay in the database; the domain rule still has
+// the last word on what comes back, and a popup lists at most SHOWN of them.
+const READ = 400, SHOWN = 200;
+const KINDS = {
+  close: { where: { NOT: { odooMo: "" } }, rule: isReadyToClose },
+  mo: { where: { odooMo: "" }, rule: needsMo },
+} as const;
+function readOpen<S extends Record<string, true>>(kind: keyof typeof KINDS, select: S) {
+  return prisma.odooEntry.findMany({
+    where: { ...KINDS[kind].where, status: { notIn: [...FINISHED_STATUSES], mode: "insensitive" } },
+    select,
     orderBy: [{ date: "asc" }, { id: "asc" }],
-    take: 400,
+    take: READ,
   });
-  return view(rows.filter(isReadyToClose).slice(0, 200));
 }
 
+/** Every row, both lines, that has Odoo's MO and is still open. */
+export async function getReadyToClose(): Promise<ReadyRow[]> {
+  return view((await readOpen("close", SELECT)).filter(isReadyToClose).slice(0, SHOWN));
+}
 
-/** Every row, both lines, still waiting for Odoo's MO number — oldest first. */
+/** Every row, both lines, still waiting for Odoo's MO number. */
 export async function getNeedingMo(): Promise<ReadyRow[]> {
-  const rows = await prisma.odooEntry.findMany({
-    where: { odooMo: "", status: { notIn: [...FINISHED_STATUSES], mode: "insensitive" } },
-    select: SELECT,
-    orderBy: [{ date: "asc" }, { id: "asc" }],
-    take: 400,
-  });
-  return view(rows.filter(needsMo).slice(0, 200));
+  return view((await readOpen("mo", SELECT)).filter(needsMo).slice(0, SHOWN));
+}
+
+/** The bar's badge: how many rows getReadyToClose / getNeedingMo would list,
+ *  read off the two columns the rules need — without resolving each row's BOM. */
+export async function countOdooAlerts(wantClose: boolean, wantMo: boolean): Promise<number> {
+  const count = async (kind: keyof typeof KINDS) =>
+    Math.min(SHOWN, (await readOpen(kind, { odooMo: true, status: true })).filter(KINDS[kind].rule).length);
+  const [ready, mo] = await Promise.all([wantClose ? count("close") : 0, wantMo ? count("mo") : 0]);
+  return ready + mo;
 }
 
 /** The Material-tab state of these rows' MOs, by row id — the popup's row

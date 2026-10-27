@@ -1,12 +1,11 @@
 import { formatDate } from "@/lib/domain/format";
-import { getMasterTracker } from "@/lib/server/masterTracker";
+import { getTrackerSheet } from "@/lib/server/masterTracker";
 import { getWeeklyPlanTracker } from "@/lib/server/weeklyPlanTracker";
 import { MasterTrackerTable } from "@/components/MasterTrackerTable";
 import { WeeklyPlanTrackerTable } from "@/components/WeeklyPlanTrackerTable";
 import { PrintHeader } from "@/components/PrintHeader";
 import { PlanCapacityCard } from "@/components/PlanCapacityCard";
 import { getPlanCapacity } from "@/lib/server/planCapacity";
-import { getOrderEtas } from "@/lib/server/eta";
 import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants";
 import { trackerPermKey } from "@/lib/domain/permissions";
@@ -15,7 +14,6 @@ import { LineSwitch } from "@/components/LineSwitch";
 import { PageHead } from "@/components/ui";
 import { LvTrackerTable } from "@/components/LvTrackerTable";
 import { getActiveLine } from "@/lib/server/line";
-import { loadSettingsRow } from "@/lib/server/loads";
 import { getLvTracker } from "@/lib/server/lvTracker";
 import { LV_CHAIN, lvPermKey } from "@/lib/domain/lv";
 import { getUserPrefs } from "@/lib/server/userPrefs";
@@ -48,8 +46,8 @@ export default async function TrackerPage({
   // recorded the way the transformer cells are — each stage behind the
   // panels' own tracker key for that column.
   if ((await getActiveLine()) === "LV") {
-    const [rows, user] = await Promise.all([getLvTracker(), getCurrentUser()]);
-    const lvPrefs = await getUserPrefs(user?.id, LV_TRACKER_PREF_KEYS);
+    const user = await getCurrentUser(); // already read by guardTab — cached
+    const [rows, lvPrefs] = await Promise.all([getLvTracker(), getUserPrefs(user?.id, LV_TRACKER_PREF_KEYS)]);
     return (
       <>
         <PrintHeader title="Plan Tracker — LV Panels" date={issued} />
@@ -90,17 +88,14 @@ export default async function TrackerPage({
     );
   }
 
-  const [rows, user, { byMo, windowDays }, settings] = await Promise.all([getMasterTracker(), getCurrentUser(), getOrderEtas(), loadSettingsRow()]);
-  // this person's own sheet: columns, folded and hidden components
-  const prefs = await getUserPrefs(user?.id, TRACKER_PREF_KEYS);
+  const user = await getCurrentUser(); // already read by guardTab — cached
+  // this person's own sheet (columns, folded and hidden components) beside the sheet's data
+  const [rows, prefs] = await Promise.all([getTrackerSheet(), getUserPrefs(user?.id, TRACKER_PREF_KEYS)]);
   return (
     <>
       <PrintHeader title="Plan Tracker — Monthly" date={issued} />
       <MasterTrackerTable
         rows={rows}
-        odooTrackingFrom={settings?.odooTrackingFrom ?? null}
-        etas={Object.fromEntries(byMo)}
-        etaWindowDays={windowDays}
         prefs={prefs}
         features={user ? [...FEATURE_KEYS.filter((k) => hasPerm(user, k)), ...(user.isAdmin ? ["admin"] : [])] : []}
         // stage columns (Fab/Weld/Paint/SHB/Dlvd) each need their own tracker permission

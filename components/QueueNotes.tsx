@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import { addQueueNote, setQueueNoteStatus, updateQueueNote, deleteQueueNote } from "@/app/worklist/actions";
 import { Modal } from "@/components/Modal";
@@ -41,7 +40,6 @@ export function NotesPanelRow({
   canEdit?: boolean; // user holds this dept's edit permission — otherwise view-only
   onClose: () => void;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [noteMsg, setNoteMsg] = useState("");
   const [editingNote, setEditingNote] = useState<number | null>(null);
@@ -56,7 +54,6 @@ export function NotesPanelRow({
       const res = await addQueueNote(fd);
       if (res.ok) {
         form.reset();
-        router.refresh();
       } else {
         setNoteMsg(res.error ?? "Failed");
       }
@@ -70,8 +67,7 @@ export function NotesPanelRow({
     setNoteMsg("");
     startTransition(async () => {
       const res = await setQueueNoteStatus(fd);
-      if (res.ok) router.refresh();
-      else setNoteMsg(res.error ?? "Failed");
+      if (!res.ok) setNoteMsg(res.error ?? "Failed");
     });
   }
 
@@ -84,7 +80,6 @@ export function NotesPanelRow({
       const res = await updateQueueNote(fd);
       if (res.ok) {
         setEditingNote(null);
-        router.refresh();
       } else {
         setNoteMsg(res.error ?? "Failed");
       }
@@ -97,8 +92,7 @@ export function NotesPanelRow({
     fd.set("id", String(id));
     startTransition(async () => {
       const res = await deleteQueueNote(fd);
-      if (res.ok) router.refresh();
-      else setNoteMsg(res.error ?? "Failed");
+      if (!res.ok) setNoteMsg(res.error ?? "Failed");
     });
   }
 

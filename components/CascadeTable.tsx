@@ -74,8 +74,7 @@ export function CascadeTable({
     fd.set("item", r.item);
     startTransition(async () => {
       const res = await hideWorklistLine(fd);
-      if (res.ok) router.refresh();
-      else setMsg((s) => ({ ...s, [keyOf(r)]: res.error ?? "Failed" }));
+      if (!res.ok) setMsg((s) => ({ ...s, [keyOf(r)]: res.error ?? "Failed" }));
     });
   }
 
@@ -149,7 +148,6 @@ export function CascadeTable({
         setMsg((s) => ({ ...s, [k]: "" }));
         setSavedFlash((s) => ({ ...s, [k]: true }));
         setTimeout(() => setSavedFlash((s) => ({ ...s, [k]: false })), 1800);
-        router.refresh();
       } else {
         setMsg((s) => ({ ...s, [k]: res.error ?? "Failed" }));
       }
@@ -178,7 +176,6 @@ export function CascadeTable({
         setMsg((s) => ({ ...s, [k]: "" }));
         setSavedFlash((s) => ({ ...s, [k]: true }));
         setTimeout(() => setSavedFlash((s) => ({ ...s, [k]: false })), 1800);
-        router.refresh();
       } else {
         setMsg((s) => ({ ...s, [k]: res.error ?? "Failed" }));
       }

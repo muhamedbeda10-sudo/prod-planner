@@ -51,7 +51,11 @@ export interface MasterTrackerRow {
   pendingQty: { to: number; month: string | null } | null;
 }
 
-async function computeMasterTracker(): Promise<MasterTrackerRow[]> {
+/** `odoo: false` leaves out Odoo's closings (odooClosed, odooTracked, the
+ *  pools, the plan month): the Plan Tracker screen shows none of them, and
+ *  allocating every closing in the log was the sheet's heaviest work. The
+ *  auto-close, the assistant and the trace still read them. */
+async function computeMasterTracker({ odoo: withOdoo = true }: { odoo?: boolean } = {}): Promise<MasterTrackerRow[]> {
   const [orders, sums, odoo, settings] = await Promise.all([
     loadMasterOrders(),
     prisma.handoverEntry.groupBy({
@@ -59,12 +63,12 @@ async function computeMasterTracker(): Promise<MasterTrackerRow[]> {
       where: { mo: { not: null } },
       _sum: { qty: true },
     }),
-    prisma.odooEntry.findMany({ where: { line: "TR" }, select: { id: true, date: true, line: true, ledgerId: true, soi: true, fgCode: true, product: true, qty: true, status: true } }),
-    loadSettingsRow(),
+    withOdoo ? prisma.odooEntry.findMany({ where: { line: "TR" }, select: { id: true, date: true, line: true, ledgerId: true, soi: true, fgCode: true, product: true, qty: true, status: true } }) : [],
+    withOdoo ? loadSettingsRow() : null,
   ]);
   const ledgerIds = odoo.flatMap((row) => row.ledgerId === null ? [] : [row.ledgerId]);
   const ledgers = ledgerIds.length ? await prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, mo: true, bom: true, item: true } }) : [];
-  const odooProgress = trackerOdooQuantities(orders.map((o) => ({ ...o, eligibleItems: applicableItems(o) })), odoo, ledgers, settings?.odooTrackingFrom);
+  const odooProgress = withOdoo ? trackerOdooQuantities(orders.map((o) => ({ ...o, eligibleItems: applicableItems(o) })), odoo, ledgers, settings?.odooTrackingFrom) : null;
 
   const done = new Map<string, number>(); // mo|dept|item -> qty
   for (const s of sums) {
@@ -72,6 +76,12 @@ async function computeMasterTracker(): Promise<MasterTrackerRow[]> {
     done.set(`${s.mo}|${s.dept}|${s.item}`, s._sum.qty ?? 0);
   }
   const g = (mo: string, dept: string, item: string) => done.get(`${mo}|${dept}|${item}`) ?? 0;
+  // each MO's unallocated Odoo pools, gathered once instead of scanning every pool per order
+  const poolsOf = new Map<string, OdooUnallocatedQuantity[]>();
+  for (const pool of odooProgress?.unallocated ?? []) for (const mo of pool.mos) {
+    const list = poolsOf.get(mo);
+    if (list) list.push(pool); else poolsOf.set(mo, [pool]);
+  }
 
   return orders.map((o) => {
     const excluded = parseExcludedItems(o.excludedItems);
@@ -88,7 +98,9 @@ async function computeMasterTracker(): Promise<MasterTrackerRow[]> {
       const delivered = cap(g(o.mo, "Delivered", it)); // what the customer received
       const eligible = itemEligible(it, o); // AR/MB when the KVA/rating rule matches, or the planner forced them on
       const isExcluded = excluded.has(it);
-      items[it] = { cut, weld, paint, shp, delivered, osp, excluded: isExcluded, eligible, odooClosed: odooProgress.counts.get(o.mo)?.[it] ?? 0, odooTracked: odooProgress.tracked.has(JSON.stringify([o.mo, it])) };
+      items[it] = odooProgress
+        ? { cut, weld, paint, shp, delivered, osp, excluded: isExcluded, eligible, odooClosed: odooProgress.counts.get(o.mo)?.[it] ?? 0, odooTracked: odooProgress.tracked.has(JSON.stringify([o.mo, it])) }
+        : { cut, weld, paint, shp, delivered, osp, excluded: isExcluded, eligible };
       // a component gates completion only when the order needs it and it isn't N/A
       if (!eligible || isExcluded) continue;
       welded = Math.min(welded, cap(weld + osp));
@@ -111,8 +123,7 @@ async function computeMasterTracker(): Promise<MasterTrackerRow[]> {
       rating: o.rating,
       required: o.planQty,
       items,
-      odooPlanMonth: odooPlanMonth(o),
-      odooUnallocated: odooProgress.unallocated.filter((pool) => pool.mos.includes(o.mo)),
+      ...(odooProgress ? { odooPlanMonth: odooPlanMonth(o), odooUnallocated: poolsOf.get(o.mo) ?? [] } : {}),
       welded,
       complete,
       remaining: Math.max(0, o.planQty - complete),
@@ -128,6 +139,9 @@ async function computeMasterTracker(): Promise<MasterTrackerRow[]> {
   });
 }
 
-/** Computed once per request — the tracker page and the ETA column (via the
- *  ETA base) both read it, and its ledger aggregate is the page's heaviest read. */
-export const getMasterTracker = cache(computeMasterTracker);
+/** The whole sheet with Odoo's closings, computed once per request — the
+ *  auto-close, the assistant, the trace and the what-if ETA base read it. */
+export const getMasterTracker = cache(() => computeMasterTracker());
+
+/** The Plan Tracker screen's rows: the same sheet without Odoo's closings. */
+export const getTrackerSheet = cache(() => computeMasterTracker({ odoo: false }));

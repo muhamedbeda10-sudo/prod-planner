@@ -52,9 +52,11 @@ export function etaQueueOrder(a: EtaOrder, b: EtaOrder): number {
  *  day (trailing actuals). An order needing a stage whose rate is 0 gets
  *  `blockedBy` instead of a number — no history means no honest forecast. */
 export function forecastEta(orders: EtaOrder[], rates: Record<EtaStage, number>): EtaResult[] {
-  return forecastEtaQueued([...orders].sort(etaQueueOrder), rates).sort(
-    (a, b) => orders.findIndex((o) => o.id === a.id) - orders.findIndex((o) => o.id === b.id)
-  );
+  // back in the caller's order: each id's first position, looked up once —
+  // a findIndex per comparison made this quadratic in the open jobs
+  const pos = new Map<string, number>();
+  orders.forEach((o, i) => { if (!pos.has(o.id)) pos.set(o.id, i); });
+  return forecastEtaQueued([...orders].sort(etaQueueOrder), rates).sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
 }
 
 /** Run `dur` working days of processing at a station from time `t`, stepping

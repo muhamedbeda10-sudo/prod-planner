@@ -7,6 +7,19 @@ const order = (id: string, due: string | null, cut: number, weld: number, finish
 });
 
 describe("forecastEta — permutation flow shop, FIFO by due date", () => {
+  it("hands the results back in the caller's order, whatever the queue order", () => {
+    const rs = forecastEta(
+      [order("late", "2026-09-01", 10, 10, 10), order("none", null, 10, 10, 10), order("soon", "2026-08-01", 10, 10, 10)],
+      RATES
+    );
+    expect(rs.map((r) => r.id)).toEqual(["late", "none", "soon"]);
+  });
+
+  it("keeps the caller's order across a plant's worth of open jobs", () => {
+    const many = Array.from({ length: 6000 }, (_, i) => order(`MO${i}`, i % 3 ? `2026-${String(8 + (i % 4)).padStart(2, "0")}-01` : null, 5, 5, 5));
+    expect(forecastEta(many, RATES).map((r) => r.id)).toEqual(many.map((o) => o.id));
+  });
+
   it("a lone order takes the sum of its stage times", () => {
     const [r] = forecastEta([order("A", "2026-08-01", 100, 50, 100)], RATES);
     expect(r.days).toBeCloseTo(3, 6); // 1 + 1 + 1 days
