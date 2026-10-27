@@ -87,19 +87,19 @@ export async function storeAiFile(user: User, file: File, now = new Date(), meas
 export async function storeMadeWorkbook(
   ctx: Pick<ToolCtx, "user" | "conversationId">,
   name: string,
-  sheets: readonly { name: string; rows: Record<string, unknown>[] }[],
-): Promise<StoreResult> {
+  sheets: readonly { name: string; rows: readonly Record<string, unknown>[] }[],
+): Promise<(StoreResult & { ok: false }) | (StoreResult & { ok: true; sheets: string[] })> {
   if (ctx.conversationId === null) return { ok: false, error: "A file is made only in a chat the person is in." };
   const wb = XLSX.utils.book_new();
   const names = sheetNamesOf(sheets.map((s) => s.name));
-  sheets.forEach((s, i) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s.rows), names[i]));
+  sheets.forEach((s, i) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s.rows as Record<string, unknown>[]), names[i]));
   const data = new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx", compression: true }) as ArrayBuffer);
   if (data.length > AI_FILE_LIMITS.maxBytes) return { ok: false, error: `That sheet comes to ${fileSizeText(data.length)} — at most ${fileSizeText(AI_FILE_LIMITS.maxBytes)} a file. Narrow it (a shorter period, fewer orders) or split it in two.` };
   const file = await insertAiFile({
     userId: ctx.user.id, conversationId: ctx.conversationId, name: madeFileName(name), kind: "excel",
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", tokens: null, data,
   });
-  return { ok: true, file };
+  return { ok: true, file, sheets: names };
 }
 
 /** A workbook's sheets with their size — "Plan (230 rows × 25 columns)". */
@@ -199,32 +199,51 @@ export function readSheet(f: Pick<AiFile, "data" | "kind">, o: { sheet?: string;
   return { sheets: wb.SheetNames, sheet, fromRow: from, totalRows: grid.length, rows };
 }
 
-/** The first sheet of a person's own workbook as a grid to print: its header
- *  row and at most `limit` rows under it, as the sheet shows them. Null when
- *  there is no such file of theirs, or it is not a sheet. */
-export async function printableSheet(userId: number, id: number, limit: number): Promise<{ name: string; sheet: string; header: string[]; rows: string[][]; total: number; createdAt: Date } | null> {
+export interface PrintableSheet {
+  sheet: string;
+  header: string[];
+  rows: string[][];
+  /** The rows under the header the sheet has, printed or not. */
+  total: number;
+}
+
+/** A person's own workbook as grids to print, sheet by sheet: each one's
+ *  header row and the rows under it, as the sheet shows them — at most
+ *  `limit` rows over all of them. Null when there is no such file of theirs,
+ *  or it is not a sheet. */
+export async function printableSheets(userId: number, id: number, limit: number): Promise<{ name: string; sheets: PrintableSheet[]; createdAt: Date } | null> {
   const f = await prisma.aiFile.findFirst({ where: { id, userId }, select: { name: true, kind: true, data: true, createdAt: true } });
   if (!f || isSeenKind(f.kind)) return null;
-  // the first sheet alone, and only the rows printed — the count comes from the sheet's own range
+  // only the rows printed are read — each sheet's count comes from its own range
   let wb: XLSX.WorkBook;
   try {
-    wb = XLSX.read(f.data, { type: "array", dense: true, sheets: 0, sheetRows: limit + 1 });
+    wb = XLSX.read(f.data, { type: "array", dense: true, sheetRows: limit + 1 });
   } catch {
     return null;
   }
-  const sheet = wb.SheetNames[0];
-  const ws = sheet ? wb.Sheets[sheet] : undefined;
-  if (!ws) return null;
-  const full = ws["!fullref"] ?? ws["!ref"];
-  const total = full ? Math.max(0, XLSX.utils.decode_range(full).e.r - XLSX.utils.decode_range(full).s.r) : 0;
-  const [header = [], ...rows] = textGrid(ws);
-  return { name: f.name, sheet, header, rows, total, createdAt: f.createdAt };
+  let left = limit;
+  const sheets: PrintableSheet[] = [];
+  for (const sheet of wb.SheetNames) {
+    const ws = wb.Sheets[sheet];
+    if (!ws) continue;
+    const full = ws["!fullref"] ?? ws["!ref"];
+    const range = full ? XLSX.utils.decode_range(full) : null;
+    const total = range ? Math.max(0, range.e.r - range.s.r) : 0;
+    // past the rows printed, only the sheet's size is read
+    const [header = [], ...rows] = textGrid(ws, { rows: Math.max(0, left) + 1 });
+    sheets.push({ sheet, header, rows, total });
+    left -= rows.length;
+  }
+  return sheets.length === 0 ? null : { name: f.name, sheets, createdAt: f.createdAt };
 }
 
 /** A sheet as text, cell by cell, as it shows them (formatted values, dates as dates). */
-function textGrid(ws: XLSX.WorkSheet | undefined, o: { blankrows?: boolean } = {}): string[][] {
+function textGrid(ws: XLSX.WorkSheet | undefined, o: { blankrows?: boolean; rows?: number } = {}): string[][] {
   if (!ws?.["!ref"]) return [];
-  return XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: "", blankrows: o.blankrows ?? false }).map((r) => r.map((c) => String(c ?? "")));
+  // at most `rows` rows, the rest never formatted
+  const range = XLSX.utils.decode_range(ws["!ref"]);
+  if (o.rows !== undefined) range.e.r = Math.min(range.e.r, range.s.r + o.rows - 1);
+  return XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: "", blankrows: o.blankrows ?? false, range }).map((r) => r.map((c) => String(c ?? "")));
 }
 
 /** Clear the files kept past their days. */

@@ -33,6 +33,7 @@ import { LV_FLOOR_DEPTS, LV_FLOOR_DEPT_LABEL, isLvFloorDept, lvFloorDeptOf, type
 import { LV_STAGES } from "./lv";
 import { SHIFT_DEPTS, WORK_CENTRES, WORK_CENTRE_LABEL, isWorkCentre, rosterDeptName, round1, type WorkCentre } from "./shifts";
 import { UNUSUAL_EFFICIENCY } from "./productivity";
+import { TOTAL_LABEL } from "./sheetLayout";
 
 // ---------------------------------------------------------------- the request
 
@@ -806,7 +807,7 @@ export function productionSheetRows(view: Pick<ProductionView, "table" | "figure
   }));
   const f = view.figures;
   rows.push({
-    Line: "", Department: "Total", "Recorded days": view.coverage.recordedDays, "Working days": view.coverage.workingDays, "Coverage %": pctCell(view.coverage.share),
+    Line: "", Department: TOTAL_LABEL, "Recorded days": view.coverage.recordedDays, "Working days": view.coverage.workingDays, "Coverage %": pctCell(view.coverage.share),
     "Person-days": f.personDays, "Booked h": f.workedH, "Overtime h": f.overtimeH, "Earned std-h": f.earnedH,
     "Efficiency %": pctCell(view.kpis.find((k) => k.key === "efficiency")?.value ?? null),
     // pieces and panels at different stages never add up
