@@ -10,12 +10,13 @@ import { getPlaybookText } from "@/lib/server/ai/playbook";
 import { runAiQuery } from "@/lib/server/ai/reader";
 import { getActiveLine } from "@/lib/server/line";
 import { AI_DENY_TEXT, addTokens, costUsd, questionContext } from "@/lib/domain/ai";
-import { AI_AUTO_MODEL, judgePrompt, parseVerdict, routeModel } from "@/lib/domain/aiLearn";
+import { judgePrompt, parseVerdict, routeModel } from "@/lib/domain/aiLearn";
+import { depthPlan } from "@/lib/domain/aiAnswer";
 import { factoryDayISO } from "@/lib/domain/dates";
 
 // One quality check of the assistant (lib/domain/aiLearn.ts): the reference
 // SQL run as the assistant's read-only login, the question asked as the owner
-// with the chat's model and effort — reading only, nothing prepared — and the
+// with the chat's Standard model and effort — reading only, nothing prepared — and the
 // cheapest model judging the answer against the reference. What it cost is
 // counted like any question; the last run is kept on the check.
 
@@ -36,10 +37,11 @@ export async function runCheck(check: AiCheck, owner: User): Promise<CheckRun> {
   const now = new Date();
   const hidden = hiddenTabsOf(owner);
   const line = await getActiveLine();
-  const model = settings.model === AI_AUTO_MODEL ? routeModel(check.question) : settings.model;
+  // the chat's Standard answer: the model routed for the question, its effort
+  const { model, effort, maxCalls } = depthPlan("standard", { routed: routeModel(check.question), maxCalls: settings.maxCalls });
   const usage = await prisma.aiUsage.create({ data: { userId: owner.id, model, question: `Quality check: ${check.question}`.slice(0, 500) } });
   try {
-    return await askAndJudge(check, owner, { apiKey, model, effort: settings.effort, maxCalls: settings.maxCalls, hidden, line, now, usageId: usage.id, reference: reference?.text ?? null });
+    return await askAndJudge(check, owner, { apiKey, model, effort, maxCalls, hidden, line, now, usageId: usage.id, reference: reference?.text ?? null });
   } catch (e) {
     // a failure half-way still closes the usage row — never "running" for ever
     await prisma.aiUsage.update({ where: { id: usage.id }, data: { error: apiErrorText(e).slice(0, 1000), finishedAt: new Date() } }).catch(() => {});

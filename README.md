@@ -541,10 +541,10 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      Share (`shareAiAnswer`: to colleagues' inboxes as a message from the person — the automations key, the recipients'
      and the hour's caps of the inbox's own message action, through `lib/server/inboxMessage.ts` — and/or kept as their own
      report; `shareAiAnswerToChat` as plain text through the team chat's own action; the chat's source links and
-     follow-ups are left out) and 👍 / 👎. The depth beside the box — Quick / Standard / Deep — picks the effort and the
-     calls for one question inside the owner's settings (`depthPlan`: Quick thinks a step less, Deep two steps harder
-     with half again the calls; the model is the owner's, or on Auto the cheapest / the strongest, and a chat never
-     steps down). An empty chat opens on what the assistant can do — tiles for a report, a chart, an Excel file, a
+     follow-ups are left out) and 👍 / 👎. The depth beside the box — Quick / Standard / Deep — sets the effort, the
+     model and the calls for one question (`depthPlan`: Quick is Haiku at low effort, Standard the model Auto routes the
+     question to at medium, Deep Opus at high with half again the calls); the chat has no model or effort setting of its
+     own. An empty chat opens on what the assistant can do — tiles for a report, a chart, an Excel file, a
      what-if, a plan to a deadline, the morning briefing, what looks wrong, why an efficiency moved, a scanned paper
      sheet and (for whoever may) a new automation (`lib/domain/aiQuickActions.ts`): a tile's short form (topic, period,
      department, line, the form of the answer) writes the question, and the composer's ✨ brings the tiles back in a
@@ -567,8 +567,10 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      or delete; never plant figures or secrets); 👍 / 👎 under each answer (`AiFeedback`), a thumbs-down with what was
      wrong, which the owner turns into a playbook rule or a quality check on AI settings → Quality; quality checks
      (`AiCheck`) — real questions, what a right answer must say and optional reference SQL run read-only — asked as the
-     owner with changes off and graded by Haiku, the run counted like a question; and the chat's model may be **Auto**:
-     Haiku for a short look-up, Sonnet for a change, Opus for analysis, plans and files, never stepping down in a chat.
+     owner with changes off and graded by Haiku, the run counted like a question; and the chat is always on **Auto**:
+     Haiku for a short look-up, Sonnet for a change, Opus for analysis, plans and files — each question on its own, so a
+     chat moved up for a hard question comes back down for the next look-up, and every answer (reopened chats too, read
+     off `AiUsage`) names the model that wrote it.
    - **Owner's reach**: the app's owner lists everyone's automations and pauses, retimes
      (`set_automation_timing`) or deletes any, as AI assistant settings lets them; what one does stays its owner's to
      change.

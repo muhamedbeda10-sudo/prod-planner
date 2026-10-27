@@ -24,6 +24,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "Drag the edge of the list of chats to make it wider or narrower (the arrow keys work on it too, and a double-click puts it back to its usual width). The list button beside New chat at the top hides the list and shows it again (from the playbook or the automations it brings the chat back), and dragging it all the way in hides it too — the chat takes the room, and answers now use more of the width. Your choice is kept on this browser.",
   },
   {
+    id: "2026-10-27-assistant-auto-depth-effort",
+    dateISO: "2026-10-27",
+    title: "The assistant is always on Auto: Quick, Standard and Deep set how hard it thinks, and every answer names its model",
+    where: "Assistant → beside the box; AI assistant settings → Models",
+    body: "The chat no longer has a model or an effort to pick in the settings. It is always on Auto — Haiku for a short look-up, Sonnet for a change to prepare, Opus for analysis, plans, reports and attached files — and the depth beside the box sets the rest: Quick answers on Haiku at low effort, Standard on the model the question needs at medium effort, Deep on Opus at high effort with more look-ups. Each question takes its own model, so a chat that moved up to Opus for one hard question comes back down to Haiku for the next quick look-up instead of staying on the dearest model. Under every answer — in a chat you reopen too — the model that wrote it is shown. The automations and the morning review keep their own model and effort in the settings.",
+  },
+  {
     id: "2026-10-27-assistant-tiles-select-chats",
     dateISO: "2026-10-27",
     title: "The assistant: tiles for what it can do, and pick several chats to pin or delete",

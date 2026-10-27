@@ -325,6 +325,8 @@ export interface AiChatTurn {
   actionIds?: string[];
   /** The files sent with a question. */
   files?: { id: number; name: string; kind: string }[];
+  /** The model that wrote an answer — each question on Auto takes its own. */
+  model?: string;
 }
 
 type Block = { type?: string; text?: string; id?: string; name?: string; input?: { purpose?: unknown }; content?: unknown; tool_use_id?: string };
@@ -334,8 +336,9 @@ type Block = { type?: string; text?: string; id?: string; name?: string; input?:
  *  every assistant message, look-up and prepared change up to the next
  *  question. The app's own context messages (role "system") are not part of
  *  what people read. `readTitles` names the read tools, whose calls show as
- *  look-ups; any other tool call prepared a change. */
-export function displayTurns(rows: readonly { role: string; content: unknown }[], readTitles: Readonly<Record<string, string>> = {}): AiChatTurn[] {
+ *  look-ups; any other tool call prepared a change. A message's `model`
+ *  (withModelsByTime) is shown under its answer. */
+export function displayTurns(rows: readonly { role: string; content: unknown; model?: string }[], readTitles: Readonly<Record<string, string>> = {}): AiChatTurn[] {
   const out: AiChatTurn[] = [];
   for (const r of rows) {
     if (r.role === "system") continue;
@@ -363,6 +366,7 @@ export function displayTurns(rows: readonly { role: string; content: unknown }[]
       cur = { role: "assistant", text: "", lookups: [] };
       out.push(cur);
     }
+    if (r.model) cur.model = r.model;
     for (const b of blocks) {
       if (b.type === "text" && b.text) cur.text += (cur.text ? "\n\n" : "") + b.text;
       if (b.type !== "tool_use") continue;
@@ -373,6 +377,19 @@ export function displayTurns(rows: readonly { role: string; content: unknown }[]
     }
   }
   return out;
+}
+
+/** Each kept message with the model of the question it belongs to: the
+ *  latest of the chat's usage rows (oldest first) started by the time it was
+ *  kept. A person asks one question at a time, and its messages are kept
+ *  before the next one may start — so a failed or repeated question cannot
+ *  lend its model to another answer. */
+export function withModelsByTime<T extends { createdAt: Date }>(rows: readonly T[], asked: readonly { at: Date; model: string }[]): (T & { model?: string })[] {
+  let k = -1;
+  return rows.map((r) => {
+    while (k + 1 < asked.length && asked[k + 1].at.getTime() <= r.createdAt.getTime()) k++;
+    return k >= 0 ? { ...r, model: asked[k].model } : r;
+  });
 }
 
 const FACTORY_CLOCK = new Intl.DateTimeFormat("en-GB", {
