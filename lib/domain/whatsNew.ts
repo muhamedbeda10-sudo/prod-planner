@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-excel-files-formatted",
+    dateISO: "2026-10-27",
+    title: "Excel files come formatted — and the assistant colours them the way you ask",
+    where: "Assistant → Excel files · Floor → Export",
+    body: "Every Excel file the app makes now opens ready to read: a coloured header that stays in view with filters on it, columns as wide as what they hold, numbers with their thousands and decimals, banded rows, a bold Total row, and set to print one page wide. That goes for the assistant's files and for the Export buttons on the Floor and in the chat. Ask the assistant for more and it adds it to the file: a title, another header colour, late rows in red or done in green, a colour scale or data bars on a column, percentages, bold or frozen columns. The colours are live Excel rules, so a figure you change recolours itself.",
+  },
+  {
     id: "2026-10-27-odoo-status-tick-or-cross",
     dateISO: "2026-10-27",
     title: "ODOO log: Status is a ✓ or a ✗ — and a row is cancelled only with a note",
