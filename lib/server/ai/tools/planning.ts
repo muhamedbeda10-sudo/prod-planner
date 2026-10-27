@@ -12,7 +12,7 @@ export const TRACKER_FILTER_SCHEMA: ObjectSchema = {
   type: "object", additionalProperties: false,
   properties: Object.fromEntries(["q", "month", "status", "progress", "urgent", "product", "family", "deptStage"].map((key) => [key, {
     type: "string" as const, maxLength: 160,
-    description: key === "status" ? "open, closed, hold or all; default all for TR, open for LV" : key === "progress" ? "complete, inprogress or notstarted (LV aliases: done, partial, none)" : key === "deptStage" ? "TR card scope: comma-separated Cut,Welding,Painting,Delivered; last selected stage wins" : key === "urgent" ? "yes; LV also accepts no" : key === "family" ? "LV only: PNL or MB" : key === "product" ? "LV product, exactly as registered" : "The tracker's filter value; month is its exact plan label, or — for TR orders without a month",
+    description: key === "status" ? "open, closed, hold or all; default open" : key === "progress" ? "complete, inprogress or notstarted (LV aliases: done, partial, none)" : key === "deptStage" ? "TR card scope: comma-separated Cut,Welding,Painting,Delivered; last selected stage wins" : key === "urgent" ? "yes; LV also accepts no" : key === "family" ? "LV only: PNL or MB" : key === "product" ? "LV product, exactly as registered" : "The tracker's filter value; month is its exact plan label, or — for TR orders without a month",
   }])),
 };
 
@@ -82,7 +82,6 @@ export function trackerFiltersFor(line: "TR" | "LV", raw: TrackerFilters): Track
   if (f.product || f.family || f.urgent === "no") return "Product, plan family and non-urgent-only are LV filters. Use the transformer's search/month/status/progress/urgent filters.";
   if (f.deptStage?.split(",").some((s) => !(TRACKER_STAGE_ORDER as readonly string[]).includes(s))) return "Unknown transformer department.";
   f.progress = ({ done: "complete", partial: "inprogress", none: "notstarted" } as Record<string, string>)[f.progress ?? ""] ?? f.progress;
-  if (f.status === "all") f.status = "";
   return f;
 }
 

@@ -377,7 +377,7 @@ export function MasterTrackerTable({
   // the panels). Closed ones only come from the server when asked for: they
   // pile up month after month and made the sheet heavy.
   const [status, setStatus] = useSavedFilter("tracker.status");
-  const closedLoading = useClosedRows(status === "closed" || status === "all", hasClosed);
+  const closedLoading = useClosedRows(status, hasClosed);
   const [month, setMonth] = useSavedFilter("tracker.month"); // monthly plan (import source), "" = all months
   // stage scope: only the picked depts' columns per item (one or SEVERAL), and
   // the summary cards report the furthest picked stage — the wide table
@@ -463,7 +463,7 @@ export function MasterTrackerTable({
   const hasNoMonth = useMemo(() => month === "—" || rows.some((r) => r.months.length === 0), [rows, month]);
 
   const filtered = useMemo(
-    () => filterMasterTracker(rows, { q, month, status: status === "all" ? "" : status || "open", progress, urgent }),
+    () => filterMasterTracker(rows, { q, month, status, progress, urgent }),
     [rows, q, month, status, progress, urgent]
   );
 

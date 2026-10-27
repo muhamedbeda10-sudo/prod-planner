@@ -8,7 +8,7 @@ import type { WhatsNewHead } from "@/lib/domain/whatsNew";
 
 // the list is fetched when the window opens: the badge needs only its count
 const WhatsNewList = dynamic(() => import("./WhatsNewList").then((m) => m.WhatsNewList), {
-  loading: () => <p className="text-sm text-muted">Loading…</p>,
+  loading: () => <p role="status" className="text-sm text-muted">Loading…</p>,
 });
 
 /** ✨ What's new — the count of entries this person has not opened the list
@@ -28,7 +28,6 @@ export function useWhatsNew({ unseen, newest, seen }: WhatsNewHead): { count: nu
       void saveUserPref("whatsnew:seen", newest);
     }
   };
-  // what was new when the page loaded stays marked while the list is open
   const modal = open && (
     <Modal title="✨ What's new" sub="What changed in the app, newest first." onClose={() => setOpen(false)} width="max-w-2xl">
       <WhatsNewList seen={seen} onNavigate={() => setOpen(false)} />

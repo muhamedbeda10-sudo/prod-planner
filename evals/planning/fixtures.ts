@@ -50,16 +50,16 @@ export interface PlanningCase {
   cards?: { it: Item; need: number; done: number }[];
 }
 export const PLANNING_CASES: PlanningCase[] = [
-  { id: "tr-all", question: "لخص كل أوامر المحولات: كام أمر والمطلوب والمكتمل والمتبقي؟", line: "TR", filters: {}, expected: { orders: 4, required: 65, complete: 25, remaining: 40 }, cards: [{ it: "CF", need: 63, done: 24 }, { it: "CB", need: 55, done: 20 }, { it: "AR", need: 0, done: 0 }] },
+  { id: "tr-all", question: "لخص كل أوامر المحولات: كام أمر والمطلوب والمكتمل والمتبقي؟", line: "TR", filters: { status: "all" }, expected: { orders: 4, required: 65, complete: 25, remaining: 40 }, cards: [{ it: "CF", need: 63, done: 24 }, { it: "CB", need: 55, done: 20 }, { it: "AR", need: 0, done: 0 }] },
   { id: "lv-default", question: "لخص أوامر لوحات LV المفتوحة في التراكر: عدد الأوامر والمطلوب والمدهون والمتبقي؟", line: "LV", filters: {}, expected: { orders: 2, required: 40, complete: 4, remaining: 36 } },
   { id: "tr-outsourced", question: "لخص أوامر المحولات المصنّعة بالكامل بره: المطلوب والمكتمل والمتبقي؟", line: "TR", outsourced: true, filters: {}, expected: { orders: 1, required: 10, complete: 10, remaining: 0 }, cards: [{ it: "CF", need: 0, done: 0 }, { it: "TN", need: 0, done: 0 }] },
   { id: "tr-october", question: "لخص خطة October 2026 للمحولات فقط.", line: "TR", filters: { month: "October 2026" }, expected: { orders: 2, required: 40, complete: 5, remaining: 35 } },
-  { id: "tr-carryover", question: "لخص خطة September 2026 مع الأمر المرحّل بين شهرين من غير ما تعدّه مرتين.", line: "TR", filters: { month: "September 2026" }, expected: { orders: 2, required: 30, complete: 25, remaining: 5 } },
+  { id: "tr-carryover", question: "لخص خطة September 2026 مع الأمر المرحّل بين شهرين من غير ما تعدّه مرتين.", line: "TR", filters: { month: "September 2026", status: "all" }, expected: { orders: 2, required: 30, complete: 25, remaining: 5 } },
   { id: "tr-search", question: "لخص MO-A فقط في المحولات.", line: "TR", filters: { q: "MO-A" }, expected: { orders: 1, required: 10, complete: 5, remaining: 5 } },
   { id: "tr-open", question: "لخص أوامر المحولات المفتوحة فقط.", line: "TR", filters: { status: "open" }, expected: { orders: 3, required: 45, complete: 5, remaining: 40 } },
   { id: "tr-held", question: "إيه إجمالي المحولات المتوقفة على Hold؟", line: "TR", filters: { status: "hold" }, expected: { orders: 1, required: 30, complete: 0, remaining: 30 } },
   { id: "tr-notstarted", question: "لخص المحولات اللي شغلها لسه ما بدأش.", line: "TR", filters: { progress: "notstarted" }, expected: { orders: 2, required: 35, complete: 0, remaining: 35 } },
-  { id: "tr-finished", question: "لخص أوامر المحولات المكتملة تصنيعًا.", line: "TR", filters: { progress: "complete" }, expected: { orders: 1, required: 20, complete: 20, remaining: 0 } },
+  { id: "tr-finished", question: "لخص أوامر المحولات المكتملة تصنيعًا.", line: "TR", filters: { progress: "complete", status: "all" }, expected: { orders: 1, required: 20, complete: 20, remaining: 0 } },
   { id: "tr-urgent-weld", question: "لخص أوامر المحولات العاجلة، وكروت قسم اللحام.", line: "TR", filters: { urgent: "yes", deptStage: "Welding" }, expected: { orders: 1, required: 10, complete: 5, remaining: 5 }, cards: [{ it: "CF", need: 8, done: 6 }, { it: "TC", need: 10, done: 7 }] },
   { id: "tr-no-month", question: "كام أمر محولات مش مربوط بأي شهر خطة؟", line: "TR", filters: { month: "—" }, expected: { orders: 1, required: 5, complete: 0, remaining: 5 } },
   { id: "empty", question: "لخص الأوامر المطابقة لبحث NO-MATCH، ومتخمنش أرقام لو مفيش نتائج.", line: "TR", filters: { q: "NO-MATCH" }, expected: { orders: 0, required: 0, complete: 0, remaining: 0 } },

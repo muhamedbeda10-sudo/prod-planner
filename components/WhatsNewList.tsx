@@ -21,7 +21,7 @@ export function WhatsNewList({ seen, onNavigate }: { seen: string | null; onNavi
           </div>
           <div className="text-xs text-muted mt-0.5">{e.where}</div>
           <p className="text-sm mt-1">{e.body}</p>
-          {e.href && <Link href={e.href} onClick={onNavigate} className="text-xs font-semibold text-brand-ink hover:underline">Open →</Link>}
+          {e.href && <Link href={e.href} onClick={onNavigate} aria-label={`Open ${e.title}`} className="text-xs font-semibold text-brand-ink hover:underline">Open →</Link>}
         </li>
       ))}
     </ol>

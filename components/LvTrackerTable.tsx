@@ -85,7 +85,7 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
   const [product, setProduct] = useSavedFilter("lvtracker.product");
   const [family, setFamily] = useSavedFilter("lvtracker.family");
   const [status, setStatus] = useSavedFilter("lvtracker.status");
-  const closedLoading = useClosedRows(status === "closed" || status === "all", hasClosed);
+  const closedLoading = useClosedRows(status, hasClosed);
   const [month, setMonth] = useSavedFilter("lvtracker.month");
   const [urgent, setUrgent] = useSavedFilter("lvtracker.urgent");
   const [progress, setProgress] = useSavedFilter("lvtracker.progress");

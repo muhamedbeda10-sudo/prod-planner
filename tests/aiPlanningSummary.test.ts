@@ -39,7 +39,7 @@ describe("planning scope and access", () => {
   });
   it("bounds the attention list without changing the complete totals and does not infer lateness", async () => {
     const { tool } = setup();
-    const result = await tool.run({ line: "TR", detailLimit: 1 }, ctx);
+    const result = await tool.run({ line: "TR", detailLimit: 1, filters: { status: "all" } }, ctx);
     const data = JSON.parse(result.text);
     expect(data.totals).toMatchObject({ orders: 4, required: 65, complete: 25, remaining: 40 });
     expect(data.attention).toHaveLength(1);

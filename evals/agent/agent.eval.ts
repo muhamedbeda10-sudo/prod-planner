@@ -211,7 +211,7 @@ describe("the assistant's figures and sources", () => {
 
   it("current vs previous month: two reads, two sources, the carried order counted once in each view and never twice", async () => {
     model(
-      [use("t1", "get_tracker_summary", { filters: { month: "October 2026" } }), use("t2", "get_tracker_summary", { filters: { month: "September 2026" } })],
+      [use("t1", "get_tracker_summary", { filters: { month: "October 2026" } }), use("t2", "get_tracker_summary", { filters: { month: "September 2026", status: "all" } })],
       [text(`October: 41 remaining of 48 [Source](${cite("t1")}). September: 5 remaining of 30 [Source](${cite("t2")}).`)],
     );
     const r = await run(planner, "Compare this month's plan with last month's.", [tracker]);

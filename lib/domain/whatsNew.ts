@@ -21,7 +21,7 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     title: "Plan Tracker opens on open orders · ODOO log on 30 days",
     where: "Plan Tracker, ODOO log, Daily log, Consumables, What's new",
     href: "/tracker",
-    body: "The monthly Plan Tracker, Transformers and LV Panels, now opens on open orders only. Pick Status: Closed or All to bring the closed ones back; the count beside Closed shows how many there are. The ODOO log opens on the last 30 days, with All days one click away in the day picker. Both pages load much less on the way in. Searching the Plan Tracker, the ODOO log and the Daily log now filters once you pause typing, so the box keeps up with every key. The consumables charts and this list load when they are shown.",
+    body: "The monthly Plan Tracker, Transformers and LV Panels, now opens on open orders only. Pick Status: Closed or All to bring the closed ones back; the count beside Closed shows how many there are, and the assistant reads the tracker the same way. The ODOO log opens on the last 30 days, with All days one click away in the day picker. Both pages load much less on the way in. Searching the Plan Tracker, the ODOO log and the Daily log now filters once you pause typing, so the box keeps up with every key. The consumables charts and this list load when they are shown.",
   },
   {
     id: "2026-10-27-tracker-lighter",

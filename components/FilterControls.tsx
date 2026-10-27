@@ -92,13 +92,8 @@ export function SearchBox({
   }, [onChange, flush]);
   const change = (v: string) => {
     setText(v);
-    if (!settle || v === "") {
-      pending.current = null;
-      if (timer.current) clearTimeout(timer.current);
-      onChange(v);
-      return;
-    }
     pending.current = v;
+    if (!settle || v === "") return flush();
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(flush, SETTLE_MS);
   };
@@ -107,7 +102,7 @@ export function SearchBox({
       <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
       <input
         type="search"
-        value={settle ? text : value}
+        value={text}
         onChange={(e) => change(e.target.value)}
         onBlur={flush}
         onKeyDown={(e) => { if (e.key === "Enter") flush(); }}
@@ -115,7 +110,7 @@ export function SearchBox({
         aria-label={placeholder}
         className={`ctl pl-8 pr-7 w-full ${wide ? "sm:w-80" : "sm:w-60"} [&::-webkit-search-cancel-button]:hidden`}
       />
-      {(settle ? text : value) && (
+      {text && (
         <button
           type="button"
           onClick={() => change("")}

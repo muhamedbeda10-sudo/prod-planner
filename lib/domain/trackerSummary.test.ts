@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { openFirst } from "./trackerSummary";
+import { filterMasterTracker, openFirst } from "./trackerSummary";
+import { TRANSFORMERS } from "@/evals/planning/fixtures";
 
 describe("openFirst", () => {
   const sheet = [{ id: 1, status: "open" }, { id: 2, status: "closed" }, { id: 3, status: "open" }, { id: 4, status: "closed" }];
@@ -11,5 +12,18 @@ describe("openFirst", () => {
   });
   it("handles an empty sheet", () => {
     expect(openFirst([], false)).toEqual({ rows: [], hasClosed: false, closedTotal: 0 });
+  });
+});
+
+describe("filterMasterTracker status", () => {
+  const mos = (status?: string) => filterMasterTracker(TRANSFORMERS, { status }).map((r) => r.mo);
+  it("reads open orders when no status is picked, as the screen opens", () => {
+    expect(mos()).toEqual(["MO-A", "MO-C", "MO-E"]);
+    expect(mos("open")).toEqual(mos());
+  });
+  it("reads every order on all, the closed ones on closed, held ones on hold", () => {
+    expect(mos("all")).toEqual(["MO-A", "MO-B", "MO-C", "MO-E"]);
+    expect(mos("closed")).toEqual(["MO-B"]);
+    expect(mos("hold")).toEqual(["MO-C"]);
   });
 });

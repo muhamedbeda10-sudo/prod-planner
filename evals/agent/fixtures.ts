@@ -18,7 +18,7 @@ export const AGENT_TRANSFORMERS: MasterTrackerRow[] = [...TRANSFORMERS, shared];
 export const EXPECTED = {
   // MO-A (10/5) + MO-C (30/0, on hold) + MO-D (8/2)
   october: { orders: 3, required: 48, complete: 7, remaining: 41 },
-  // MO-A carried from September (10/5) + MO-B closed (20/20): the carried order counts once per view
+  // with Status all: MO-A carried from September (10/5) + MO-B closed (20/20); the carried order counts once per view
   september: { orders: 2, required: 30, complete: 25, remaining: 5 },
   // the BOM's two orders, in two plan months, read per MO — never merged into one
   bom: { orders: 2, required: 18, complete: 7, remaining: 11 },

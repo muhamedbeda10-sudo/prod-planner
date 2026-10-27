@@ -28,18 +28,19 @@ export function masterProgress(row: MasterSummaryRow): "complete" | "inprogress"
 
 /** Closed orders pile up month after month: the tracker page sends them only
  *  when the Status filter asks for them (?closed=1), and their count always. */
-export function openFirst<T extends { status: string }>(sheet: readonly T[], withClosed: boolean) {
+export function openFirst<T extends { status: string }>(sheet: T[], withClosed: boolean) {
   const open = sheet.filter((r) => r.status !== "closed");
-  return { rows: withClosed ? [...sheet] : open, hasClosed: withClosed, closedTotal: sheet.length - open.length };
+  return { rows: withClosed ? sheet : open, hasClosed: withClosed, closedTotal: sheet.length - open.length };
 }
 
 /** Shared by the UI and the assistant: neither reinterprets the other's filters. */
 export function filterMasterTracker<T extends MasterSummaryRow>(rows: readonly T[], f: TrackerFilters): T[] {
   const needle = (f.q ?? "").trim().toUpperCase();
+  const status = f.status || "open"; // as on the screen: open orders unless asked
   return rows.filter((r) => {
     if (f.month && !(f.month === "—" ? r.months.length === 0 : r.months.includes(f.month))) return false;
-    if (f.status === "hold") { if (!r.hold.onHold) return false; }
-    else if (f.status && r.status !== f.status) return false;
+    if (status === "hold") { if (!r.hold.onHold) return false; }
+    else if (status !== "all" && r.status !== status) return false;
     if (needle && !`${r.mo} ${r.bom} ${r.soi ?? ""} ${r.customer ?? ""} ${r.kva ?? ""}`.toUpperCase().includes(needle)) return false;
     if (f.progress && masterProgress(r) !== f.progress) return false;
     return f.urgent !== "yes" || r.urgent;
