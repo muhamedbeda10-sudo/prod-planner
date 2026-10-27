@@ -229,7 +229,7 @@ function Tip({ active, label, payload, total }: { active?: boolean; label?: stri
   const rows = payload.filter((p) => Number(p.value) > 0);
   const sum = payload.reduce((a, p) => a + Number(p.value ?? 0), 0);
   return (
-    <div className="bg-surface border rounded-lg shadow-md px-3 py-2 text-xs min-w-[10rem]">
+    <div className="chart-tip bg-surface border rounded-lg shadow-md px-3 py-2 text-xs min-w-[10rem]">
       <div className="font-bold mb-1">{String(label)}</div>
       {rows.length === 0 && <div className="text-muted">nothing logged</div>}
       {rows.map((p) => (
