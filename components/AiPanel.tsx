@@ -180,7 +180,7 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
   const phone = usePhone();
   const [made, setMade] = useState(false);
   if (p?.shown && !made) setMade(true);
-  if (!p || p.aiPage) return null;
+  if (!p || p.aiPage || !made) return null;
   const { state } = p;
   const layout: AiLayout = phone ? "phone" : state.large ? "large" : "compact";
 
@@ -190,7 +190,6 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
     else p.setView(v);
   };
 
-  if (!made) return null;
   return (
     <FloatWindow name="ai" label="AI assistant" edgeLabel="Resize the assistant" layout={layout} shown={p.shown} width={state.width} onWidth={p.setWidth} onClose={p.close}>
       <AiWorkspace

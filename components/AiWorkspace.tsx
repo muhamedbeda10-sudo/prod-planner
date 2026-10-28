@@ -227,7 +227,7 @@ export function AiWorkspacePage({ tabs, initialChat, settings }: { tabs: AiTab[]
   const [view, setView] = useState<AiView>("chat");
   const phone = usePhone();
   return (
-    <div className="h-[calc(100dvh-5.5rem)] md:h-[var(--page-fill)] min-h-[420px] bg-surface border rounded-xl overflow-hidden shadow-[var(--shadow-sm)]">
+    <div className="h-[var(--page-fill)] min-h-[420px] bg-surface border rounded-xl overflow-hidden shadow-[var(--shadow-sm)]">
       <AiWorkspace tabs={tabs} view={view} onView={setView} layout={phone ? "phone" : "large"} isOwner={settings} initialChat={initialChat} syncUrl />
     </div>
   );

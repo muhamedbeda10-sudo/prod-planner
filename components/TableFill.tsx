@@ -14,7 +14,7 @@ import { useEffect } from "react";
 
 /** Less room than this share of the window: keep the cap. */
 const MIN_SHARE = 0.5;
-const FRAME = "div.overflow-x-auto";
+const FRAME = "div.overflow-x-auto:has(> table)"; // the frames app/globals.css caps
 
 function scrollsInside(el: HTMLElement, main: HTMLElement): boolean {
   for (let p = el.parentElement; p && p !== main; p = p.parentElement) {
@@ -31,11 +31,14 @@ const hydrated = (el: Element) => Object.keys(el).some((k) => k.startsWith("__re
 
 /** Sizes the page's last frame; true when it is still waiting to be hydrated. */
 function fit(main: HTMLElement, force: boolean): boolean {
-  const frames = [...main.querySelectorAll<HTMLElement>(FRAME)].filter((el) => el.querySelector(":scope > table"));
-  const last = frames.findLast((el) => el.offsetParent !== null && !/(^|\s|:)max-h-/.test(el.className) && !scrollsInside(el, main));
+  const frames = [...main.querySelectorAll<HTMLElement>(FRAME)];
+  const last = frames.findLast((el) => el.offsetParent !== null && !/(^|\s|:)!?max-h-/.test(el.className) && !scrollsInside(el, main));
   if (last && !force && !hydrated(last)) return true;
-  for (const el of frames) if (el !== last) el.style.removeProperty("--fill-h");
-  if (!last) return false;
+  const clear = () => { for (const el of frames) if (el !== last) el.style.removeProperty("--fill-h"); };
+  if (!last) {
+    clear();
+    return false;
+  }
 
   // where the page's content ends — main itself stretches to the window when
   // the page is short, so its own bottom would only measure the stretch
@@ -49,17 +52,20 @@ function fit(main: HTMLElement, force: boolean): boolean {
   // with the page scrolled to its top: the window under the frame's top,
   // less whatever the page carries below it
   const room = window.innerHeight - (r.top + window.scrollY) - (contentBottom - r.bottom) - padBottom;
+  clear(); // the writes after every read: one layout, not one per frame
   if (room >= window.innerHeight * MIN_SHARE) last.style.setProperty("--fill-h", `${Math.floor(room)}px`);
   else last.style.removeProperty("--fill-h");
   return false;
 }
 
-/** A change that can bring or take a table: not a cell typed in, nor
- *  anything in the assistant's or the inbox's window. */
+/** A change that can bring or take a table: not rows re-rendered inside one
+ *  (a frame never sits in a table), nor anything in the assistant's or the
+ *  inbox's window. */
 function movesTables(records: MutationRecord[]): boolean {
   return records.some((m) => {
-    if (m.target instanceof Element && m.target.closest(".ai-pop")) return false;
-    return [...m.addedNodes, ...m.removedNodes].some((n) => n instanceof Element && (n.matches(FRAME) || !!n.querySelector(FRAME)));
+    if (!(m.target instanceof Element) || m.target.closest("table, .ai-pop")) return false;
+    const brings = (n: Node) => n instanceof Element && (n.matches(FRAME) || !!n.querySelector(FRAME));
+    return [...m.addedNodes].some(brings) || [...m.removedNodes].some(brings);
   });
 }
 

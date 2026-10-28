@@ -43,9 +43,9 @@
   --nav-bg: #157045;
   --nav-border: #136041;
   --nav-active: #ffffff;
-  /* a page that fills the window under the bar, from md up: the bar (3rem and
-     its 1px border) and <main>'s padding (md:py-4) taken off */
-  --page-fill: calc(100dvh - 5rem - 1px);
+  /* a page that fills the window under the bar: the bar (--bar-h) and
+     <main>'s padding (py-3, md:py-4) taken off */
+  --page-fill: calc(100dvh - var(--bar-h) - 1.5rem);
   /* informational status (in progress, notes) — the fifth of the status set */
   --info-bg: #e4eefb;
   --info-fg: #1d5aa8;
@@ -201,6 +201,7 @@
 
   color-scheme: light;
 }
+@media (min-width: 768px) { :root { --page-fill: calc(100dvh - var(--bar-h) - 2rem); } }
 
 /* ============ dark mode ============ */
 html.dark {
@@ -1353,16 +1354,16 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
   background: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--viz-2) 85%, black) 55%, color-mix(in srgb, var(--viz-4) 70%, black));
   border: 1px solid rgb(255 255 255 / 0.35);
 }
-.nav-ai-face::after {
-  content: ""; position: absolute; top: 0; bottom: 0; width: 45%; inset-inline-start: -70%; z-index: -1; pointer-events: none;
+/* the light is the rows' and tiles' sweep (.ai-cap::after, declared further
+   down — hence .nav-ai in front), brighter and on a loop */
+.nav-ai .nav-ai-face::after {
   background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.6), transparent);
-  transform: skewX(-18deg);
   animation: nav-ai-sweep 2.8s ease-in-out infinite;
 }
 .nav-ai-face > svg { transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1); }
 @media (hover: hover) {
   .nav-ai:hover { filter: brightness(1.1); transform: translateY(-1px); }
-  .nav-ai:hover .nav-ai-face > svg { transform: scale(1.12) rotate(-6deg); }
+  .nav-ai:hover .nav-ai-face > svg { transform: scale(1.1) rotate(-6deg); }
 }
 .nav-ai:active { transform: scale(0.95); }
 .nav-ai:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
@@ -2011,7 +2012,7 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
   transition: background-color 0.16s ease, transform 0.12s ease;
 }
 /* the light that sweeps across a row (and an assistant tile) under the pointer */
-.ai-cap::after, .menu-row::after {
+.ai-cap::after, .menu-row::after, .nav-ai-face::after {
   content: ""; position: absolute; top: 0; bottom: 0; width: 45%; inset-inline-start: -70%; z-index: -1; pointer-events: none;
   background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--tone, var(--brand)) 20%, transparent), transparent);
   transform: skewX(-18deg);
