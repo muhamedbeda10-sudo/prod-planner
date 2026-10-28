@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-what-looks-wrong-sources",
+    dateISO: "2026-10-28",
+    title: "What looks wrong checks what the app still keeps",
+    where: "The AI assistant → What looks wrong",
+    body: "The assistant's What looks wrong tile no longer asks for the plant watchdog's alerts, which were removed. It now checks the data the KPIs say is missing (standard times, delivery dates, shift days), the orders on hold, the work waiting between departments, and the ODOO log rows still open (with no MO, or ready to close), and ranks them with the fix for each.",
+  },
+  {
     id: "2026-10-28-tidier-stock-odoo-pages",
     dateISO: "2026-10-28",
     title: "Tidier Physical Material and ODOO pages, and a colour frame round the assistant's question box",
