@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
 import { getMaterialData } from "@/lib/server/material";
-import { getPartRates } from "@/lib/server/odooBom";
 import { PageHead } from "@/components/ui";
 import { LineSwitch } from "@/components/LineSwitch";
 import { MaterialClient } from "@/components/MaterialClient";
@@ -29,9 +28,6 @@ export default async function MaterialPage({
   const line = await getActiveLine(); // one product line at a time
   // one living table — no month; the plan month is a filter on it
   const [{ lines, odooByMo }, prefs] = await Promise.all([getMaterialData(""), getUserPrefs(me.id, MATERIAL_PREF_KEYS)]);
-  // Odoo's BOM figure beside the sheet's, per part — the transformers only:
-  // the panels' sheet files a SEC item per thickness, which no BoM line answers
-  const odooRates = line === "LV" ? {} : await getPartRates(lines.filter((l) => l.partCode.trim()).map((l) => ({ partCode: l.partCode, bom: l.bom })));
 
   return (
     <div>
@@ -39,7 +35,7 @@ export default async function MaterialPage({
       <PageHead title="Material" sub="Nesting sheet · one living table, matched on the MO" />
       <MaterialClient
         lines={lines} prefs={prefs} canImport={hasPerm(me, linePermKey(line, "material"))}
-        product={line} odooByMo={odooByMo} odooRates={odooRates}
+        product={line} odooByMo={odooByMo}
         lineSwitch={<LineSwitch />}
       />
     </div>

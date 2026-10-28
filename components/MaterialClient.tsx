@@ -14,7 +14,6 @@ import {
 } from "@/lib/domain/material";
 import type { UserPrefs } from "@/lib/domain/userPrefs";
 import { FIELD_DP, formatNumber, formatQty } from "@/lib/domain/format";
-import { odooRateOf, type OdooRates } from "@/lib/domain/odooBom";
 import { FilterSelect, PhoneFold } from "@/components/FilterControls";
 import { Check, ChevronDown, ChevronRight, FilterX, Search, Upload } from "lucide-react";
 import { GroupBand, GroupLegend, TableEmpty, TableFrame, Th, useConfirm, type ColGroup } from "@/components/DataTable";
@@ -36,11 +35,7 @@ import { importMaterialAction } from "@/app/material/actions";
 // in on the Plan Tracker, and a filter: a month's plan, what its orders were
 // nested on and what that adds up to. The sheet is the tab's only source: nothing is
 // typed, edited or deleted here — uploading the sheet again is how a line
-// changes. Sheets-for-job, actual weight and Difference are computed. One
-// column of the transformers' table is read from elsewhere and only shown:
-// Odoo / unit, what Odoo's BoM (Material → BoMs) says the part takes, beside
-// the sheet's BOM / unit. The panels' sheet files a SEC item per thickness,
-// which no BoM line answers, so it has none.
+// changes. Sheets-for-job, actual weight and Difference are computed.
 
 /* The sheet's own column names are sentences ("No. of Sheets in Actual
    Nesting for one Unit"): the headers carry a short label, and the sheet's
@@ -65,22 +60,6 @@ function Units({ v }: { v: number | null }) {
 function Utilization({ v }: { v: number | null }) {
   if (v === null) return <span className="text-muted">—</span>;
   return <span className="tabnum ltr">{v <= 1 ? `${Number((v * 100).toFixed(1))}%` : Number(v.toFixed(2))}</span>;
-}
-
-/** What Odoo's BoM says one unit of the part takes of the line's material,
- *  beside the sheet's own figure (lib/domain/odooBom.ts odooRateOf): amber
- *  where the two disagree; a figure in another unit than pieces is shown with
- *  its unit and never compared with sheets. */
-function OdooRate({ line, rates }: { line: MaterialLineView; rates: OdooRates }) {
-  const r = odooRateOf(rates, line);
-  if (r.kind === "unknown") return <span className="text-muted" title={r.why}>—</span>;
-  if (r.kind === "absent") return <span className="pill pill-warn" title={`Odoo's BoM for ${line.partCode} has no ${line.materialCode}`}>not in BoM</span>;
-  if (!r.comparable) return <span className="tabnum ltr text-muted" title={`Odoo counts it in ${r.uom}, the sheet in sheets`}>{formatNumber(r.qty, FIELD_DP.factor)} {r.uom}</span>;
-  return (
-    <span className={`tabnum ltr ${r.differs ? "text-warn-fg font-bold" : ""}`} title={r.differs ? `The sheet says ${line.sheetsPerUnit}, Odoo's BoM ${r.qty}` : `Odoo's BoM: ${r.qty}`}>
-      {formatNumber(r.qty, FIELD_DP.factor)}
-    </span>
-  );
 }
 
 // ---- the columns: each one on or off (Columns ▾), a run of them folded from the band ----
@@ -135,7 +114,7 @@ type Sums = Pick<MaterialSoiGroup, "forJob" | "sheetsUsed" | "actualWeightKg" | 
 
 const diffTone = (v: number | null) => (v === null ? "" : v < 0 ? "text-bad-fg" : v > 0 ? "text-ok-fg" : "text-muted");
 
-interface ColCtx { odoo: Record<string, string>; rates: OdooRates; product: ProductLine }
+interface ColCtx { odoo: Record<string, string>; product: ProductLine }
 
 /** One column of the table: its header, its cell on a line, and — on the
  *  transformers' sheet — its cell on a SOI's head row and on the totals row.
@@ -157,7 +136,7 @@ interface ColRun<K extends string> { label: string; cols: K[]; lead: K[] }
 
 type TrCol =
   | "mtr" | "soi" | "mo" | "bom" | "units" | "plan" | "partCode" | "partName" | "matCode" | "material" | "thk" | "size" | "weight"
-  | "bomUnit" | "odooUnit" | "actualUnit" | "bomJob" | "actualJob" | "util" | "actualWeight" | "diff" | "notes";
+  | "bomUnit" | "actualUnit" | "bomJob" | "actualJob" | "util" | "actualWeight" | "diff" | "notes";
 
 /** The identifiers stay on screen while the figures scroll past: MTR, SOI and
  *  MO are pinned (from a laptop up) at fixed widths, each shown one after the other. */
@@ -165,8 +144,8 @@ const STICK_W: Partial<Record<TrCol, number>> = { mtr: 6.5, soi: 6.75, mo: 16 };
 
 // The transformers' sheet: the Nesting Tracker's OWN columns, in the sheet's
 // order and under the sheet's own names, so the tab reads as the sheet does —
-// every figure from the sheet or worked out from it; Plan month and Odoo / unit
-// are read from elsewhere and only shown.
+// every figure from the sheet or worked out from it; Plan month is read from
+// the Plan Tracker and only shown.
 const TR_COLS: ColDef<TrCol>[] = [
   { key: "mtr", name: "MTR #", th: { label: "MTR #", full: "MTR Request #", hint: "The material request the sheets were drawn on", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs",
     cell: (l) => <span className="block truncate" title={l.mtr || undefined}>{l.mtr || <span className="text-muted">—</span>}</span>,
@@ -220,8 +199,6 @@ const TR_COLS: ColDef<TrCol>[] = [
     cell: (l) => <Sheets v={l.weightKg} digits={3} /> },
   { key: "bomUnit", name: "BOM / unit", th: { label: "BOM / unit", full: "BOM Qty for one Unit", group: "source", num: true }, td: `p-2 ${NUM}`,
     cell: (l) => <Sheets v={l.sheetsPerUnit} digits={FIELD_DP.factor} /> },
-  { key: "odooUnit", name: "Odoo / unit", th: { label: "Odoo / unit", full: "The material one part takes per Odoo's BoM", hint: "Not from the sheet: read off Odoo's BoM (Material → BoMs), shown beside it for comparison. Amber = differs from the sheet's BOM / unit", num: true }, td: `p-2 ${NUM}`,
-    cell: (l, x) => <OdooRate line={l} rates={x.rates} /> },
   { key: "actualUnit", name: "Actual / unit", th: { label: "Actual / unit", full: "No. of Pieces in Actual Nesting for one Unit", hint: "From the sheet — where it leaves it blank, Actual for job ÷ units", group: "source", num: true }, td: `p-2 ${NUM}`,
     cell: (l) => <Sheets v={l.actualPerUnit} digits={FIELD_DP.factor} /> },
   { key: "bomJob", name: "BOM for job", th: { label: "BOM for job", full: "BOM Pieces for Job", hint: "BOM Qty for one Unit × units", group: "computed", num: true, className: "emph" }, td: `p-2 ${NUM} emph`,
@@ -248,7 +225,7 @@ const TR_RUNS: ColRun<TrCol>[] = [
   { label: "Job", cols: ["bom", "units", "plan"], lead: ["bom"] },
   { label: "Part", cols: ["partCode", "partName"], lead: ["partCode"] },
   { label: "Sheet", cols: ["matCode", "material", "thk", "size", "weight"], lead: ["material", "thk"] },
-  { label: "Per unit", cols: ["bomUnit", "odooUnit", "actualUnit"], lead: ["actualUnit"] },
+  { label: "Per unit", cols: ["bomUnit", "actualUnit"], lead: ["actualUnit"] },
   { label: "For the job", cols: ["bomJob", "actualJob", "util", "actualWeight", "diff"], lead: ["bomJob", "actualJob", "diff"] },
   { label: "", cols: ["notes"], lead: ["notes"] },
 ];
@@ -668,10 +645,8 @@ function MaterialColumns<K extends string>({ cols, defs }: { cols: Columns<K>; d
   );
 }
 
-export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}, odooRates = {}, lineSwitch, prefs = {} }: {
+export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}, lineSwitch, prefs = {} }: {
   lines: MaterialLineView[];
-  /** Odoo's BOM figure per part and material (transformers; odooRateKey). */
-  odooRates?: OdooRates;
   /** May upload the sheet — the tab's only change; nothing is typed in it. */
   canImport: boolean;
   /** The page's Transformers | LV Panels switch, first in its toolbar. */
@@ -699,7 +674,7 @@ export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}
   const lvOn = LV_COLS.map((c) => lvCols.isOn(c.key)).join();
   const trLayout = useMemo(() => layoutOf(TR_COLS, trCols.isOn, STICK_W), [trOn]); // eslint-disable-line react-hooks/exhaustive-deps
   const lvLayout = useMemo(() => layoutOf(LV_COLS, lvCols.isOn, {}), [lvOn]); // eslint-disable-line react-hooks/exhaustive-deps
-  const x = useMemo<ColCtx>(() => ({ odoo: odooByMo, rates: odooRates, product }), [odooByMo, odooRates, product]);
+  const x = useMemo<ColCtx>(() => ({ odoo: odooByMo, product }), [odooByMo, product]);
   // the transformers' sheet reads by SOI, its MOs under it; the switch puts
   // the plain sheet order back. A folded SOI stays folded while the page is open.
   const [bySoi, setBySoi] = useState(true);

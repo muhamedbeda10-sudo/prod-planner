@@ -1,5 +1,4 @@
 import "server-only";
-import { getPartRates } from "@/lib/server/odooBom";
 import { floorRequest } from "@/lib/domain/floorKpis";
 import { outputByTypeRows } from "@/lib/domain/outputByType";
 import { productionDayRows, productionRequest, productionSheetRows } from "@/lib/domain/productionDashboard";
@@ -14,7 +13,7 @@ import { getDowntimeDay } from "@/lib/server/downtime";
 import { getRecentHandover } from "@/lib/server/handover";
 import { ledgerItemWhere, withLine } from "@/lib/server/line";
 import { getLvTrace } from "@/lib/server/lvTrace";
-import { getLvTracker } from "@/lib/server/lvTracker";
+import { getLvTrackerWithOdoo } from "@/lib/server/lvTracker";
 import { getMasterTracker } from "@/lib/server/masterTracker";
 import { getMaterialData } from "@/lib/server/material";
 import { EMPTY_MATERIAL_FILTERS, NO_PLAN_MONTH, filterMaterialLines, materialPlanMonthOptions, resolvePlanMonth } from "@/lib/domain/material";
@@ -332,7 +331,7 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       const f = trackerFiltersFor(line, i.filters ?? {});
       if (typeof f === "string") return { error: f };
       if (line === "LV") {
-        const rows = filterLvTracker(await withLine("LV", () => getLvTracker()), f);
+        const rows = filterLvTracker(await withLine("LV", () => getLvTrackerWithOdoo()), f);
         return { rows: lvTrackerRows(rows), name: "lv-plan-tracker", sheet: "Plan Tracker", scope: `LV Plan Tracker, ${rows.length} orders` };
       }
       const stages = trackerStagesOf(f.deptStage);
@@ -340,7 +339,7 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       return { rows: masterTrackerRows(rows, stages, f.month ?? ""), name: `plan-tracker${stages.length ? `-${stages.join("-").toLowerCase()}` : ""}`, sheet: "Plan Tracker", scope: `Transformer Plan Tracker, ${rows.length} orders` };
     }
     case "weekly_plan": {
-      const data = await withLine("TR", () => getWeeklyPlanTracker(i.plan ?? null));
+      const data = await withLine("TR", () => getWeeklyPlanTracker(i.plan ?? null, { odoo: true }));
       if (data.planNo === null) return { error: "There is no weekly plan yet." };
       if (i.plan && data.planNo !== i.plan) return { error: `There is no weekly plan ${i.plan}. The plans: ${data.planNos.join(", ")}.` };
       const stages = weeklyStagesOf((i.stages ?? "").replace(/\s+/g, ""));
@@ -409,11 +408,9 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       const planMonth = resolvePlanMonth(i.planMonth ?? "", months);
       if (planMonth === null) return { error: `No line of the ${line} Material sheet is in the plan month "${i.planMonth}". The plan months on it: ${months.join(", ") || "none"}.` };
       const lines = filterMaterialLines(all, { ...EMPTY_MATERIAL_FILTERS, planMonth });
-      // Odoo's BOM figure beside the sheet's, as the screen shows it (transformers)
-      const rates = line === "LV" ? {} : await getPartRates(lines.filter((l) => l.partCode.trim()).map((l) => ({ partCode: l.partCode, bom: l.bom })));
       const monthName = planMonth === NO_PLAN_MONTH ? "not in a plan" : planMonth;
       const monthSlug = monthName ? `-${monthName.toLowerCase().replace(/\s+/g, "-")}` : "";
-      return { rows: materialRows(lines, line, rates), name: `material-sheet${line === "LV" ? "-lv" : ""}${monthSlug}`, sheet: "Material", scope: `${line} Material sheet${monthName ? `, plan month ${monthName} (${lines.length} of ${all.length} lines)` : ""}` };
+      return { rows: materialRows(lines, line), name: `material-sheet${line === "LV" ? "-lv" : ""}${monthSlug}`, sheet: "Material", scope: `${line} Material sheet${monthName ? `, plan month ${monthName} (${lines.length} of ${all.length} lines)` : ""}` };
     }
     case "material_dashboard": {
       const req = materialScopeRequest(i, today);

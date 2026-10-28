@@ -13,6 +13,8 @@ interface Order {
 interface Entry { id: number; date: Date | string; line: string; ledgerId: number | null; soi: string | null; fgCode: string; product: string; qty: number; status: string }
 interface Ledger { id: number; mo: string | null; bom: string; item: string }
 const norm = (s: string | null | undefined) => (s ?? "").trim().toUpperCase();
+/** How odooClosedByLedger keys an MO or item code. */
+export const odooKey = norm;
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 /** Older saved month settings still mean the first day of that month. */
@@ -37,6 +39,67 @@ export function odooPlanMonth(order: Pick<Order, "source" | "months">): string |
   return months.sort((a, b) => monthRank(a) - monthRank(b) || a.localeCompare(b))[0] ?? null;
 }
 
+/** The first monthly plan whose orders count Odoo's closings exactly: every
+ *  Done row is credited to the one MO it was recorded against, never spread
+ *  by BOM. Older plans keep the earlier allocation and show no Odoo column. */
+export const ODOO_EXACT_FROM = "2026-10";
+/** ODOO_EXACT_FROM as the plans name their month ("October 2026"). */
+export const ODOO_EXACT_FROM_LABEL = `${MONTHS[Number(ODOO_EXACT_FROM.slice(5)) - 1]} ${ODOO_EXACT_FROM.slice(0, 4)}`;
+
+/** An order planned in or after `from` (ODOO_EXACT_FROM; by the plan that first brought it). */
+export function isOdooExactOrder(order: Pick<Order, "source" | "months">, from = ODOO_EXACT_FROM): boolean {
+  const month = odooPlanMonth(order);
+  return !!month && Number.isFinite(monthRank(month)) && monthRank(month) >= monthRank(from);
+}
+
+/** A closing the ODOO log counts: a Done / Closed row with a quantity — a transformer's, for the allocation. */
+const isClosedQty = (entry: Pick<Entry, "status" | "qty">) => isDoneStatus(entry.status) && Number.isFinite(entry.qty) && entry.qty > 0;
+const isClosingRow = (entry: Entry) => entry.line === "TR" && isClosedQty(entry);
+
+/**
+ * The Done / Closed rows of the ODOO log born from a daily-log closing, summed
+ * by that closing's MO and item code (both upper case) — on any line: a
+ * panel's painting is born into the log the same way a tank's is. Not capped
+ * at the plan qty: a closing over the plan shows as one. The ledger's MO is
+ * the record — its BOM is not checked against the order's.
+ */
+export function odooClosedByLedger(
+  entries: readonly Pick<Entry, "ledgerId" | "status" | "qty">[],
+  ledgers: readonly Pick<Ledger, "id" | "mo" | "item">[],
+): Map<string, Map<string, number>> {
+  const linked = new Map(ledgers.map((l) => [l.id, l]));
+  const out = new Map<string, Map<string, number>>();
+  for (const entry of entries) {
+    if (entry.ledgerId === null || !isClosedQty(entry)) continue;
+    const ledger = linked.get(entry.ledgerId);
+    if (!ledger?.mo) continue;
+    const mo = norm(ledger.mo), item = norm(ledger.item);
+    const row = out.get(mo) ?? new Map<string, number>();
+    row.set(item, (row.get(item) ?? 0) + entry.qty);
+    out.set(mo, row);
+  }
+  return out;
+}
+
+/** The exact closings of the given transformer orders, by MO and component
+ *  (odooClosedByLedger), leaving the components an order does not need. */
+export function exactOdooClosings(
+  orders: readonly Pick<Order, "mo" | "eligibleItems">[],
+  entries: readonly Entry[],
+  ledgers: readonly Ledger[],
+): Map<string, Partial<Record<Item, number>>> {
+  const closed = odooClosedByLedger(entries.filter((e) => e.line === "TR"), ledgers);
+  const counts = new Map<string, Partial<Record<Item, number>>>();
+  for (const order of orders) {
+    const row: Partial<Record<Item, number>> = {};
+    for (const [it, qty] of closed.get(norm(order.mo)) ?? []) {
+      if (isItem(it) && (!order.eligibleItems || order.eligibleItems.includes(it))) row[it] = qty;
+    }
+    if (Object.keys(row).length) counts.set(order.mo, row);
+  }
+  return counts;
+}
+
 function inTrackingWindow(order: Order, trackingFrom: string | null): boolean {
   const month = odooPlanMonth(order);
   const start = normalizeOdooTrackingStart(trackingFrom)?.slice(0, 7);
@@ -47,7 +110,10 @@ function inTrackingWindow(order: Order, trackingFrom: string | null): boolean {
  * never from Odoo's different MO numbering. Project imports fill the oldest plan
  * first, once per MO/component, up to that MO's requirement. Allocation happens
  * against the whole registry BEFORE any month, search or status filter. */
-export function trackerOdooQuantities(orders: readonly Order[], entries: readonly Entry[], ledgers: readonly Ledger[], trackingFrom: string | null = null) {
+export function trackerOdooQuantities(
+  orders: readonly Order[], entries: readonly Entry[], ledgers: readonly Ledger[], trackingFrom: string | null = null,
+  { exactFrom = ODOO_EXACT_FROM }: { exactFrom?: string } = {},
+) {
   const startDate = normalizeOdooTrackingStart(trackingFrom);
   // an order's plan month and tracking window, worked out once each — the
   // allocation below asks for them again for every entry it places
@@ -69,8 +135,14 @@ export function trackerOdooQuantities(orders: readonly Order[], entries: readonl
   for (const list of byBom.values()) list.sort(fifoOrder);
   const linked = new Map(ledgers.map((l) => [l.id, l]));
   const tracked = new Set<string>();
+  // the orders from ODOO_EXACT_FROM on are counted exactly, apart from the
+  // allocation below: nothing is spread onto them and nothing of theirs is
+  // capped or pooled
+  const exactRank = monthRank(exactFrom);
+  const exactOrders = [...byMo.values()].filter((o) => Number.isFinite(rankOf(o)) && rankOf(o) >= exactRank);
+  const isExact = new Set(exactOrders);
   for (const order of byMo.values()) {
-    if (inWindow(order)) for (const item of ITEMS) tracked.add(JSON.stringify([order.mo, item]));
+    if (inWindow(order) || isExact.has(order)) for (const item of ITEMS) tracked.add(JSON.stringify([order.mo, item]));
   }
   const itemOf = (entry: Entry, ledger?: Ledger): Item | undefined => {
     // The BOM trace identifies the part through the production record, even
@@ -90,18 +162,18 @@ export function trackerOdooQuantities(orders: readonly Order[], entries: readonl
     if (entry.line === "TR" && ledger && order && item && norm(order.bom) === norm(ledger.bom)) tracked.add(JSON.stringify([order.mo, item]));
     return entry.line === "TR" && ledger && item ? [JSON.stringify([norm(ledger.bom), item])] : [];
   }));
-  const counts = new Map<string, Partial<Record<Item, number>>>();
+  const counts = exactOdooClosings(exactOrders, entries, ledgers);
   const pools = new Map<string, OdooUnallocatedQuantity>();
   const pending: { item: Item; qty: number; candidates: Order[]; id: number; exact: boolean }[] = [];
   const add = (mo: string, item: Item, qty: number) => { const row = counts.get(mo) ?? {}; row[item] = (row[item] ?? 0) + qty; counts.set(mo, row); };
   for (const entry of entries) {
-    if (entry.line !== "TR" || !isDoneStatus(entry.status) || !Number.isFinite(entry.qty) || entry.qty <= 0) continue;
+    if (!isClosingRow(entry)) continue;
     const ledger = entry.ledgerId === null ? undefined : linked.get(entry.ledgerId);
     const item = itemOf(entry, ledger);
     if (!item) continue;
     if (ledger?.mo) {
       const order = byMo.get(norm(ledger.mo));
-      if (order && norm(order.bom) === norm(ledger.bom)) pending.push({ item, qty: entry.qty, candidates: [order], id: entry.id, exact: true });
+      if (order && !isExact.has(order) && norm(order.bom) === norm(ledger.bom)) pending.push({ item, qty: entry.qty, candidates: [order], id: entry.id, exact: true });
       continue;
     }
     // A recording start within a month must not pull in earlier project
@@ -130,6 +202,7 @@ export function trackerOdooQuantities(orders: readonly Order[], entries: readonl
       // Linked production MOs are evidence even before tracking began. A
       // project-only quantity cannot be spent on the untracked old backlog.
       if (!exact && !inWindow(order)) continue;
+      if (isExact.has(order)) continue; // counted exactly above
       const room = Math.max(0, order.planQty - (counts.get(order.mo)?.[item] ?? 0));
       const allocated = Math.min(left, room);
       if (allocated > 0) { add(order.mo, item, allocated); left -= allocated; }

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { hasPerm } from "@/lib/server/auth";
 import { withLine } from "@/lib/server/line";
 import { getMasterTracker } from "@/lib/server/masterTracker";
-import { getLvTracker } from "@/lib/server/lvTracker";
+import { getLvTrackerWithOdoo } from "@/lib/server/lvTracker";
 import { getSettings } from "@/lib/server/data";
 import { checkOutputChain } from "@/lib/server/outputGuard";
 import { groupTotal, loadGroupMembers, spreadGroupChange } from "@/lib/server/groupRecord";
@@ -68,7 +68,7 @@ export const getOrders: ReadTool<GetOrdersInput> = {
   cacheable: true,
   title: "Reading the orders on the tracker",
   description:
-    "The orders exactly as the Plan Tracker computes them: status, hold, priority, required quantity, the qty a plan import is holding back, plan months, the spec columns, and per component what is cut, welded, painted / shot blasted and delivered, what is made outside (OSP), which components the order does not need, and how many complete sets are done and left. Give MO numbers or a BOM. Read this before recording totals or changing an order.",
+    "The orders exactly as the Plan Tracker computes them: status, hold, priority, required quantity, the qty a plan import is holding back, plan months, the spec columns, and per component what is cut, welded, painted / shot blasted and delivered, what is made outside (OSP), for an order planned from October 2026 on what Odoo has closed (closedInOdoo: the Done rows of the ODOO log born from that MO's own closings, as the tracker's Odoo column shows — per component for a transformer, the panel's for an LV order; older orders carry none), which components the order does not need, and how many complete sets are done and left. Give MO numbers or a BOM. Read this before recording totals or changing an order.",
   schema: {
     type: "object",
     properties: {
@@ -86,7 +86,7 @@ export const getOrders: ReadTool<GetOrdersInput> = {
   async run(i, ctx) {
     const want = (mo: string, bom: string) => (i.mos ? i.mos.includes(mo) : true) && (i.bom ? bom.toUpperCase() === i.bom : true);
     if ((i.line ?? ctx.line ?? "TR") === "LV") {
-      const rows = (await withLine("LV", () => getLvTracker())).filter((r) => want(r.mo, r.bom));
+      const rows = (await withLine("LV", () => getLvTrackerWithOdoo())).filter((r) => want(r.mo, r.bom));
       if (rows.length === 0) return { ok: true, text: "No LV order matches." };
       return {
         ok: true,
@@ -96,6 +96,7 @@ export const getOrders: ReadTool<GetOrdersInput> = {
           onHold: r.hold.onHold ? { note: r.hold.holdNote, by: r.hold.holdBy, since: r.hold.holdSinceISO } : null,
           priority: r.priority, required: r.state.required,
           done: { punching: r.state.punch, bending: r.state.bend, welding: r.state.weld, painting: r.state.paint, delivered: r.state.delivered },
+          ...(r.odooClosed != null ? { closedInOdoo: r.odooClosed } : {}),
           complete: r.complete, remaining: r.remaining, months: r.months,
         }))),
       };
@@ -119,6 +120,7 @@ export const getOrders: ReadTool<GetOrdersInput> = {
             ...(isPaintExempt(it) ? { shotBlasted: c.shp } : { painted: c.paint }),
             delivered: c.delivered,
             ...(c.osp ? { madeOutside: c.osp } : {}),
+            ...(r.odooExact ? { closedInOdoo: c.odooClosed ?? 0 } : {}),
           };
         }
         return {
