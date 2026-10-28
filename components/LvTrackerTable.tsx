@@ -399,7 +399,7 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
         )}
         {show("product") && <td className="p-2 text-center"><span className="pill pill-muted">{r.product ?? "—"}</span></td>}
         {show("sec") && <td className="p-2 text-xs whitespace-nowrap tabnum text-muted">{r.secItem ?? "—"}</td>}
-        {show("required") && <td className="p-2 text-center font-bold tabnum stick stick-end" style={idLayout.req}>{r.state.required}</td>}
+        {show("required") && <td className="p-2 text-center font-bold tabnum stick stick-end req-col" style={idLayout.req}>{r.state.required}</td>}
         {stages.map((stage) =>
           cell(`${r.mo}|${stage}`, lvStageOf(r.state, stage), r.state.required, { held, urgent: r.urgent, bottleneck: bn === stage }, stage, (total) => {
             const fd = new FormData();
@@ -490,7 +490,7 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
               {show("product") && <th className="p-2" title="The panel or meter box type">Product</th>}
               {show("sec") && <th className="p-2 text-left">SEC Item</th>}
               {show("required") && (
-                <th className="p-1 stick stick-end" style={idLayout.req}>
+                <th className="p-1 stick stick-end req-col" style={idLayout.req}>
                   <FoldButton open={cols.anyOn(SPEC_GROUP)} onClick={() => cols.toggle(SPEC_GROUP)} label="Required" title={cols.anyOn(SPEC_GROUP) ? "Fold Product and SEC Item away" : "Show Product and SEC Item"} back />
                 </th>
               )}
@@ -556,7 +556,7 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
                     </td>
                     {show("product") && <td className="p-2 text-center">{[...new Set(members.map((m) => m.product).filter(Boolean))].map((p) => <span key={p} className="pill pill-muted me-1">{p}</span>)}</td>}
                     {show("sec") && <td className="p-2 text-xs text-muted tabnum">{[...new Set(members.map((m) => m.secItem).filter(Boolean))].join(", ") || "—"}</td>}
-                    {show("required") && <td className="p-2 text-center font-bold stick stick-end" style={idLayout.req}><Num v={gReq} /></td>}
+                    {show("required") && <td className="p-2 text-center font-bold stick stick-end req-col" style={idLayout.req}><Num v={gReq} /></td>}
                     {stages.map((stage) =>
                       cell(
                         `g|${bom}|${stage}`,

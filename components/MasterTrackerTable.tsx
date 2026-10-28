@@ -58,7 +58,9 @@ const ID_W: Record<"mo" | "soi" | "customer", number> = { mo: 11.5, soi: 6.75, c
 const BOM_W = 7.5;
 const BOM_W_ALONE = 14;
 const REQ_W = 7;
-const REQ_CLS = "stick stick-end";
+/** Required reads in its own teal down the whole column (.req-col) — the
+ *  figure every stage is measured against, found without counting across. */
+const REQ_CLS = "stick stick-end req-col";
 /** An Odoo cell closes its component: the component's border after it. */
 const ODOO_CELL = "p-1 border-r border-border-strong";
 
@@ -119,15 +121,6 @@ function ColumnChooser({ cols, hiddenItems, onHideItem, collapsed, onCollapse }:
 }
 
 type SpecField = "fins" | "colorRal" | "crcSize" | "sfm";
-/** Fins reads in its own colour down the whole column — header, MO rows and
- *  merged BOM rows — so the eye finds it without counting across to the Core
- *  Frame. The teal is a hue the stage tints, Odoo's plum, the status pills and
- *  the brand green leave free; both pairs clear AA on their surfaces. */
-const FINS_CELL = { background: "var(--fins-tint)", color: "var(--fins-fg)" } as const;
-// the header wears the same pair, not the inverse: inverting it puts white on
-// a pale teal in dark mode, which fails. One tint the whole way down also
-// reads as a single stripe against the green header row.
-const FINS_HEAD = FINS_CELL;
 
 const SPEC_TITLE: Record<SpecField, string> = {
   fins: "Fins — type it here",
@@ -840,7 +833,7 @@ export function MasterTrackerTable({
               {/* Fins belongs with the components, not with the specs: it is
                   welded onto the tank like the rest, so it reads immediately
                   before the Core Frame. Typed here, never imported. */}
-              {show("fins") && <th rowSpan={2} className="p-2" style={FINS_HEAD} title="Fins — typed here; the import never writes it">Fins</th>}
+              {show("fins") && <th rowSpan={2} className="p-2" title="Fins — typed here; the import never writes it">Fins</th>}
               {ITEMS.filter(itemShown).map((it) => (
                 <th key={it} colSpan={itemColsOf(it)} className="p-1 border-r border-border-strong on-tint" style={{ boxShadow: `inset 0 3px 0 ${ITEM_TINT[it]}` }}>
                   <button
@@ -1001,9 +994,8 @@ export function MasterTrackerTable({
   function specCell(r: MasterTrackerRow, field: SpecField) {
     const key = `${r.mo}|${field}`;
     const val = r[field];
-    const tinted = field === "fins";
     return (
-      <td key={field} className="p-2 text-xs whitespace-nowrap text-center" style={tinted ? FINS_CELL : undefined}>
+      <td key={field} className="p-2 text-xs whitespace-nowrap text-center">
         {specEdit === key ? (
           <input
             value={specVal}
@@ -1021,14 +1013,14 @@ export function MasterTrackerTable({
         ) : can("tracker.qty") ? (
           <button
             type="button"
-            className={`w-full ${val ? "font-semibold" : tinted ? "opacity-60" : "text-muted"}`}
+            className={`w-full ${val ? "font-semibold" : "text-muted"}`}
             title={SPEC_TITLE[field]}
             onClick={() => { setSpecEdit(key); setSpecVal(val ?? ""); }}
           >
             {val || "—"}
           </button>
         ) : (
-          <span className={val ? "font-semibold" : tinted ? "opacity-60" : "text-muted"}>{val || "—"}</span>
+          <span className={val ? "font-semibold" : "text-muted"}>{val || "—"}</span>
         )}
       </td>
     );
@@ -1105,7 +1097,7 @@ export function MasterTrackerTable({
     }
 
     return (
-      <td className="p-2 text-xs whitespace-nowrap text-center font-semibold tabnum" style={FINS_CELL} onClick={(e) => e.stopPropagation()}>
+      <td className="p-2 text-xs whitespace-nowrap text-center font-semibold tabnum" onClick={(e) => e.stopPropagation()}>
         {editing && group ? (
           <span className="inline-flex flex-col items-center gap-0.5">
             <span className="inline-flex items-center gap-1">
