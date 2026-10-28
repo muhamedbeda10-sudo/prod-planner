@@ -511,6 +511,12 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      in `data-ai-title` / `data-ai-about`. A row menu of its own (hold, close, trace…) carries the entry at its foot. The
      browser's own menu stays in a field, on selected text and on Shift + right-click; there is none of it for someone
      without the assistant. Each Ask AI is one question, from the person's AI allowance.
+   - **Export a table with AI** (`components/TableAiExport.tsx`, `lib/tableRead.ts`, `lib/domain/tableExport.ts`):
+     every table on a page carries the assistant's mark at its top-right corner (kept in view while the table scrolls
+     under the bar; none in print, nor for someone without the assistant). A click sends the table as the screen shows
+     it — filters and sort applied, a group's heading as a Group column, a merged cell repeated on each of its rows — as a
+     CSV attached to a new chat; the assistant asks which columns go in the file (all, or which), then makes the Excel
+     with `make_excel`'s `attached` sheet and its `columns` (plain figures become numbers; codes and MOs stay text).
    - **A chart's title explains it** (`components/ChartAbout.tsx`, the shared `Tooltip`'s `interactive` card): resting
      the pointer on a chart card's title or its ⓘ (a tap on a phone, Tab from the keyboard) opens a card with the chart's
      `about` and an **Ask AI about these numbers** button. It costs nothing until that button is pressed.
@@ -612,7 +618,7 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      headers (the Plan Tracker TR/LV, a weekly plan, the Daily log, the Orders Registry, a trace, the ODOO log and its
      days, Material, Physical Material, the consumables' log, limits, edits, summary, monthly review and powder scrap,
      a day's attendance and machine stops) — or the rows of one read-only SELECT, up to 50,000 rows. Any of them can be
-     laid out in the same file (`lib/domain/sheetLayout.ts`): `nonBlank` keeps the rows with given columns filled,
+     laid out in the same file (`lib/domain/sheetLayout.ts`): `columns` keeps only the columns named, in their order, `nonBlank` keeps the rows with given columns filled,
      `splitBy` puts each value of a column on its own sheet (a sheet per thickness, up to 50), and `totals` closes each
      sheet with a Total row over the columns named. Every workbook the app writes — these, and the Floor's and the
      chat's Export buttons (the writer is fetched on the first press) — comes in the house style

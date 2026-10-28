@@ -115,11 +115,11 @@
   --weld-tint: #dfeaf3;
   --paint-tint: #f3ecdf;
   --dlvd-tint: #ece3f7;
-  /* the tracker's Fins column: it stands between the specs and the components
-     and belongs to neither, so it gets a teal of its own — a hue none of the
-     stage tints, Odoo's plum, the status pills or the brand green speak */
-  --fins-tint: #cdeef1;
-  --fins-fg: #0a5560;
+  /* the trackers' Required column: the figure every stage is measured
+     against, in a teal of its own — a hue none of the stage tints, Odoo's
+     plum, the status pills or the brand green speak */
+  --req-tint: #cdeef1;
+  --req-fg: #0a5560;
   /* the trackers' Odoo columns: what Odoo has closed is not a stage of ours,
      so it reads in Odoo's own plum (#714B67, its title bar) — the header in
      the plum itself, the cells in a wash of it with the plum as ink */
@@ -288,8 +288,8 @@ html.dark {
   --weld-tint: #1e2d40;
   --paint-tint: #352e1e;
   --dlvd-tint: #2e263b;
-  --fins-tint: #183539;
-  --fins-fg: #8fdbe2;
+  --req-tint: #183539;
+  --req-fg: #8fdbe2;
   --odoo-head: #5e3c55;
   --odoo-head-fg: #ffffff;
   --odoo-tint: #3d2737;
@@ -376,8 +376,8 @@ html.dark {
   --color-weld-tint: var(--weld-tint);
   --color-paint-tint: var(--paint-tint);
   --color-dlvd-tint: var(--dlvd-tint);
-  --color-fins-tint: var(--fins-tint);
-  --color-fins-fg: var(--fins-fg);
+  --color-req-tint: var(--req-tint);
+  --color-req-fg: var(--req-fg);
   --color-odoo-head: var(--odoo-head);
   --color-odoo-tint: var(--odoo-tint);
   --color-odoo-fg: var(--odoo-fg);
@@ -777,8 +777,8 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
     --weld-tint: #dfeaf3;
     --paint-tint: #f3ecdf;
     --dlvd-tint: #ece3f7;
-    --fins-tint: #cdeef1;
-    --fins-fg: #0a5560;
+    --req-tint: #cdeef1;
+    --req-fg: #0a5560;
     --odoo-head: #714b67;
     --odoo-head-fg: #ffffff;
     --odoo-tint: #e4d0de;
@@ -1288,6 +1288,11 @@ main table thead:has(tr.dt-band[data-runs]) .dt-th[data-group] { background-imag
 /* the headers' quiet grey is !important (main table thead th): white on the plum overrides it */
 .erp-table th.odoo-col, main table th.odoo-col { background-color: var(--odoo-head); color: var(--odoo-head-fg) !important; }
 .odoo-col.stage-meter { --meter-fill: var(--odoo-fg); }
+/* the Required column in its teal — after the sticky columns' own fill
+   (.erp-table thead .stick) so it wins there too, and over the headers'
+   quiet grey ink (main table thead th) */
+.erp-table .req-col, .erp-table thead .req-col { background-color: var(--req-tint); color: var(--req-fg); }
+main table thead th.req-col { color: var(--req-fg) !important; }
 .odoo-col.odoo-full { font-weight: 700; }
 /* a frame drawn inside the cell, not an inset shadow: Chrome paints a table
    cell's shadow over the frozen columns, and the frame keeps 1px off the
@@ -1369,6 +1374,7 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
    light running across it and a soft glow breathing round it, the way the
    assistant's tiles shine inside. Both move by transform / opacity only, so
    the bar is never repainted for them. */
+:root { --ai-face: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--viz-2) 85%, black) 55%, color-mix(in srgb, var(--viz-4) 70%, black)); }
 .nav-ai {
   position: relative; flex-shrink: 0; display: grid; width: 34px; height: 34px; border-radius: 10px;
   transition: transform 0.12s ease, filter 0.15s ease;
@@ -1381,7 +1387,7 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 .nav-ai-face {
   position: relative; overflow: hidden; isolation: isolate; display: grid; place-items: center; border-radius: inherit;
   color: #fff;
-  background: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--viz-2) 85%, black) 55%, color-mix(in srgb, var(--viz-4) 70%, black));
+  background: var(--ai-face);
   border: 1px solid rgb(255 255 255 / 0.35);
 }
 /* the light is the rows' and tiles' sweep (.ai-cap::after, declared further
@@ -1403,6 +1409,28 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 @keyframes nav-ai-sweep { 0% { transform: translateX(0) skewX(-18deg); } 45%, 100% { transform: translateX(445%) skewX(-18deg); } }
 @keyframes nav-ai-glow { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .nav-ai::before, .nav-ai-face::after { animation: none; } }
+/* the assistant's mark at a table's top-right corner (components/TableAiExport):
+   a small tile in the bar button's colours that sends the table to the
+   assistant for an Excel. Fixed over the page, under the bar and the windows;
+   in a dialog, over it. The first header row's last cell leaves it room. */
+.table-ai-spot { position: fixed; z-index: 28; display: flex; }
+.table-ai-spot.table-ai-over { z-index: 51; }
+.table-ai {
+  display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--r-sm);
+  color: #fff; background: var(--ai-face); border: 1px solid rgb(255 255 255 / 0.35);
+  box-shadow: var(--shadow-md); opacity: 0.9; cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+.table-ai:hover, .table-ai:focus-visible, .table-ai[aria-busy="true"] { opacity: 1; }
+.table-ai:disabled:not([aria-busy="true"]) { opacity: 0.45; cursor: default; }
+@media (hover: hover) { .table-ai:not(:disabled):hover { transform: scale(1.1); } }
+.table-ai:active { transform: scale(0.95); }
+.table-ai:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+/* why a table could not be sent: the tooltip's bubble, ending under the mark */
+.table-ai-note { max-width: 260px; transform: translateX(-100%); }
+@media screen {
+  html.table-ai-on :is(main, [role=dialog]) table:not(.ai-pop table, [role=menu] table, [data-ai-skip] table, table table) > thead > tr:first-child > :last-child { padding-inline-end: 32px; }
+}
 .ai-overlay { position: fixed; inset: 0; z-index: 36; background: rgb(0 0 0 / 0.45); backdrop-filter: blur(2px); animation: drawerfade 0.18s ease-out; }
 .ai-pop { position: fixed; z-index: 37; display: flex; flex-direction: column; background: var(--surface); color: var(--foreground); overflow: hidden; }
 /* docked (the assistant, the inbox or the chat): top to bottom on the right, as wide as dragged (--ai-dock, set

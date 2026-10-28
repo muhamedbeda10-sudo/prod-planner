@@ -7,6 +7,7 @@ import { AutomationTicker } from "@/components/AutomationTicker";
 import { AiPanel, AiPanelProvider } from "@/components/AiPanel";
 import { TableFill } from "@/components/TableFill";
 import { AskAiAnywhere } from "@/components/AskAi";
+import { TableAiExport } from "@/components/TableAiExport";
 import { InboxAlerts } from "@/components/InboxAlerts";
 import { InboxPanel, InboxPanelProvider } from "@/components/InboxPanel";
 import { TouchLongPress } from "@/components/TouchLongPress";
@@ -105,6 +106,7 @@ export default async function RootLayout({
           {user && <TableFill />}
           {user && <AiPanel isOwner={user.isOwner} />}
           {user && <AskAiAnywhere />}
+          {user && <TableAiExport />}
           {user && <InboxPanel />}
           {user && <InboxAlerts initial={{ unread: inbox.unread, latestId: inbox.latestId }} />}
         </main>

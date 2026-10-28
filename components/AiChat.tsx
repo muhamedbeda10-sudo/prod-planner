@@ -22,7 +22,7 @@ import { composeQuickQuestion, quickActionsFor, type AiQuickAction } from "@/lib
 import { durationText } from "@/lib/domain/format";
 import { AI_FILE_ACCEPT, AI_FILE_LIMITS, AI_IMAGE_MAX_SIDE, AI_IMAGE_QUALITY, SCAN_SHEET_QUESTION, fileSizeText } from "@/lib/domain/aiFiles";
 import { compressImage } from "@/lib/imageCompress";
-import { onHandedQuestion, takeHandedQuestion } from "@/lib/aiAsk";
+import { onHandedQuestion, takeHandedQuestion, type HandedFile, type HandedQuestion } from "@/lib/aiAsk";
 import type { AiActionView } from "@/lib/domain/aiActions";
 import type { AiChatStatus } from "@/lib/server/ai/panel";
 import { captureAiPage } from "@/lib/domain/aiScreen";
@@ -97,12 +97,7 @@ export interface ListResult {
 }
 
 /** A file attached and kept, waiting for the question it goes with. */
-interface Pending {
-  id: number;
-  name: string;
-  kind: string;
-  size: number;
-}
+type Pending = HandedFile;
 
 export type { AiChatStatus };
 
@@ -190,13 +185,16 @@ export function AiChat({
   // a question handed over from the page (a cockpit decision's "Ask"): in a
   // new chat, in the box beside any draft, ready to send — taken when the
   // chat is made, when one is handed over, and once an answer being written
-  // ends (never into it). A right-click's "Ask AI" is sent as soon as the new
+  // ends (never into it). A right-click's "Ask AI" — and a table sent with
+  // the AI mark at its corner, with its file — is sent as soon as the new
   // chat is clear — unless the box holds a draft or files of the person's
   // own, which it would carry off: then it waits in the box like the rest.
-  const [autoAsk, setAutoAsk] = useState<string | null>(null);
+  const [autoAsk, setAutoAsk] = useState<HandedQuestion | null>(null);
   /** In the box beside any draft, ready to send. */
-  const putInBox = (q: string) => {
+  const putInBox = (q: string, files: Pending[] = []) => {
     setInput((draft) => (draft.trim() ? `${draft.trimEnd()}\n\n${q}` : q));
+    // a handed file joins the person's own — past the limit, sending says so
+    if (files.length > 0) setPending((all) => [...all, ...files.filter((f) => !all.some((a) => a.id === f.id))]);
     // the window may still be opening: focus once it shows
     requestAnimationFrame(() => box.current?.focus());
   };
@@ -206,8 +204,8 @@ export function AiChat({
     const h = takeHandedQuestion();
     if (!h) return;
     if (turns.length > 0 || activeId !== null) newChat();
-    if (h.explain && !input.trim() && pending.length === 0) setAutoAsk(h.question);
-    else putInBox(h.question);
+    if ((h.explain || h.files.length > 0) && !input.trim() && pending.length === 0) setAutoAsk(h);
+    else putInBox(h.question, h.files);
   };
   useEffect(() => {
     takeHanded.current();
@@ -466,13 +464,13 @@ export function AiChat({
 
   /** Ask — with the files attached in the box, or (asking again) the ones
    *  that went with the question the first time. */
-  async function askQuestion(text: string, again?: { id: number; name: string; kind: string }[], o: { explain?: boolean } = {}) {
+  async function askQuestion(text: string, again?: { id: number; name: string; kind: string; size?: number }[], o: { explain?: boolean } = {}) {
     const question = text.trim();
     if (!question || busy || sending.current || !canAsk || uploading > 0) return;
     sending.current = true;
     following.current = true;
     setShowLatest(false);
-    const sent: Pending[] = again ? again.map((f) => ({ ...f, size: 0 })) : pending;
+    const sent: Pending[] = again ? again.map((f) => ({ ...f, size: f.size ?? 0 })) : pending;
     setInput("");
     setPending([]);
     setFileErr(null);
@@ -520,7 +518,8 @@ export function AiChat({
   }
 
   // "Ask AI": sent once the new chat it was handed into has cleared — to
-  // explain only (the reading tools alone). Something in the way by then (a
+  // explain only (the reading tools alone); a table sent from a screen, with
+  // its file, as a question like any other. Something in the way by then (a
   // cap reached, a file on its way): it waits in the box instead.
   const askRefFn = useRef(askQuestion);
   askRefFn.current = askQuestion;
@@ -528,8 +527,8 @@ export function AiChat({
     if (autoAsk === null || activeId !== null || turns.length > 0) return;
     const q = autoAsk;
     setAutoAsk(null);
-    if (busy || sending.current || !canAsk || uploading > 0 || pending.length > 0) putInBox(q);
-    else void askRefFn.current(q, undefined, { explain: true });
+    if (busy || sending.current || !canAsk || uploading > 0 || pending.length > 0) putInBox(q.question, q.files);
+    else void askRefFn.current(q.question, q.files.length > 0 ? q.files : undefined, { explain: q.explain });
   }, [autoAsk, activeId, turns.length, busy, canAsk, uploading, pending.length]);
 
   // what the assistant can do: a tile's form, then its question — sent at

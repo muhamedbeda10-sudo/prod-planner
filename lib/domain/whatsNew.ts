@@ -32,6 +32,21 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The page itself no longer scrolls on a laptop screen with the table scrolling inside it. The Transformers | LV Panels switch, the filters, Group by SOI, Columns and the upload now share one bar, and each figure of the summary sits on one line with its note — so the table runs to the bottom of the window as before and scrolls on its own.",
   },
   {
+    id: "2026-10-28-required-teal-fins-plain",
+    dateISO: "2026-10-28",
+    title: "Required wears the teal now; Fins goes plain",
+    where: "Plan Tracker — Transformers and LV Panels",
+    href: "/tracker",
+    body: "The teal moved from Fins to Required: the Required column now reads in its own teal down the whole sheet — header, order rows and merged rows — on the transformers' and the LV panels' trackers, so the figure every stage is measured against is found at a glance. Fins is a plain column like the other specs.",
+  },
+  {
+    id: "2026-10-28-table-ai-export",
+    dateISO: "2026-10-28",
+    title: "Any table goes to Excel through the assistant, from the mark at its corner",
+    where: "Every page with a table → the small AI tile at the table's top-right corner",
+    body: "Every table now carries the assistant's small tile at its top-right corner. Click it and the table, as you see it with your filters and sort, goes to the assistant in a new chat. The assistant asks which columns you want — all of them, or which ones — then gives you the Excel to download or print, with a Total row or a title if you ask for one.",
+  },
+  {
     id: "2026-10-28-material-plan-month-columns",
     dateISO: "2026-10-28",
     title: "The Material sheet filters by plan month, adds it up, and keeps the columns you pick",
