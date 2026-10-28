@@ -101,6 +101,14 @@ function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
   );
 }
 
+/** Plan month, on either line's sheet: not from the sheet — read off the Plan Tracker. */
+const planCol = <K extends string>(): ColDef<K> => ({
+  key: "plan" as K, name: "Plan month",
+  th: { label: "Plan month", hint: "The monthly plan the line's order is in on the Plan Tracker — found by its MO, else its SOI; a line with neither, by its BOM. +n: it sits in more plans too (an order carried over, or a SOI / BOM with orders in several)" },
+  td: "p-2 text-xs",
+  cell: (l) => <PlanCell months={l.planMonths} match={l.planMatch} />,
+});
+
 const MATCH_WORD: Record<MaterialPlanMatch, string> = { mo: "MO", soi: "SOI", bom: "BOM" };
 
 /** The monthly plans the line's order was in: the newest, and +n for the
@@ -111,7 +119,9 @@ function PlanCell({ months, match }: { months: string[]; match: MaterialPlanMatc
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap" title={`${months.join(" · ")}${match ? ` — matched on its ${MATCH_WORD[match]}` : ""}`}>
       {months[0]}
-      {months.length > 1 && <span className="pill pill-muted tabnum">+{months.length - 1}</span>}
+      {months.length > 1 && <span className="pill pill-muted tabnum" aria-hidden>+{months.length - 1}</span>}
+      {/* the tooltip's months, for a screen reader */}
+      {months.length > 1 && <span className="sr-only">, also {months.slice(1).join(", ")}</span>}
     </span>
   );
 }
@@ -144,8 +154,6 @@ interface ColDef<K extends string> {
 /** A run of neighbouring columns under one name in the band; its arrow folds
  *  it to the `lead` columns and opens it again. */
 interface ColRun<K extends string> { label: string; cols: K[]; lead: K[] }
-
-const unitsCell = (v: number | null) => <Units v={v} />;
 
 type TrCol =
   | "mtr" | "soi" | "mo" | "bom" | "units" | "plan" | "partCode" | "partName" | "matCode" | "material" | "thk" | "size" | "weight"
@@ -193,9 +201,8 @@ const TR_COLS: ColDef<TrCol>[] = [
       return shared !== null ? <BomLink bom={shared} line={x.product} /> : <span className="text-muted" title={boms.join(", ")}>{boms.length} BOMs</span>;
     } },
   { key: "units", name: "Units", th: { label: "Units", unit: "pcs", full: "Quantity of Units", group: "source", num: true }, td: `p-2 ${NUM} tabnum ltr`,
-    cell: (l) => l.units, head: (g) => unitsCell(sharedOf(g.lines.map((l) => l.units))) },
-  { key: "plan", name: "Plan month", th: { label: "Plan month", hint: "The monthly plan the line's order is in on the Plan Tracker — found by its MO, else its SOI; a line with neither, by its BOM. +n: it sits in more plans too (an order carried over, or a SOI / BOM with orders in several)" }, td: "p-2 text-xs",
-    cell: (l) => <PlanCell months={l.planMonths} match={l.planMatch} />,
+    cell: (l) => l.units, head: (g) => <Units v={sharedOf(g.lines.map((l) => l.units))} /> },
+  { ...planCol<TrCol>(),
     head: (g) => {
       const shared = sharedOf(g.lines.map((l) => l.planMonths.join("|")));
       return shared === null ? <span className="text-muted" title="The lines sit in different plans">…</span> : <PlanCell months={g.lines[0].planMonths} match={g.lines[0].planMatch} />;
@@ -260,8 +267,7 @@ const LV_COLS: ColDef<LvCol>[] = [
   { key: "secItem", name: "Sec item", th: { label: "Sec item", full: "Sec Item", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs tabnum text-muted", cell: (l) => l.materialCode || "—" },
   { key: "planned", name: "Planned", th: { label: "Planned", unit: "pcs", full: "Planned qty", group: "source", num: true }, td: "p-2 text-center tabnum font-bold", cell: (l) => l.units },
   { key: "bom", name: "BOM", th: { label: "BOM", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs", cell: (l, x) => <BomLink bom={l.bom} line={x.product} /> },
-  { key: "plan", name: "Plan month", th: { label: "Plan month", hint: "The monthly plan the order is in on the Plan Tracker — found by its MO, else its SOI; a line with neither, by its BOM. +n: it sits in more plans too" }, td: "p-2 text-xs",
-    cell: (l) => <PlanCell months={l.planMonths} match={l.planMatch} /> },
+  planCol<LvCol>(),
   { key: "material", name: "Material", th: { label: "Material", group: "source" }, td: "p-2 whitespace-nowrap", cell: (l) => l.material },
   { key: "thk", name: "Thickness", th: { label: "Thk", unit: "mm", full: "Thickness", group: "source", num: true }, td: "p-2 text-center tabnum ltr", cell: (l) => l.thicknessMm },
   { key: "size", name: "Sheet size", th: { label: "Sheet size", full: "Sheet Size", group: "source", center: true }, td: "p-2 text-center whitespace-nowrap ltr tabnum", cell: (l) => l.sheetSize },
@@ -296,14 +302,16 @@ const LV_RUNS: ColRun<LvCol>[] = [
   { label: "", cols: ["remarks"], lead: ["remarks"] },
 ];
 
-// every column shows until the person picks otherwise; MO always shows
-const TR_DEFAULT = TR_COLS.map((c) => c.key).filter((k) => k !== "mo");
-const LV_DEFAULT = LV_COLS.map((c) => c.key).filter((k) => k !== "mo");
+/** The column that always shows — what the line is. */
+const ALWAYS = "mo";
+// every column shows until the person picks otherwise
+const TR_DEFAULT = TR_COLS.map((c) => c.key).filter((k) => k !== ALWAYS);
+const LV_DEFAULT = LV_COLS.map((c) => c.key).filter((k) => k !== ALWAYS);
 
 /** The columns shown, in the sheet's order, each pinned identifier with its
  *  place: its left edge after the pinned ones shown before it. */
 function layoutOf<K extends string>(defs: ColDef<K>[], isOn: (k: K) => boolean, stickW: Partial<Record<K, number>>) {
-  const shown = defs.filter((c) => c.key === "mo" || isOn(c.key));
+  const shown = defs.filter((c) => c.key === ALWAYS || isOn(c.key));
   const pinned = shown.filter((c) => stickW[c.key] !== undefined);
   let left = 0;
   const stick = new Map<string, { className: string; style: React.CSSProperties }>();
@@ -341,6 +349,28 @@ function LineRow<K extends string>({ line, layout, x, inGroup, className }: {
 
 // ---- the SOI groups and the totals row ----
 
+/** A row's cells along the shown columns: the columns `cellOf` has nothing
+ *  for (null) run together into one spanning cell, the first such run holding `firstBlank`. */
+function spanCells<K extends string>(cols: ColDef<K>[], cellOf: (c: ColDef<K>, i: number) => React.ReactNode | null, firstBlank: React.ReactNode = null): React.ReactNode[] {
+  const cells: React.ReactNode[] = [];
+  let blank = 0;
+  let filled = false;
+  const flush = (at: string) => {
+    if (blank === 0) return;
+    cells.push(<td key={`blank-${at}`} className="p-2" colSpan={blank}>{filled ? null : firstBlank}</td>);
+    filled = true;
+    blank = 0;
+  };
+  cols.forEach((c, i) => {
+    const cell = cellOf(c, i);
+    if (cell === null) { blank++; return; }
+    flush(c.key);
+    cells.push(cell);
+  });
+  flush("end");
+  return cells;
+}
+
 function SoiGroupRow({ g, open, onToggle, layout, x, soiShown }: {
   g: MaterialSoiGroup; open: boolean; onToggle: () => void; layout: Layout<TrCol>; x: ColCtx;
   /** Whether the SOI column is on — off, the SOI is named in the row's summary instead. */
@@ -367,21 +397,11 @@ function SoiGroupRow({ g, open, onToggle, layout, x, soiShown }: {
   );
   // the columns with nothing to say for the group run together into one
   // cell; the first such run carries the group's summary
-  const cells: React.ReactNode[] = [];
-  let blank = 0;
-  let summarized = false;
-  const flush = (at: string) => {
-    if (blank === 0) return;
-    cells.push(<td key={`blank-${at}`} className="p-2" colSpan={blank}>{summarized ? null : summary}</td>);
-    summarized = true;
-    blank = 0;
-  };
-  layout.shown.forEach((c, i) => {
-    if (!c.head) { blank++; return; }
-    flush(c.key);
+  const cells = spanCells(layout.shown, (c, i) => {
+    if (!c.head) return null;
     const st = layout.stick.get(c.key);
     const body = c.head(g, x);
-    cells.push(
+    return (
       <td key={c.key} className={`${typeof c.td === "string" ? c.td : `p-2 ${NUM} emph`} ${st?.className ?? ""}`} style={st?.style}>
         {i === 0 ? (
           <span className="flex items-center gap-1 min-w-0">
@@ -391,25 +411,17 @@ function SoiGroupRow({ g, open, onToggle, layout, x, soiShown }: {
             <span className="min-w-0 flex-1">{body}</span>
           </span>
         ) : body}
-      </td>,
+      </td>
     );
-  });
-  flush("end");
+  }, summary);
   return <tr className={`mat-group ${open ? "is-open" : ""}`}>{cells}</tr>;
 }
 
 /** What the lines on screen add up to, pinned under the sheet: the pinned
  *  block names it, each figure sits under its own column. */
-function TotalRow({ s, count, filtering, layout }: { s: Sums; count: number; filtering: boolean; layout: Layout<TrCol> }) {
-  const cells: React.ReactNode[] = [];
-  let blank = 0;
-  const flush = (at: string) => { if (blank) cells.push(<td key={`blank-${at}`} colSpan={blank} />); blank = 0; };
-  for (const c of layout.shown.slice(layout.block.span)) {
-    if (!c.sum) { blank++; continue; }
-    flush(c.key);
-    cells.push(<td key={c.key} className={`p-2 ${NUM} emph`}>{c.sum(s)}</td>);
-  }
-  flush("end");
+function TotalRow({ s, filtering, layout }: { s: MaterialSummary; filtering: boolean; layout: Layout<TrCol> }) {
+  const count = s.lines;
+  const cells = spanCells(layout.shown.slice(layout.block.span), (c) => (c.sum ? <td key={c.key} className={`p-2 ${NUM} emph`}>{c.sum(s)}</td> : null));
   return (
     <tr>
       <td className="p-2 stick stick-end font-bold" colSpan={layout.block.span} style={layout.block.style}>
@@ -432,14 +444,14 @@ function RunBand<K extends string>({ runs, layout, cols }: { runs: ColRun<K>[]; 
     const pinned = r.cols.every((k) => !shown.has(k) || layout.stick.has(k)) && r.cols.some((k) => layout.stick.has(k));
     return [{
       span,
-      className: `dt-band-run ${pinned ? "stick stick-end" : ""}`,
+      className: pinned ? "stick stick-end" : undefined,
       style: pinned ? layout.block.style : undefined,
       label: rest.length === 0 ? r.label : (
         <FoldButton open={open} onClick={() => cols.toggle(rest)} label={r.label} title={open ? `Fold ${r.label}: hide ${rest.length} of its columns` : `Show ${r.label}'s columns`} />
       ),
     }];
   });
-  return <GroupBand spans={spans} />;
+  return <GroupBand spans={spans} runs />;
 }
 
 // ---- upload the sheet: it updates the table, row by MO ----
@@ -570,9 +582,10 @@ function FilterBar({ lines, filters, onChange, shown, lv, extra }: { lines: Mate
   const sizes = uniq(lines.map((l) => l.sheetSize));
   // the monthly plans the lines' orders were in, newest first; a saved month
   // no line carries any more keeps its option, so the filter can be read and cleared
-  const planMonths = materialPlanMonthOptions(lines);
-  if (filters.planMonth && filters.planMonth !== NO_PLAN_MONTH && !planMonths.includes(filters.planMonth)) planMonths.unshift(filters.planMonth);
-  const hasNoPlan = filters.planMonth === NO_PLAN_MONTH || lines.some((l) => l.planMonths.length === 0);
+  const lineMonths = useMemo(() => materialPlanMonthOptions(lines), [lines]);
+  const anyUnplanned = useMemo(() => lines.some((l) => l.planMonths.length === 0), [lines]);
+  const planMonths = filters.planMonth && filters.planMonth !== NO_PLAN_MONTH && !lineMonths.includes(filters.planMonth) ? [filters.planMonth, ...lineMonths] : lineMonths;
+  const hasNoPlan = filters.planMonth === NO_PLAN_MONTH || anyUnplanned;
   const set = (patch: Partial<MaterialFilters>) => onChange({ ...filters, ...patch });
   const active = JSON.stringify(filters) !== JSON.stringify(EMPTY_MATERIAL_FILTERS);
   return (
@@ -646,7 +659,7 @@ function SummaryStrip({ s, lv, planMonth }: { s: MaterialSummary; lv: boolean; p
 /** Columns ▾ — every column on or off, kept on the account; what the headers' colours mean below. */
 function MaterialColumns<K extends string>({ cols, defs }: { cols: Columns<K>; defs: ColDef<K>[] }) {
   return (
-    <ColumnMenu cols={cols} list={defs.filter((c) => c.key !== "mo").map((c) => ({ key: c.key, label: c.name }))} fixed="MO" fixedTitle="MO always shows — it is what the line is">
+    <ColumnMenu cols={cols} list={defs.filter((c) => c.key !== ALWAYS).map((c) => ({ key: c.key, label: c.name }))} fixed="MO" fixedTitle="MO always shows — it is what the line is">
       <div className="text-xs text-muted space-y-1">
         <GroupLegend groups={["source", "computed"]} />
         <p>The arrows on the band over the headers fold a run of columns and open it again.</p>
@@ -681,9 +694,12 @@ export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}
   // each person's columns, one set per line's sheet, kept on their account
   const trCols = useColumns<TrCol>("material:cols", prefs["material:cols"], TR_DEFAULT);
   const lvCols = useColumns<LvCol>("material:colsLv", prefs["material:colsLv"], LV_DEFAULT);
-  const trLayout = layoutOf(TR_COLS, trCols.isOn, STICK_W);
-  const lvLayout = layoutOf(LV_COLS, lvCols.isOn, {});
-  const x: ColCtx = { odoo: odooByMo, rates: odooRates, product };
+  // rebuilt only when the columns picked change, not on every keystroke in the search
+  const trOn = TR_COLS.map((c) => trCols.isOn(c.key)).join();
+  const lvOn = LV_COLS.map((c) => lvCols.isOn(c.key)).join();
+  const trLayout = useMemo(() => layoutOf(TR_COLS, trCols.isOn, STICK_W), [trOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lvLayout = useMemo(() => layoutOf(LV_COLS, lvCols.isOn, {}), [lvOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const x = useMemo<ColCtx>(() => ({ odoo: odooByMo, rates: odooRates, product }), [odooByMo, odooRates, product]);
   // the transformers' sheet reads by SOI, its MOs under it; the switch puts
   // the plain sheet order back. A folded SOI stays folded while the page is open.
   const [bySoi, setBySoi] = useState(true);
@@ -730,7 +746,7 @@ export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}
           />
         ) : lv ? (
           <TableFrame>
-            <table className="erp-table mat-runs w-full border-collapse">
+            <table className="erp-table w-full border-collapse">
               <thead>
                 <RunBand runs={LV_RUNS} layout={lvLayout} cols={lvCols} />
                 <tr className="text-left align-bottom">
@@ -744,7 +760,7 @@ export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}
           </TableFrame>
         ) : (
           <TableFrame>
-            <table className="erp-table mat-runs w-full border-collapse">
+            <table className="erp-table w-full border-collapse">
               <thead>
                 <RunBand runs={TR_RUNS} layout={trLayout} cols={trCols} />
                 <tr className="text-left align-bottom">
@@ -767,7 +783,7 @@ export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}
                   )))}
               </tbody>
               <tfoot className="mat-total">
-                <TotalRow s={summary} count={shown.length} filtering={filtering} layout={trLayout} />
+                <TotalRow s={summary} filtering={filtering} layout={trLayout} />
               </tfoot>
             </table>
           </TableFrame>

@@ -17,7 +17,7 @@ import { getLvTrace } from "@/lib/server/lvTrace";
 import { getLvTracker } from "@/lib/server/lvTracker";
 import { getMasterTracker } from "@/lib/server/masterTracker";
 import { getMaterialData } from "@/lib/server/material";
-import { EMPTY_MATERIAL_FILTERS, NO_PLAN_MONTH, filterMaterialLines, materialPlanMonthOptions } from "@/lib/domain/material";
+import { EMPTY_MATERIAL_FILTERS, NO_PLAN_MONTH, filterMaterialLines, materialPlanMonthOptions, resolvePlanMonth } from "@/lib/domain/material";
 import { getMaterialDashboard } from "@/lib/server/fabAnalytics";
 import { getOdooDashboard, getOdooData } from "@/lib/server/odoo";
 import { getPhysicalStock } from "@/lib/server/physicalStock";
@@ -405,15 +405,15 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
     case "material": {
       const all = (await withLine(line, () => getMaterialData(""))).lines;
       // the month as the lines carry it, whatever case it was asked in
-      const asked = i.planMonth?.trim() ?? "";
       const months = materialPlanMonthOptions(all);
-      const planMonth = asked.toLowerCase() === "none" ? "none" : (months.find((m) => m.toLowerCase() === asked.toLowerCase()) ?? asked);
-      if (planMonth && planMonth !== "none" && !months.includes(planMonth)) return { error: `No line of the ${line} Material sheet is in the plan month "${asked}". The plan months on it: ${months.join(", ") || "none"}.` };
-      const lines = filterMaterialLines(all, { ...EMPTY_MATERIAL_FILTERS, planMonth: planMonth === "none" ? NO_PLAN_MONTH : planMonth });
+      const planMonth = resolvePlanMonth(i.planMonth ?? "", months);
+      if (planMonth === null) return { error: `No line of the ${line} Material sheet is in the plan month "${i.planMonth}". The plan months on it: ${months.join(", ") || "none"}.` };
+      const lines = filterMaterialLines(all, { ...EMPTY_MATERIAL_FILTERS, planMonth });
       // Odoo's BOM figure beside the sheet's, as the screen shows it (transformers)
       const rates = line === "LV" ? {} : await getPartRates(lines.filter((l) => l.partCode.trim()).map((l) => ({ partCode: l.partCode, bom: l.bom })));
-      const monthSlug = planMonth ? `-${planMonth.toLowerCase().replace(/\s+/g, "-")}` : "";
-      return { rows: materialRows(lines, line, rates), name: `material-sheet${line === "LV" ? "-lv" : ""}${monthSlug}`, sheet: "Material", scope: `${line} Material sheet${planMonth ? `, plan month ${planMonth} (${lines.length} of ${all.length} lines)` : ""}` };
+      const monthName = planMonth === NO_PLAN_MONTH ? "not in a plan" : planMonth;
+      const monthSlug = monthName ? `-${monthName.toLowerCase().replace(/\s+/g, "-")}` : "";
+      return { rows: materialRows(lines, line, rates), name: `material-sheet${line === "LV" ? "-lv" : ""}${monthSlug}`, sheet: "Material", scope: `${line} Material sheet${monthName ? `, plan month ${monthName} (${lines.length} of ${all.length} lines)` : ""}` };
     }
     case "material_dashboard": {
       const req = materialScopeRequest(i, today);

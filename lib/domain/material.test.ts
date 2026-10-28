@@ -3,7 +3,7 @@ import {
   normalizeMaterialType, normalizeSheetSize, parseSheetNumber, sheetNumberOr, sheetsForJob, sheetsDifference,
   actualPerUnit, sheetsForProduced, parseNestingTracker, materialKey, round3, partNameFor,
   filterMaterialLines, EMPTY_MATERIAL_FILTERS, groupMaterialBySoi,
-  materialPlanIndex, materialPlanMonths, materialPlanMonthOptions, materialSummary, sheetsConsumed, NO_PLAN_MONTH,
+  materialPlanIndex, materialPlanMonths, materialPlanMonthOptions, materialSummary, sheetsConsumed, resolvePlanMonth, NO_PLAN_MONTH,
   type MaterialLineView,
 } from "./material";
 import { monthLabelFromInput, monthInputFromLabel, monthLabelSortKey } from "./dates";
@@ -486,5 +486,20 @@ describe("sheetsConsumed", () => {
     expect(sheetsConsumed({ forProduced: 2.5, producedUsed: 4, sheetsPerUnit: 1 })).toBe(2.5);
     expect(sheetsConsumed({ forProduced: null, producedUsed: 4, sheetsPerUnit: 0.33333 })).toBe(1.3333);
     expect(sheetsConsumed({ forProduced: null, producedUsed: null, sheetsPerUnit: 1 })).toBeNull();
+  });
+});
+
+describe("resolvePlanMonth", () => {
+  const months = ["October 2026", "September 2026"];
+  it("finds the lines' own label whatever case it was asked in", () => {
+    expect(resolvePlanMonth(" october 2026 ", months)).toBe("October 2026");
+  });
+  it("reads none (or the mark) as the lines no plan carries, and nothing as any month", () => {
+    expect(resolvePlanMonth("None", months)).toBe(NO_PLAN_MONTH);
+    expect(resolvePlanMonth(NO_PLAN_MONTH, months)).toBe(NO_PLAN_MONTH);
+    expect(resolvePlanMonth("  ", months)).toBe("");
+  });
+  it("refuses a month no line carries", () => {
+    expect(resolvePlanMonth("March 2020", months)).toBeNull();
   });
 });

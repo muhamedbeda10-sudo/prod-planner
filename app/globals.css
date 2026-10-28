@@ -1233,11 +1233,11 @@ main input.cell-edit[type="number"]::-webkit-inner-spin-button, main input.cell-
 }
 /* a gap between runs, so two neighbouring groups read as two */
 main table thead tr.dt-band th + th[data-group] { border-left: 3px solid var(--surface-2); }
-/* the MATERIAL sheet's band names runs of columns, not where figures come
-   from: the same gap between runs, and each header carries its own source /
-   computed hairline under it instead (a background, so a pinned header's edge shadow stays) */
-main table thead tr.dt-band th.dt-band-run + th.dt-band-run { border-left: 3px solid var(--surface-2); }
-main table.mat-runs thead .dt-th[data-group] { background-image: linear-gradient(var(--grp), var(--grp)); background-size: 100% 2px; background-position: bottom; background-repeat: no-repeat; }
+/* a band of named runs of columns (GroupBand runs): the same gap between
+   runs, and each header carries its own source / computed hairline instead
+   (a background, so a pinned header's edge shadow stays) */
+main table thead tr.dt-band[data-runs] th + th { border-left: 3px solid var(--surface-2); }
+main table thead:has(tr.dt-band[data-runs]) .dt-th[data-group] { background-image: linear-gradient(var(--grp), var(--grp)); background-size: 100% 2px; background-position: bottom; background-repeat: no-repeat; }
 
 /* ---- the Material sheet: an SOI's head row, and the totals pinned under it ---- */
 .erp-table tbody tr.mat-group { background-color: var(--surface-3); }

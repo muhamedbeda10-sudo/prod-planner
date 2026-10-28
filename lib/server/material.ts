@@ -61,7 +61,7 @@ function toView(r: Row, lv: boolean, plans: MaterialPlanIndex, producedAuto: num
 export async function getMaterialData(month: string): Promise<MaterialPageData> {
   const line = await getActiveLine(); // one product line at a time
   const lv = line === "LV";
-  const [rows, odoo, orders] = await Promise.all([
+  const [rows, odoo, orders, painted] = await Promise.all([
     prisma.materialUsage.findMany({
       where: month === "all" ? { line } : { month, line },
       // the sheet's own order — its rows come back the way they were laid out;
@@ -71,8 +71,9 @@ export async function getMaterialData(month: string): Promise<MaterialPageData> 
     prisma.odooEntry.findMany({ where: { line, odooMo: { not: "" } }, select: { odooMo: true, status: true }, orderBy: { date: "asc" } }),
     // every order of the line, closed ones too: a month's sheet stays that month's
     prisma.masterOrder.findMany({ where: { line }, select: { mo: true, soi: true, bom: true, months: true, source: true, planQty: true } }),
+    lv ? prisma.handoverEntry.groupBy({ by: ["mo"], where: { dept: "Painting", item: LV_ITEM, mo: { not: null } }, _sum: { qty: true } }) : null,
   ]);
-  const paintedByMo = lv ? await lvPaintedByMo(orders) : new Map<string, number>();
+  const paintedByMo = painted ? lvPaintedByMo(orders, painted) : new Map<string, number>();
   const plans = materialPlanIndex(orders.map((o) => ({ ...o, months: (o.months || o.source || "").split(",") })));
   const lines = rows.map((r) => toView(r, lv, plans, lv && r.mo ? (paintedByMo.get(r.mo) ?? 0) : null));
 
@@ -86,8 +87,7 @@ export async function getMaterialData(month: string): Promise<MaterialPageData> 
 /** Each panel order's MO → the panels the tracker says were painted on it
  *  (never more than the order) — the produced count the LV tab costs its
  *  lines by where the sheet gives none. */
-async function lvPaintedByMo(orders: readonly { mo: string; planQty: number }[]): Promise<Map<string, number>> {
-  const painted = await prisma.handoverEntry.groupBy({ by: ["mo"], where: { dept: "Painting", item: LV_ITEM, mo: { not: null } }, _sum: { qty: true } });
+function lvPaintedByMo(orders: readonly { mo: string; planQty: number }[], painted: readonly { mo: string | null; _sum: { qty: number | null } }[]): Map<string, number> {
   const by = new Map(painted.map((p) => [p.mo!, Math.max(0, p._sum.qty ?? 0)]));
   return new Map(orders.map((o) => [o.mo, Math.min(o.planQty, by.get(o.mo) ?? 0)]));
 }

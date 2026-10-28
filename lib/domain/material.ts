@@ -487,6 +487,8 @@ export function materialPlanIndex(orders: readonly MaterialPlanOrder[]): Materia
     add(idx.bySoi, planKey(o.soi), months);
     add(idx.byBom, planKey(o.bom), months);
   }
+  // each key's months sorted once, newest first — every line of it reads the same array
+  for (const m of [idx.byMo, idx.bySoi, idx.byBom]) for (const [k, v] of m) m.set(k, sortPlanMonths(v));
   return idx;
 }
 
@@ -506,13 +508,23 @@ export function sortPlanMonths(months: Iterable<string>): string[] {
  * would file it under months that are not its own.
  */
 export function materialPlanMonths(l: Pick<MaterialLineInput, "mo" | "soi" | "bom">, idx: MaterialPlanIndex): { months: string[]; match: MaterialPlanMatch | null } {
+  const byMo = idx.byMo.get(planKey(l.mo));
+  if (byMo) return { months: byMo, match: "mo" };
+  const bySoi = idx.bySoi.get(planKey(l.soi));
+  if (bySoi) return { months: bySoi, match: "soi" };
   const own = !!planKey(l.mo) || !!planKey(l.soi);
-  const tries: [MaterialPlanMatch, Map<string, string[]>, string][] = own ? [["mo", idx.byMo, l.mo], ["soi", idx.bySoi, l.soi]] : [["bom", idx.byBom, l.bom]];
-  for (const [match, map, v] of tries) {
-    const months = map.get(planKey(v));
-    if (months && months.length > 0) return { months: sortPlanMonths(months), match };
-  }
-  return { months: [], match: null };
+  const byBom = own ? undefined : idx.byBom.get(planKey(l.bom));
+  return byBom ? { months: byBom, match: "bom" } : { months: [], match: null };
+}
+
+/** A plan month as asked (the assistant, a typed value): the lines' own
+ *  label whatever its case, NO_PLAN_MONTH for "none" (or the mark itself), ""
+ *  for nothing asked — and null for a month no line carries. */
+export function resolvePlanMonth(asked: string, options: readonly string[]): string | null {
+  const a = asked.trim();
+  if (!a) return "";
+  if (a.toLowerCase() === "none" || a === NO_PLAN_MONTH) return NO_PLAN_MONTH;
+  return options.find((m) => m.toLowerCase() === a.toLowerCase()) ?? null;
 }
 
 /** The plan months the lines carry, newest first — the filter's options. */
@@ -552,12 +564,12 @@ export function materialSummary(lines: readonly MaterialLineView[]): MaterialSum
   return {
     lines: lines.length,
     orders: orders.size,
-    forJob: Number(lines.reduce((a, l) => a + l.forJob, 0).toFixed(4)),
+    forJob: round4(lines.reduce((a, l) => a + l.forJob, 0)),
     sheetsUsed: sumOf(lines.map((l) => l.sheetsUsed)),
     actualWeightKg: sumOf(lines.map((l) => l.actualWeightKg)),
     difference: sumOf(lines.map((l) => l.difference)),
     overLines: lines.filter((l) => l.difference !== null && l.difference < 0).length,
-    units: Number(lines.reduce((a, l) => a + l.units, 0).toFixed(4)),
+    units: round4(lines.reduce((a, l) => a + l.units, 0)),
     forProduced: sumOf(lines.map(sheetsConsumed)),
     remainingUnits: sumOf(lines.map((l) => l.remainingUnits)),
   };
