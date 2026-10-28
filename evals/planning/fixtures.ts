@@ -36,7 +36,7 @@ function panel(mo: string, required: number, paint: number, overrides: Partial<L
     fgCode: `FG-${mo}`, secItem: "SEC-PNL", ospEncloser: 0, remarks: null, materialsRemarks: null,
     state: { required, punch: required, bend: required, weld: required, paint, delivered: 0 },
     complete: paint, remaining: required - paint, achievement: paint / required,
-    status: "open", hold: hold(), priority: false, months: ["October 2026"], ...overrides };
+    status: "open", hold: hold(), priority: false, months: ["October 2026"], odooClosed: null, ...overrides };
 }
 export const PANELS: LvTrackerRow[] = [
   panel("LV-A", 10, 4, { product: "USS", urgent: true, state: { required: 10, punch: 10, bend: 8, weld: 6, paint: 4, delivered: 0 } }),

@@ -11,7 +11,7 @@ import { Num, Soi } from "@/components/ui";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
 import { TrackerScope, type TrackerFilter } from "@/components/TrackerScope";
 import { useConfirm } from "@/components/DataTable";
-import { AchCell, ColumnMenu, FoldButton, meterStyle, stageState, stageWords, stickAt, useAccountSet, useColumns } from "@/components/TrackerColumns";
+import { AchCell, ColumnMenu, FoldButton, OdooCell, OdooNotCounted, meterStyle, stageState, stageWords, stickAt, useAccountSet, useColumns } from "@/components/TrackerColumns";
 import { recordLvGroupTotal, recordLvTotal } from "@/app/lv/actions";
 import { closeDeliveredOrders, setOrderHold, setOrderStatus } from "@/app/orders/actions";
 import { holdLabel } from "@/lib/domain/hold";
@@ -22,6 +22,7 @@ import { filterLvTracker, lvStageStats } from "@/lib/domain/trackerSummary";
 import { lvBottleneck } from "@/lib/domain/trackerView";
 import type { UserPrefs } from "@/lib/domain/userPrefs";
 import type { LvTrackerRow } from "@/lib/server/lvTracker";
+import { ODOO_EXACT_FROM_LABEL } from "@/lib/domain/trackerOdoo";
 
 // The Plan Tracker's LV PANELS side.
 //
@@ -114,7 +115,7 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
     left += bomW;
     return { at, req: stickAt(left, REQ_W) };
   })();
-  const tableCols = 1 + COLS.filter((c) => show(c.key)).length + stages.length;
+  const tableCols = 1 + COLS.filter((c) => show(c.key)).length + stages.length + 1; // + Odoo
 
   // the products of the picked plan only — a meter box type is no panel's
   const products = useMemo(
@@ -283,6 +284,22 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
     );
   }
 
+  /** Closed in Odoo, read-only: an order's — or a merged BoM's counted MOs'
+   *  summed. An order planned before ODOO_EXACT_FROM reads — (not counted). */
+  function odooCell(members: LvTrackerRow[], label: string) {
+    const counted = members.filter((m) => m.odooClosed != null);
+    if (counted.length === 0) return <OdooNotCounted className="p-1" />;
+    const part = counted.length < members.length ? ` (${counted.length} of ${members.length} MOs — the others were planned before ${ODOO_EXACT_FROM_LABEL})` : "";
+    return (
+      <OdooCell
+        className="p-1"
+        value={counted.reduce((s, m) => s + (m.odooClosed ?? 0), 0)}
+        of={counted.reduce((s, m) => s + m.state.required, 0)}
+        label={`${label}${part}`}
+      />
+    );
+  }
+
   // ⏸️ hold / release — a held order stays here, yellow, and leaves every
   // stage's worklist until released
   function setHold(mos: string[], hold: boolean, note = "") {
@@ -390,6 +407,7 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
             run(recordLvTotal, fd);
           })
         )}
+        {odooCell([r], r.mo)}
         {show("left") && (
           <td className="p-2 text-center font-semibold tabnum border-l border-border-strong" style={{ color: r.remaining > 0 ? undefined : "var(--ok-fg)" }}>{r.remaining}</td>
         )}
@@ -479,6 +497,7 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
               {stages.map((s) => (
                 <th key={s} className="p-2" title={LV_STAGE_LABEL[s]}>{LV_STAGE_SHORT[s]}</th>
               ))}
+              <th className="p-2 odoo-col" title={`Closed in Odoo — the Done rows of the ODOO log born from each panel's painting. Counted from the ${ODOO_EXACT_FROM_LABEL} plans on; an older order reads —`}>Odoo</th>
               {show("left") && <th className="p-2 border-l border-border-strong" title="Required − painted">Left</th>}
               {show("pct") && (
                 <th className="p-1" title="Painted ÷ required">
@@ -556,6 +575,7 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
                         (delta) => spreadWords(spreadOverGroup(lvGroupMembers(members.map((m) => ({ mo: m.mo, state: m.state })), stage), delta))
                       )
                     )}
+                    {odooCell(members, bom)}
                     {show("left") && <td className="p-2 text-center font-semibold border-l border-border-strong" style={{ color: gReq - gComplete > 0 ? undefined : "var(--ok-fg)" }}><Num v={Math.max(0, gReq - gComplete)} /></td>}
                     {show("pct") && <AchCell ach={gReq > 0 ? gComplete / gReq : null} />}
                     {show("status") && (() => {

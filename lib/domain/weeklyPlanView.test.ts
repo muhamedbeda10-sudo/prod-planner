@@ -49,4 +49,10 @@ describe("weeklyPlanRows", () => {
     const rows = weeklyPlanRows([day([{ bom: "B1", soi: null, description: null, urgent: false, req: 4, items: { TN: cell } }])], ["cut", "finish"]);
     expect(rows).toEqual([{ "Delivery date": "2026-10-27", Project: "B1", SOI: "", Component: "TN", Required: 5, "N/A (not manufactured)": 1, "Already promised earlier": 0, OSP: 0, Fab: 4, Paint: 2 }]);
   });
+
+  it("carries Odoo's closings when the plan was read with them — a figure, or Not tracked", () => {
+    const days = (odoo: number | null) => [day([{ bom: "B1", soi: null, description: null, urgent: false, req: 4, items: { TN: { ...cell, odoo } } }])];
+    expect(weeklyPlanRows(days(3), ["finish"])[0]["Odoo closed"]).toBe(3);
+    expect(weeklyPlanRows(days(null), ["finish"])[0]["Odoo closed"]).toBe("Not tracked");
+  });
 });

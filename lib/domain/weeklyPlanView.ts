@@ -18,6 +18,14 @@ export interface WeeklyPlanCell {
   weld: number;
   finish: number; // Painting, or SHOT BLAST for the core — plus outsourced qty
   delivered: number;
+  // closed in Odoo: the day's orders' Done rows of the ODOO log born from their
+  // own closings, waterfalled and capped like the stages — null when none of
+  // them is planned from ODOO_EXACT_FROM on (not counted), undefined when the
+  // view did not read Odoo (the Cut worklist's, the KPIs')
+  odoo?: number | null;
+  // what `odoo` is measured against: the promise of the counted orders alone
+  // (less than the cell's when it also owes for orders planned before then)
+  odooOf?: number;
   // the orders that owe this component TODAY and can actually receive output
   // (N/A ones left out) — recording a quantity on the cell distributes over them
   mos: string[];
@@ -135,6 +143,8 @@ export function weeklyPlanRows(days: readonly WeeklyPlanDay[], stages: readonly 
           "Already promised earlier": c.over,
           OSP: c.osp,
           ...Object.fromEntries(stages.map((s) => [STAGE_SHORT[s], c[s]])),
+          // closed in Odoo, as the screen's Odoo column — when the plan was read with it
+          ...(c.odoo !== undefined ? { "Odoo closed": c.odoo ?? "Not tracked" } : {}),
         };
       }),
     ),

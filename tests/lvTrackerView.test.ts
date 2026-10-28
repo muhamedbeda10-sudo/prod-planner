@@ -37,7 +37,7 @@ const row = (mo: string, required: number, paint: number, extra: Partial<LvTrack
   state: { required, punch: required, bend: required, weld: required, paint, delivered: 0 },
   complete: paint, remaining: required - paint, achievement: paint / required, status: "open",
   hold: { onHold: false, holdNote: null, holdSinceISO: null, holdBy: null },
-  priority: false, months: ["October 2026"], ...extra,
+  priority: false, months: ["October 2026"], odooClosed: null, ...extra,
 });
 const rows = [
   row("A", 10, 5, { urgent: true }),
@@ -63,6 +63,14 @@ beforeEach(() => {
 });
 
 describe("LV tracker view", () => {
+  it("ends the stages with an Odoo column in Odoo's plum: the count from October 2026 on, — before", () => {
+    const counted = [row("N", 10, 6, { odooClosed: 4 }), row("O", 10, 6, { months: ["September 2026"] })];
+    const html = renderToStaticMarkup(createElement(LvTrackerTable, { rows: counted, hasClosed: false, closedTotal: 0, editableStages: [], canStatus: false }));
+    expect(html).toMatch(/<th class="p-2 odoo-col"[^>]*>Odoo<\/th>/);
+    expect(html).toContain('title="Closed in Odoo · N: 4 of 10 — 6 left"');
+    expect(html).toContain("Planned before October 2026");
+  });
+
   it("keeps selected filters visible outside the phone's folded toolbar", () => {
     filters["lvtracker.q"] = "BOM-A";
     filters["lvtracker.month"] = "October 2026";

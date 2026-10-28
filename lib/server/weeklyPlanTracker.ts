@@ -1,6 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { loadMasterOrders } from "./loads";
+import { odooClosedOf } from "./odooClosings";
+import { isOdooExactOrder } from "@/lib/domain/trackerOdoo";
 import { ITEMS, isPaintExempt, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
 import { dayNumber, factoryToday, toISODate } from "@/lib/domain/dates";
 import { owedAcrossDays, promiseCeiling } from "@/lib/domain/planPromises";
@@ -54,7 +56,7 @@ const WEEKDAY = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
 /** One weekly plan laid out by delivery day, each project carrying how much of
  *  that day's promise each department has covered. `planNo` defaults to the
  *  newest plan, so the page opens on the current week with nothing to pick. */
-export async function getWeeklyPlanTracker(planNo?: number | null): Promise<WeeklyPlanTracker> {
+export async function getWeeklyPlanTracker(planNo?: number | null, { odoo = false }: { odoo?: boolean } = {}): Promise<WeeklyPlanTracker> {
   const plans = await prisma.plan.findMany({
     where: { planNo: { gt: 0 } }, // planNo 0 is the synthetic setup-balances bucket
     orderBy: { planNo: "desc" },
@@ -79,13 +81,20 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
   // looked up here, so the ledger is read for these keys and no further.
   const planMos = [...new Set(schedules.map((s) => s.mo).filter(Boolean))];
   const planBoms = [...new Set(schedules.map((s) => s.bom).filter(Boolean))];
-  const sums = await prisma.handoverEntry.groupBy({
-    by: ["mo", "bom", "dept", "item"],
-    where: { OR: [{ mo: { in: planMos } }, { OR: [{ mo: null }, { mo: "" }], bom: { in: planBoms } }] },
-    _sum: { qty: true },
-  });
-
   const orderOf = new Map(orders.map((o) => [o.mo, o]));
+  // Odoo's closings of the plan's orders planned from October 2026 on — counted
+  // exactly, as on the monthly tracker; the older orders' are not counted here.
+  // Only the Plan Tracker's own view asks (the Cut worklist and the KPIs do not).
+  const exactMos = new Set(odoo ? planMos.filter((mo) => { const o = orderOf.get(mo); return !!o && o.line !== "LV" && isOdooExactOrder(o); }) : []);
+  const [sums, odooClosed] = await Promise.all([
+    prisma.handoverEntry.groupBy({
+      by: ["mo", "bom", "dept", "item"],
+      where: { OR: [{ mo: { in: planMos } }, { OR: [{ mo: null }, { mo: "" }], bom: { in: planBoms } }] },
+      _sum: { qty: true },
+    }),
+    odooClosedOf([...exactMos], "TR"),
+  ]);
+
   // manual N/A per order: components the order does not need at all. The weekly
   // sheet may still schedule them — those promises stay VISIBLE but are never
   // counted as work owed (they will not be manufactured).
@@ -145,7 +154,8 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
   // alloc "mo|item|day" → the slice of the order's output this day may claim.
   // `osp` waterfalls exactly like the stage figures, so a cell can SAY how much
   // of its coverage was made outside rather than by our departments.
-  type Slice = { cut: number; weld: number; fin: number; delivered: number; osp: number };
+  // `owed` is the line's promise, so a cell can size Odoo's share to its counted orders
+  type Slice = { cut: number; weld: number; fin: number; delivered: number; osp: number; odoo: number; owed: number };
   const alloc = new Map<string, Slice>();
   // "<dayNumber>|<bom>|<item>" -> pcs this day's promise repeats from an earlier
   // day of the SAME plan. The order's quantity is the ceiling: a sheet that
@@ -164,6 +174,8 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
       fin: (isPaintExempt(item as Item) ? g(mo, "ShotBlast", item) : g(mo, "Painting", item)) + osp,
       delivered: g(mo, "Delivered", item),
       osp,
+      odoo: odooClosed(mo, item),
+      owed: 0,
     };
     // the order's own quantity is the ceiling on what this plan can ask for
     const owedLines = owedAcrossDays(lines.map((l) => l.qty), promiseCeiling(o, item));
@@ -175,8 +187,8 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
       }
       // a repeat owes nothing, so it claims nothing — otherwise it would eat
       // output a later real promise still needs
-      const slice: Slice = { cut: 0, weld: 0, fin: 0, delivered: 0, osp: 0 };
-      for (const f of ["cut", "weld", "fin", "delivered", "osp"] as const) {
+      const slice: Slice = { cut: 0, weld: 0, fin: 0, delivered: 0, osp: 0, odoo: 0, owed: owedLine };
+      for (const f of ["cut", "weld", "fin", "delivered", "osp", "odoo"] as const) {
         slice[f] = Math.min(pool[f], owedLine);
         pool[f] -= slice[f];
       }
@@ -259,7 +271,7 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
       const owed = req - na - over;
       // each order contributes THIS day's waterfall slice — output already
       // claimed by an earlier promise never shows up again
-      let cut = 0, weld = 0, fin = 0, delivered = 0, osp = 0;
+      let cut = 0, weld = 0, fin = 0, delivered = 0, osp = 0, odooDone = 0, odooOf = 0, odooCounted = false;
       const mos: string[] = [];
       for (const mo of draft.mos) {
         const slice = alloc.get(`${mo}|${it}|${d}`);
@@ -271,6 +283,7 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
         fin += slice.fin;
         delivered += slice.delivered;
         osp += slice.osp;
+        if (exactMos.has(mo)) { odooDone += slice.odoo; odooOf += slice.owed; odooCounted = true; }
       }
       // pieces logged against the project with no order number fill whatever
       // the order-tagged figures left short — they belong to this project and
@@ -290,7 +303,7 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
         delivered = take(delivered, "delivered");
       }
       const cap = (v: number) => Math.min(v, owed);
-      items[it] = { req, na, over, osp: cap(osp), cut: cap(cut), weld: cap(weld), finish: cap(fin), delivered: cap(delivered), mos: mos.sort() };
+      items[it] = { req, na, over, osp: cap(osp), cut: cap(cut), weld: cap(weld), finish: cap(fin), delivered: cap(delivered), ...(odoo ? { odoo: odooCounted ? Math.min(odooDone, odooOf) : null, odooOf: odooCounted ? odooOf : undefined } : {}), mos: mos.sort() };
       rowReq += owed;
       day.covered += cap(fin);
     }

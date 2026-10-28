@@ -116,10 +116,17 @@
   --paint-tint: #f3ecdf;
   --dlvd-tint: #ece3f7;
   /* the tracker's Fins column: it stands between the specs and the components
-     and belongs to neither, so it gets a rose of its own — the one hue none of
-     the stage tints, the status pills or the brand green already speak */
-  --fins-tint: #fae4ee;
-  --fins-fg: #9c2f68;
+     and belongs to neither, so it gets a teal of its own — a hue none of the
+     stage tints, Odoo's plum, the status pills or the brand green speak */
+  --fins-tint: #cdeef1;
+  --fins-fg: #0a5560;
+  /* the trackers' Odoo columns: what Odoo has closed is not a stage of ours,
+     so it reads in Odoo's own plum (#714B67, its title bar) — the header in
+     the plum itself, the cells in a wash of it with the plum as ink */
+  --odoo-head: #714b67;
+  --odoo-head-fg: #ffffff;
+  --odoo-tint: #e4d0de;
+  --odoo-fg: #5e3656;
   /* the shift log's two shifts: a warm sun for the day shift (07:00–16:00),
      an indigo for the night (19:00–07:00) — apart from warn's yellow, which
      marks a worker not set yet. Ink clears 6.5:1 on its wash, 7.7:1 on the
@@ -281,8 +288,12 @@ html.dark {
   --weld-tint: #1e2d40;
   --paint-tint: #352e1e;
   --dlvd-tint: #2e263b;
-  --fins-tint: #33232d;
-  --fins-fg: #e9a6c6;
+  --fins-tint: #183539;
+  --fins-fg: #8fdbe2;
+  --odoo-head: #5e3c55;
+  --odoo-head-fg: #ffffff;
+  --odoo-tint: #3d2737;
+  --odoo-fg: #e2bfd7;
   --shift-day-bg: #3b2a1c;
   --shift-day-fg: #f2b077;
   --shift-night-bg: #2a2748;
@@ -367,6 +378,9 @@ html.dark {
   --color-dlvd-tint: var(--dlvd-tint);
   --color-fins-tint: var(--fins-tint);
   --color-fins-fg: var(--fins-fg);
+  --color-odoo-head: var(--odoo-head);
+  --color-odoo-tint: var(--odoo-tint);
+  --color-odoo-fg: var(--odoo-fg);
   --color-shift-day-bg: var(--shift-day-bg);
   --color-shift-day-fg: var(--shift-day-fg);
   --color-shift-night-bg: var(--shift-night-bg);
@@ -763,8 +777,12 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
     --weld-tint: #dfeaf3;
     --paint-tint: #f3ecdf;
     --dlvd-tint: #ece3f7;
-    --fins-tint: #fae4ee;
-    --fins-fg: #9c2f68;
+    --fins-tint: #cdeef1;
+    --fins-fg: #0a5560;
+    --odoo-head: #714b67;
+    --odoo-head-fg: #ffffff;
+    --odoo-tint: #e4d0de;
+    --odoo-fg: #5e3656;
     --shift-day-bg: #ffe8d4;
     --shift-day-fg: #8a3b00;
     --shift-night-bg: #e8e5fb;
@@ -1259,6 +1277,13 @@ main table thead tr.dt-band th + th[data-group] { border-left: 3px solid var(--s
 @layer components {
 .stage-done { background-color: transparent; color: var(--ok-fg); opacity: 0.8; font-weight: 500; }
 .stage-part { color: var(--warn-fg); font-weight: 650; }
+/* an Odoo column in Odoo's plum: the header in the plum itself, the cells in
+   its wash with the plum as ink, the hairline too */
+.erp-table .odoo-col, main table .odoo-col { background-color: var(--odoo-tint); color: var(--odoo-fg); }
+/* the headers' quiet grey is !important (main table thead th): white on the plum overrides it */
+.erp-table th.odoo-col, main table th.odoo-col { background-color: var(--odoo-head); color: var(--odoo-head-fg) !important; }
+.odoo-col.stage-meter { --meter-fill: var(--odoo-fg); }
+.odoo-col.odoo-full { font-weight: 700; }
 /* a frame drawn inside the cell, not an inset shadow: Chrome paints a table
    cell's shadow over the frozen columns, and the frame keeps 1px off the
    cell edge, where the seam between collapsed borders lets it through */

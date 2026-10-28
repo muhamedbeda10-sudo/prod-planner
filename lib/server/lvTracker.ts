@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db";
 import { loadMasterOrdersOf } from "./loads";
 import { LV_ITEM, lvComplete, type LvState } from "@/lib/domain/lv";
 import { shownStageTotal } from "@/lib/domain/trackerEdit";
+import { isOdooExactOrder } from "@/lib/domain/trackerOdoo";
+import { odooClosedOf } from "./odooClosings";
 
 // The LV panels' tracker: one row per panel order, its position on the
 // chain read off the ledger — the same ledger the transformers write, under
@@ -33,6 +35,10 @@ export interface LvTrackerRow {
   hold: HoldView;
   priority: boolean;
   months: string[];
+  /** Closed in Odoo: the Done rows of the ODOO log born from the panel's own
+   *  painting — null for an order planned before ODOO_EXACT_FROM (not counted),
+   *  undefined when not read (only getLvTrackerWithOdoo reads it). */
+  odooClosed?: number | null;
 }
 
 /** Request-cached: the panels' dashboards and their stage table read it in one request. */
@@ -70,4 +76,14 @@ export const getLvTracker = cache(async (): Promise<LvTrackerRow[]> => {
       months: (o.months || o.source || "").split(",").map((s) => s.trim()).filter(Boolean),
     };
   });
+});
+
+/** The panels' tracker with Odoo's closings — the Plan Tracker screen's, the
+ *  assistant's and its sheet's: the orders planned from October 2026 on count
+ *  them exactly, as the transformers' do; the older ones read null. */
+export const getLvTrackerWithOdoo = cache(async (): Promise<LvTrackerRow[]> => {
+  const rows = await getLvTracker();
+  const exact = new Set(rows.filter((r) => isOdooExactOrder({ months: r.months })).map((r) => r.mo));
+  const closed = await odooClosedOf([...exact], "LV");
+  return rows.map((r) => ({ ...r, odooClosed: exact.has(r.mo) ? closed(r.mo, LV_ITEM) : null }));
 });

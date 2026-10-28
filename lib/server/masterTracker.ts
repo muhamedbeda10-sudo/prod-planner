@@ -3,6 +3,7 @@ import { cache } from "react";
 import { holdView, type HoldView } from "@/lib/domain/hold";
 import { prisma } from "@/lib/db";
 import { loadMasterOrders, loadSettingsRow } from "./loads";
+import { ODOO_ENTRY_SELECT, odooRowsOfOrders } from "./odooClosings";
 import { ITEMS, applicableItems, isPaintExempt, itemEligible, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
 import { shownStageTotal } from "@/lib/domain/trackerEdit";
 import { exactOdooClosings, isOdooExactOrder, odooPlanMonth, trackerOdooQuantities, type OdooUnallocatedQuantity } from "@/lib/domain/trackerOdoo";
@@ -54,19 +55,6 @@ export interface MasterTrackerRow {
   pendingQty: { to: number; month: string | null } | null;
 }
 
-const ODOO_ENTRY_SELECT = { id: true, date: true, line: true, ledgerId: true, soi: true, fgCode: true, product: true, qty: true, status: true } as const;
-
-/** The ODOO log rows that can close the given orders exactly — the ones born
- *  from their daily-log rows — with those daily-log rows. */
-async function exactOdooRows(mos: readonly string[]) {
-  if (!mos.length) return { entries: [], ledgers: [] };
-  const ledgers = await prisma.handoverEntry.findMany({ where: { mo: { in: [...mos] } }, select: { id: true, mo: true, bom: true, item: true } });
-  const entries = ledgers.length
-    ? await prisma.odooEntry.findMany({ where: { line: "TR", ledgerId: { in: ledgers.map((l) => l.id) } }, select: ODOO_ENTRY_SELECT })
-    : [];
-  return { entries, ledgers };
-}
-
 /** `odoo: "exact"` reads Odoo's closings only for the orders that count them
  *  exactly (planned from ODOO_EXACT_FROM on) — what the Plan Tracker screen
  *  shows; allocating every closing in the log to the older orders was the
@@ -93,7 +81,7 @@ async function computeMasterTracker({ odoo: mode = "all" }: { odoo?: "all" | "ex
     const ledgers = ledgerIds.length ? await prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, mo: true, bom: true, item: true } }) : [];
     odooProgress = trackerOdooQuantities(withEligible, odoo, ledgers, settings?.odooTrackingFrom);
   } else {
-    const exact = await exactOdooRows([...exactMos]);
+    const exact = await odooRowsOfOrders([...exactMos], "TR");
     const counts = exactOdooClosings(exactOrders, exact.entries, exact.ledgers);
     odooProgress = { counts, tracked: new Set(), unallocated: [] }; // every exact order is tracked (below)
   }

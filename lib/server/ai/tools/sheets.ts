@@ -13,7 +13,7 @@ import { getDowntimeDay } from "@/lib/server/downtime";
 import { getRecentHandover } from "@/lib/server/handover";
 import { ledgerItemWhere, withLine } from "@/lib/server/line";
 import { getLvTrace } from "@/lib/server/lvTrace";
-import { getLvTracker } from "@/lib/server/lvTracker";
+import { getLvTrackerWithOdoo } from "@/lib/server/lvTracker";
 import { getMasterTracker } from "@/lib/server/masterTracker";
 import { getMaterialData } from "@/lib/server/material";
 import { getMaterialDashboard } from "@/lib/server/fabAnalytics";
@@ -339,7 +339,7 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       const f = trackerFiltersFor(line, i.filters ?? {});
       if (typeof f === "string") return { error: f };
       if (line === "LV") {
-        const rows = filterLvTracker(await withLine("LV", () => getLvTracker()), f);
+        const rows = filterLvTracker(await withLine("LV", () => getLvTrackerWithOdoo()), f);
         return { rows: lvTrackerRows(rows), name: "lv-plan-tracker", sheet: "Plan Tracker", scope: `LV Plan Tracker, ${rows.length} orders` };
       }
       const stages = trackerStagesOf(f.deptStage);
@@ -347,7 +347,7 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       return { rows: masterTrackerRows(rows, stages, f.month ?? ""), name: `plan-tracker${stages.length ? `-${stages.join("-").toLowerCase()}` : ""}`, sheet: "Plan Tracker", scope: `Transformer Plan Tracker, ${rows.length} orders` };
     }
     case "weekly_plan": {
-      const data = await withLine("TR", () => getWeeklyPlanTracker(i.plan ?? null));
+      const data = await withLine("TR", () => getWeeklyPlanTracker(i.plan ?? null, { odoo: true }));
       if (data.planNo === null) return { error: "There is no weekly plan yet." };
       if (i.plan && data.planNo !== i.plan) return { error: `There is no weekly plan ${i.plan}. The plans: ${data.planNos.join(", ")}.` };
       const stages = weeklyStagesOf((i.stages ?? "").replace(/\s+/g, ""));

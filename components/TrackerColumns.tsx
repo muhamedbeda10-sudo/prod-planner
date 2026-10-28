@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { ChevronRight, Columns3 } from "lucide-react";
 import { saveUserPref } from "@/app/prefs/actions";
 import type { UserPrefKey } from "@/lib/domain/userPrefs";
+import { ODOO_EXACT_FROM_LABEL } from "@/lib/domain/trackerOdoo";
 
 // The pieces both Plan Trackers (transformers and LV panels) read a sheet
 // with: the columns each person keeps on their account, the header arrows
@@ -181,6 +183,32 @@ export function AchCell({ ach }: { ach: number | null }) {
   return (
     <td className="p-2 text-center font-semibold tabnum" style={{ color }}>
       {ach === null ? "—" : `${(ach * 100).toFixed(0)}%`}
+    </td>
+  );
+}
+
+/** An Odoo column's cell, read-only, in Odoo's plum (.odoo-col): what Odoo
+ *  closed of `of`, a hairline under it, empty at 0; with `href`, a link to
+ *  the order's On Odoo records. The trackers' three Odoo columns — monthly,
+ *  LV, weekly — all draw it here. */
+export function OdooCell({ value, of, label, href, className = "" }: { value: number; of: number; label: string; href?: string; className?: string }) {
+  const meter = meterStyle(value, of);
+  const over = value > of ? ` — ${value - of} more than the plan` : "";
+  const words = `Closed in Odoo · ${label}: ${stageWords(value, of)}${over}`;
+  return (
+    <td className={`stage-cell odoo-col ${of > 0 && value >= of ? "odoo-full" : ""} ${meter ? "stage-meter" : ""} text-center tabnum ${className}`} style={meter} title={words}>
+      {value <= 0 ? "" : href ? (
+        <Link href={href} onClick={(e) => e.stopPropagation()} className="print-as-text hover:underline" aria-label={words}>{value}</Link>
+      ) : value}
+    </td>
+  );
+}
+
+/** An Odoo cell for orders whose closings are not counted (planned before ODOO_EXACT_FROM). */
+export function OdooNotCounted({ why = `Planned before ${ODOO_EXACT_FROM_LABEL} — Odoo closings are not counted here`, className = "" }: { why?: string; className?: string }) {
+  return (
+    <td className={`odoo-col text-center ${className}`} title={why}>
+      <span aria-hidden className="opacity-60">—</span><span className="sr-only">Odoo not counted</span>
     </td>
   );
 }
