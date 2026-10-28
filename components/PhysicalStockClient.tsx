@@ -9,7 +9,7 @@ import { Modal } from "@/components/Modal";
 import { Tooltip } from "@/components/Tooltip";
 import { createPhysicalItem, deletePhysicalItem, importPhysicalAction, updatePhysicalCell } from "@/app/physical/actions";
 import { STATUS_LABEL, STOCK_GROUPS, summarizeStock, type StockStatus } from "@/lib/domain/physicalStock";
-import { formatDateTime, formatNumber } from "@/lib/domain/format";
+import { formatNumber } from "@/lib/domain/format";
 import { normCode, type needByStock, type StockNeed } from "@/lib/domain/materialCoverage";
 import type { PhysicalStockItem } from "@/lib/server/physicalStock";
 
@@ -30,11 +30,9 @@ type NeedData = ReturnType<typeof needByStock>;
 /** A code the open orders need more of than Odoo holds, or more than the store counted. */
 const needShort = (n: StockNeed | undefined) => n?.status === "short" || n?.status === "store_short";
 
-export function PhysicalStockClient({ items, canEdit, lastUpdate, need, needFailed = false }: {
+export function PhysicalStockClient({ items, canEdit, need, needFailed = false }: {
   items: PhysicalStockItem[];
   canEdit: boolean;
-  /** When the store's count was last loaded, and by whom. */
-  lastUpdate: { atISO: string; by: string | null } | null;
   /** The open orders' sheets per code; null when the Material screen is closed to this person. */
   need: NeedData | null;
   /** The open need could not be worked out this time. */
@@ -116,9 +114,9 @@ export function PhysicalStockClient({ items, canEdit, lastUpdate, need, needFail
                   <Th label="UOM" center />
                   <Th label="Store count" full="Physically in the internal store" num group="input" />
                   <Th label="SF01 in Odoo" full="SF01's stock in Odoo" num group="source" />
-                  {need && <Th label="Open need" full="Sheets the open orders still need" hint="The pieces Fabrication still owes on every open order not on hold × the MATERIAL tab's sheets a piece (the actual nesting, or the BOM's rate where not nested yet — marked ≈). A part with no nesting line at all is priced off Odoo's BoM (Material → BoMs), also ≈." num group="computed" />}
-                  {need && <Th label="After need" full="SF01 in Odoo − open need" hint="Below zero Odoo holds fewer sheets than the open orders still need." num group="computed" />}
-                  <Th label="Difference" full="Store count − Odoo" hint="Below zero the store holds less than Odoo says; above zero, more." num group="computed" />
+                  {need && <Th label="Open need" full="Sheets the open orders still need" hint="The pieces Fabrication still owes on every open order not on hold × the MATERIAL tab's sheets a piece (the actual nesting, or the BOM's rate where not nested yet — marked ≈). A part with no nesting line at all is priced off Odoo's BoM (Material → BoMs), also ≈. A part with neither, or a nesting line with no product code, is left out — the need is at least what is shown." num group="computed" />}
+                  {need && <Th label="After need" full="SF01 in Odoo − open need" hint="Below zero Odoo holds fewer sheets than the open orders still need. The need is in sheets, so a code held in kilos shows none." num group="computed" />}
+                  <Th label="Difference" full="Store count − Odoo" hint="Below zero the store holds less than Odoo says; above zero, more. Under a hundredth of a piece (or a kilo on coils) counts as matching." num group="computed" />
                   <Th label="vs Odoo" full="The difference as a share of Odoo's stock" num group="computed" />
                   <Th label="Status" center />
                   <Th label="Note" />
@@ -161,18 +159,7 @@ export function PhysicalStockClient({ items, canEdit, lastUpdate, need, needFail
           </TableFrame>
         )}
       </section>
-      <p className="text-xs text-muted">
-        {lastUpdate ? <>Last change {formatDateTime(lastUpdate.atISO)}{lastUpdate.by ? ` · ${lastUpdate.by}` : ""}. </> : null}
-        A difference under a hundredth of a piece (or a kilo on coils) counts as matching. Totals never add pieces and kilos together.
-        {need && " The open need is in sheets, so codes held in kilos show it without an after figure."}
-        {need && need.byOdoo > 0 && ` ${need.byOdoo} part${need.byOdoo === 1 ? "" : "s"} with no nesting line yet ${need.byOdoo === 1 ? "is" : "are"} priced off Odoo's BoM (≈).`}
-      </p>
       {needFailed && <p className="text-xs text-warn-fg">The open orders&apos; need could not be worked out just now — the stock above is complete; reload to try again.</p>}
-      {need && (need.unpriced.noNesting > 0 || need.unpriced.uncoded > 0) && (
-        <p className="text-xs text-muted">
-          Not in the open need: {[need.unpriced.noNesting > 0 && `${need.unpriced.noNesting} part${need.unpriced.noNesting === 1 ? "" : "s"} with no nesting line yet`, need.unpriced.uncoded > 0 && `${need.unpriced.uncoded} nesting line${need.unpriced.uncoded === 1 ? "" : "s"} with no product code`].filter(Boolean).join(" and ")} — the need is at least what is shown.
-        </p>
-      )}
       {need && need.missing.length > 0 && (
         <p className="text-xs text-warn-fg">
           {need.missing.length} code{need.missing.length === 1 ? "" : "s"} the open orders need {need.missing.length === 1 ? "is" : "are"} not on this table:{" "}
@@ -210,7 +197,7 @@ function SummaryCards({ summary, onPick, picked, need }: {
     </button>
   );
   return (
-    <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 xl:grid-cols-6">
+    <div className="grid gap-2 grid-cols-2 sm:grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))]">
       {card("all", "Items", summary.items, "", `${summary.empty} held nowhere`)}
       {card("match", "Matches Odoo", summary.match, "text-ok-fg", "store = SF01")}
       {card("short", "Store short", summary.short, "text-bad-fg", "less on the shelf than in Odoo")}

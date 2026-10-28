@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-tidier-stock-odoo-pages",
+    dateISO: "2026-10-28",
+    title: "Tidier Physical Material and ODOO pages, and a colour frame round the assistant's question box",
+    where: "Material → Physical Material · Plan Tracker → ODOO log · Dashboards → ODOO · the AI assistant",
+    body: "Physical Material's cards now sit in one row across the page, and the notes under its table are gone. The ODOO log no longer has Add a row or Import Excel under its table — its rows come from the floor's closings (and the assistant can still add or import them). The ODOO dashboard no longer ends with The numbers as a table. The box you type a question in to the assistant now has a frame of the app's colours turning slowly round it.",
+  },
+  {
     id: "2026-10-28-ai-in-bar-tables-full-height",
     dateISO: "2026-10-28",
     title: "The assistant's button moved up to the bar, and tables run to the bottom of the screen",

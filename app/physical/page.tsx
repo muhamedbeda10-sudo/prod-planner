@@ -16,13 +16,13 @@ export default async function PhysicalMaterialPage() {
   // the open orders' need comes off the MATERIAL tab's nesting — only for whoever may see it
   // a failure there leaves the store's own table working, with a note
   const showNeed = !hiddenTabsOf(me).has("material");
-  const [{ items, lastUpdate }, needs] = await Promise.all([getPhysicalStock(), showNeed ? getOpenSheetNeeds().catch(() => "failed" as const) : null]);
+  const [{ items }, needs] = await Promise.all([getPhysicalStock(), showNeed ? getOpenSheetNeeds().catch(() => "failed" as const) : null]);
 
   return (
     <div>
       <PageHead title="Physical Material" sub="Store count against Odoo's SF01 stock" />
       <PhysicalStockClient
-        items={items} lastUpdate={lastUpdate} canEdit={hasPerm(me, "stock.edit")}
+        items={items} canEdit={hasPerm(me, "stock.edit")}
         need={needs && needs !== "failed" ? needByStock(needs, items) : null}
         needFailed={needs === "failed"}
       />
