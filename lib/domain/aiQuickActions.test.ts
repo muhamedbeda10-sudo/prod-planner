@@ -26,6 +26,13 @@ describe("the assistant's quick actions", () => {
     }
   });
 
+  it("asks what looks wrong from what the app still keeps", () => {
+    const q = composeQuickQuestion("problems");
+    expect(q).toContain("hold");
+    expect(q).toContain("ODOO log");
+    expect(q).not.toContain("المراقبة");
+  });
+
   it("writes the report from what was picked", () => {
     const q = composeQuickQuestion("report", { topic: "stops", period: "last7", dept: "Welding", line: "LV", compare: "plan", format: "excel", notes: "  by   shift " });
     expect(q).toContain("توقفات الماكينات");
