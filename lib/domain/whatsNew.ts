@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-required-teal-fins-plain",
+    dateISO: "2026-10-28",
+    title: "Required wears the teal now; Fins goes plain",
+    where: "Plan Tracker — Transformers and LV Panels",
+    href: "/tracker",
+    body: "The teal moved from Fins to Required: the Required column now reads in its own teal down the whole sheet — header, order rows and merged rows — on the transformers' and the LV panels' trackers, so the figure every stage is measured against is found at a glance. Fins is a plain column like the other specs.",
+  },
+  {
     id: "2026-10-28-fins-teal",
     dateISO: "2026-10-28",
     title: "The Fins column turns teal",
