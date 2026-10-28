@@ -5,7 +5,6 @@ import { FINISHED_STATUSES, isReadyToClose, needsMo, type ReadyRow } from "@/lib
 import { odooRowBomLabel } from "@/lib/domain/odoo";
 import { resolveRowBoms, resolveRowMaterialStates } from "@/lib/server/odoo";
 import type { MoMaterialState } from "@/lib/domain/odooMaterial";
-import { odooFactsFor } from "@/lib/server/odooFacts";
 
 const SELECT = { id: true, line: true, date: true, soi: true, fgCode: true, product: true, odooMo: true, qty: true, status: true, source: true, ledgerId: true } as const;
 
@@ -13,17 +12,10 @@ type Row = { id: number; line: string; date: Date; soi: string | null; fgCode: s
 
 /** The rows as the popup lists them — each with its BOM, read the way the log reads it. */
 async function view(rows: Row[]): Promise<ReadyRow[]> {
-  const ledgerIds = rows.map((r) => r.ledgerId).filter((id): id is number => id !== null);
-  const [boms, ledgers] = await Promise.all([
-    resolveRowBoms(rows),
-    ledgerIds.length ? prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, mo: true, item: true } }) : Promise.resolve([]),
-  ]);
-  // what the last Odoo sync read: closed there already, and the open MOs a
-  // row waiting for its number can take
-  const facts = await odooFactsFor(rows, new Map(ledgers.map((l) => [l.id, { mo: l.mo, item: l.item }])));
+  const boms = await resolveRowBoms(rows);
   return rows.map((r, i) => ({
     id: r.id, line: r.line, dateISO: toISODate(r.date), soi: r.soi, bom: odooRowBomLabel(boms[i]), product: r.product,
-    odooMo: r.odooMo, qty: r.qty, status: r.status, source: r.source, odoo: facts.get(r.id),
+    odooMo: r.odooMo, qty: r.qty, status: r.status, source: r.source,
   }));
 }
 

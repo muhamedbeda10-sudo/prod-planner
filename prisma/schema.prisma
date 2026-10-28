@@ -2124,114 +2124,13 @@ model KpiSnapshot {
   updatedAt DateTime @default(now()) @updatedAt
 }
 
-// ---- Odoo, read on a schedule (lib/domain/odooSync.ts) ----
+// ---- Odoo's BoMs, mirrored read-only (lib/domain/odooBom.ts) ----
 //
-// The app READS Odoo — never writes to it — and not from the server: a
-// scheduled task on the owner's computer (about 09:00 and 13:00 Riyadh time,
-// Sunday to Thursday) takes a one-time pass from odoo_issue_ticket(), opens
-// Odoo in the Claude desktop app's browser with the user's own login and runs
-// /odoo-pull.js there (lib/domain/odooPull.ts); the page reads the plan and
-// writes what it read itself, through the "odoo-sync" Edge Function into
-// odoo_pull_plan_t / odoo_ingest_t. What it
-// reads is kept in the tables below, apart from the rows people type: a sync
-// never moves a row's status, its MO or its version, so it can never undo or
-// block anyone's edit.
-
-// One sync: when, what it found (odoo_ingest writes it, or odoo_sync_failed
-// when the task could not read Odoo). `slot` is "pull@<when Odoo was read>",
-// so the same payload handed in twice is one run.
-model OdooSyncRun {
-  id         Int       @id @default(autoincrement())
-  slot       String    @unique
-  trigger    String // schedule
-  startedAt  DateTime  @default(now())
-  finishedAt DateTime?
-  status     String    @default("running") // ok | partial | failed
-  // lib/domain/odooSync.ts OdooSyncSummary
-  summary    Json?
-  error      String?
-  startedBy  String?
-
-  @@index([startedAt])
-}
-
-// What Odoo says about each MO the close-out log names (OdooEntry.odooMo),
-// keyed by the name as the log writes it. When Odoo split the order after the
-// clerk typed it, its first batch was renamed "<name>-001" — `currentName` is
-// the name Odoo uses now. `found` false: no MO by either name.
-model OdooMoState {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique
-  found       Boolean   @default(true)
-  currentName String    @default("")
-  odooId      Int?
-  state       String    @default("") // draft | confirmed | progress | to_close | done | cancel
-  productCode String    @default("")
-  qty         Float     @default(0)
-  qtyProduced Float     @default(0)
-  // Odoo's own closing moment (date_finished) when it is done
-  doneAt      DateTime?
-  checkedAt   DateTime  @default(now())
-
-  @@index([state])
-}
-
-// The shop floor's sub-assembly MOs under each open order, as Odoo links
-// them: a transformer's tank, top cover, core frame, cable box, arrester,
-// monobloc box and fins under its PF01 MO; an LV panel order's own batches.
-// One row per order × child — a child shared by two orders is under both. An
-// order's rows are rewritten whenever they read differently from the last
-// sync (OdooOrderSync); a closed order keeps its last rows.
-model OdooChildMo {
-  id          Int       @id @default(autoincrement())
-  parentMo    String // the order's MO as the app keeps it (MasterOrder.mo)
-  name        String // SF01/MO/15295-002
-  odooId      Int
-  // CF | TC | TN | CB | AR | MB | FN — "" for an LV order's own batch
-  item        String    @default("")
-  productCode String    @default("")
-  qty         Float     @default(0)
-  qtyProduced Float     @default(0)
-  uom         String    @default("")
-  state       String    @default("")
-  doneAt      DateTime?
-  // how the child was tied to the order: direct | origin | qty_match | shared | batch | self
-  linkHow     String    @default("")
-  // the other orders it is shared with (CSV), when it is
-  sharedWith  String    @default("")
-  syncedAt    DateTime  @default(now())
-
-  @@unique([parentMo, odooId])
-  @@index([parentMo, item])
-  @@index([name])
-}
-
-// How each order's sub-assembly MOs read at the last sync (a fingerprint the
-// pull computes), so an unchanged order is not sent again.
-model OdooOrderSync {
-  parentMo String   @id
-  hash     String
-  syncedAt DateTime @default(now())
-}
-
-// The scheduled task's one-time pass to the Odoo sync's database functions:
-// odoo_issue_ticket() makes one, and the Odoo page it is handed to may read
-// the plan and write what it read with it — through the "odoo-sync" Edge
-// Function into odoo_pull_plan_t / odoo_ingest_t — until it expires, 15
-// minutes on. Only the pass's SHA-256 is kept.
-model OdooSyncTicket {
-  hash      String   @id
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-}
-
-// ---- Odoo's BoMs, read with the Odoo sync (lib/domain/odooBom.ts) ----
-//
-// The bills of materials the open orders are built with, mirrored read-only:
-// the Odoo sync's pull (lib/domain/odooPull.ts pullBoms) walks every BoM
-// reached from the open orders' codes and odoo_ingest writes them here, each
-// BoM once with its own lines — a sub-assembly shared by many transformers is
-// stored once, and a line built in house names the sub-BoM it is built with.
+// The bills of materials the open orders were built with, as the Odoo sync
+// last read them (the sync is gone since 2026-10-28; these stay as read):
+// each BoM once with its own lines — a sub-assembly shared by many
+// transformers is stored once, and a line built in house names the sub-BoM it
+// is built with.
 // The trees, the component check, Odoo's rate on the MATERIAL sheet and the
 // open need's gaps (Physical Material) are built from these.
 model OdooBom {

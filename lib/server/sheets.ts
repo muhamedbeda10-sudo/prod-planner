@@ -34,7 +34,6 @@ import type { PowderView } from "./powderScrap";
 import type { ShiftRosterData } from "./shifts";
 import type { SoiLookup } from "./soi";
 import type { TraceResult } from "./trace";
-import { ODOO_AGREEMENT_TEXT, odooDiffers, odooStateLabel } from "@/lib/domain/odooSync";
 
 // The spreadsheets the app hands out, one per screen that used to carry an
 // Export button — the same columns, in the same order, with the screen's own
@@ -59,11 +58,6 @@ export function odooLogRows(entries: OdooPageData["entries"]): SheetRow[] {
     "Done at": e.doneAtISO ? e.doneAtISO.slice(0, 16).replace("T", " ") : "",
     Source: e.source === "painting" ? "Painting" : e.source === "shotblast" ? "Shot Blast" : e.source === "import" ? "Import" : "",
     Notes: [...e.notes].reverse().map((n) => `${n.atISO.slice(0, 16).replace("T", " ")}: ${n.text}`).join(" | "),
-    // what the last Odoo sync read — after the sheet's own columns, so the
-    // file still drops back into the office's workbook
-    "Odoo state": e.odoo?.state ? (e.odoo.state.found ? odooStateLabel(e.odoo.state.state) : "Not in Odoo") : "",
-    "Odoo closed at": e.odoo?.state?.doneAtISO ? e.odoo.state.doneAtISO.slice(0, 16).replace("T", " ") : "",
-    "Odoo check": e.odoo && odooDiffers(e.odoo.agreement) ? ODOO_AGREEMENT_TEXT[e.odoo.agreement].label : "",
   }));
 }
 
