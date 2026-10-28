@@ -312,6 +312,8 @@ export function AppNav({
   const panelCtx = useAiPanel();
   const panel = aiPage ? null : panelCtx;
   const aiOn = aiPage || !!panel?.shown;
+  const aiTile = `nav-ai ${aiOn ? "nav-ai-on" : ""}`;
+  const aiFace = <span className="nav-ai-face"><Bot size={18} aria-hidden /></span>;
   const inboxPanel = useInboxPanel();
   const alerts = useOdooAlerts(odooAlerts.enabled, odooAlerts.count, user.id);
   // the Plan Tracker tab (the ODOO log is one of its views) lights up with the rows waiting to be closed; its badge
@@ -559,8 +561,14 @@ export function AppNav({
 
           {/* right cluster */}
           <div className="ml-auto flex items-center gap-1 md:gap-2 shrink-0">
-            {/* the AI assistant has no button here: its round button sits in
-                the corner of every page (components/AiPanel) */}
+            {/* the AI assistant: a tile of its own beside the inbox, a light
+                running across it, opening its window (components/AiPanel) —
+                on its own pages, where it is already full size, a link there */}
+            {ai && (panel ? (
+              <button type="button" onClick={() => panel.toggle()} className={aiTile} aria-expanded={aiOn} aria-label="AI assistant" title="AI assistant">{aiFace}</button>
+            ) : (
+              <Link href="/ai" className={aiTile} aria-current={aiPage ? "page" : undefined} aria-label="AI assistant" title="AI assistant">{aiFace}</Link>
+            ))}
             {/* the inbox — alerts, reports and tasks — for everyone: anyone
                 can be given a task. It opens as a window of its own. */}
             <InboxBell

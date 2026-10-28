@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-ai-in-bar-tables-full-height",
+    dateISO: "2026-10-28",
+    title: "The assistant's button moved up to the bar, and tables run to the bottom of the screen",
+    where: "The bar → the shining tile beside the bell · every page with a table",
+    body: "The AI assistant no longer sits as a round button in the corner of the page: it is the coloured tile with a light running across it, beside the inbox bell in the bar — click it to open or close the assistant. With the corner free, a page's table now reaches the bottom of the window instead of stopping short of it; the Plan Tracker's weekly view, the Welding / Painting and Leak test worklists, the chat, the inbox and the assistant's own page fill the screen the same way.",
+  },
+  {
     id: "2026-10-28-odoo-sync-removed",
     dateISO: "2026-10-28",
     title: "The app no longer reads Odoo by itself",

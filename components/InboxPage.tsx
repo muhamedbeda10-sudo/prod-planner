@@ -9,7 +9,7 @@ export function InboxPage({ tab: firstTab, taskId: firstTask, openItem }: { tab:
   const [tab, setTab] = useState<InboxTab>(firstTab);
   const [taskId, setTaskId] = useState<number | null>(firstTask);
   return (
-    <div className="h-[calc(100dvh-5.5rem)] md:h-[calc(100dvh-6.5rem)] min-h-[420px] bg-surface border rounded-xl overflow-hidden shadow-[var(--shadow-sm)]">
+    <div className="h-[var(--page-fill)] min-h-[420px] bg-surface border rounded-xl overflow-hidden shadow-[var(--shadow-sm)]">
       <InboxWorkspace layout="page" tab={tab} onTab={setTab} taskId={taskId} onTask={setTaskId} openItem={openItem} />
     </div>
   );
