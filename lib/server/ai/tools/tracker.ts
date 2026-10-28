@@ -68,7 +68,7 @@ export const getOrders: ReadTool<GetOrdersInput> = {
   cacheable: true,
   title: "Reading the orders on the tracker",
   description:
-    "The orders exactly as the Plan Tracker computes them: status, hold, priority, required quantity, the qty a plan import is holding back, plan months, the spec columns, and per component what is cut, welded, painted / shot blasted and delivered, what is made outside (OSP), which components the order does not need, and how many complete sets are done and left. Give MO numbers or a BOM. Read this before recording totals or changing an order.",
+    "The orders exactly as the Plan Tracker computes them: status, hold, priority, required quantity, the qty a plan import is holding back, plan months, the spec columns, and per component what is cut, welded, painted / shot blasted and delivered, what is made outside (OSP), for a transformer order planned from October 2026 on what Odoo has closed (closedInOdoo: the Done rows of the ODOO log recorded against that MO, as the tracker's Odoo column shows; older orders carry none), which components the order does not need, and how many complete sets are done and left. Give MO numbers or a BOM. Read this before recording totals or changing an order.",
   schema: {
     type: "object",
     properties: {
@@ -119,6 +119,7 @@ export const getOrders: ReadTool<GetOrdersInput> = {
             ...(isPaintExempt(it) ? { shotBlasted: c.shp } : { painted: c.paint }),
             delivered: c.delivered,
             ...(c.osp ? { madeOutside: c.osp } : {}),
+            ...(r.odooExact ? { closedInOdoo: c.odooClosed ?? 0 } : {}),
           };
         }
         return {

@@ -23,6 +23,14 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The assistant's What looks wrong tile no longer asks for the plant watchdog's alerts, which were removed. It now checks the data the KPIs say is missing (standard times, delivery dates, shift days), the orders on hold, the work waiting between departments, and the ODOO log rows still open (with no MO, or ready to close), and ranks them with the fix for each.",
   },
   {
+    id: "2026-10-28-tracker-odoo-column",
+    dateISO: "2026-10-28",
+    title: "The Plan Tracker shows what Odoo has closed, per component",
+    where: "Plan Tracker (monthly, transformers) · the assistant",
+    href: "/tracker",
+    body: "Each component on the monthly Plan Tracker ends with an Odoo column: the pieces closed in Odoo — every row of the ODOO log marked Done, counted on the MO it was recorded against, never spread by BOM or guessed. It starts with the October 2026 plans; an order from an earlier plan reads —. A row counts the moment it is moved to Done; click the figure for the order's On Odoo records. A merged BOM row adds up its MOs. The order's closing by itself and the assistant read the same figure.",
+  },
+  {
     id: "2026-10-28-tidier-stock-odoo-pages",
     dateISO: "2026-10-28",
     title: "Tidier Physical Material and ODOO pages, and a colour frame round the assistant's question box",
