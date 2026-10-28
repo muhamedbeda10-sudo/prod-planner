@@ -6,9 +6,6 @@ import { ITEMS, isPaintExempt, type Item } from "@/lib/domain/constants";
 import { groupKey } from "@/lib/domain/bom";
 import { toISODate } from "@/lib/domain/dates";
 import { isDoneStatus } from "@/lib/domain/odoo";
-import { effectiveDoneAt, normMo, odooAgreement, type ChildMoView, type OdooAgreement } from "@/lib/domain/odooSync";
-import { childMosOf, moStatesOf } from "@/lib/server/odooFacts";
-import { childMoOwners } from "@/lib/domain/trackerOdoo";
 
 // One project's whole life — the Trace page. Works on a single manufacturing
 // order (mo) OR a whole code (bom). Everything is netted (negative corrections
@@ -97,9 +94,6 @@ export interface TraceResult {
   /** The ODOO log's rows born from this order's closings (painting / shot
    *  blast) — Odoo's MO the clerk typed, the qty, and whether it is closed. */
   odoo: TraceOdooRow[];
-  /** The sub-assembly MOs Odoo has under the order(s), as the last Odoo sync
-   *  read them — empty before any sync. */
-  odooChildren: ChildMoView[];
 }
 
 export interface TraceOdooRow {
@@ -116,8 +110,6 @@ export interface TraceOdooRow {
   doneAtISO: string | null;
   fgCode: string;
   by: string | null;
-  /** How the row reads against Odoo, as the last sync read its MO. */
-  agreement: OdooAgreement;
 }
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -129,18 +121,15 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
   const scope = isMo ? { mo } : { bom };
 
   const line = await getActiveLine(); // the trace stays inside the line on screen
-  // the orders' sub-assembly MOs are read beside them, not after
-  const mastersRead = prisma.masterOrder.findMany({ where: { ...scope, line } });
-  const [orders, handover, allBoms, masters, plans, notes, returns, masterRows, childMap] = await Promise.all([
+  const [orders, handover, allBoms, masters, plans, notes, returns, masterRows] = await Promise.all([
     prisma.planOrder.findMany({ where: scope, orderBy: [{ planNo: "asc" }, { mo: "asc" }, { item: "asc" }] }),
     prisma.handoverEntry.findMany({ where: { ...scope, ...ledgerItemWhere(line) }, orderBy: [{ date: "asc" }, { id: "asc" }] }),
     isMo ? Promise.resolve([]) : prisma.planOrder.groupBy({ by: ["bom"] }),
-    mastersRead,
+    prisma.masterOrder.findMany({ where: { ...scope, line } }),
     prisma.plan.findMany(),
     prisma.queueNote.findMany({ where: scope, orderBy: { createdAt: "asc" } }),
     prisma.returnEntry.findMany({ where: scope, orderBy: { date: "asc" } }),
     getMasterTracker(),
-    mastersRead.then((ms) => childMosOf(ms.map((m) => m.mo))),
   ]);
 
   // ---- plan labels ("July 2026", "Setup balances", disambiguated) ----
@@ -269,30 +258,19 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
 
   const remarksByMo = new Map(masters.map((m) => [m.mo, (m.remarks ?? "").trim()]));
 
-  // ---- the ODOO log's rows born from these closings, and the typed ones
-  // naming a sub-assembly MO only these orders hold (the tracker counts both) ----
+  // ---- the ODOO log's rows born from these closings ----
   const itemOfLedger = new Map(handover.map((h) => [h.id, h.item]));
-  const ownChild = new Map<string, string>();
-  for (const [name, owner] of childMoOwners([...childMap.values()].flat())) if (owner?.item) ownChild.set(name, owner.item);
-  const odooRows = handover.length || ownChild.size
+  const odooRows = handover.length
     ? await prisma.odooEntry.findMany({
-        where: { OR: [{ ledgerId: { in: handover.map((h) => h.id) } }, ...(ownChild.size ? [{ ledgerId: null, line: "TR", odooMo: { in: [...ownChild.keys()] } }] : [])] },
+        where: { ledgerId: { in: handover.map((h) => h.id) } },
         orderBy: [{ date: "asc" }, { id: "asc" }],
         select: { id: true, date: true, product: true, odooMo: true, qty: true, status: true, doneAt: true, fgCode: true, recordedBy: true, ledgerId: true },
       })
     : [];
-  const states = await moStatesOf(odooRows.map((r) => r.odooMo));
-  const odoo: TraceOdooRow[] = odooRows.map((r) => {
-    const st = states.get(normMo(r.odooMo)) ?? null;
-    // closed on Odoo's own moment when the sync read it
-    const closed = effectiveDoneAt(r, st?.doneAtISO ? new Date(st.doneAtISO) : null);
-    return {
-      id: r.id, dateISO: toISODate(r.date), item: (r.ledgerId === null ? ownChild.get(normMo(r.odooMo)) : itemOfLedger.get(r.ledgerId)) ?? "", product: r.product, odooMo: r.odooMo, qty: r.qty,
-      status: r.status, done: isDoneStatus(r.status), doneAtISO: closed ? closed.toISOString() : null, fgCode: r.fgCode, by: r.recordedBy,
-      agreement: odooAgreement(r, st),
-    };
-  });
-  const odooChildren = [...childMap.values()].flat();
+  const odoo: TraceOdooRow[] = odooRows.map((r) => ({
+    id: r.id, dateISO: toISODate(r.date), item: itemOfLedger.get(r.ledgerId!) ?? "", product: r.product, odooMo: r.odooMo, qty: r.qty,
+    status: r.status, done: isDoneStatus(r.status), doneAtISO: r.doneAt ? r.doneAt.toISOString() : null, fgCode: r.fgCode, by: r.recordedBy,
+  }));
 
   return {
     scope: isMo ? "mo" : "bom",
@@ -325,6 +303,5 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
     ledgerCount: handover.length,
     orderPlans: [...new Set(orders.map((o) => o.planNo))].sort((a, b) => a - b).map(planLabel),
     odoo,
-    odooChildren,
   };
 }

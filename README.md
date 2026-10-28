@@ -45,8 +45,8 @@ through its own **All | TR | LV** switch (`?scope=`, first in its bar). Neither 
 (`BOTH_LINES` in `lib/domain/lines.ts`): the proxy sends an older address naming one to that line's section on
 Planning, and to `?scope=` on Production; no line is carried onto them, and the assistant reads both lines there
 (`lib/domain/dashboardLinks.ts` builds Production's addresses, `planningUrl` in `lib/domain/planningDashboard.ts`
-Planning's). The recording screens still work one line at a time. **Material** holds the nesting sheets, Physical Material,
-the Odoo BoMs and Consumables; **Plan Tracker** carries the tracker, the **Daily log** it
+Planning's). The recording screens still work one line at a time. **Material** holds the nesting sheets, Physical Material
+and Consumables; **Plan Tracker** carries the tracker, the **Daily log** it
 adds up and the
 **ODOO log** (`/odoo`, whose alerts' badge rides on the Plan Tracker tab). The rule: the tab's panel moves
 between its PLACES; the switch in a page's bar moves between VIEWS of one place's rows (`components/ViewTabs.tsx`). Two things are not tabs at all: **chat** is the icon in the nav's
@@ -79,8 +79,8 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    (`/trace`) to handover rows; the trace's **On Odoo → Closed on** is the real closing moment on the factory
    clock, as the ODOO tab shows it. Each component ends with a read-only **Odoo** column: from the
    **October 2026** plans on (`ODOO_EXACT_FROM`, by the plan that first brought the MO) it is the qty of every
-   Done / Closed row of the ODOO log credited to the MO it was recorded against — the daily-log closing it was
-   born from, or the one order whose sub-assembly MO it names — never spread by BOM and not capped
+   Done / Closed row of the ODOO log born from that MO's own daily-log closing, on that closing's MO and
+   component — never spread by BOM and not capped
    (`exactOdooClosings` in `lib/domain/trackerOdoo.ts`); an order from an earlier plan reads —. The screen reads
    only those orders' rows (`getTrackerSheet`); the auto-close, the BOM trace and the assistant read the same
    figure for them and the allocation below for the older orders (`getMasterTracker`). No ETA, Complete or
@@ -194,9 +194,7 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    month (re-importing adds new lines and updates changed ones; the same BOM's tank and top-cover lines stay
    apart), filter by month and, within it, by part, material, thickness, sheet size, status (nested / not
    nested / with produced / over BOM) or a search across BOM, SOI, part, code and note — the Total row
-   follows the filter. On the transformers' sheet, beside BOM / unit, **Odoo / unit** shows what Odoo's BoM (feature 14) says
-   one unit of the part takes of the line's material — amber where the two disagree; a figure Odoo counts in
-   kilos is shown with its unit and never compared with sheets. The panels' sheet (a SEC item per thickness) has none.
+   follows the filter.
 7. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
    close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status, plus Notes. Two people work a row: the
    clerk types it in (or imports the sheet — its first seven columns, the same MO on the same day
@@ -242,35 +240,6 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    (the default: a row logged in August and closed in September is one of September's closings,
    under its product) or on the day it was logged — over today, yesterday, 7/30/90 days, this
    month, all time or a custom from/to, with the numbers as a table (the assistant makes its Excel).
-
-   **Odoo, read on a schedule** (`lib/domain/odooSync.ts`, `lib/domain/odooPull.ts`, `lib/domain/odooChildren.ts`).
-   The app only ever READS Odoo, and not from its server: a scheduled task on the owner's computer, at about
-   09:00 and 13:00 Riyadh time Sunday to Thursday, takes a one-time pass from the database
-   (`odoo_issue_ticket()`, 15 minutes, owner only), opens Odoo in the Claude desktop app's browser with the
-   user's own login, loads `/odoo-pull.js` (the pull, bundled by `scripts/gen-odoo-pull.ts`; a test keeps it
-   current — fetched from the repository, since the plant's network does not open the app's own domain) into
-   the Odoo page and starts it with the pass (`window.__odooSyncStart`). Reads only — any other method is
-   refused. The page reads the plan and writes what it read in pieces itself, through the `odoo-sync` Edge
-   Function (`supabase/functions/odoo-sync`, deployed on its own with the anon key's JWT checked; it answers
-   the Odoo origin alone) into
-   `odoo_pull_plan_t` / `odoo_ingest_t`, which check the pass. Every Odoo function is the database owner's
-   alone — the tables stay off the public API (migrations `20261027180000_odoo_sync` and
-   `20261028080000_odoo_sync_ticket`). A run reads three things, each on its own so one failing leaves the others: what Odoo says
-   about the close-out log's MOs not settled yet (`OdooMoState` — state, Odoo's own closing moment, the name it
-   uses now when it renamed the first batch `…-001` on splitting the order); the shop floor's sub-assembly MOs
-   under every open order (`OdooChildMo` — tank, top cover, core frame, cable box, arrester, monobloc box and
-   the fins under the tank, walked down from the PF01 MO the way the monthly child-MO sheet is built, through a
-   component assembled on another floor to its SF01 MO; an LV order's own batches), sent only for the orders
-   that read differently from last time (`OdooOrderSync`); and SF01/Shop Floor Warehouse's on-hand into
-   Physical Material's Odoo column for the codes the table lists — not at all when most stocks would drop to
-   zero at once. Each run is an `OdooSyncRun`; Admin → Settings → Odoo sync shows the last and says when a
-   scheduled one is overdue. A sync never moves a row's status, MO or version: the log shows what Odoo says
-   under each MO (`OdooStateTag`) — Odoo ✓, Still open in Odoo (Done here only), Closed in Odoo, Cancelled in
-   Odoo, MO of another part, Not in Odoo — with a **differ from Odoo** count that filters to them; a row
-   waiting for its MO offers the open MOs of its order and component, its own batch before the family's
-   others (`suggestChildMos`), one click to book it, here and in the alerts popup. The Trace lists the order's
-   sub-assembly MOs, and a closing counts on Odoo's own closing day on the ODOO and Material dashboards
-   (`effectiveDoneAt`); the export adds Odoo state, Odoo closed at and Odoo check after the sheet's own columns.
 8. **Shift log** (`/shifts`) — the supervisors' page, one day at a time: every worker registered in a
    section (Tools → Production Workers), narrowed to a line, a section or a search. Each worker gets ONE
    choice that says whether he came and on which shift — ☀ **Day** (07:00–16:00), 🌙 **Night** (19:00–04:00)
@@ -827,27 +796,6 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    every type of both lines). The assistant reads the same loaders
    with the same `line` (`get_kpis`, `get_floor_performance`, whose `byItemAndType` is that card) — both lines when the
    person is on a dashboard, else the line they are on — and follows the same rules.
-14. **Odoo BoMs** (`/bom`, a place of the **Material** tab; tab id `bom`) — the bills of materials the open orders are
-   built with, mirrored **read-only** from Odoo (`OdooBom` / `OdooBomLine`, each BoM once with its own lines, so a
-   sub-assembly shared by many transformers is stored once; `OdooBomRoot` says which BoM an order code is built with —
-   Odoo's reference `FG-<code>` / `TX-<code>` / the code itself, else the product with that code, else the BoM of one of
-   the code's MOs). They come with the Odoo sync (above): `odoo_pull_plan()` names the open orders' codes and the
-   fingerprint of every BoM held, the pull's BoM part (`lib/domain/odooBomPull.ts`, reads only) finds each code's BoM
-   and walks every sub-BoM, and `odoo_ingest` writes only the BoMs that changed, each replaced whole with its lines,
-   and every code's root (migration `20261028091000_odoo_sync_boms`); the settings card's run line counts them. The list shows each open code's Odoo
-   BoM, its components and how many of its orders disagree with it; one code opens its whole tree (each line's qty for
-   one unit of its parent and for one finished unit), the raw materials one unit takes, and each open order's required
-   components against the BoM (`lib/domain/odooBom.ts`). The Orders Registry flags an order whose components differ
-   (≠ BoM); the trace links to its BoM. On **Physical Material**, a part the nesting has no line for yet is priced off
-   Odoo's BoM in **Open need** instead of being left out (`specsFromOdoo` in `lib/domain/materialCoverage.ts`: the codes
-   the stock table carries, in the table's own unit, marked ≈ and said in the hover and under the table); the
-   assistant's material check and release check read the same. The transformers' MATERIAL sheet shows **Odoo / unit**
-   beside BOM / unit, amber where they differ; a figure Odoo counts in kilos is shown with its unit and never compared
-   with sheets, and the assistant's Excel of the sheet carries it. The assistant reads it all: `get_bom`, and
-   `get_material_need` — every raw material the open plan still needs by Odoo's BoMs alone (each unheld transformer
-   order's components still to cut, plan − cut − outsourced, Fabrication rows without an MO counted for their code's only
-   open order; each panel order's panels still to punch × the whole BoM) — and the mirror's tables by SQL; the passes
-   are private.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

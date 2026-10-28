@@ -516,7 +516,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
   return (
     // one column or two by the chat's own width — the page, or the docked window
     <div
-      className={`@container flex overflow-hidden bg-surface ${fill ? "h-full" : "h-[calc(100vh-7.75rem)] rounded-xl border shadow-md"}`}
+      className={`@container flex overflow-hidden bg-surface ${fill ? "h-full" : "h-[var(--page-fill)] rounded-xl border shadow-md"}`}
       // Escape shuts an open message menu or the group box first — taken
       // here, so it does not also close the docked chat around them
       onKeyDown={(e) => {

@@ -8,7 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList, Warehouse,
   Table2, BookOpenCheck, ListChecks, ChevronDown,
   CalendarDays, CalendarRange, Users, Timer,
-  MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus, Bot, Gauge, ListTree,
+  MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus, Bot, Gauge,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -68,8 +68,8 @@ const LINE_GROUPS = PRODUCT_LINES.map((line) => ({ line, label: LINE_LABEL[line]
 // toolbar (components/ViewTabs.tsx).
 //   Dashboards   → every dashboard, one place each: Planning (the home page),
 //                  Production, Material, Consumables, ODOO
-//   Material     → the nesting sheets, the store's physical count, Odoo's
-//                  BoMs, and the consumables it hands out
+//   Material     → the nesting sheets, the store's physical count, and the
+//                  consumables it hands out
 //   Plan Tracker → the tracker, the daily log, the what-if simulator and the ODOO close-out log
 // Chat is not here at all — it is the icon in the right cluster.
 const DASHBOARD_PLACES: Place[] = [
@@ -82,7 +82,6 @@ const DASHBOARD_PLACES: Place[] = [
 const MATERIAL_PLACES: Place[] = [
   { href: "/material", label: "Material", icon: Layers, title: "The nesting project tracker — what each order consumed" },
   { href: "/physical", label: "Physical Material", icon: Warehouse, title: "The store's count against Odoo's stock, code by code" },
-  { href: "/bom", label: "BoMs", icon: ListTree, title: "The open orders' bills of materials from Odoo — the tree, the raw materials, the components check" },
   { href: "/consumables", label: "Consumables", icon: PackageMinus, title: "What the store hands out to the floor — item, quantity, department, worker" },
 ];
 const TRACKER_PLACES: Place[] = [
@@ -121,7 +120,6 @@ const DRAWER_VIEWS: Item[] = [
   { href: "/handover", label: "Daily log", icon: BookOpenCheck },
   { href: "/odoo", label: "ODOO log", icon: Boxes },
   { href: "/physical", label: "Physical Material", icon: Warehouse },
-  { href: "/bom", label: "BoMs", icon: ListTree },
   { href: "/consumables", label: "Consumables", icon: PackageMinus },
   { href: "/chat", label: "Chat", icon: MessagesSquare },
 ];
@@ -312,6 +310,8 @@ export function AppNav({
   const panelCtx = useAiPanel();
   const panel = aiPage ? null : panelCtx;
   const aiOn = aiPage || !!panel?.shown;
+  const aiTile = `nav-ai ${aiOn ? "nav-ai-on" : ""}`;
+  const aiFace = <span className="nav-ai-face"><Bot size={18} aria-hidden /></span>;
   const inboxPanel = useInboxPanel();
   const alerts = useOdooAlerts(odooAlerts.enabled, odooAlerts.count, user.id);
   // the Plan Tracker tab (the ODOO log is one of its views) lights up with the rows waiting to be closed; its badge
@@ -559,8 +559,14 @@ export function AppNav({
 
           {/* right cluster */}
           <div className="ml-auto flex items-center gap-1 md:gap-2 shrink-0">
-            {/* the AI assistant has no button here: its round button sits in
-                the corner of every page (components/AiPanel) */}
+            {/* the AI assistant: a tile of its own beside the inbox, a light
+                running across it, opening its window (components/AiPanel) —
+                on its own pages, where it is already full size, a link there */}
+            {ai && (panel ? (
+              <button type="button" onClick={() => panel.toggle()} className={aiTile} aria-expanded={aiOn} aria-label="AI assistant" title="AI assistant">{aiFace}</button>
+            ) : (
+              <Link href="/ai" className={aiTile} aria-current={aiPage ? "page" : undefined} aria-label="AI assistant" title="AI assistant">{aiFace}</Link>
+            ))}
             {/* the inbox — alerts, reports and tasks — for everyone: anyone
                 can be given a task. It opens as a window of its own. */}
             <InboxBell

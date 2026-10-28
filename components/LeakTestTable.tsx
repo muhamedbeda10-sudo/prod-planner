@@ -88,7 +88,7 @@ export function LeakTestTable({
   }
 
   return (
-    <div className="md:flex md:flex-col md:h-[calc(100vh-7.75rem)]">
+    <div className="md:flex md:flex-col md:h-[var(--page-fill)]">
       <FilterBar
         count={filtered.length}
         total={tanks.length}

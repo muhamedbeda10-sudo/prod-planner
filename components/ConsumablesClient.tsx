@@ -635,8 +635,8 @@ export function ConsumablesClient({
             filtered
           />
         ) : (
-          // the log takes the rest of the screen and scrolls inside it, header pinned
-          <TableFrame className="!max-h-[calc(100vh-17rem)] min-h-[16rem]">
+          // the log takes the rest of the screen (components/TableFill) and scrolls inside it, header pinned
+          <TableFrame className="min-h-[16rem]">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="text-left">

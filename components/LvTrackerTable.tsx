@@ -416,7 +416,7 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
   return (
     // On desktop the page fills the viewport below the nav so the cards and
     // filters stay put and ONLY the table scrolls (its header pinned).
-    <div className="tracker-view print-flow md:flex md:flex-col md:h-[calc(100vh-5rem)]">
+    <div className="tracker-view print-flow md:flex md:flex-col md:h-[var(--page-fill)]">
       {head}
       <TrackerScope count={filtered.length} total={rows.length} basis={`${!status || status === "open" ? "Open orders" : status === "closed" ? "Closed orders" : status === "hold" ? "On hold" : "All statuses"} · through painting`} filters={activeFilters} onReset={resetFilters} />
       {/* the filtered orders at a glance: panels through each making stage */}

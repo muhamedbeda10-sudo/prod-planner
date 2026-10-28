@@ -102,16 +102,7 @@ describe("odooLogRows and odooDailyRows", () => {
       dateISO: "2026-10-26", soi: null, fgCode: "FG1", product: "TN", odooMo: "WH/MO/1", qty: 2, status: "Done", doneAtISO: "2026-10-26T09:15:00.000Z", source: "painting",
       notes: [{ atISO: "2026-10-26T10:00:00.000Z", text: "second" }, { atISO: "2026-10-26T09:00:00.000Z", text: "first" }],
     } as unknown as OdooPageData["entries"][number];
-    expect(odooLogRows([entry])[0]).toEqual({ Date: "2026-10-26", "SOI#": "", "FG-CODE": "FG1", Product: "TN", "MO#": "WH/MO/1", QTY: 2, Status: "Done", "Done at": "2026-10-26 09:15", Source: "Painting", Notes: "2026-10-26 09:00: first | 2026-10-26 10:00: second", "Odoo state": "", "Odoo closed at": "", "Odoo check": "" });
-  });
-  it("adds what the last Odoo sync read after the sheet's own columns", () => {
-    const entry = {
-      dateISO: "2026-10-26", soi: null, fgCode: "FB-022-1", product: "Tank", odooMo: "SF01/MO/1", qty: 2, status: "Done", doneAtISO: null, source: "manual", notes: [],
-      odoo: { agreement: "openInOdoo", suggest: [], state: { name: "SF01/MO/1", found: true, productCode: "FB-022-1", currentName: "SF01/MO/1", state: "progress", qty: 2, qtyProduced: 0, doneAtISO: null, checkedAtISO: "2026-10-27T06:00:00.000Z" } },
-    } as unknown as OdooPageData["entries"][number];
-    const r = odooLogRows([entry])[0];
-    expect(r).toMatchObject({ "Odoo state": "In progress", "Odoo closed at": "", "Odoo check": "Still open in Odoo" });
-    expect(Object.keys(r).slice(0, 7)).toEqual(["Date", "SOI#", "FG-CODE", "Product", "MO#", "QTY", "Status"]);
+    expect(odooLogRows([entry])[0]).toEqual({ Date: "2026-10-26", "SOI#": "", "FG-CODE": "FG1", Product: "TN", "MO#": "WH/MO/1", QTY: 2, Status: "Done", "Done at": "2026-10-26 09:15", Source: "Painting", Notes: "2026-10-26 09:00: first | 2026-10-26 10:00: second" });
   });
   it("lists only the days with something logged or closed, a column per series", () => {
     const d = {
@@ -138,10 +129,9 @@ describe("physicalRows", () => {
     const items = [item("C1", 25), item("C2", 5)];
     expect(physicalRows(items)[0]).not.toHaveProperty("Open Orders Need (sheets)");
     const need = {
-      byCode: { C1: { need: 40, after: -15, status: "short" as const, estimated: false, byOdoo: false, orders: 2, jobCount: 2, jobs: [] }, C2: { need: 3, after: null, status: "not_comparable" as const, estimated: false, byOdoo: false, orders: 1, jobCount: 1, jobs: [] } },
+      byCode: { C1: { need: 40, after: -15, status: "short" as const, estimated: false, orders: 2, jobCount: 2, jobs: [] }, C2: { need: 3, after: null, status: "not_comparable" as const, estimated: false, orders: 1, jobCount: 1, jobs: [] } },
       missing: [{ code: "C9", material: "Steel", thicknessMm: 5, sheetSize: "1220*2440", sheets: 12 }],
       unpriced: { noNesting: 0, uncoded: 0 },
-      byOdoo: 0,
     };
     const rows = physicalRows([...items, item("C3", 1)], need);
     expect(rows[0]).toMatchObject({ "SF01 Stock In Odoo": 25, "Open Orders Need (sheets)": 40, "Odoo After Need": -15 });

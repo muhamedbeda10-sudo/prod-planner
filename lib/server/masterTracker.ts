@@ -5,8 +5,6 @@ import { prisma } from "@/lib/db";
 import { loadMasterOrders, loadSettingsRow } from "./loads";
 import { ITEMS, applicableItems, isPaintExempt, itemEligible, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
 import { shownStageTotal } from "@/lib/domain/trackerEdit";
-import { normMo } from "@/lib/domain/odooSync";
-import { childMosOf } from "./odooFacts";
 import { exactOdooClosings, isOdooExactOrder, odooPlanMonth, trackerOdooQuantities, type OdooUnallocatedQuantity } from "@/lib/domain/trackerOdoo";
 
 // Plan Tracker on the MONTHLY registry: one row per MO. Progress is GLOBAL —
@@ -56,28 +54,17 @@ export interface MasterTrackerRow {
   pendingQty: { to: number; month: string | null } | null;
 }
 
-const ODOO_ENTRY_SELECT = { id: true, date: true, line: true, ledgerId: true, soi: true, fgCode: true, product: true, qty: true, status: true, odooMo: true } as const;
-
-/** The sub-assembly MOs the Odoo sync found under these orders. */
-const childLinksOf = async (mos: readonly string[]) => [...(await childMosOf(mos)).values()].flat();
+const ODOO_ENTRY_SELECT = { id: true, date: true, line: true, ledgerId: true, soi: true, fgCode: true, product: true, qty: true, status: true } as const;
 
 /** The ODOO log rows that can close the given orders exactly — the ones born
- *  from their daily-log rows and the ones naming one of their sub-assembly
- *  MOs — with those daily-log rows and MOs. */
+ *  from their daily-log rows — with those daily-log rows. */
 async function exactOdooRows(mos: readonly string[]) {
-  if (!mos.length) return { entries: [], ledgers: [], children: [] };
-  const [ledgers, children] = await Promise.all([
-    prisma.handoverEntry.findMany({ where: { mo: { in: [...mos] } }, select: { id: true, mo: true, bom: true, item: true } }),
-    childLinksOf(mos),
-  ]);
-  const names = [...new Set(children.map((c) => normMo(c.name)))];
-  const entries = ledgers.length || names.length
-    ? await prisma.odooEntry.findMany({
-        where: { line: "TR", OR: [{ ledgerId: { in: ledgers.map((l) => l.id) } }, ...(names.length ? [{ ledgerId: null, odooMo: { in: names } }] : [])] },
-        select: ODOO_ENTRY_SELECT,
-      })
+  if (!mos.length) return { entries: [], ledgers: [] };
+  const ledgers = await prisma.handoverEntry.findMany({ where: { mo: { in: [...mos] } }, select: { id: true, mo: true, bom: true, item: true } });
+  const entries = ledgers.length
+    ? await prisma.odooEntry.findMany({ where: { line: "TR", ledgerId: { in: ledgers.map((l) => l.id) } }, select: ODOO_ENTRY_SELECT })
     : [];
-  return { entries, ledgers, children };
+  return { entries, ledgers };
 }
 
 /** `odoo: "exact"` reads Odoo's closings only for the orders that count them
@@ -101,16 +88,13 @@ async function computeMasterTracker({ odoo: mode = "all" }: { odoo?: "all" | "ex
   const exactMos = new Set(exactOrders.map((o) => o.mo));
   let odooProgress: { counts: Map<string, Partial<Record<Item, number>>>; tracked: Set<string>; unallocated: OdooUnallocatedQuantity[] };
   if (mode === "all") {
-    const [odoo, children] = await Promise.all([
-      prisma.odooEntry.findMany({ where: { line: "TR" }, select: ODOO_ENTRY_SELECT }),
-      childLinksOf([...exactMos]),
-    ]);
+    const odoo = await prisma.odooEntry.findMany({ where: { line: "TR" }, select: ODOO_ENTRY_SELECT });
     const ledgerIds = odoo.flatMap((row) => row.ledgerId === null ? [] : [row.ledgerId]);
     const ledgers = ledgerIds.length ? await prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, mo: true, bom: true, item: true } }) : [];
-    odooProgress = trackerOdooQuantities(withEligible, odoo, ledgers, settings?.odooTrackingFrom, { children });
+    odooProgress = trackerOdooQuantities(withEligible, odoo, ledgers, settings?.odooTrackingFrom);
   } else {
     const exact = await exactOdooRows([...exactMos]);
-    const counts = exactOdooClosings(exactOrders, exact.entries, exact.ledgers, exact.children);
+    const counts = exactOdooClosings(exactOrders, exact.entries, exact.ledgers);
     odooProgress = { counts, tracked: new Set(), unallocated: [] }; // every exact order is tracked (below)
   }
 

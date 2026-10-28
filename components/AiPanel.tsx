@@ -3,16 +3,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Bot } from "lucide-react";
 import type { AiLayout, AiTab, AiView } from "@/components/AiWorkspace";
 import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens, usePhone, useWindowChrome } from "@/components/floatWindow";
-import { useInboxPanel } from "@/components/InboxPanel";
 import { handToAssistant } from "@/lib/aiAsk";
 import { clampDockWidth } from "@/lib/domain/aiDock";
 import { FloatWindow } from "@/components/FloatDock";
 
 // The workspace (the chat, its Markdown and its charts) is the heaviest thing
-// this layout could ship, and every page carries the button. So it is split
+// this layout could ship, and every page carries its button in the bar. So it is split
 // into its own chunk and fetched the first time the window opens — a page
 // that never opens it never downloads it. The window is only ever made in
 // the browser (see `made` below), so there is nothing to prerender.
@@ -21,7 +19,7 @@ const AiWorkspace = dynamic(() => import("./AiWorkspace").then((m) => m.AiWorksp
   loading: () => <div className="h-full grid place-items-center text-sm text-muted" role="status">Opening the assistant…</div>,
 });
 
-// The AI assistant on every page: a round button in the corner opens it
+// The AI assistant on every page: its button in the bar (AppNav) opens it
 // docked down the right of the screen, top to bottom, and the whole app —
 // its bar and the page — moves left into the rest, so both are seen at once;
 // its left edge is dragged to make it wider or narrower. One click fills
@@ -174,16 +172,15 @@ export function AiPanelProvider({ config, children }: { config: AiPanelConfig; c
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
 
-/** The round button in the corner, and the window itself — placed inside
- *  <main>. The window is made the first time it opens, then kept (hidden
+/** The window itself — placed inside <main>; its button is in the bar
+ *  (AppNav). The window is made the first time it opens, then kept (hidden
  *  when closed), so what it was doing carries on. */
 export function AiPanel({ isOwner }: { isOwner: boolean }) {
   const p = useAiPanel();
-  const inbox = useInboxPanel();
   const phone = usePhone();
   const [made, setMade] = useState(false);
   if (p?.shown && !made) setMade(true);
-  if (!p || p.aiPage) return null;
+  if (!p || p.aiPage || !made) return null;
   const { state } = p;
   const layout: AiLayout = phone ? "phone" : state.large ? "large" : "compact";
 
@@ -194,27 +191,17 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
   };
 
   return (
-    <>
-      {/* the button steps aside while either window is open */}
-      {!p.shown && !inbox?.shown && (
-        <button type="button" className="ai-fab no-print" onClick={p.open} aria-label="Open the AI assistant" title="AI assistant">
-          <Bot size={26} aria-hidden />
-        </button>
-      )}
-      {made && (
-        <FloatWindow name="ai" label="AI assistant" edgeLabel="Resize the assistant" layout={layout} shown={p.shown} width={state.width} onWidth={p.setWidth} onClose={p.close}>
-          <AiWorkspace
-            tabs={p.tabs}
-            view={state.view}
-            onView={onView}
-            layout={layout}
-            visible={p.shown}
-            isOwner={isOwner}
-            onExpand={p.setLarge}
-            onClose={p.close}
-          />
-        </FloatWindow>
-      )}
-    </>
+    <FloatWindow name="ai" label="AI assistant" edgeLabel="Resize the assistant" layout={layout} shown={p.shown} width={state.width} onWidth={p.setWidth} onClose={p.close}>
+      <AiWorkspace
+        tabs={p.tabs}
+        view={state.view}
+        onView={onView}
+        layout={layout}
+        visible={p.shown}
+        isOwner={isOwner}
+        onExpand={p.setLarge}
+        onClose={p.close}
+      />
+    </FloatWindow>
   );
 }

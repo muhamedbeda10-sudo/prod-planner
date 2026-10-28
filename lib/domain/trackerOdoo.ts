@@ -10,11 +10,8 @@ interface Order {
   mo: string; bom: string; soi: string | null; line?: string; planQty: number;
   source?: string | null; months?: string | readonly string[]; eligibleItems?: readonly Item[];
 }
-interface Entry { id: number; date: Date | string; line: string; ledgerId: number | null; soi: string | null; fgCode: string; product: string; qty: number; status: string; odooMo?: string }
+interface Entry { id: number; date: Date | string; line: string; ledgerId: number | null; soi: string | null; fgCode: string; product: string; qty: number; status: string }
 interface Ledger { id: number; mo: string | null; bom: string; item: string }
-/** A sub-assembly MO the Odoo sync found under one of the planner's orders;
- *  `sharedWith` names the other orders it is under too. */
-export interface OdooChildLink { name: string; parentMo: string; item: string; sharedWith?: readonly string[] }
 const norm = (s: string | null | undefined) => (s ?? "").trim().toUpperCase();
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -53,65 +50,35 @@ export function isOdooExactOrder(order: Pick<Order, "source" | "months">, from =
   return !!month && Number.isFinite(monthRank(month)) && monthRank(month) >= monthRank(from);
 }
 
+/** A closing the ODOO log counts: a Done / Closed transformer row with a quantity. */
+const isClosingRow = (entry: Entry) => entry.line === "TR" && isDoneStatus(entry.status) && Number.isFinite(entry.qty) && entry.qty > 0;
+
 /**
  * The exact closings of the given orders, by MO and component: the qty of
- * every Done / Closed TR row of the ODOO log, credited to the MO it is tied
- * to — the daily-log closing it was born from, or else the one order whose
- * sub-assembly MO it names (a child shared by several orders is not guessed).
- * Not capped at the plan qty: a closing over the plan shows as one. The
- * ledger's MO is the record — its BOM is not checked against the order's.
+ * every Done / Closed TR row of the ODOO log born from one of their own
+ * daily-log closings, on that closing's MO and component. Not capped at the
+ * plan qty: a closing over the plan shows as one. The ledger's MO is the
+ * record — its BOM is not checked against the order's.
  */
 export function exactOdooClosings(
   orders: readonly Pick<Order, "mo" | "eligibleItems">[],
   entries: readonly Entry[],
   ledgers: readonly Ledger[],
-  children: readonly OdooChildLink[] = [],
 ): Map<string, Partial<Record<Item, number>>> {
-  return creditExact(orders, entries, ledgers, children).counts;
-}
-
-/** A closing the ODOO log counts: a Done / Closed transformer row with a quantity. */
-const isClosingRow = (entry: Entry) => entry.line === "TR" && isDoneStatus(entry.status) && Number.isFinite(entry.qty) && entry.qty > 0;
-
-/** Each sub-assembly MO's one order and component, by MO name (upper case) —
- *  null for one under several orders (or components): it is not guessed.
- *  The tracker's Odoo column and the trace's On Odoo both tie typed rows by it. */
-export function childMoOwners(children: readonly OdooChildLink[]): Map<string, { mo: string; item: string } | null> {
-  const owners = new Map<string, { mo: string; item: string } | null>();
-  for (const c of children) {
-    const key = norm(c.name), seen = owners.get(key);
-    const shared = !!c.sharedWith?.length || (seen !== undefined && (seen === null || norm(seen.mo) !== norm(c.parentMo) || norm(seen.item) !== norm(c.item)));
-    owners.set(key, shared ? null : { mo: c.parentMo, item: c.item });
-  }
-  return owners;
-}
-
-/** exactOdooClosings, with the log rows it credited. */
-function creditExact(
-  orders: readonly Pick<Order, "mo" | "eligibleItems">[],
-  entries: readonly Entry[],
-  ledgers: readonly Ledger[],
-  children: readonly OdooChildLink[],
-) {
   const byMo = new Map(orders.map((o) => [norm(o.mo), o]));
   const linked = new Map(ledgers.map((l) => [l.id, l]));
-  const ownerOf = childMoOwners(children);
   const counts = new Map<string, Partial<Record<Item, number>>>();
-  const used = new Set<number>();
   for (const entry of entries) {
-    if (!isClosingRow(entry)) continue;
-    const owner = entry.ledgerId !== null ? linked.get(entry.ledgerId) : ownerOf.get(norm(entry.odooMo));
-    const order = owner?.mo ? byMo.get(norm(owner.mo)) : undefined;
-    if (!order) continue;
-    // the row is this order's, counted or not: never spread onto another
-    used.add(entry.id);
-    const it = norm(owner!.item);
-    if (!isItem(it) || (order.eligibleItems && !order.eligibleItems.includes(it))) continue;
+    if (entry.ledgerId === null || !isClosingRow(entry)) continue;
+    const ledger = linked.get(entry.ledgerId);
+    const order = ledger?.mo ? byMo.get(norm(ledger.mo)) : undefined;
+    const it = norm(ledger?.item);
+    if (!order || !isItem(it) || (order.eligibleItems && !order.eligibleItems.includes(it))) continue;
     const row = counts.get(order.mo) ?? {};
     row[it] = (row[it] ?? 0) + entry.qty;
     counts.set(order.mo, row);
   }
-  return { counts, used };
+  return counts;
 }
 
 function inTrackingWindow(order: Order, trackingFrom: string | null): boolean {
@@ -126,7 +93,7 @@ function inTrackingWindow(order: Order, trackingFrom: string | null): boolean {
  * against the whole registry BEFORE any month, search or status filter. */
 export function trackerOdooQuantities(
   orders: readonly Order[], entries: readonly Entry[], ledgers: readonly Ledger[], trackingFrom: string | null = null,
-  { children = [], exactFrom = ODOO_EXACT_FROM }: { children?: readonly OdooChildLink[]; exactFrom?: string } = {},
+  { exactFrom = ODOO_EXACT_FROM }: { exactFrom?: string } = {},
 ) {
   const startDate = normalizeOdooTrackingStart(trackingFrom);
   // an order's plan month and tracking window, worked out once each — the
@@ -176,12 +143,12 @@ export function trackerOdooQuantities(
     if (entry.line === "TR" && ledger && order && item && norm(order.bom) === norm(ledger.bom)) tracked.add(JSON.stringify([order.mo, item]));
     return entry.line === "TR" && ledger && item ? [JSON.stringify([norm(ledger.bom), item])] : [];
   }));
-  const { counts, used } = creditExact(exactOrders, entries, ledgers, children);
+  const counts = exactOdooClosings(exactOrders, entries, ledgers);
   const pools = new Map<string, OdooUnallocatedQuantity>();
   const pending: { item: Item; qty: number; candidates: Order[]; id: number; exact: boolean }[] = [];
   const add = (mo: string, item: Item, qty: number) => { const row = counts.get(mo) ?? {}; row[item] = (row[item] ?? 0) + qty; counts.set(mo, row); };
   for (const entry of entries) {
-    if (used.has(entry.id) || !isClosingRow(entry)) continue;
+    if (!isClosingRow(entry)) continue;
     const ledger = entry.ledgerId === null ? undefined : linked.get(entry.ledgerId);
     const item = itemOf(entry, ledger);
     if (!item) continue;

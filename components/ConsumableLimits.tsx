@@ -472,7 +472,7 @@ export function ConsumableLimits({
             action={items.length > 0 ? <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setQ(""); setDept(""); setFilter("all"); }}>Show every item</button> : undefined}
           />
         ) : (
-          <TableFrame className="!max-h-[calc(100vh-16rem)] min-h-[16rem]">
+          <TableFrame className="min-h-[16rem]">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="text-left">

@@ -710,7 +710,7 @@ export function MasterTrackerTable({
     // filters stay put and ONLY the table scrolls (with its header pinned).
     // `print-flow` hands the height back to the paper: a fixed-height scroller
     // would print one page and clip everything under it.
-    <div className="tracker-view print-flow md:flex md:flex-col md:h-[calc(100vh-5rem)]">
+    <div className="tracker-view print-flow md:flex md:flex-col md:h-[var(--page-fill)]">
       {/* a plan import brought a different qty for these orders — waiting on the planner */}
       <PendingQtyBanner rows={rows} />
       {/* what the sheet is showing — filters don't survive onto paper otherwise */}

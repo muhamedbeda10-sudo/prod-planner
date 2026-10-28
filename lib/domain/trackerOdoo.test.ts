@@ -179,32 +179,12 @@ describe("exact Odoo closings — the orders planned from October 2026 on", () =
     expect(exactOdooClosings(orders, [entry({ ledgerId: 7, status: "Done" })], ledgers).get("OCT")?.TN).toBe(5);
   });
 
-  it("ties a typed row through its sub-assembly MO — only when one order holds it", () => {
-    const orders = [order("OCT-1", "BOM-A", "SO-1", "October 2026", 10), order("OCT-2", "BOM-A", "SO-1", "October 2026", 10)];
-    const children = [
-      { name: "SF01/MO/1", parentMo: "OCT-1", item: "TC" },
-      { name: "SF01/MO/2", parentMo: "OCT-1", item: "TN" }, { name: "SF01/MO/2", parentMo: "OCT-2", item: "TN" },
-    ];
-    const entries = [entry({ id: 1, odooMo: "sf01/mo/1 ", product: "Top Cover", qty: 4 }), entry({ id: 2, odooMo: "SF01/MO/2", qty: 6 })];
-    expect(exactOdooClosings(orders, entries, [], children)).toEqual(new Map([["OCT-1", { TC: 4 }]]));
-    // shared with an older order the sync lists apart: still not guessed
-    expect(exactOdooClosings(orders, [entry({ odooMo: "SF01/MO/3" })], [], [{ name: "SF01/MO/3", parentMo: "OCT-1", item: "TN", sharedWith: ["SEP-1"] }]).size).toBe(0);
-    // the row it credited is not allocated again; the shared one stays a pool
-    const progress = exact(orders, entries, [], null, { children });
-    expect(progress.counts.get("OCT-1")).toEqual({ TC: 4 });
-    expect(progress.unallocated).toEqual([expect.objectContaining({ item: "TN", qty: 6 })]);
-  });
-
   it("leaves a component the order does not need, and keeps the older orders on the allocation", () => {
     const orders = [{ ...order("OCT", "BOM-A", "SO-1", "October 2026", 10), eligibleItems: ["TN" as const] }, order("SEP", "BOM-B", "SO-2", "September 2026", 10)];
     const ledgers = [{ id: 7, mo: "OCT", bom: "BOM-A", item: "CB" }];
     const progress = exact(orders, [entry({ id: 1, ledgerId: 7, product: "Cable Box" }), entry({ id: 2, soi: "SO-2", fgCode: "FB-022-BOM-B", qty: 3 })], ledgers);
     expect(progress.counts.has("OCT")).toBe(false);
     expect(progress.counts.get("SEP")?.TN).toBe(3);
-    // a typed row on the October order's arrester stays its own, not spread onto September's tanks
-    const typed = exact(orders, [entry({ id: 3, odooMo: "SF01/MO/9", soi: "SO-2", fgCode: "FB-022-BOM-B", qty: 4 })], [], null, { children: [{ name: "SF01/MO/9", parentMo: "OCT", item: "AR" }] });
-    expect(typed.counts.size).toBe(0);
-    expect(typed.unallocated).toEqual([]);
   });
 });
 
