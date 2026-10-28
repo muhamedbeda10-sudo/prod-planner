@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-fins-teal",
+    dateISO: "2026-10-28",
+    title: "The Fins column turns teal",
+    where: "Plan Tracker (monthly, transformers)",
+    href: "/tracker",
+    body: "The Fins column now reads in teal instead of rose, so it is no longer mistaken for the Odoo columns in Odoo's plum.",
+  },
+  {
     id: "2026-10-28-odoo-column-lv-weekly-plum",
     dateISO: "2026-10-28",
     title: "Odoo's closings on the LV Panels tracker and the weekly plan too, in Odoo's colour",

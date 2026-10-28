@@ -121,11 +121,11 @@ function ColumnChooser({ cols, hiddenItems, onHideItem, collapsed, onCollapse }:
 type SpecField = "fins" | "colorRal" | "crcSize" | "sfm";
 /** Fins reads in its own colour down the whole column — header, MO rows and
  *  merged BOM rows — so the eye finds it without counting across to the Core
- *  Frame. The rose is the one hue the stage tints, the status pills and the
- *  brand green leave free; both pairs clear AA on their surfaces. */
+ *  Frame. The teal is a hue the stage tints, Odoo's plum, the status pills and
+ *  the brand green leave free; both pairs clear AA on their surfaces. */
 const FINS_CELL = { background: "var(--fins-tint)", color: "var(--fins-fg)" } as const;
 // the header wears the same pair, not the inverse: inverting it puts white on
-// a pale rose in dark mode, which fails. One tint the whole way down also
+// a pale teal in dark mode, which fails. One tint the whole way down also
 // reads as a single stripe against the green header row.
 const FINS_HEAD = FINS_CELL;
 
