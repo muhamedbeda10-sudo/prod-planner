@@ -23,6 +23,14 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The AI assistant no longer sits as a round button in the corner of the page: it is the coloured tile with a light running across it, beside the inbox bell in the bar — click it to open or close the assistant. With the corner free, a page's table now reaches the bottom of the window instead of stopping short of it; the Plan Tracker's weekly view, the Welding / Painting and Leak test worklists, the chat, the inbox and the assistant's own page fill the screen the same way.",
   },
   {
+    id: "2026-10-28-odoo-sync-removed",
+    dateISO: "2026-10-28",
+    title: "The app no longer reads Odoo by itself",
+    where: "ODOO log, Odoo alerts, Trace, Admin → Settings, Material → BoMs",
+    href: "/odoo",
+    body: "The scheduled Odoo sync is off and taken out of the app. The ODOO log is back to what you type: no Odoo ✓ / Still open in Odoo marks and no differ from Odoo count, and a row waiting for its MO no longer offers Odoo's MOs. The Trace no longer lists the sub-assembly MOs, the closings count on the day they were recorded here, and Admin → Settings has no Odoo sync card. Physical Material's Odoo column keeps its figures and is updated by the store's sheet again. Material → BoMs keeps the BoMs as Odoo was last read on 28 October; they are no longer refreshed.",
+  },
+  {
     id: "2026-10-28-odoo-boms",
     dateISO: "2026-10-28",
     title: "Odoo's BoMs in the app: the tree, the components check, and the open need fills its gaps",
@@ -36,14 +44,6 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     title: "The assistant's answers no longer list their sources, and Escape closes only what is on top",
     where: "AI assistant · the inbox and the chat beside the page",
     body: "Answers no longer end with the Sources list (\"Sources · 4\" and its cards), nor carry Source / المصدر links after their figures — in new answers and in chats kept from before. When a confirm or a box is open inside the assistant, the inbox or the chat (What it remembers about you, a delete to confirm), Escape now closes just that box; the window stays open under it, and a second Escape closes the window.",
-  },
-  {
-    id: "2026-10-27-odoo-sync",
-    dateISO: "2026-10-27",
-    title: "The app reads Odoo by itself",
-    where: "ODOO log, Odoo alerts, Trace, Physical Material, Admin → Settings → Odoo sync",
-    href: "/odoo",
-    body: "A scheduled task reads Odoo at about 09:00 and 13:00 Riyadh time, Sunday to Thursday — in the Claude desktop app's browser, with your own Odoo login — and writes what it read here. It only reads; nothing is ever changed in Odoo. On the ODOO log each MO shows what Odoo says: Odoo ✓ when it is closed there, Still open in Odoo when a row is Done here but not there, Closed in Odoo when Odoo closed what is still open here, MO of another part, Not in Odoo, and the new name when Odoo renamed the MO on splitting it. A new count, differ from Odoo, filters to those rows. A row waiting for its MO now offers the open MOs Odoo has for its order and component, its own batch first — one click books it, in the log and in the alerts popup. The Trace shows every sub-assembly MO under the order with Odoo's state, and the closings count on Odoo's own closing day on the ODOO and Material dashboards. Physical Material's Odoo column is filled from SF01/Shop Floor Warehouse on each run. Admin → Settings shows the last run and says when one was missed. Nothing anyone typed is ever changed by a sync.",
   },
   {
     id: "2026-10-27-assistant-answers-laid-out",

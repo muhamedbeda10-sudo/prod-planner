@@ -479,7 +479,7 @@ export function stockAfterPlan(stock: { uom: string; odoo: number }, need: { qty
 
 // ---------------------------------------------------------------- how a code was found
 
-/** How the Odoo pull tied an order code to its BoM (lib/domain/odooBomPull.ts). */
+/** How the (now removed) Odoo pull tied an order code to its BoM. */
 export const ROOT_VIA = ["code", "product", "mo", "missing"] as const;
 export type RootVia = (typeof ROOT_VIA)[number];
 

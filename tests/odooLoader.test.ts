@@ -19,8 +19,6 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock("server-only", () => ({}));
-// what the Odoo sync read is its own tested module (lib/domain/odooSync.ts)
-vi.mock("@/lib/server/odooFacts", () => ({ odooFactsFor: async () => new Map(), moStatesOf: async () => new Map(), childMosOf: async () => new Map() }));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("@/lib/server/line", () => ({ getActiveLine: async () => "TR" }));
 

@@ -8,7 +8,6 @@
 // they have not seen yet appears, workable from the popup. Pure, tested.
 
 import { statusTone } from "./odoo";
-import type { RowOdooFacts } from "./odooSync";
 
 /** Subscribes a person to "ready to close". Not an access right, so an admin
  *  does not get it automatically — it is ticked. */
@@ -34,8 +33,6 @@ export interface ReadyRow {
   qty: number;
   status: string;
   source: string; // manual | import | painting | shotblast
-  /** What the last Odoo sync read about the row — absent before any sync. */
-  odoo?: RowOdooFacts;
 }
 
 /** The statuses a row is finished under — closed, or not waiting on anyone

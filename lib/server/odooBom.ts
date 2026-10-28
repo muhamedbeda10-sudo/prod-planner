@@ -9,8 +9,8 @@ import {
   type BomIndex, type BomNode, type BomRec, type ItemCheck, type NeedGap, type NeedOrder, type OdooRates, type PartLookup,
 } from "@/lib/domain/odooBom";
 
-// The Odoo BoM mirror's reads. The Odoo sync writes it (odoo_ingest, from the
-// pull's BoM part — lib/domain/odooBomPull.ts); the app only reads. The BoMs
+// The Odoo BoM mirror's reads. The Odoo sync wrote it until it was removed
+// (2026-10-28); the tables keep what it last read and the app only reads. The BoMs
 // are loaded from the roots a screen needs down through their sub-BoMs, level
 // by level, never the whole table for one tree.
 
