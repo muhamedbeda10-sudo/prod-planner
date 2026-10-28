@@ -83,12 +83,12 @@ function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
 /** Plan month, on either line's sheet: not from the sheet — read off the Plan Tracker. */
 const planCol = <K extends string>(): ColDef<K> => ({
   key: "plan" as K, name: "Plan month",
-  th: { label: "Plan month", hint: "The monthly plan the line's order is in on the Plan Tracker — found by its MO, else its SOI; a line with neither, by its BOM. +n: it sits in more plans too (an order carried over, or a SOI / BOM with orders in several)" },
+  th: { label: "Plan month", hint: "The monthly plan the line's order is in on the Plan Tracker — found by its MO, else its SOI and BOM, else its SOI; a line with neither MO nor SOI, by its BOM. A line whose MO was closed Done on the ODOO log leaves the plans that began after that day. +n: it sits in more plans too" },
   td: "p-2 text-xs",
   cell: (l) => <PlanCell months={l.planMonths} match={l.planMatch} />,
 });
 
-const MATCH_WORD: Record<MaterialPlanMatch, string> = { mo: "MO", soi: "SOI", bom: "BOM" };
+const MATCH_WORD: Record<MaterialPlanMatch, string> = { mo: "MO", soiBom: "SOI and BOM", soi: "SOI", bom: "BOM" };
 
 /** The monthly plans the line's order was in: the newest, and +n for the
  *  other plans its key also sits in (an order carried over, or a SOI / BOM

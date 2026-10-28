@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-material-plan-month-closed-nesting",
+    dateISO: "2026-10-28",
+    title: "A plan month on the Material sheet no longer shows the nesting already closed before it",
+    where: "Material → the nesting sheet → Plan month",
+    href: "/material",
+    body: "A sales item carried from one month's plan into the next used to bring all of its nesting with it, so the newest month listed parts already made and closed on Odoo. Now a line is tied to the plan by its SOI and BOM together (its SOI alone only when no order carries its code), and a line whose MO was closed Done on the ODOO log leaves every plan month that began after that day — the new month shows the work still open for it. The months before keep their lines.",
+  },
+  {
     id: "2026-10-28-material-one-bar-table-fills",
     dateISO: "2026-10-28",
     title: "The Material sheet fits the window again: one bar, a lower summary",
