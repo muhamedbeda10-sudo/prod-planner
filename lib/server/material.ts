@@ -81,11 +81,13 @@ export async function getMaterialData(month: string): Promise<MaterialPageData> 
   return loadMaterial(line, month === "all" ? { line } : { month, line });
 }
 
+/** An MO, SOI or code as the registry and the ODOO log are matched by. */
+const up = (v: string) => v.trim().toUpperCase();
+
 /** One order's (or one code's) lines of the sheet, for its trace — which
  *  lines, lib/domain/material.ts traceMaterialMatch says. Everything is read
  *  for those lines alone, never the whole line's log and registry. */
 export async function getTraceMaterial(line: ProductLine, target: { scope: "mo" | "bom"; mos: readonly string[]; bom: string; sois: readonly string[] }): Promise<MaterialPageData> {
-  const up = (v: string) => v.trim().toUpperCase();
   const mos = [...new Set(target.mos.map(up).filter(Boolean))];
   const sois = [...new Set(target.sois.map(up).filter(Boolean))];
   const bom = up(target.bom);
@@ -175,9 +177,6 @@ async function narrowSource(line: ProductLine, where: Prisma.MaterialUsageWhereI
   return { rows, odoo, orders, painted };
 }
 
-/** The lines `where` picks, with what the ODOO log and the registry say of
- *  them — read for the whole line (the tab) or, `narrow`, for these lines
- *  alone (a trace). */
 /** A row born of an order's daily-log closing carries the part's own MO the
  *  clerk typed: the part MO → the order and component it was closed against
  *  (`materialClosings`), and the orders those closings name. */
@@ -186,10 +185,13 @@ async function closingsOf(odoo: readonly OdooClosingRow[]) {
   const ledgerRows = ledgerIds.length > 0
     ? await prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds }, mo: { not: null } }, select: { id: true, mo: true, item: true } })
     : [];
-  const ledger = new Map(ledgerRows.map((h) => [h.id, { mo: h.mo!.trim().toUpperCase(), item: h.item }]));
+  const ledger = new Map(ledgerRows.map((h) => [h.id, { mo: up(h.mo!), item: h.item }]));
   return { closings: materialClosings(odoo, ledger), orderMos: [...new Set([...ledger.values()].map((l) => l.mo))] };
 }
 
+/** The lines `where` picks, with what the ODOO log and the registry say of
+ *  them — read for the whole line (the tab) or, `narrow`, for these lines
+ *  alone (a trace). */
 async function loadMaterial(line: ProductLine, where: Prisma.MaterialUsageWhereInput, narrow = false): Promise<MaterialPageData> {
   const lv = line === "LV";
   const { rows, odoo, orders: ordersOf, painted: paintedRows } = await (narrow ? narrowSource : wideSource)(line, where);
@@ -322,27 +324,27 @@ export async function importNestingTracker(
   // have row by row
   const last = new Map<string, (typeof rows)[number]>();
   for (const r of rows) last.set(keyOf(r), r);
-  let moved = 0;
   // the lines another row may take over, by the part and sheet they nest — a
   // line the file still carries as it is is never one
-  const takeable = new Map<string, typeof existing>();
-  const rivals = new Map<string, (typeof rows)[number][]>();
-  if (moving) {
-    for (const e of existing) if (!last.has(keyOf(e))) (takeable.get(nestingSpecKey(e)) ?? takeable.set(nestingSpecKey(e), []).get(nestingSpecKey(e))!).push(e);
-    for (const r of last.values()) (rivals.get(nestingSpecKey(r)) ?? rivals.set(nestingSpecKey(r), []).get(nestingSpecKey(r))!).push(r);
-  }
+  const bySpec = <T extends Parameters<typeof nestingSpecKey>[0]>(items: readonly T[]) => {
+    const m = new Map<string, T[]>();
+    for (const x of items) { const k = nestingSpecKey(x); const g = m.get(k); if (g) g.push(x); else m.set(k, [x]); }
+    return m;
+  };
+  const takeable = moving ? bySpec(existing.filter((e) => !last.has(keyOf(e)))) : new Map<string, typeof existing>();
+  const rivals = moving ? bySpec([...last.values()]) : new Map<string, typeof rows>();
   for (const r of last.values()) {
     const exact = byKey.get(keyOf(r));
     // the sheet now filing the order's MO: the older line on the part's MO
     // is the same nesting — taken over, never added beside it
     const older = exact || !moving ? null
       : adoptedPartLine(r, (takeable.get(nestingSpecKey(r)) ?? []).filter((e) => !adopted.has(e.id)), rivals.get(nestingSpecKey(r)) ?? [], moving.isOrder, moving.ordersOf);
-    if (older) { adopted.add(older.id); moved += 1; }
+    if (older) adopted.add(older.id);
     const cur = exact ?? older;
     if (cur) seen.add(cur.id);
     // the sheet is the only source: its rate replaces one typed in the tab
     // before typing was closed
-    const same = cur && cur.mo === r.mo && cur.bom === r.bom && cur.partCode === r.partCode && cur.units === r.units && cur.sheetsPerUnit === r.sheetsPerUnit
+    const same = !older && cur && cur.units === r.units && cur.sheetsPerUnit === r.sheetsPerUnit
       && !cur.actualPerUnitManual && cur.actualPerUnit === r.actualPerUnit && cur.sheetsUsed === r.sheetsUsed && cur.partName === r.partName && cur.materialCode === r.materialCode
       && cur.sortOrder === r.rowNum && cur.soi === r.soi && cur.mtr === r.mtr && cur.weightKg === r.weightKg && cur.utilization === r.utilization
       && (cur.note ?? null) === (r.note ?? cur.note ?? null);
@@ -360,7 +362,7 @@ export async function importNestingTracker(
       recordedBy,
     };
     // a line taken over is the row's from here on: its key the row's own
-    if (cur) updates.push({ id: cur.id, data: { ...data, mo: r.mo, bom: r.bom, partCode: r.partCode } });
+    if (cur) updates.push({ id: cur.id, data: older ? { ...data, mo: r.mo, bom: r.bom, partCode: r.partCode } : data });
     else creates.push({ month, bom: r.bom, mo: r.mo, partCode: r.partCode, material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, ...data, note: r.note, line });
   }
   // in bulk — a sheet of hundreds of rows written one by one outlasted the
@@ -371,9 +373,8 @@ export async function importNestingTracker(
   }
   const pruning = pruneSafely(prune, skipped, issues);
   if (moving) {
-    if (moved > 0) issues.push(`${moved} line(s) filed under a part's MO now sit under their transformer's MO — the same nesting, not added twice.`);
+    if (adopted.size > 0) issues.push(`${adopted.size} line(s) filed under a part's MO now sit under their transformer's MO — the same nesting, not added twice.`);
     // part-MO lines of an order the sheet now files, left beside the one taken over
-    const up = (v: string) => v.trim().toUpperCase();
     const filed = new Set([...last.values()].map((r) => `${up(r.mo)}|${nestingSpecKey(r)}`));
     const leftOnParts = existing.filter((e) => !seen.has(e.id) && up(e.mo) && !moving.isOrder(e.mo)
       && moving.ordersOf(e.mo).some((o) => filed.has(`${o}|${nestingSpecKey(e)}`))).length;
@@ -382,7 +383,7 @@ export async function importNestingTracker(
     if (partRows > 0) issues.push(`${partRows} row(s) name an MO no order of the Plan Tracker has (a part's MO?) — the sheet files the transformer's own MO (PF01/MO/…); the part's MO is read off the ODOO log.`);
   }
   const { missing, removed } = await rowsGone(line, month, seen, pruning, preview);
-  return { ok: true, added, updated, unchanged, issues, preview, sheet: sheetName, recomputed, missing, removed, moved };
+  return { ok: true, added, updated, unchanged, issues, preview, sheet: sheetName, recomputed, missing, removed, moved: adopted.size };
 }
 
 /** What moving the sheet from the part's MO to the order's needs to know: the
@@ -390,10 +391,9 @@ export async function importNestingTracker(
  *  parts against), and the orders each part MO was closed against there.
  *  Null when no row of the sheet names an MO — nothing can move. */
 async function partMoMove(line: ProductLine, rows: readonly { mo: string }[], existing: readonly { mo: string }[]) {
-  const up = (v: string) => v.trim().toUpperCase();
-  const rowMos = [...new Set(rows.map((r) => up(r.mo)).filter(Boolean))];
+  const rowMos = keysOf(rows.map((r) => r.mo));
   if (rowMos.length === 0) return null;
-  const mos = [...new Set([...rowMos, ...existing.map((e) => up(e.mo)).filter(Boolean)])];
+  const mos = keysOf([...rowMos, ...existing.map((e) => e.mo)]);
   const [orders, odoo] = await Promise.all([
     prisma.masterOrder.findMany({ where: { line, mo: { in: mos, mode: "insensitive" } }, select: { mo: true } }),
     prisma.odooEntry.findMany({ where: { line, odooMo: { in: mos, mode: "insensitive" }, ledgerId: { not: null } }, select: { odooMo: true, status: true, qty: true, ledgerId: true } }),
