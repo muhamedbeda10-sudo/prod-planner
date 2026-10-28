@@ -76,49 +76,98 @@ export async function getMaterialData(month: string): Promise<MaterialPageData> 
 }
 
 /** One order's (or one code's) lines of the sheet, for its trace — which
- *  lines, lib/domain/material.ts traceMaterialMatch says. */
+ *  lines, lib/domain/material.ts traceMaterialMatch says. Everything is read
+ *  for those lines alone, never the whole line's log and registry. */
 export async function getTraceMaterial(line: ProductLine, target: { scope: "mo" | "bom"; mos: readonly string[]; bom: string; sois: readonly string[] }): Promise<MaterialPageData> {
   const up = (v: string) => v.trim().toUpperCase();
   const mos = [...new Set(target.mos.map(up).filter(Boolean))];
   const sois = [...new Set(target.sois.map(up).filter(Boolean))];
   const bom = up(target.bom);
-  const any = (field: "mo" | "soi" | "bom", values: readonly string[]) => values.map((v) => ({ [field]: { equals: v, mode: "insensitive" as const } }));
   // the part MOs closed against these orders on the ODOO log: their lines
   // belong here whatever SOI or code the sheet files them under
-  const closings = mos.length > 0
-    ? await prisma.handoverEntry.findMany({ where: { OR: any("mo", mos) as Prisma.HandoverEntryWhereInput[] }, select: { id: true } })
-    : [];
+  const [closings, soiOrders] = await Promise.all([
+    mos.length > 0 ? prisma.handoverEntry.findMany({ where: { mo: { in: mos, mode: "insensitive" } }, select: { id: true } }) : [],
+    sois.length > 0 ? prisma.masterOrder.findMany({ where: { line, soi: { in: sois, mode: "insensitive" } }, select: { mo: true, soi: true, bom: true } }) : [],
+  ]);
   const parts = closings.length > 0
     ? (await prisma.odooEntry.findMany({ where: { line, ledgerId: { in: closings.map((c) => c.id) }, odooMo: { not: "" }, status: { not: ODOO_CANCELLED_STATUS } }, select: { odooMo: true } })).map((o) => up(o.odooMo))
     : [];
-  const or: Prisma.MaterialUsageWhereInput[] = [...any("mo", [...new Set([...mos, ...parts])]), ...any("soi", sois), ...(bom ? any("bom", [bom]) : [])];
+  const keys = [...new Set([...mos, ...parts])];
+  const or: Prisma.MaterialUsageWhereInput[] = [
+    ...(keys.length > 0 ? [{ mo: { in: keys, mode: "insensitive" as const } }] : []),
+    ...(sois.length > 0 ? [{ soi: { in: sois, mode: "insensitive" as const } }] : []),
+    ...(bom ? [{ bom: { equals: bom, mode: "insensitive" as const } }] : []),
+  ];
   if (or.length === 0) return { lines: [], odooByMo: {} };
-  const [data, soiOrders] = await Promise.all([
-    // the living table, as the tab shows it
-    loadMaterial(line, { line, month: "", OR: or }),
-    sois.length > 0
-      ? prisma.masterOrder.findMany({ where: { line, OR: any("soi", sois) as Prisma.MasterOrderWhereInput[] }, select: { mo: true, soi: true, bom: true } })
-      : Promise.resolve([]),
-  ]);
+  // the living table, as the tab shows it
+  const data = await loadMaterial(line, { line, month: "", OR: or }, true);
   const lines = data.lines.filter(traceMaterialMatch({ scope: target.scope, mos, sois, bom, soiOrders: soiOrders.map((o) => ({ mo: o.mo, soi: o.soi ?? "", bom: o.bom })) }));
   return { lines, odooByMo: data.odooByMo };
 }
 
-async function loadMaterial(line: ProductLine, where: Prisma.MaterialUsageWhereInput): Promise<MaterialPageData> {
-  const lv = line === "LV";
-  const [rows, odoo, orders, painted] = await Promise.all([
-    prisma.materialUsage.findMany({
-      where,
-      // the sheet's own order — its rows come back the way they were laid out;
-      // lines typed in the tab (sortOrder 0, or the manual marker) sort by age
-      orderBy: [{ month: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
-    }),
-    prisma.odooEntry.findMany({ where: { line, odooMo: { not: "" } }, select: { odooMo: true, status: true, date: true, ledgerId: true }, orderBy: [{ date: "asc" }, { id: "asc" }] }),
-    // every order of the line, closed ones too: a month's sheet stays that month's
-    prisma.masterOrder.findMany({ where: { line }, select: { mo: true, soi: true, bom: true, months: true, source: true, planQty: true } }),
-    lv ? prisma.handoverEntry.groupBy({ by: ["mo"], where: { dept: "Painting", item: LV_ITEM, mo: { not: null } }, _sum: { qty: true } }) : null,
+type OdooRow = { odooMo: string; status: string; date: Date; ledgerId: number | null };
+const ODOO_SELECT = { odooMo: true, status: true, date: true, ledgerId: true } as const;
+const ODOO_ORDER = [{ date: "asc" as const }, { id: "asc" as const }];
+const ORDER_SELECT = { mo: true, soi: true, bom: true, months: true, source: true, planQty: true } as const;
+const PAINTING = { dept: "Painting", item: LV_ITEM } as const;
+const ROWS_ORDER = [{ month: "desc" as const }, { sortOrder: "asc" as const }, { id: "asc" as const }];
+const keysOf = (xs: readonly string[]) => [...new Set(xs.map((x) => x.trim().toUpperCase()).filter(Boolean))];
+
+/** What loadMaterial costs its lines by: the lines, their ODOO rows, and —
+ *  once the orders their parts were closed against are known — the registry
+ *  rows and the panels' painted counts. */
+interface MaterialSource {
+  rows: Row[];
+  odoo: OdooRow[];
+  orders: (linked: readonly string[]) => Promise<{ mo: string; soi: string | null; bom: string; months: string; source: string | null; planQty: number }[]>;
+  painted: Promise<{ mo: string | null; _sum: { qty: number | null } }[] | null>;
+}
+
+/** The tab: the whole line's log and registry, every query at once. */
+async function wideSource(line: ProductLine, where: Prisma.MaterialUsageWhereInput): Promise<MaterialSource> {
+  // every order of the line, closed ones too: a month's sheet stays that month's
+  const orders = prisma.masterOrder.findMany({ where: { line }, select: ORDER_SELECT });
+  const painted = line === "LV" ? prisma.handoverEntry.groupBy({ by: ["mo"], where: { ...PAINTING, mo: { not: null } }, _sum: { qty: true } }) : Promise.resolve(null);
+  for (const p of [orders, painted]) p.catch(() => undefined); // awaited by the caller; a failure before then is the call's own
+  const [rows, odoo] = await Promise.all([
+    prisma.materialUsage.findMany({ where, orderBy: ROWS_ORDER }),
+    prisma.odooEntry.findMany({ where: { line, odooMo: { not: "" } }, select: ODOO_SELECT, orderBy: ODOO_ORDER }),
   ]);
-  const paintedByMo = painted ? lvPaintedByMo(orders, painted) : new Map<string, number>();
+  return { rows, odoo, orders: () => orders, painted };
+}
+
+/** A trace's few lines: only the log and registry rows that touch them. */
+async function narrowSource(line: ProductLine, where: Prisma.MaterialUsageWhereInput): Promise<MaterialSource> {
+  const rows = await prisma.materialUsage.findMany({ where, orderBy: ROWS_ORDER });
+  const mos = keysOf(rows.map((r) => r.mo));
+  const painted = line === "LV" && mos.length > 0
+    ? prisma.handoverEntry.groupBy({ by: ["mo"], where: { ...PAINTING, mo: { in: mos, mode: "insensitive" } }, _sum: { qty: true } })
+    : Promise.resolve(null);
+  painted.catch(() => undefined);
+  const odoo = mos.length > 0 ? await prisma.odooEntry.findMany({ where: { line, odooMo: { in: mos, mode: "insensitive" } }, select: ODOO_SELECT, orderBy: ODOO_ORDER }) : [];
+  // the registry rows these lines can be tied to: by MO (theirs, or the
+  // orders their parts were closed against), by SOI, by code
+  const orders = (linked: readonly string[]) => prisma.masterOrder.findMany({
+    where: {
+      line,
+      OR: [
+        { mo: { in: keysOf([...mos, ...linked]), mode: "insensitive" } },
+        { soi: { in: keysOf(rows.map((r) => r.soi)), mode: "insensitive" } },
+        { bom: { in: keysOf(rows.map((r) => r.bom)), mode: "insensitive" } },
+      ],
+    },
+    select: ORDER_SELECT,
+  });
+  return { rows, odoo, orders, painted };
+}
+
+/** The lines `where` picks, with what the ODOO log and the registry say of
+ *  them — read for the whole line (the tab) or, `narrow`, for these lines
+ *  alone (a trace). */
+async function loadMaterial(line: ProductLine, where: Prisma.MaterialUsageWhereInput, narrow = false): Promise<MaterialPageData> {
+  const lv = line === "LV";
+  const { rows, odoo, orders: ordersOf, painted: paintedRows } = await (narrow ? narrowSource : wideSource)(line, where);
+
   // the latest row of an MO speaks for it: its status, and — Done — the day
   // of that closing (the row's own day, not when it was ticked)
   const odooByMo: Record<string, string> = {};
@@ -145,6 +194,8 @@ async function loadMaterial(line: ProductLine, where: Prisma.MaterialUsageWhereI
     (ordersByPart.get(part) ?? ordersByPart.set(part, new Set()).get(part)!).add(order);
   }
 
+  const [orders, painted] = await Promise.all([ordersOf([...orderOfLedger.values()]), paintedRows]);
+  const paintedByMo = painted ? lvPaintedByMo(orders, painted) : new Map<string, number>();
   const plans = materialPlanIndex(orders.map((o) => ({ ...o, months: (o.months || o.source || "").split(",") })));
   const links: OdooLinks = { doneByMo, ordersByPart };
   const lines = rows.map((r) => toView(r, lv, plans, links, lv && r.mo ? (paintedByMo.get(r.mo) ?? 0) : null));
