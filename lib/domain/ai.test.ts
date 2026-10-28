@@ -160,6 +160,15 @@ describe("conversationTitle / displayTurns", () => {
       { role: "user", text: "Which?", lookups: [] },
     ]);
   });
+  it("shows an answer kept from when it cited its sources without its source links", () => {
+    const turns = displayTurns([
+      { role: "user", content: "Plan?" },
+      { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "get_tracker_summary", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: '{"data":{"remaining":6},"source":{"id":"t1","citation":"#ai-source-t1"}}' }] },
+      { role: "assistant", content: [{ type: "text", text: "6 remain ([Source](#ai-source-t1)). [المصدر](#ai-source-t1)" }] },
+    ]);
+    expect(turns[1].text).toBe("6 remain.");
+  });
 });
 
 describe("the chat with changes in it", () => {

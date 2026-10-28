@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-assistant-no-sources-escape",
+    dateISO: "2026-10-28",
+    title: "The assistant's answers no longer list their sources, and Escape closes only what is on top",
+    where: "AI assistant · the inbox and the chat beside the page",
+    body: "Answers no longer end with the Sources list (\"Sources · 4\" and its cards), nor carry Source / المصدر links after their figures — in new answers and in chats kept from before. When a confirm or a box is open inside the assistant, the inbox or the chat (What it remembers about you, a delete to confirm), Escape now closes just that box; the window stays open under it, and a second Escape closes the window.",
+  },
+  {
     id: "2026-10-27-odoo-sync",
     dateISO: "2026-10-27",
     title: "The app reads Odoo by itself",

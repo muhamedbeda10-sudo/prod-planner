@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AI_CHATS_BULK_MAX, AI_DEFAULT_SUGGESTIONS, chatIdsOf, chatTextOf, depthPlan, followupsOf, hasPageSuggestions, scopeLineOf, suggestionsFor, withoutFollowups, withoutSourceLinks } from "./aiAnswer";
+import { AI_CHATS_BULK_MAX, AI_DEFAULT_SUGGESTIONS, chatIdsOf, chatTextOf, depthPlan, followupsOf, hasPageSuggestions, scopeLineOf, safeHref, suggestionsFor, withoutFollowups, withoutSourceLinks } from "./aiAnswer";
 
 describe("follow-up questions in an answer", () => {
   it("reads the JSON list of the last followups block, at most three, no duplicates", () => {
@@ -25,8 +25,17 @@ describe("the scope line", () => {
     expect(scopeLineOf("The scope of the plan is wide.")).toBeNull();
     expect(scopeLineOf(`Scope: ${"x".repeat(201)}`)).toBeNull();
   });
-  it("takes the chat's source links out of a shared answer", () => {
+  it("takes the source links of answers kept from before out, and nothing else", () => {
     expect(withoutSourceLinks("Ten late ([Source](#ai-source-a)). See [the order](/trace?mo=1).")).toBe("Ten late. See [the order](/trace?mo=1).");
+    expect(withoutSourceLinks("باقي 6 أوامر. [المصدر](#ai-source-t1)\n\nالترتيب")).toBe("باقي 6 أوامر.\n\nالترتيب");
+    // a closing bracket the link did not open stays
+    expect(withoutSourceLinks("(41 pieces remain [Source](#ai-source-t1))")).toBe("(41 pieces remain)");
+  });
+  it("safeHref is the one rule for a link the assistant may draw — in-app paths only", () => {
+    expect(safeHref("/tracker?view=monthly#row-3")).toBe(true);
+    for (const bad of ["//evil.test", "https://evil.test", "javascript:alert(1)", "/\\evil", "/trace\n", "/a\u0000b", "tracker", "", "/" + "x".repeat(500)]) {
+      expect(safeHref(bad), JSON.stringify(bad)).toBe(false);
+    }
   });
   it("drops a follow-up longer than a line", () => {
     expect(followupsOf(`\`\`\`followups\n["${"x".repeat(161)}", "Short"]\n\`\`\``)).toEqual(["Short"]);

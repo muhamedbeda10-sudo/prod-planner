@@ -580,8 +580,8 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      after a failure, ↑ for the last question, and under the answer the model, the time, the owner's cost, Copy, Print,
      Share (`shareAiAnswer`: to colleagues' inboxes as a message from the person — the automations key, the recipients'
      and the hour's caps of the inbox's own message action, through `lib/server/inboxMessage.ts` — and/or kept as their own
-     report; `shareAiAnswerToChat` as plain text through the team chat's own action; the chat's source links and
-     follow-ups are left out) and 👍 / 👎. The depth beside the box — Quick / Standard / Deep — sets the effort, the
+     report; `shareAiAnswerToChat` as plain text through the team chat's own action; the follow-ups are left
+     out) and 👍 / 👎. The depth beside the box — Quick / Standard / Deep — sets the effort, the
      model and the calls for one question (`depthPlan`: Quick is Haiku at low effort, Standard the model Auto routes the
      question to at medium, Deep Opus at high with half again the calls); the chat has no model or effort setting of its
      own. An empty chat opens on what the assistant can do — tiles for a report, a chart, an Excel file, a

@@ -7,7 +7,7 @@ import type { User } from "@prisma/client";
 // ---- the assistant as a system, evaluated deterministically -----------------
 // The model is scripted (a competent model's calls, and a tricked model's), so
 // what is measured is everything AROUND the model: the figures the tools hand
-// it, the sources it can cite, what a person without rights can reach, how a
+// it, the reads it keeps, what a person without rights can reach, how a
 // poisoned file is delivered, and what a change does from proposal to undo.
 // No API key, no live database: fixtures and an in-memory change table. The
 // live run (AI_EVAL_LIVE=1) measures the model itself on the same questions.
@@ -89,7 +89,6 @@ import { readAttachedFileTool } from "@/lib/server/ai/tools/imports";
 import { toolsFor } from "@/lib/server/ai/tools";
 import { currentActor } from "@/lib/server/actor";
 import { questionContext, displayTurns } from "@/lib/domain/ai";
-import { evidenceAnchor, isEvidenceAnchor, type AiEvidence } from "@/lib/domain/aiEvidence";
 import type { AiTool, AnyWriteTool, ToolCtx } from "@/lib/server/ai/tools/types";
 import type { AiActionView } from "@/lib/domain/aiActions";
 import { AGENT_TRANSFORMERS, EXPECTED } from "./fixtures";
@@ -169,21 +168,23 @@ const recordTwo: AnyWriteTool = {
 };
 
 const outcomes: { id: string; passed: boolean; detail: string }[] = [];
-const sources: AiEvidence[] = [];
 const cards: AiActionView[] = [];
 const run = (user: User, question: string, tools: AiTool[], o: { filters?: Record<string, string>; hidden?: string[]; maxCalls?: number } = {}) => {
   const ctx = ctxOf(user, o.filters, o.hidden);
   return ask({
     apiKey: "test", model: "claude-opus-5-5", effort: "low", history: [], tools, ctx, settings: h.settings, maxCalls: o.maxCalls ?? 4,
     question: questionMessages(question, questionContext({ askedBy: user.name, now: ctx.now, areas: ["tracker"], canDelete: false, noconfirm: user.perms.includes("noconfirm"), paused: h.settings.actionsPaused, notes: [], line: "TR" })),
-    events: { status: () => {}, text: () => {}, source: (s) => sources.push(s), action: (v) => cards.push(v) },
+    events: { status: () => {}, text: () => {}, action: (v) => cards.push(v) },
   });
 };
-const cite = (toolUseId: string) => `#${evidenceAnchor(toolUseId)}`;
+// a read goes back to the model as the tool's own JSON — as { data, links }
+// when the app has links to the screens behind it
+const readOf = <T,>(toolResult: unknown): T => {
+  const v = JSON.parse(String(toolResult)) as { data?: T; links?: unknown };
+  return (v && typeof v === "object" && "data" in v && "links" in v ? v.data : v) as T;
+};
 const totalsIn = (toolResult: unknown) => {
-  // a read's result is the evidence wrapper { data, source }; the tool's own JSON is `data`
-  const content = JSON.parse(String(toolResult)) as { data: { totals: Record<string, number> } };
-  return content.data.totals;
+  return readOf<{ totals: Record<string, number> }>(toolResult).totals;
 };
 const toolResults = (added: { role: string; content: unknown }[]) =>
   added.flatMap((m) => (Array.isArray(m.content) ? (m.content as { type: string; tool_use_id?: string; content?: unknown; is_error?: boolean }[]).filter((b) => b.type === "tool_result") : []));
@@ -194,35 +195,34 @@ beforeEach(() => {
   store.qty = 40;
   store.recorded = [];
   ranAs.length = 0;
-  sources.length = 0;
   cards.length = 0;
   h.runAiQuery.mockResolvedValue({ ok: true, text: JSON.stringify({ columns: ["mo", "closed"], rows: [["MO-A", 3]] }) });
 });
 const record = (id: string, passed: boolean, detail: string) => { outcomes.push({ id, passed, detail }); expect(passed, `${id}: ${detail}`).toBe(true); };
 
-describe("the assistant's figures and sources", () => {
-  it("arithmetic: the remaining quantity of the month on screen comes from the tracker's own calculation, cited", async () => {
-    model([use("t1", "get_tracker_summary", { usePageFilters: true })], [text(`41 pieces remain on the October plan. [Source](${cite("t1")})`)]);
+describe("the assistant's figures", () => {
+  it("arithmetic: the remaining quantity of the month on screen comes from the tracker's own calculation", async () => {
+    model([use("t1", "get_tracker_summary", { usePageFilters: true })], [text("41 pieces remain on the October plan.")]);
     const r = await run(planner, "How many pieces remain on this month's plan?", [tracker], { filters: { month: "October 2026" } });
     const totals = totalsIn(toolResults(r.added)[0].content);
-    record("arithmetic", !r.error && r.queries === 1 && totals.remaining === EXPECTED.october.remaining && totals.required === EXPECTED.october.required && sources.length === 1 && sources[0].id === "t1" && isEvidenceAnchor(cite("t1")) && r.text.includes("41"),
-      `totals=${JSON.stringify(totals)} sources=${sources.map((s) => s.id)} error=${r.error}`);
+    record("arithmetic", !r.error && r.queries === 1 && totals.remaining === EXPECTED.october.remaining && totals.required === EXPECTED.october.required && r.text.includes("41"),
+      `totals=${JSON.stringify(totals)} error=${r.error}`);
   });
 
-  it("current vs previous month: two reads, two sources, the carried order counted once in each view and never twice", async () => {
+  it("current vs previous month: two reads, the carried order counted once in each view and never twice", async () => {
     model(
       [use("t1", "get_tracker_summary", { filters: { month: "October 2026" } }), use("t2", "get_tracker_summary", { filters: { month: "September 2026", status: "all" } })],
-      [text(`October: 41 remaining of 48 [Source](${cite("t1")}). September: 5 remaining of 30 [Source](${cite("t2")}).`)],
+      [text("October: 41 remaining of 48. September: 5 remaining of 30.")],
     );
     const r = await run(planner, "Compare this month's plan with last month's.", [tracker]);
     const [oct, sep] = toolResults(r.added).map((b) => totalsIn(b.content));
     const ok = !r.error && oct.required === EXPECTED.october.required && oct.remaining === EXPECTED.october.remaining && sep.required === EXPECTED.september.required && sep.complete === EXPECTED.september.complete
-      && oct.orders + sep.orders === 5 /* MO-A is in both views: 3 + 2, one order read twice is still one order per view */ && sources.map((s) => s.id).sort().join() === "t1,t2";
+      && oct.orders + sep.orders === 5 /* MO-A is in both views: 3 + 2, one order read twice is still one order per view */ && toolResults(r.added).length === 2;
     record("months", ok, `oct=${JSON.stringify(oct)} sep=${JSON.stringify(sep)}`);
   });
 
   it("the same BOM across months and MOs: the BOM's orders are read per MO, never merged into one", async () => {
-    model([use("t1", "get_tracker_summary", { filters: { q: "BOM-MO-A" } })], [text(`BOM-MO-A has 2 orders: 11 pieces remain of 18. [Source](${cite("t1")})`)]);
+    model([use("t1", "get_tracker_summary", { filters: { q: "BOM-MO-A" } })], [text("BOM-MO-A has 2 orders: 11 pieces remain of 18.")]);
     const r = await run(planner, "What is left on BOM-MO-A across its orders?", [tracker]);
     const totals = totalsIn(toolResults(r.added)[0].content);
     record("same-bom", !r.error && totals.orders === EXPECTED.bom.orders && totals.required === EXPECTED.bom.required && totals.remaining === EXPECTED.bom.remaining, JSON.stringify(totals));
@@ -232,19 +232,20 @@ describe("the assistant's figures and sources", () => {
     model([use("t1", "get_tracker_summary", { filters: { q: "MO-ZZZ" } })], [text("There is no transformer order MO-ZZZ on the tracker.")]);
     const r = await run(planner, "How much is left on MO-ZZZ?", [tracker]);
     const result = toolResults(r.added)[0];
-    const content = JSON.parse(String(result.content)) as { data: { totals: { orders: number; remaining: number }; note: string } };
+    const content = readOf<{ totals: { orders: number; remaining: number }; note: string }>(result.content);
     // the tool says in words that nothing matched, so its zeros cannot be read as finished work
-    record("missing-data", !r.error && !result.is_error && content.data.totals.orders === 0 && /No order matches these filters/.test(content.data.note) && !/\d/.test(r.text), `tool said: ${JSON.stringify(content.data.totals)} ${content.data.note.slice(0, 60)}`);
+    record("missing-data", !r.error && !result.is_error && content.totals.orders === 0 && /No order matches these filters/.test(content.note) && !/\d/.test(r.text), `tool said: ${JSON.stringify(content.totals)} ${content.note.slice(0, 60)}`);
   });
 
-  it("conflicting sources: the tracker and a database query disagree — both are cited as separate sources, neither is dropped", async () => {
+  it("conflicting reads: the tracker and a database query disagree — both are kept and named, neither is dropped", async () => {
     model(
       [use("t1", "get_tracker_summary", { filters: { q: "MO-A" } }), use("t2", "query_database", { purpose: "Odoo closed", sql: `SELECT "odooMo", "qty" FROM "OdooEntry" WHERE "status" = 'Done'` })],
-      [text(`The tracker has 5 complete on MO-A [Source](${cite("t1")}); Odoo shows 3 closed [Source](${cite("t2")}) — the two differ in scope (production vs. closings), not in error.`)],
+      [text(`The tracker has 5 complete on MO-A; Odoo shows 3 closed — the two differ in scope (production vs. closings), not in error.`)],
     );
     const r = await run(planner, "How many MO-A are complete, and how many did Odoo close?", [tracker, queryDatabase]);
-    const ids = sources.map((s) => s.id).sort().join();
-    record("conflicting-sources", !r.error && ids === "t1,t2" && sources.every((s) => s.snapshot.length > 0) && r.text.includes(cite("t1")) && r.text.includes(cite("t2")), `sources=${ids}`);
+    const reads = toolResults(r.added);
+    const ids = reads.map((b) => b.tool_use_id).sort().join();
+    record("conflicting-reads", !r.error && ids === "t1,t2" && reads.every((b) => !b.is_error && String(b.content).length > 0) && r.text.includes("5 complete") && r.text.includes("3 closed"), `reads=${ids}`);
   });
 });
 
@@ -321,6 +322,6 @@ describe("a change, its undo and a partial failure", () => {
 afterAll(async () => {
   const report = process.env.AI_AGENT_EVAL_REPORT ?? "/tmp/prod-planner-ai-agent-evaluation.json";
   await mkdir(dirname(report), { recursive: true });
-  await writeFile(report, JSON.stringify({ dataset: "synthetic-assistant-behaviour-v1", at: new Date().toISOString(), mode: "offline-scripted-model", outcomes, note: "The model is scripted; these cases prove the harness, the tools' figures, the sources, the permission boundary, the handling of a poisoned file and the change lifecycle — not the model's judgement. Run the planning evaluation with AI_EVAL_LIVE=1 for the model." }, null, 2));
+  await writeFile(report, JSON.stringify({ dataset: "synthetic-assistant-behaviour-v1", at: new Date().toISOString(), mode: "offline-scripted-model", outcomes, note: "The model is scripted; these cases prove the harness, the tools' figures, the permission boundary, the handling of a poisoned file and the change lifecycle — not the model's judgement. Run the planning evaluation with AI_EVAL_LIVE=1 for the model." }, null, 2));
   console.log(`Assistant evaluation report saved: ${report}`);
 });

@@ -2,9 +2,9 @@
 // look-ups brought back are what grows it — a few hundred rows a time — and
 // the model has long since written its answer from them. Before it is sent,
 // the big results of every question but the last few are folded to a short
-// note (their source kept, so an earlier citation still resolves), and the
-// model reads the data again when a new question needs it. What is kept in
-// the database is never touched: the chat on screen shows every source.
+// note, and the model reads the data again when a new question needs it; a
+// read kept from when answers cited their sources goes back without its
+// source wrapper. What is kept in the database is never touched.
 //
 // The folded prefix is the same from one question to the next, so the
 // prompt cache keeps hitting on it; only the last few questions, which are
@@ -29,15 +29,34 @@ export const AI_HISTORY_FOLD = {
   minChars: 1_500,
 } as const;
 
-/** The note a folded result leaves — the source kept where it had one. */
+/** The note a folded result leaves. */
 export function foldedResult(content: string): string {
-  const note = `(omitted: ${content.length.toLocaleString("en")} characters read earlier in this chat — read it again if this answer needs it)`;
-  if (!content.includes('"source"')) return note;
+  return `(omitted: ${content.length.toLocaleString("en")} characters read earlier in this chat — read it again if this answer needs it)`;
+}
+
+/** What a read sends the model: the tool's own text — with the app's own
+ *  links to the screens behind it, when it has any, as { data, links }. */
+export function readContent(text: string, links: readonly { label: string; href: string }[]): string {
+  if (!links.length) return text;
+  let data: unknown = text;
+  try { data = JSON.parse(text); } catch { /* a sentence stays a sentence */ }
+  return JSON.stringify({ data, links });
+}
+
+/** A read kept from before 28 Oct 2026 came wrapped with a source to cite
+ *  ({ data, source: { citation, links } }) — sent back as a read is now: its
+ *  data, with its links when it had any, never the citation. */
+export function withoutLegacySource(content: string): string {
+  if (!content.includes("#ai-source-")) return content;
   try {
-    const v = JSON.parse(content) as { source?: unknown };
-    if (v && typeof v === "object" && v.source && typeof v.source === "object") return JSON.stringify({ data: note, source: v.source });
-  } catch { /* not a sourced result */ }
-  return note;
+    const v = JSON.parse(content) as { data?: unknown; source?: { links?: unknown } } | null;
+    if (!v || typeof v !== "object" || !("data" in v) || !v.source || typeof v.source !== "object") return content;
+    const links = Array.isArray(v.source.links) ? (v.source.links as { label: string; href: string }[]) : [];
+    if (links.length) return JSON.stringify({ data: v.data, links });
+    return typeof v.data === "string" ? v.data : JSON.stringify(v.data);
+  } catch {
+    return content;
+  }
 }
 
 /** The kept messages with the old look-ups folded. A question's turn starts
@@ -56,12 +75,15 @@ export function compactHistory<T extends HistoryMessage>(messages: readonly T[],
     if (seen >= keep) break;
   }
   return messages.map((m, i) => {
-    if (i >= from || m.role !== "user" || typeof m.content === "string") return m;
+    if (m.role !== "user" || typeof m.content === "string") return m;
     let changed = false;
     const content = m.content.map((b) => {
-      if (b.type !== "tool_result" || typeof b.content !== "string" || b.content.length <= min) return b;
+      if (b.type !== "tool_result" || typeof b.content !== "string") return b;
+      const read = withoutLegacySource(b.content);
+      const next = i < from && read.length > min ? foldedResult(read) : read;
+      if (next === b.content) return b;
       changed = true;
-      return { ...b, content: foldedResult(b.content) };
+      return { ...b, content: next };
     });
     // the same message with its folded blocks — the type the caller handed in
     return changed ? ({ ...m, content } as T) : m;
