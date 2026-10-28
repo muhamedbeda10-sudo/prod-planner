@@ -17,6 +17,7 @@ import { getLvTrace } from "@/lib/server/lvTrace";
 import { getLvTracker } from "@/lib/server/lvTracker";
 import { getMasterTracker } from "@/lib/server/masterTracker";
 import { getMaterialData } from "@/lib/server/material";
+import { EMPTY_MATERIAL_FILTERS, NO_PLAN_MONTH, filterMaterialLines, materialPlanMonthOptions } from "@/lib/domain/material";
 import { getMaterialDashboard } from "@/lib/server/fabAnalytics";
 import { getOdooDashboard, getOdooData } from "@/lib/server/odoo";
 import { getPhysicalStock } from "@/lib/server/physicalStock";
@@ -89,7 +90,7 @@ const SHEETS = {
   trace: { tab: "tracker", params: ["line", "mo", "bom"], about: "one order's (mo) or one code's (bom) trace: every ledger row behind it" },
   odoo_log: { tab: "odoo", params: ["from", "to"], about: "the ODOO close-out log, with the office sheet's headers — from/to, or every day" },
   odoo_daily: { tab: "odoo", params: ["from", "to", "basis"], about: "the ODOO dashboard by day: closed (or logged) quantity per product series — from/to (default the last 30 days), basis" },
-  material: { tab: "material", params: ["line"], about: "the Material (nesting) sheet of a line, with the workbook's own columns" },
+  material: { tab: "material", params: ["line", "planMonth"], about: "the Material (nesting) sheet of a line, with the workbook's own columns and the Plan month each line's order is in — planMonth narrows it to one monthly plan (\"October 2026\") or \"none\" for the lines no plan carries, as the screen's Plan month filter" },
   material_dashboard: { tab: "analytics", params: ["line", "from", "to", "allTime", "view", "materialName", "thicknessMm", "sheetSize", "part", "mo", "soi"], about: "the Material dashboard's detail table: a row per MO × part × sheet spec with units, BOM / actual sheets, the difference, sheet weight, utilization, closed qty, calculated consumption and estimated scrap, coverage and rate source — view consumption (lines consumed in the period, default) or nesting (the whole current sheet), from/to (default the last 90 days) or allTime, filters materialName, thicknessMm, sheetSize, part, mo, soi" },
   physical_stock: { tab: "physical", params: [], about: "Physical Material: the store's count against Odoo's stock, code by code, with the sheets the open orders still need and Odoo after them" },
   consumables_log: { tab: "consumables", params: ["from", "to"], about: "the consumables hand-out log — from/to (default today)" },
@@ -128,6 +129,7 @@ interface Input extends MaterialScopeInput {
   bom?: string;
 
   month?: string;
+  planMonth?: string;
   day?: string;
   section?: string;
   basis?: "closed" | "logged";
@@ -223,6 +225,7 @@ export const makeSheetTool: ReadTool<Input> = {
       to: { ...DAY, description: "The last day (YYYY-MM-DD), the same sheets." },
       bom: str(80, "trace: the code (BOM), when no MO is given."),
       month: { type: "string", pattern: "^\\d{4}-\\d{2}$", description: "powder_scrap, consumables_monthly: the month (YYYY-MM); defaults to this one." },
+      planMonth: str(40, "material: one monthly plan, as the Plan Tracker labels it (\"October 2026\"), or \"none\" for the lines no plan carries; every line by default."),
       day: { ...DAY, description: "shift_attendance, machine_stops: the day; defaults to today." },
       section: str(40, "shift_attendance, machine_stops: line:TR, line:LV or a roster section, as the Shifts screen's filter."),
       basis: { type: "string", enum: ["closed", "logged"], description: "odoo_daily: count by the day closed (default) or the day logged." },
@@ -400,10 +403,17 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       return { rows: odooDailyRows(d), name: `odoo-by-day-${period.fromISO ?? "all"}-${period.toISO}`, sheet: "By day", scope: `ODOO by ${basis} day, ${period.fromISO ?? "the start"} – ${period.toISO}` };
     }
     case "material": {
-      const { lines } = await withLine(line, () => getMaterialData(""));
+      const all = (await withLine(line, () => getMaterialData(""))).lines;
+      // the month as the lines carry it, whatever case it was asked in
+      const asked = i.planMonth?.trim() ?? "";
+      const months = materialPlanMonthOptions(all);
+      const planMonth = asked.toLowerCase() === "none" ? "none" : (months.find((m) => m.toLowerCase() === asked.toLowerCase()) ?? asked);
+      if (planMonth && planMonth !== "none" && !months.includes(planMonth)) return { error: `No line of the ${line} Material sheet is in the plan month "${asked}". The plan months on it: ${months.join(", ") || "none"}.` };
+      const lines = filterMaterialLines(all, { ...EMPTY_MATERIAL_FILTERS, planMonth: planMonth === "none" ? NO_PLAN_MONTH : planMonth });
       // Odoo's BOM figure beside the sheet's, as the screen shows it (transformers)
       const rates = line === "LV" ? {} : await getPartRates(lines.filter((l) => l.partCode.trim()).map((l) => ({ partCode: l.partCode, bom: l.bom })));
-      return { rows: materialRows(lines, line, rates), name: `material-sheet${line === "LV" ? "-lv" : ""}`, sheet: "Material", scope: `${line} Material sheet` };
+      const monthSlug = planMonth ? `-${planMonth.toLowerCase().replace(/\s+/g, "-")}` : "";
+      return { rows: materialRows(lines, line, rates), name: `material-sheet${line === "LV" ? "-lv" : ""}${monthSlug}`, sheet: "Material", scope: `${line} Material sheet${planMonth ? `, plan month ${planMonth} (${lines.length} of ${all.length} lines)` : ""}` };
     }
     case "material_dashboard": {
       const req = materialScopeRequest(i, today);

@@ -186,11 +186,16 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    Units**, not read from its "for Job" column: that column is a figure somebody left behind — change the job
    size and it keeps the old answer (one row of the tracker says 17.6 sheets where 90 units at 0.568 a unit is
    51.1). A sheet with no per-unit rate still falls back to its job column, and the import says how many rows
-   were stale. Import the sheet for a
-   month (re-importing adds new lines and updates changed ones; the same BOM's tank and top-cover lines stay
-   apart), filter by month and, within it, by part, material, thickness, sheet size, status (nested / not
-   nested / with produced / over BOM) or a search across BOM, SOI, part, code and note — the Total row
-   follows the filter. On the transformers' sheet, beside BOM / unit, **Odoo / unit** shows what Odoo's BoM (feature 14) says
+   were stale. Import the sheet (re-importing adds new lines and updates changed ones; the same BOM's tank
+   and top-cover lines stay apart), filter by **Plan month** — the monthly plan the line's order is in on the
+   Plan Tracker, found by its MO, else its SOI (a line with neither goes by its BOM; "Not in a plan" lists
+   the lines none finds — a mistyped MO or SOI is never guessed at through the BOM) — and
+   by part, material, thickness, sheet size, status (nested / not nested / with produced / over BOM) or a
+   search across BOM, SOI, part, code and note. A strip above the table adds up what is shown (orders, BOM vs
+   actual for the job, actual weight, the difference and the lines over their BOM), and the Total row follows
+   the filter. **Columns ▾** keeps each person's columns on their account, and the arrows on the band over the
+   headers fold a run of columns (Order, Job, Part, Sheet, Per unit, For the job) and open it again, as on
+   the Plan Tracker. On the transformers' sheet, beside BOM / unit, **Odoo / unit** shows what Odoo's BoM (feature 14) says
    one unit of the part takes of the line's material — amber where the two disagree; a figure Odoo counts in
    kilos is shown with its unit and never compared with sheets. The panels' sheet (a SEC item per thickness) has none.
 7. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to

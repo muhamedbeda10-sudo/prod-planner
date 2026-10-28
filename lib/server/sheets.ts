@@ -80,6 +80,8 @@ export function materialRows(lines: MaterialPageData["lines"], line: ProductLine
       "Actually Consumed Sheets Qty as per Nesting": l.forProduced ?? "",
       "Remaining units": l.remainingUnits ?? "",
       REMARKS: l.note ?? "",
+      // after the sheet's own columns: the monthly plans the order is in (the screen's Plan month)
+      "Plan month": l.planMonths.join(", "),
     }));
   }
   return lines.map((l) => ({
@@ -105,6 +107,7 @@ export function materialRows(lines: MaterialPageData["lines"], line: ProductLine
     "Actual Weight (Kg)": l.actualWeightKg ?? "",
     Difference: l.difference ?? "",
     Notes: l.note ?? "",
+    "Plan month": l.planMonths.join(", "),
   }));
 }
 

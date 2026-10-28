@@ -3,6 +3,7 @@ import {
   normalizeMaterialType, normalizeSheetSize, parseSheetNumber, sheetNumberOr, sheetsForJob, sheetsDifference,
   actualPerUnit, sheetsForProduced, parseNestingTracker, materialKey, round3, partNameFor,
   filterMaterialLines, EMPTY_MATERIAL_FILTERS, groupMaterialBySoi,
+  materialPlanIndex, materialPlanMonths, materialPlanMonthOptions, materialSummary, sheetsConsumed, NO_PLAN_MONTH,
   type MaterialLineView,
 } from "./material";
 import { monthLabelFromInput, monthInputFromLabel, monthLabelSortKey } from "./dates";
@@ -130,7 +131,7 @@ function line(over: Partial<MaterialLineView>): MaterialLineView {
     material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
     sheetsPerUnit: 1, sheetsUsed: 10, producedQty: null, note: null, soi: "", mtr: "", weightKg: null, utilization: null, actualWeightKg: null, producedAuto: null, producedUsed: null, remainingUnits: null,
     forJob: 10, difference: 0, actualPerUnit: 1, forProduced: null,
-    updatedISO: "2026-09-07", recordedBy: null, ...over,
+    updatedISO: "2026-09-07", recordedBy: null, planMonths: [], planMatch: null, ...over,
   };
 }
 
@@ -155,6 +156,19 @@ describe("filterMaterialLines", () => {
     expect(ids({ status: "produced" })).toEqual([1]);
     expect(ids({ status: "over" })).toEqual([3]);
     expect(ids({ status: "within" })).toEqual([1]);
+  });
+  it("narrows by plan month, and to the lines no plan carries", () => {
+    const planned = [
+      line({ id: 1, planMonths: ["October 2026", "September 2026"] }),
+      line({ id: 2, planMonths: ["September 2026"] }),
+      line({ id: 3, planMonths: [] }),
+    ];
+    const pick = (planMonth: string) => filterMaterialLines(planned, { ...EMPTY_MATERIAL_FILTERS, planMonth }).map((l) => l.id);
+    expect(pick("")).toEqual([1, 2, 3]);
+    expect(pick("September 2026")).toEqual([1, 2]);
+    expect(pick("October 2026")).toEqual([1]);
+    expect(pick(NO_PLAN_MONTH)).toEqual([3]);
+    expect(pick("August 2026")).toEqual([]);
   });
   it("searches BOM, SOI, part, code and note, any case, any part", () => {
     expect(ids({ q: "40012" })).toEqual([2, 3]);
@@ -399,5 +413,78 @@ describe("groupMaterialBySoi", () => {
     expect(g[1]).toMatchObject({ sheetsUsed: null, difference: null });
     expect(g[2].mos).toEqual([]);
     expect(g.flatMap((x) => x.lines).length).toBe(ls.length);
+  });
+});
+
+describe("materialPlanMonths", () => {
+  const idx = materialPlanIndex([
+    { mo: "SF01/MO/100", soi: "S01035-1", bom: "10017E11M11", months: ["September 2026"] },
+    { mo: "SF01/MO/200", soi: "S01035-1", bom: "10017E11M11", months: ["October 2026", " September 2026 "] },
+    { mo: "SF01/MO/300", soi: null, bom: "40012E11M11", months: ["August 2026", ""] },
+    { mo: "SF01/MO/400", soi: "S09999-1", bom: "50000E11M11", months: [] },
+  ]);
+  it("finds the order by its MO first, any case and spacing", () => {
+    expect(materialPlanMonths({ mo: " sf01/mo/100 ", soi: "S01035-1", bom: "10017E11M11" }, idx)).toEqual({ months: ["September 2026"], match: "mo" });
+  });
+  it("falls back to the SOI — every order of it, newest month first", () => {
+    expect(materialPlanMonths({ mo: "SF01/MO/999", soi: "s01035-1", bom: "X" }, idx)).toEqual({ months: ["October 2026", "September 2026"], match: "soi" });
+  });
+  it("goes by the BOM only for a line with neither MO nor SOI — one covering the whole BOM", () => {
+    expect(materialPlanMonths({ mo: "", soi: " ", bom: "40012e11m11" }, idx)).toEqual({ months: ["August 2026"], match: "bom" });
+  });
+  it("never guesses a mistyped MO or SOI through the BOM: the line is in no plan", () => {
+    expect(materialPlanMonths({ mo: "SF01/MO/0", soi: "S-TYPO", bom: "40012E11M11" }, idx)).toEqual({ months: [], match: null });
+  });
+  it("skips an order with no month to the next key, and leaves a line nothing finds in no plan", () => {
+    expect(materialPlanMonths({ mo: "SF01/MO/400", soi: "S09999-1", bom: "50000E11M11" }, idx)).toEqual({ months: [], match: null });
+    expect(materialPlanMonths({ mo: "", soi: "", bom: "" }, idx)).toEqual({ months: [], match: null });
+  });
+  it("lists the lines' months newest first, once each", () => {
+    expect(materialPlanMonthOptions([{ planMonths: ["September 2026"] }, { planMonths: ["January 2027", "September 2026"] }, { planMonths: [] }]))
+      .toEqual(["January 2027", "September 2026"]);
+  });
+});
+
+describe("materialSummary", () => {
+  it("adds up the lines shown and counts their orders by SOI (as the SOI groups write it), else MO, else BOM", () => {
+    const s = materialSummary([
+      line({ id: 1, soi: "S1", mo: "MO-A", forJob: 2.5, sheetsUsed: 3, actualWeightKg: 120, difference: -0.5 }),
+      line({ id: 2, soi: "s1", mo: "MO-B", forJob: 1, sheetsUsed: null, actualWeightKg: null, difference: null }),
+      line({ id: 3, soi: "", mo: "MO-C", forJob: 4, sheetsUsed: 3.5, actualWeightKg: 80.25, difference: 0.5 }),
+      line({ id: 4, soi: "", mo: "", bom: "B9", forJob: 0, sheetsUsed: null, actualWeightKg: null, difference: null }),
+    ]);
+    // "S1" and "s1" are two SOI groups on the table, so two orders here too
+    expect(s).toMatchObject({ lines: 4, orders: 4, forJob: 7.5, sheetsUsed: 6.5, actualWeightKg: 200.25, difference: 0, overLines: 1 });
+  });
+  it("follows the filters: the strip adds up only the lines a filter leaves", () => {
+    const ls = [
+      line({ id: 1, soi: "S1", planMonths: ["October 2026"], forJob: 2, sheetsUsed: 3, difference: -1 }),
+      line({ id: 2, soi: "S2", planMonths: ["September 2026"], forJob: 5, sheetsUsed: 4, difference: 1, thicknessMm: 3 }),
+      line({ id: 3, soi: "S3", planMonths: ["October 2026"], forJob: 1, sheetsUsed: 1, difference: 0, thicknessMm: 3 }),
+    ];
+    const sum = (f: Partial<typeof EMPTY_MATERIAL_FILTERS>) => materialSummary(filterMaterialLines(ls, { ...EMPTY_MATERIAL_FILTERS, ...f }));
+    expect(sum({ planMonth: "October 2026" })).toMatchObject({ orders: 2, forJob: 3, sheetsUsed: 4, overLines: 1 });
+    expect(sum({ planMonth: "October 2026", thicknessMm: "3" })).toMatchObject({ orders: 1, forJob: 1, sheetsUsed: 1, overLines: 0 });
+    expect(sum({ status: "over" })).toMatchObject({ lines: 1, forJob: 2 });
+  });
+  it("counts a panel line's consumed sheets as its column does — the BOM's rate × produced where the line has no costing", () => {
+    expect(materialSummary([
+      line({ forProduced: 6.6, producedUsed: 6 }),
+      line({ forProduced: null, producedUsed: 3, sheetsPerUnit: 1.25 }),
+      line({ forProduced: null, producedUsed: null }),
+    ]).forProduced).toBe(10.35);
+  });
+    it("leaves a figure no line carries empty, not zero", () => {
+    expect(materialSummary([line({ sheetsUsed: null, actualWeightKg: null, difference: null, forProduced: null, remainingUnits: null })]))
+      .toMatchObject({ sheetsUsed: null, actualWeightKg: null, difference: null, forProduced: null, remainingUnits: null, overLines: 0 });
+    expect(materialSummary([])).toMatchObject({ lines: 0, orders: 0, forJob: 0, sheetsUsed: null });
+  });
+});
+
+describe("sheetsConsumed", () => {
+  it("is the line's own costing, else the BOM's rate × produced, else nothing", () => {
+    expect(sheetsConsumed({ forProduced: 2.5, producedUsed: 4, sheetsPerUnit: 1 })).toBe(2.5);
+    expect(sheetsConsumed({ forProduced: null, producedUsed: 4, sheetsPerUnit: 0.33333 })).toBe(1.3333);
+    expect(sheetsConsumed({ forProduced: null, producedUsed: null, sheetsPerUnit: 1 })).toBeNull();
   });
 });

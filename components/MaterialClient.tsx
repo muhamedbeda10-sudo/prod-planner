@@ -8,15 +8,17 @@ import type { ProductLine } from "@/lib/domain/lines";
 import { useRouter } from "next/navigation";
 import { Fragment, useMemo, useRef, useState, useTransition } from "react";
 import {
-  MATERIAL_STATUS_FILTERS, EMPTY_MATERIAL_FILTERS,
-  partNameFor, filterMaterialLines, groupMaterialBySoi,
-  type MaterialLineView, type MaterialFilters, type MaterialStatusFilter, type MaterialSoiGroup,
+  MATERIAL_STATUS_FILTERS, EMPTY_MATERIAL_FILTERS, NO_PLAN_MONTH,
+  partNameFor, filterMaterialLines, groupMaterialBySoi, materialPlanMonthOptions, materialSummary, sheetsConsumed,
+  type MaterialLineView, type MaterialFilters, type MaterialStatusFilter, type MaterialSoiGroup, type MaterialPlanMatch, type MaterialSummary,
 } from "@/lib/domain/material";
+import type { UserPrefs } from "@/lib/domain/userPrefs";
 import { FIELD_DP, formatNumber, formatQty } from "@/lib/domain/format";
 import { odooRateOf, type OdooRates } from "@/lib/domain/odooBom";
 import { FilterSelect, PhoneFold } from "@/components/FilterControls";
 import { Check, ChevronDown, ChevronRight, FilterX, Search, Upload } from "lucide-react";
-import { GroupBand, GroupLegend, TableEmpty, TableFrame, Th, useConfirm } from "@/components/DataTable";
+import { GroupBand, GroupLegend, TableEmpty, TableFrame, Th, useConfirm, type ColGroup } from "@/components/DataTable";
+import { ColumnMenu, FoldButton, stickAt, useColumns, type Columns } from "@/components/TrackerColumns";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import { importMaterialAction } from "@/app/material/actions";
 
@@ -28,7 +30,11 @@ import { importMaterialAction } from "@/app/material/actions";
 // The table is the sheet's row in the sheet's order — MO · BOM Ref · Quantity of
 // Units · Part Code · Part Name · Codes · Material · Thickness · Sheet Size ·
 // Sheets in BOM for one Unit · for Job · Actual Nesting for one Unit · for
-// Job · Difference · Notes. The sheet is the tab's only source: nothing is
+// Job · Difference · Notes. Each person picks the columns they keep (Columns ▾,
+// on their account) and folds a run of them from the band over the headers,
+// as on the Plan Tracker. Plan month is the monthly plan the line's order is
+// in on the Plan Tracker, and a filter: a month's plan, what its orders were
+// nested on and what that adds up to. The sheet is the tab's only source: nothing is
 // typed, edited or deleted here — uploading the sheet again is how a line
 // changes. Sheets-for-job, actual weight and Difference are computed. One
 // column of the transformers' table is read from elsewhere and only shown:
@@ -41,15 +47,6 @@ import { importMaterialAction } from "@/app/material/actions";
    whole name sits in each one's tooltip (and stays the export's heading). */
 /** A numeric column's header and cells: right-aligned, so figures line up. */
 const NUM = "num";
-
-/** The identifiers stay on screen while the figures scroll past: MTR, SOI and
- *  MO are pinned (from a laptop up) at fixed widths. */
-const STICK_W = ["6.5rem", "6.75rem", "16rem"] as const;
-const STICK_LEFT = ["0rem", "6.5rem", "13.25rem"] as const;
-const stickCls = (i: number) => `stick ${i === STICK_W.length - 1 ? "stick-end" : ""}`;
-// as CSS variables: the stylesheet applies them on screen only, so the printed
-// sheet keeps its natural column widths
-const stickStyle = (i: number) => ({ "--stick-left": STICK_LEFT[i], "--stick-w": STICK_W[i] }) as React.CSSProperties;
 
 /** Sheet counts read as fractions of a sheet — 1.287, not 1.3 — at a fixed
  *  number of decimals per column, so a column's figures line up on the point.
@@ -86,7 +83,7 @@ function OdooRate({ line, rates }: { line: MaterialLineView; rates: OdooRates })
   );
 }
 
-// ---- one row of the table ----
+// ---- the columns: each one on or off (Columns ▾), a run of them folded from the band ----
 
 /** The MO cell: the sheet's MO and whether the ODOO log carries it yet. */
 function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
@@ -104,92 +101,18 @@ function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
   );
 }
 
-function LineRow({ line, showMonth, product, odoo, rates, inGroup }: {
-  line: MaterialLineView; showMonth: boolean; product: ProductLine; odoo: Record<string, string>; rates: OdooRates;
-  /** A line under an opened SOI's head — framed with it; "last" closes the frame. */
-  inGroup?: "child" | "last";
-}) {
-  const diffCls = line.difference === null ? "" : line.difference < 0 ? "text-bad-fg" : line.difference > 0 ? "text-ok-fg" : "text-muted";
-  if (product === "LV") {
-    // the panels' sheet: the order's head, then the thickness row, then what
-    // the tracker produced and what that consumed
-    const done = line.remainingUnits === 0 && line.units > 0;
-    return (
-      <tr className={`border-t ${done ? "bg-ok-bg/30" : ""}`}>
-        <td className="p-2 font-bold whitespace-nowrap ltr text-xs"><MoCell mo={line.mo} odoo={odoo} /></td>
-        <td className="p-2 text-center"><span className="pill pill-muted">{line.partName || "—"}</span></td>
-        <td className="p-2 whitespace-nowrap ltr text-xs tabnum text-muted">{line.materialCode || "—"}</td>
-        <td className="p-2 text-center tabnum font-bold">{line.units}</td>
-        <td className="p-2 whitespace-nowrap ltr text-xs"><BomLink bom={line.bom} line={product} /></td>
-        <td className="p-2 whitespace-nowrap">{line.material}</td>
-        <td className="p-2 text-center tabnum ltr">{line.thicknessMm}</td>
-        <td className="p-2 text-center whitespace-nowrap ltr tabnum">{line.sheetSize}</td>
-        <td className="p-2 text-center"><Sheets v={line.sheetsPerUnit} digits={FIELD_DP.factor} /></td>
-        <td className="p-2 text-center font-bold"><Sheets v={line.forJob} /></td>
-        <td className="p-2 text-center"><Sheets v={line.actualPerUnit} digits={FIELD_DP.factor} /></td>
-        <td className="p-2 text-center bg-brand-light/30 whitespace-nowrap" title={line.producedQty === null && line.producedAuto !== null ? "Panels painted on the tracker" : undefined}>
-          <Units v={line.producedUsed} />
-          {line.producedQty === null && line.producedAuto !== null && <span className="block text-[10px] text-muted">tracker</span>}
-        </td>
-        <td className="p-2 text-center font-extrabold bg-brand-light/30" title={line.producedUsed === null ? "Nothing produced yet" : `${line.producedUsed} units × ${Number((line.actualPerUnit ?? line.sheetsPerUnit).toFixed(4))} sheets a unit`}>
-          <Sheets v={line.forProduced ?? (line.producedUsed === null ? null : Number((line.sheetsPerUnit * line.producedUsed).toFixed(4)))} />
-        </td>
-        <td className={`p-2 text-center tabnum font-bold ${done ? "text-ok-fg" : ""}`}>{line.remainingUnits === null ? "—" : done ? "Done" : line.remainingUnits}</td>
-        <td className="p-2 text-xs max-w-[200px]">{line.note}</td>
-        {showMonth && <td className="p-2 whitespace-nowrap text-xs">{line.month || <span className="text-muted">—</span>}</td>}
-      </tr>
-    );
-  }
+const MATCH_WORD: Record<MaterialPlanMatch, string> = { mo: "MO", soi: "SOI", bom: "BOM" };
+
+/** The monthly plans the line's order was in: the newest, and +n for the
+ *  other plans its key also sits in (an order carried over, or a SOI / BOM
+ *  whose orders sat in several); the months and the key that tied them in the tooltip. */
+function PlanCell({ months, match }: { months: string[]; match: MaterialPlanMatch | null }) {
+  if (months.length === 0) return <span className="text-muted" title="No order on the Plan Tracker carries this line's MO or SOI (or, for a line with neither, its BOM)">—</span>;
   return (
-    <tr className={inGroup ? `mat-child ${inGroup === "last" ? "mat-child-last" : ""}` : undefined}>
-      <td className={`p-2 whitespace-nowrap ltr text-xs ${inGroup ? "ps-4" : ""} ${stickCls(0)}`} style={stickStyle(0)}><span className="block truncate" title={line.mtr || undefined}>{line.mtr || <span className="text-muted">—</span>}</span></td>
-      <td className={`p-2 whitespace-nowrap ltr text-xs font-semibold ${stickCls(1)}`} style={stickStyle(1)}><span className="block truncate" title={line.soi || undefined}>{line.soi || <span className="text-muted">—</span>}</span></td>
-      {/* the sheet files each part under Odoo's MO — the key an ODOO row finds it by */}
-      <td className={`p-2 font-bold whitespace-nowrap ltr text-xs ${stickCls(2)}`} style={stickStyle(2)}><MoCell mo={line.mo} odoo={odoo} /></td>
-      <td className="p-2 whitespace-nowrap ltr text-xs"><BomLink bom={line.bom} line={product} /></td>
-      <td className={`p-2 ${NUM} tabnum ltr`}>{line.units}</td>
-      <td className="p-2 whitespace-nowrap ltr text-xs font-bold">{line.partCode || <span className="text-muted">—</span>}</td>
-      <td className="p-2 whitespace-nowrap text-xs">{line.partName || <span className="text-muted">—</span>}</td>
-      <td className="p-2 whitespace-nowrap ltr text-xs">{line.materialCode || <span className="text-muted">—</span>}</td>
-      <td className="p-2 whitespace-nowrap">{line.material}</td>
-      <td className={`p-2 ${NUM} tabnum ltr`}>{line.thicknessMm}</td>
-      <td className="p-2 text-center whitespace-nowrap ltr tabnum">{line.sheetSize}</td>
-      <td className={`p-2 ${NUM} tabnum`}><Sheets v={line.weightKg} digits={3} /></td>
-      <td className={`p-2 ${NUM}`}><Sheets v={line.sheetsPerUnit} digits={FIELD_DP.factor} /></td>
-      <td className={`p-2 ${NUM}`}><OdooRate line={line} rates={rates} /></td>
-      <td className={`p-2 ${NUM}`}><Sheets v={line.actualPerUnit} digits={FIELD_DP.factor} /></td>
-      <td className={`p-2 ${NUM} emph`}><Sheets v={line.forJob} /></td>
-      <td className={`p-2 ${NUM} emph`}><Sheets v={line.sheetsUsed} className="font-bold" /></td>
-      <td className={`p-2 ${NUM}`}><Utilization v={line.utilization} /></td>
-      <td className={`p-2 ${NUM} emph tabnum`} title={line.actualWeightKg === null ? "Needs the pieces nested for the job and the weight" : `${line.sheetsUsed} × ${line.weightKg} kg`}><Sheets v={line.actualWeightKg} digits={3} /></td>
-      <td className={`p-2 ${NUM} emph ${diffCls}`}><Sheets v={line.difference} /></td>
-      <td className="p-2 text-xs min-w-[8rem] max-w-[200px]">{line.note}</td>
-      {showMonth && <td className="p-2 whitespace-nowrap text-xs">{line.month || <span className="text-muted">—</span>}</td>}
-    </tr>
-  );
-}
-
-// ---- the SOI groups and the totals row ----
-
-/** The sticky identifier block (MTR · SOI · MO) as one cell, for the rows
- *  that span it: a group's head, the totals. */
-const STICK_ALL = { "--stick-left": "0rem", "--stick-w": "29.25rem" } as React.CSSProperties;
-
-type Sums = Pick<MaterialSoiGroup, "forJob" | "sheetsUsed" | "actualWeightKg" | "difference">;
-
-/** The figures of a group or of the table, each under its own column. */
-function SumCells({ s, showMonth }: { s: Sums; showMonth: boolean }) {
-  const diffCls = s.difference === null ? "" : s.difference < 0 ? "text-bad-fg" : s.difference > 0 ? "text-ok-fg" : "text-muted";
-  return (
-    <>
-      <td className={`p-2 ${NUM} emph`}><Sheets v={s.forJob} /></td>
-      <td className={`p-2 ${NUM} emph`}><Sheets v={s.sheetsUsed} /></td>
-      <td />
-      <td className={`p-2 ${NUM} emph`}><Sheets v={s.actualWeightKg} digits={3} /></td>
-      <td className={`p-2 ${NUM} emph ${diffCls}`}><Sheets v={s.difference} /></td>
-      <td />
-      {showMonth && <td />}
-    </>
+    <span className="inline-flex items-center gap-1 whitespace-nowrap" title={`${months.join(" · ")}${match ? ` — matched on its ${MATCH_WORD[match]}` : ""}`}>
+      {months[0]}
+      {months.length > 1 && <span className="pill pill-muted tabnum">+{months.length - 1}</span>}
+    </span>
   );
 }
 
@@ -197,69 +120,326 @@ function SumCells({ s, showMonth }: { s: Sums; showMonth: boolean }) {
 function sharedOf<T>(values: T[]): T | null {
   return values.every((v) => v === values[0]) ? values[0] : null;
 }
-function SoiGroupRow({ g, open, onToggle, odoo, showMonth, product }: { g: MaterialSoiGroup; open: boolean; onToggle: () => void; odoo: Record<string, string>; showMonth: boolean; product: ProductLine }) {
-  const onOdoo = g.mos.filter((mo) => odoo[mo.toUpperCase()]);
-  const shownMos = g.mos.slice(0, 4);
-  const n = g.lines.length;
-  const label = g.soi || "No SOI";
-  const s: Sums = g;
-  const diffCls = s.difference === null ? "" : s.difference < 0 ? "text-bad-fg" : s.difference > 0 ? "text-ok-fg" : "text-muted";
-  const sharedMo = sharedOf(g.lines.map((l) => l.mo.trim()));
-  const sharedBom = sharedOf(g.lines.map((l) => l.bom));
-  const sharedNote = sharedOf(g.lines.map((l) => l.note ?? ""));
-  const sharedMonth = sharedOf(g.lines.map((l) => l.month));
-  return (
-    <tr className={`mat-group ${open ? "is-open" : ""}`}>
-      <td className={`p-2 ltr text-xs ${stickCls(0)}`} style={stickStyle(0)}>
-        <span className="flex items-center gap-1">
-          <button type="button" onClick={onToggle} aria-expanded={open} className="icon-btn !inline-flex items-center !w-auto !h-auto px-0.5 py-0.5 gap-0.5 shrink-0 font-bold tabnum text-foreground" title={open ? `Fold this SOI's ${n} lines` : `Show this SOI's ${n} lines`} aria-label={open ? `Fold the ${n} lines of ${label}` : `Show the ${n} lines of ${label}`}>
-            <ChevronRight size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />{n}
-          </button>
-          <span className="block truncate">{sharedOf(g.lines.map((l) => l.mtr)) || <span className="text-muted">—</span>}</span>
-        </span>
-      </td>
-      <td className={`p-2 ltr text-xs font-bold ${stickCls(1)}`} style={stickStyle(1)}>
-        <span className="block truncate">{g.soi || <span className="text-muted font-semibold">No SOI</span>}</span>
-      </td>
-      <td className={`p-2 font-bold whitespace-nowrap ltr text-xs ${stickCls(2)}`} style={stickStyle(2)}>
-        {sharedMo !== null ? <MoCell mo={sharedMo} odoo={odoo} /> : (
-          <span className="flex items-center gap-1.5">
-            {g.mos.length} MOs
-            <span
-              className={`pill ${onOdoo.length === g.mos.length ? "pill-ok" : onOdoo.length ? "pill-warn" : "pill-muted"}`}
-              title={onOdoo.length ? `On the ODOO log: ${onOdoo.join(", ")}` : "No ODOO row carries these MOs yet"}
-            >
-              {onOdoo.length > 0 && <Check size={10} aria-hidden />}ODOO {onOdoo.length}/{g.mos.length}
-            </span>
+
+type Sums = Pick<MaterialSoiGroup, "forJob" | "sheetsUsed" | "actualWeightKg" | "difference">;
+
+const diffTone = (v: number | null) => (v === null ? "" : v < 0 ? "text-bad-fg" : v > 0 ? "text-ok-fg" : "text-muted");
+
+interface ColCtx { odoo: Record<string, string>; rates: OdooRates; product: ProductLine }
+
+/** One column of the table: its header, its cell on a line, and — on the
+ *  transformers' sheet — its cell on a SOI's head row and on the totals row.
+ *  A column with no head (or sum) cell joins its neighbours' blank span there. */
+interface ColDef<K extends string> {
+  key: K;
+  /** The column's name in Columns ▾. */
+  name: string;
+  th: { label: string; full?: string; unit?: string; hint?: string; group?: ColGroup; num?: boolean; center?: boolean; className?: string };
+  td: string | ((l: MaterialLineView) => string);
+  cell: (l: MaterialLineView, x: ColCtx) => React.ReactNode;
+  head?: (g: MaterialSoiGroup, x: ColCtx) => React.ReactNode;
+  sum?: (s: Sums) => React.ReactNode;
+}
+
+/** A run of neighbouring columns under one name in the band; its arrow folds
+ *  it to the `lead` columns and opens it again. */
+interface ColRun<K extends string> { label: string; cols: K[]; lead: K[] }
+
+const unitsCell = (v: number | null) => <Units v={v} />;
+
+type TrCol =
+  | "mtr" | "soi" | "mo" | "bom" | "units" | "plan" | "partCode" | "partName" | "matCode" | "material" | "thk" | "size" | "weight"
+  | "bomUnit" | "odooUnit" | "actualUnit" | "bomJob" | "actualJob" | "util" | "actualWeight" | "diff" | "notes";
+
+/** The identifiers stay on screen while the figures scroll past: MTR, SOI and
+ *  MO are pinned (from a laptop up) at fixed widths, each shown one after the other. */
+const STICK_W: Partial<Record<TrCol, number>> = { mtr: 6.5, soi: 6.75, mo: 16 };
+
+// The transformers' sheet: the Nesting Tracker's OWN columns, in the sheet's
+// order and under the sheet's own names, so the tab reads as the sheet does —
+// every figure from the sheet or worked out from it; Plan month and Odoo / unit
+// are read from elsewhere and only shown.
+const TR_COLS: ColDef<TrCol>[] = [
+  { key: "mtr", name: "MTR #", th: { label: "MTR #", full: "MTR Request #", hint: "The material request the sheets were drawn on", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs",
+    cell: (l) => <span className="block truncate" title={l.mtr || undefined}>{l.mtr || <span className="text-muted">—</span>}</span>,
+    head: (g) => <span className="block truncate">{sharedOf(g.lines.map((l) => l.mtr)) || <span className="text-muted">—</span>}</span> },
+  { key: "soi", name: "SOI", th: { label: "SOI", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs font-semibold",
+    cell: (l) => <span className="block truncate" title={l.soi || undefined}>{l.soi || <span className="text-muted">—</span>}</span>,
+    head: (g) => <span className="block truncate font-bold" title={g.soi || undefined}>{g.soi || <span className="text-muted font-semibold">No SOI</span>}</span> },
+  // the sheet files each part under Odoo's MO — the key an ODOO row finds it by
+  { key: "mo", name: "MO", th: { label: "MO", hint: "Odoo's MO for the part — the ODOO log finds the line by it", group: "source" }, td: "p-2 font-bold whitespace-nowrap ltr text-xs",
+    cell: (l, x) => <MoCell mo={l.mo} odoo={x.odoo} />,
+    head: (g, x) => {
+      const sharedMo = sharedOf(g.lines.map((l) => l.mo.trim()));
+      if (sharedMo !== null) return <MoCell mo={sharedMo} odoo={x.odoo} />;
+      const onOdoo = g.mos.filter((mo) => x.odoo[mo.toUpperCase()]);
+      return (
+        <span className="flex items-center gap-1.5">
+          {g.mos.length} MOs
+          <span
+            className={`pill ${onOdoo.length === g.mos.length ? "pill-ok" : onOdoo.length ? "pill-warn" : "pill-muted"}`}
+            title={onOdoo.length ? `On the ODOO log: ${onOdoo.join(", ")}` : "No ODOO row carries these MOs yet"}
+          >
+            {onOdoo.length > 0 && <Check size={10} aria-hidden />}ODOO {onOdoo.length}/{g.mos.length}
           </span>
-        )}
-      </td>
-      <td className="p-2 whitespace-nowrap ltr text-xs">
-        {sharedBom !== null
-          ? <BomLink bom={sharedBom} line={product} />
-          : <span className="text-muted" title={[...new Set(g.lines.map((l) => l.bom))].join(", ")}>{new Set(g.lines.map((l) => l.bom)).size} BOMs</span>}
-      </td>
-      <td className={`p-2 ${NUM}`}><Units v={sharedOf(g.lines.map((l) => l.units))} /></td>
-      <td className="p-2" colSpan={10}>
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs ltr">
-          <span className="font-semibold text-muted tabnum">{n} line{n === 1 ? "" : "s"}</span>
-          {g.mos.length > 1 && shownMos.map((mo) => (
-            <span key={mo} className="inline-flex items-center gap-1 text-muted">
-              {mo}{odoo[mo.toUpperCase()] && <Check size={11} className="text-ok-fg" aria-label="on the ODOO log" />}
-            </span>
-          ))}
-          {g.mos.length > shownMos.length && <span className="text-muted" title={g.mos.slice(4).join(", ")}>+{g.mos.length - shownMos.length} more</span>}
         </span>
-      </td>
-      <td className={`p-2 ${NUM} emph`}><Sheets v={s.forJob} /></td>
-      <td className={`p-2 ${NUM} emph`} title="The lines' pieces nested for the job, added up"><Sheets v={s.sheetsUsed} /></td>
-      <td className={`p-2 ${NUM}`}><Utilization v={sharedOf(g.lines.map((l) => l.utilization))} /></td>
-      <td className={`p-2 ${NUM} emph`}><Sheets v={s.actualWeightKg} digits={3} /></td>
-      <td className={`p-2 ${NUM} emph ${diffCls}`}><Sheets v={s.difference} /></td>
-      <td className="p-2 text-xs min-w-[8rem] max-w-[200px]">{sharedNote ?? <span className="text-muted">…</span>}</td>
-      {showMonth && <td className="p-2 whitespace-nowrap text-xs">{sharedMonth ?? <span className="text-muted">…</span>}</td>}
+      );
+    } },
+  { key: "bom", name: "BOM", th: { label: "BOM", full: "BOM Ref", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs",
+    cell: (l, x) => <BomLink bom={l.bom} line={x.product} />,
+    head: (g, x) => {
+      const shared = sharedOf(g.lines.map((l) => l.bom));
+      const boms = [...new Set(g.lines.map((l) => l.bom))];
+      return shared !== null ? <BomLink bom={shared} line={x.product} /> : <span className="text-muted" title={boms.join(", ")}>{boms.length} BOMs</span>;
+    } },
+  { key: "units", name: "Units", th: { label: "Units", unit: "pcs", full: "Quantity of Units", group: "source", num: true }, td: `p-2 ${NUM} tabnum ltr`,
+    cell: (l) => l.units, head: (g) => unitsCell(sharedOf(g.lines.map((l) => l.units))) },
+  { key: "plan", name: "Plan month", th: { label: "Plan month", hint: "The monthly plan the line's order is in on the Plan Tracker — found by its MO, else its SOI; a line with neither, by its BOM. +n: it sits in more plans too (an order carried over, or a SOI / BOM with orders in several)" }, td: "p-2 text-xs",
+    cell: (l) => <PlanCell months={l.planMonths} match={l.planMatch} />,
+    head: (g) => {
+      const shared = sharedOf(g.lines.map((l) => l.planMonths.join("|")));
+      return shared === null ? <span className="text-muted" title="The lines sit in different plans">…</span> : <PlanCell months={g.lines[0].planMonths} match={g.lines[0].planMatch} />;
+    } },
+  { key: "partCode", name: "Part code", th: { label: "Part code", full: "Part Code", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs font-bold",
+    cell: (l) => l.partCode || <span className="text-muted">—</span> },
+  { key: "partName", name: "Part name", th: { label: "Part name", full: "Part Name", group: "source" }, td: "p-2 whitespace-nowrap text-xs",
+    cell: (l) => l.partName || <span className="text-muted">—</span> },
+  { key: "matCode", name: "Material code", th: { label: "Mat. code", full: "Material Code", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs",
+    cell: (l) => l.materialCode || <span className="text-muted">—</span> },
+  { key: "material", name: "Material", th: { label: "Material", group: "source" }, td: "p-2 whitespace-nowrap", cell: (l) => l.material },
+  { key: "thk", name: "Thickness", th: { label: "Thk", unit: "mm", full: "Thickness", group: "source", num: true }, td: `p-2 ${NUM} tabnum ltr`, cell: (l) => l.thicknessMm },
+  { key: "size", name: "Sheet size", th: { label: "Sheet size", full: "Sheet Size", group: "source", center: true }, td: "p-2 text-center whitespace-nowrap ltr tabnum", cell: (l) => l.sheetSize },
+  { key: "weight", name: "Weight", th: { label: "Weight", unit: "kg", full: "Weight(Kg)", hint: "One sheet's weight", group: "source", num: true }, td: `p-2 ${NUM} tabnum`,
+    cell: (l) => <Sheets v={l.weightKg} digits={3} /> },
+  { key: "bomUnit", name: "BOM / unit", th: { label: "BOM / unit", full: "BOM Qty for one Unit", group: "source", num: true }, td: `p-2 ${NUM}`,
+    cell: (l) => <Sheets v={l.sheetsPerUnit} digits={FIELD_DP.factor} /> },
+  { key: "odooUnit", name: "Odoo / unit", th: { label: "Odoo / unit", full: "The material one part takes per Odoo's BoM", hint: "Not from the sheet: read off Odoo's BoM (Material → BoMs), shown beside it for comparison. Amber = differs from the sheet's BOM / unit", num: true }, td: `p-2 ${NUM}`,
+    cell: (l, x) => <OdooRate line={l} rates={x.rates} /> },
+  { key: "actualUnit", name: "Actual / unit", th: { label: "Actual / unit", full: "No. of Pieces in Actual Nesting for one Unit", hint: "From the sheet — where it leaves it blank, Actual for job ÷ units", group: "source", num: true }, td: `p-2 ${NUM}`,
+    cell: (l) => <Sheets v={l.actualPerUnit} digits={FIELD_DP.factor} /> },
+  { key: "bomJob", name: "BOM for job", th: { label: "BOM for job", full: "BOM Pieces for Job", hint: "BOM Qty for one Unit × units", group: "computed", num: true, className: "emph" }, td: `p-2 ${NUM} emph`,
+    cell: (l) => <Sheets v={l.forJob} />, head: (g) => <Sheets v={g.forJob} />, sum: (s) => <Sheets v={s.forJob} /> },
+  { key: "actualJob", name: "Actual for job", th: { label: "Actual for job", full: "No. of Pieces in Actual Nesting for Job", hint: "From the sheet", group: "source", num: true, className: "emph" }, td: `p-2 ${NUM} emph`,
+    cell: (l) => <Sheets v={l.sheetsUsed} className="font-bold" />,
+    head: (g) => <span title="The lines' pieces nested for the job, added up"><Sheets v={g.sheetsUsed} /></span>, sum: (s) => <Sheets v={s.sheetsUsed} /> },
+  { key: "util", name: "Utilization", th: { label: "Utilization", full: "Average Utilization", hint: "As the sheet writes it — 0.85 or 85", group: "source", num: true }, td: `p-2 ${NUM}`,
+    cell: (l) => <Utilization v={l.utilization} />, head: (g) => <Utilization v={sharedOf(g.lines.map((l) => l.utilization))} /> },
+  { key: "actualWeight", name: "Actual weight", th: { label: "Actual weight", unit: "kg", full: "Actual Weight (Kg)", hint: "Pieces in Actual Nesting for Job × Weight(Kg)", group: "computed", num: true, className: "emph" }, td: `p-2 ${NUM} emph tabnum`,
+    cell: (l) => <span title={l.actualWeightKg === null ? "Needs the pieces nested for the job and the weight" : `${l.sheetsUsed} × ${l.weightKg} kg`}><Sheets v={l.actualWeightKg} digits={3} /></span>,
+    head: (g) => <Sheets v={g.actualWeightKg} digits={3} />, sum: (s) => <Sheets v={s.actualWeightKg} digits={3} /> },
+  { key: "diff", name: "Difference", th: { label: "Difference", hint: "BOM Pieces for Job − Actual Nesting for Job. Red = ate more than the BOM allows", group: "computed", num: true, className: "emph" },
+    td: (l) => `p-2 ${NUM} emph ${diffTone(l.difference)}`,
+    cell: (l) => <Sheets v={l.difference} />,
+    head: (g) => <span className={diffTone(g.difference)}><Sheets v={g.difference} /></span>,
+    sum: (s) => <span className={diffTone(s.difference)}><Sheets v={s.difference} /></span> },
+  { key: "notes", name: "Notes", th: { label: "Notes", group: "source" }, td: "p-2 text-xs min-w-[8rem] max-w-[200px]",
+    cell: (l) => l.note, head: (g) => sharedOf(g.lines.map((l) => l.note ?? "")) ?? <span className="text-muted">…</span> },
+];
+
+const TR_RUNS: ColRun<TrCol>[] = [
+  { label: "Order", cols: ["mtr", "soi", "mo"], lead: ["mo"] },
+  { label: "Job", cols: ["bom", "units", "plan"], lead: ["bom"] },
+  { label: "Part", cols: ["partCode", "partName"], lead: ["partCode"] },
+  { label: "Sheet", cols: ["matCode", "material", "thk", "size", "weight"], lead: ["material", "thk"] },
+  { label: "Per unit", cols: ["bomUnit", "odooUnit", "actualUnit"], lead: ["actualUnit"] },
+  { label: "For the job", cols: ["bomJob", "actualJob", "util", "actualWeight", "diff"], lead: ["bomJob", "actualJob", "diff"] },
+  { label: "", cols: ["notes"], lead: ["notes"] },
+];
+
+type LvCol =
+  | "mo" | "product" | "secItem" | "planned" | "bom" | "plan" | "material" | "thk" | "size"
+  | "bomUnit" | "bomQty" | "actualUnit" | "produced" | "consumed" | "remaining" | "remarks";
+
+const lvDone = (l: MaterialLineView) => l.remainingUnits === 0 && l.units > 0;
+
+// The panels' sheet: the order's head, then the thickness row, then what the
+// tracker produced and what that consumed.
+const LV_COLS: ColDef<LvCol>[] = [
+  { key: "mo", name: "MO", th: { label: "MO", group: "source" }, td: "p-2 font-bold whitespace-nowrap ltr text-xs", cell: (l, x) => <MoCell mo={l.mo} odoo={x.odoo} /> },
+  { key: "product", name: "Product", th: { label: "Product", group: "source", center: true }, td: "p-2 text-center", cell: (l) => <span className="pill pill-muted">{l.partName || "—"}</span> },
+  { key: "secItem", name: "Sec item", th: { label: "Sec item", full: "Sec Item", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs tabnum text-muted", cell: (l) => l.materialCode || "—" },
+  { key: "planned", name: "Planned", th: { label: "Planned", unit: "pcs", full: "Planned qty", group: "source", num: true }, td: "p-2 text-center tabnum font-bold", cell: (l) => l.units },
+  { key: "bom", name: "BOM", th: { label: "BOM", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs", cell: (l, x) => <BomLink bom={l.bom} line={x.product} /> },
+  { key: "plan", name: "Plan month", th: { label: "Plan month", hint: "The monthly plan the order is in on the Plan Tracker — found by its MO, else its SOI; a line with neither, by its BOM. +n: it sits in more plans too" }, td: "p-2 text-xs",
+    cell: (l) => <PlanCell months={l.planMonths} match={l.planMatch} /> },
+  { key: "material", name: "Material", th: { label: "Material", group: "source" }, td: "p-2 whitespace-nowrap", cell: (l) => l.material },
+  { key: "thk", name: "Thickness", th: { label: "Thk", unit: "mm", full: "Thickness", group: "source", num: true }, td: "p-2 text-center tabnum ltr", cell: (l) => l.thicknessMm },
+  { key: "size", name: "Sheet size", th: { label: "Sheet size", full: "Sheet Size", group: "source", center: true }, td: "p-2 text-center whitespace-nowrap ltr tabnum", cell: (l) => l.sheetSize },
+  { key: "bomUnit", name: "BOM / unit", th: { label: "BOM / unit", unit: "sheets", full: "No. of Sheets in BOM for one Unit", group: "source", num: true }, td: "p-2 text-center",
+    cell: (l) => <Sheets v={l.sheetsPerUnit} digits={FIELD_DP.factor} /> },
+  { key: "bomQty", name: "BOM qty", th: { label: "BOM qty", unit: "sheets", full: "Sheets Qty as per BOM", hint: "Per unit × planned qty", group: "computed", num: true }, td: "p-2 text-center font-bold", cell: (l) => <Sheets v={l.forJob} /> },
+  { key: "actualUnit", name: "Actual / unit", th: { label: "Actual / unit", unit: "sheets", full: "Actual per Unit", hint: "Sheets one unit really takes, from the sheet — blank means the BOM's figure", group: "source", num: true }, td: "p-2 text-center",
+    cell: (l) => <Sheets v={l.actualPerUnit} digits={FIELD_DP.factor} /> },
+  { key: "produced", name: "Produced", th: { label: "Produced", unit: "pcs", hint: "The sheet's count, else the panels painted on the tracker", group: "source", num: true }, td: "p-2 text-center bg-brand-light/30 whitespace-nowrap",
+    cell: (l) => (
+      <span title={l.producedQty === null && l.producedAuto !== null ? "Panels painted on the tracker" : undefined}>
+        <Units v={l.producedUsed} />
+        {l.producedQty === null && l.producedAuto !== null && <span className="block text-[10px] text-muted">tracker</span>}
+      </span>
+    ) },
+  { key: "consumed", name: "Consumed", th: { label: "Consumed", unit: "sheets", full: "Actually Consumed", hint: "Sheets the produced panels consumed — per unit × produced", group: "computed", num: true }, td: "p-2 text-center font-extrabold bg-brand-light/30",
+    cell: (l) => (
+      <span title={l.producedUsed === null ? "Nothing produced yet" : `${l.producedUsed} units × ${Number((l.actualPerUnit ?? l.sheetsPerUnit).toFixed(4))} sheets a unit`}>
+        <Sheets v={sheetsConsumed(l)} />
+      </span>
+    ) },
+  { key: "remaining", name: "Remaining", th: { label: "Remaining", unit: "pcs", full: "Remaining units", group: "computed", num: true }, td: (l) => `p-2 text-center tabnum font-bold ${lvDone(l) ? "text-ok-fg" : ""}`,
+    cell: (l) => (l.remainingUnits === null ? "—" : lvDone(l) ? "Done" : l.remainingUnits) },
+  { key: "remarks", name: "Remarks", th: { label: "Remarks", group: "source" }, td: "p-2 text-xs max-w-[200px]", cell: (l) => l.note },
+];
+
+const LV_RUNS: ColRun<LvCol>[] = [
+  { label: "Order", cols: ["mo", "product", "secItem", "planned", "bom", "plan"], lead: ["mo", "product", "planned"] },
+  { label: "Sheet", cols: ["material", "thk", "size"], lead: ["thk"] },
+  { label: "Sheets", cols: ["bomUnit", "bomQty", "actualUnit"], lead: ["bomQty"] },
+  { label: "Produced", cols: ["produced", "consumed", "remaining"], lead: ["consumed", "remaining"] },
+  { label: "", cols: ["remarks"], lead: ["remarks"] },
+];
+
+// every column shows until the person picks otherwise; MO always shows
+const TR_DEFAULT = TR_COLS.map((c) => c.key).filter((k) => k !== "mo");
+const LV_DEFAULT = LV_COLS.map((c) => c.key).filter((k) => k !== "mo");
+
+/** The columns shown, in the sheet's order, each pinned identifier with its
+ *  place: its left edge after the pinned ones shown before it. */
+function layoutOf<K extends string>(defs: ColDef<K>[], isOn: (k: K) => boolean, stickW: Partial<Record<K, number>>) {
+  const shown = defs.filter((c) => c.key === "mo" || isOn(c.key));
+  const pinned = shown.filter((c) => stickW[c.key] !== undefined);
+  let left = 0;
+  const stick = new Map<string, { className: string; style: React.CSSProperties }>();
+  pinned.forEach((c, i) => {
+    const w = stickW[c.key]!;
+    // as CSS variables: the stylesheet applies them on screen only, so the
+    // printed sheet keeps its natural column widths
+    stick.set(c.key, { className: `stick ${i === pinned.length - 1 ? "stick-end" : ""}`, style: stickAt(left, w) });
+    left += w;
+  });
+  /** The pinned block as one cell, for the rows that span it: the band, the totals. */
+  const block = { span: pinned.length, style: stickAt(0, left) };
+  return { shown, stick, block };
+}
+type Layout<K extends string> = ReturnType<typeof layoutOf<K>>;
+
+const tdCls = <K extends string>(c: ColDef<K>, l: MaterialLineView) => (typeof c.td === "function" ? c.td(l) : c.td);
+
+function LineRow<K extends string>({ line, layout, x, inGroup, className }: {
+  line: MaterialLineView; layout: Layout<K>; x: ColCtx;
+  /** A line under an opened SOI's head — framed with it; "last" closes the frame. */
+  inGroup?: "child" | "last";
+  className?: string;
+}) {
+  const cls = inGroup ? `mat-child ${inGroup === "last" ? "mat-child-last" : ""}` : className;
+  return (
+    <tr className={cls}>
+      {layout.shown.map((c, i) => {
+        const st = layout.stick.get(c.key);
+        return <td key={c.key} className={`${tdCls(c, line)} ${inGroup && i === 0 ? "ps-4" : ""} ${st?.className ?? ""}`} style={st?.style}>{c.cell(line, x)}</td>;
+      })}
     </tr>
   );
+}
+
+// ---- the SOI groups and the totals row ----
+
+function SoiGroupRow({ g, open, onToggle, layout, x, soiShown }: {
+  g: MaterialSoiGroup; open: boolean; onToggle: () => void; layout: Layout<TrCol>; x: ColCtx;
+  /** Whether the SOI column is on — off, the SOI is named in the row's summary instead. */
+  soiShown: boolean;
+}) {
+  const n = g.lines.length;
+  const label = g.soi || "No SOI";
+  const shownMos = g.mos.slice(0, 4);
+  const toggle = (
+    <button type="button" onClick={onToggle} aria-expanded={open} className="icon-btn !inline-flex items-center !w-auto !h-auto px-0.5 py-0.5 gap-0.5 shrink-0 font-bold tabnum text-foreground" title={open ? `Fold this SOI's ${n} lines` : `Show this SOI's ${n} lines`} aria-label={open ? `Fold the ${n} lines of ${label}` : `Show the ${n} lines of ${label}`}>
+      <ChevronRight size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />{n}
+    </button>
+  );
+  const summary = (
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs ltr">
+      <span className="font-semibold text-muted tabnum">{n} line{n === 1 ? "" : "s"}</span>
+      {g.mos.length > 1 && shownMos.map((mo) => (
+        <span key={mo} className="inline-flex items-center gap-1 text-muted">
+          {mo}{x.odoo[mo.toUpperCase()] && <Check size={11} className="text-ok-fg" aria-label="on the ODOO log" />}
+        </span>
+      ))}
+      {g.mos.length > shownMos.length && <span className="text-muted" title={g.mos.slice(4).join(", ")}>+{g.mos.length - shownMos.length} more</span>}
+    </span>
+  );
+  // the columns with nothing to say for the group run together into one
+  // cell; the first such run carries the group's summary
+  const cells: React.ReactNode[] = [];
+  let blank = 0;
+  let summarized = false;
+  const flush = (at: string) => {
+    if (blank === 0) return;
+    cells.push(<td key={`blank-${at}`} className="p-2" colSpan={blank}>{summarized ? null : summary}</td>);
+    summarized = true;
+    blank = 0;
+  };
+  layout.shown.forEach((c, i) => {
+    if (!c.head) { blank++; return; }
+    flush(c.key);
+    const st = layout.stick.get(c.key);
+    const body = c.head(g, x);
+    cells.push(
+      <td key={c.key} className={`${typeof c.td === "string" ? c.td : `p-2 ${NUM} emph`} ${st?.className ?? ""}`} style={st?.style}>
+        {i === 0 ? (
+          <span className="flex items-center gap-1 min-w-0">
+            {toggle}
+            {/* the SOI column off: the group still says which SOI it is */}
+            {!soiShown && <b className="truncate shrink-0 max-w-[50%]" title={label}>{label}</b>}
+            <span className="min-w-0 flex-1">{body}</span>
+          </span>
+        ) : body}
+      </td>,
+    );
+  });
+  flush("end");
+  return <tr className={`mat-group ${open ? "is-open" : ""}`}>{cells}</tr>;
+}
+
+/** What the lines on screen add up to, pinned under the sheet: the pinned
+ *  block names it, each figure sits under its own column. */
+function TotalRow({ s, count, filtering, layout }: { s: Sums; count: number; filtering: boolean; layout: Layout<TrCol> }) {
+  const cells: React.ReactNode[] = [];
+  let blank = 0;
+  const flush = (at: string) => { if (blank) cells.push(<td key={`blank-${at}`} colSpan={blank} />); blank = 0; };
+  for (const c of layout.shown.slice(layout.block.span)) {
+    if (!c.sum) { blank++; continue; }
+    flush(c.key);
+    cells.push(<td key={c.key} className={`p-2 ${NUM} emph`}>{c.sum(s)}</td>);
+  }
+  flush("end");
+  return (
+    <tr>
+      <td className="p-2 stick stick-end font-bold" colSpan={layout.block.span} style={layout.block.style}>
+        Total <span className="text-xs text-muted font-semibold tabnum">· {count} line{count === 1 ? "" : "s"}{filtering ? " shown" : ""}</span>
+      </td>
+      {cells}
+    </tr>
+  );
+}
+
+/** The band over the headers: each run of columns under its name, with the
+ *  arrow that folds it to its lead columns — the Plan Tracker's way. */
+function RunBand<K extends string>({ runs, layout, cols }: { runs: ColRun<K>[]; layout: Layout<K>; cols: Columns<K> }) {
+  const shown = new Set<string>(layout.shown.map((c) => c.key));
+  const spans = runs.flatMap((r) => {
+    const span = r.cols.filter((k) => shown.has(k)).length;
+    if (span === 0) return [];
+    const rest = r.cols.filter((k) => !r.lead.includes(k));
+    const open = cols.anyOn(rest);
+    const pinned = r.cols.every((k) => !shown.has(k) || layout.stick.has(k)) && r.cols.some((k) => layout.stick.has(k));
+    return [{
+      span,
+      className: `dt-band-run ${pinned ? "stick stick-end" : ""}`,
+      style: pinned ? layout.block.style : undefined,
+      label: rest.length === 0 ? r.label : (
+        <FoldButton open={open} onClick={() => cols.toggle(rest)} label={r.label} title={open ? `Fold ${r.label}: hide ${rest.length} of its columns` : `Show ${r.label}'s columns`} />
+      ),
+    }];
+  });
+  return <GroupBand spans={spans} />;
 }
 
 // ---- upload the sheet: it updates the table, row by MO ----
@@ -367,6 +547,7 @@ function readSavedFilters(raw: string): MaterialFilters {
     q: savedString(o, "q"), partCode: savedString(o, "partCode"), material: savedString(o, "material"),
     thicknessMm: savedString(o, "thicknessMm"), sheetSize: savedString(o, "sheetSize"),
     status: status in MATERIAL_STATUS_FILTERS ? (status as MaterialStatusFilter) : "all",
+    planMonth: savedString(o, "planMonth"),
   };
 }
 
@@ -387,6 +568,11 @@ function FilterBar({ lines, filters, onChange, shown, lv, extra }: { lines: Mate
   const materials = uniq(lines.map((l) => l.material));
   const thicknesses = [...new Set(lines.map((l) => l.thicknessMm))].sort((a, b) => a - b).map(String);
   const sizes = uniq(lines.map((l) => l.sheetSize));
+  // the monthly plans the lines' orders were in, newest first; a saved month
+  // no line carries any more keeps its option, so the filter can be read and cleared
+  const planMonths = materialPlanMonthOptions(lines);
+  if (filters.planMonth && filters.planMonth !== NO_PLAN_MONTH && !planMonths.includes(filters.planMonth)) planMonths.unshift(filters.planMonth);
+  const hasNoPlan = filters.planMonth === NO_PLAN_MONTH || lines.some((l) => l.planMonths.length === 0);
   const set = (patch: Partial<MaterialFilters>) => onChange({ ...filters, ...patch });
   const active = JSON.stringify(filters) !== JSON.stringify(EMPTY_MATERIAL_FILTERS);
   return (
@@ -399,6 +585,10 @@ function FilterBar({ lines, filters, onChange, shown, lv, extra }: { lines: Mate
           className="ctl ltr w-full sm:w-64 pl-8"
         />
       </label>
+      <FilterSelect
+        label="Plan month" title="The monthly plan the lines' orders are in on the Plan Tracker" value={filters.planMonth} onChange={(v) => set({ planMonth: v })}
+        options={[...planMonths.map((m) => ({ value: m, label: m })), ...(hasNoPlan ? [{ value: NO_PLAN_MONTH, label: "Not in a plan" }] : [])]}
+      />
       <PhoneFold active={active}>
       <Pick label="Part" value={filters.partCode} options={parts} onChange={(v) => set({ partCode: v })} render={(c) => `${c}${nameOf(c) ? ` · ${nameOf(c)}` : ""}`} />
       <Pick label="Material" value={filters.material} options={materials} onChange={(v) => set({ material: v })} />
@@ -421,8 +611,52 @@ function FilterBar({ lines, filters, onChange, shown, lv, extra }: { lines: Mate
   );
 }
 
-export function MaterialClient({ lines, month, canImport, product = "TR", odooByMo = {}, odooRates = {}, lineSwitch }: {
-  lines: MaterialLineView[]; month: string;
+/** What the lines shown add up to — a month's plan when one is picked. */
+function SummaryStrip({ s, lv, planMonth }: { s: MaterialSummary; lv: boolean; planMonth: string }) {
+  const scope = planMonth === NO_PLAN_MONTH ? "Not in a plan" : planMonth || "Every plan";
+  const cell = (label: string, value: React.ReactNode, sub: React.ReactNode, tone = "") => (
+    <div className="kpi">
+      <div className="kpi-label">{label}</div>
+      <div className={`kpi-value ltr ${tone}`}>{value}</div>
+      <div className="kpi-sub">{sub}</div>
+    </div>
+  );
+  return (
+    <div className="kpi-strip" role="group" aria-label={`What the lines shown add up to — ${scope}`}>
+      {cell("Orders", formatNumber(s.orders), `${scope} · ${s.lines} line${s.lines === 1 ? "" : "s"}`)}
+      {lv ? (
+        <>
+          {cell("Planned", formatQty(s.units), "units on the lines")}
+          {cell("BOM qty", formatNumber(s.forJob, FIELD_DP.sheets), "sheets as per the BOM")}
+          {cell("Consumed", formatNumber(s.forProduced, FIELD_DP.sheets), "sheets the produced units took")}
+          {cell("Remaining", s.remainingUnits === null ? "—" : formatQty(s.remainingUnits), "units still to make")}
+        </>
+      ) : (
+        <>
+          {cell("BOM for job", formatNumber(s.forJob, FIELD_DP.sheets), "as the BOM allows")}
+          {cell("Actual for job", formatNumber(s.sheetsUsed, FIELD_DP.sheets), "nested on the sheet")}
+          {cell("Actual weight", s.actualWeightKg === null ? "—" : <>{formatNumber(s.actualWeightKg, 0)}<span className="text-sm text-muted ms-1">kg</span></>, "nested × one sheet's weight")}
+          {cell("Difference", formatNumber(s.difference, FIELD_DP.sheets), s.overLines ? <span className="text-bad-fg font-semibold">{s.overLines} line{s.overLines === 1 ? "" : "s"} over the BOM</span> : "no line over the BOM", diffTone(s.difference))}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Columns ▾ — every column on or off, kept on the account; what the headers' colours mean below. */
+function MaterialColumns<K extends string>({ cols, defs }: { cols: Columns<K>; defs: ColDef<K>[] }) {
+  return (
+    <ColumnMenu cols={cols} list={defs.filter((c) => c.key !== "mo").map((c) => ({ key: c.key, label: c.name }))} fixed="MO" fixedTitle="MO always shows — it is what the line is">
+      <div className="text-xs text-muted space-y-1">
+        <GroupLegend groups={["source", "computed"]} />
+        <p>The arrows on the band over the headers fold a run of columns and open it again.</p>
+      </div>
+    </ColumnMenu>
+  );
+}
+
+export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}, odooRates = {}, lineSwitch, prefs = {} }: {
+  lines: MaterialLineView[];
   /** Odoo's BOM figure per part and material (transformers; odooRateKey). */
   odooRates?: OdooRates;
   /** May upload the sheet — the tab's only change; nothing is typed in it. */
@@ -433,8 +667,9 @@ export function MaterialClient({ lines, month, canImport, product = "TR", odooBy
   odooByMo?: Record<string, string>;
   /** Which product line's nesting this is — the panels' and the transformers' sheets differ. */
   product?: ProductLine;
+  /** This person's saved columns, the transformers' and the panels'. */
+  prefs?: UserPrefs;
 }) {
-  const showMonth = month === "all";
   const lv = product === "LV";
   const { filters: saved, setFilters: changeFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_MATERIAL_FILTERS);
   // only the panels' tab counts units produced — a "with produced" kept from
@@ -442,14 +677,17 @@ export function MaterialClient({ lines, month, canImport, product = "TR", odooBy
   const filters = useMemo(() => (!lv && saved.status === "produced" ? { ...saved, status: "all" as const } : saved), [lv, saved]);
   const shown = useMemo(() => filterMaterialLines(lines, filters), [lines, filters]);
   const filtering = shown.length !== lines.length;
+  const summary = useMemo(() => materialSummary(shown), [shown]);
+  // each person's columns, one set per line's sheet, kept on their account
+  const trCols = useColumns<TrCol>("material:cols", prefs["material:cols"], TR_DEFAULT);
+  const lvCols = useColumns<LvCol>("material:colsLv", prefs["material:colsLv"], LV_DEFAULT);
+  const trLayout = layoutOf(TR_COLS, trCols.isOn, STICK_W);
+  const lvLayout = layoutOf(LV_COLS, lvCols.isOn, {});
+  const x: ColCtx = { odoo: odooByMo, rates: odooRates, product };
   // the transformers' sheet reads by SOI, its MOs under it; the switch puts
   // the plain sheet order back. A folded SOI stays folded while the page is open.
   const [bySoi, setBySoi] = useState(true);
   const soiGroups = useMemo(() => groupMaterialBySoi(shown), [shown]);
-  const shownSums = useMemo(() => {
-    const all = groupMaterialBySoi(shown.map((l) => ({ ...l, soi: "" })))[0];
-    return all ?? { forJob: 0, sheetsUsed: null, actualWeightKg: null, difference: null };
-  }, [shown]);
   const [folded, setFolded] = useState<Set<string>>(() => new Set());
   const toggleFold = (soi: string) => setFolded((f) => { const n = new Set(f); if (n.has(soi)) n.delete(soi); else n.add(soi); return n; });
   return (
@@ -464,18 +702,22 @@ export function MaterialClient({ lines, month, canImport, product = "TR", odooBy
         {lines.length > 0 && (
           <FilterBar
             lines={lines} filters={filters} onChange={changeFilters} shown={shown.length} lv={lv}
-            extra={lv ? undefined : (
-              <button type="button" className="chip-toggle" aria-pressed={bySoi} onClick={() => setBySoi((v) => !v)} title="Group the lines by SOI, each order's MOs under it">
-                Group by SOI
-              </button>
+            extra={lv ? <MaterialColumns cols={lvCols} defs={LV_COLS} /> : (
+              <>
+                <button type="button" className="chip-toggle" aria-pressed={bySoi} onClick={() => setBySoi((v) => !v)} title="Group the lines by SOI, each order's MOs under it">
+                  Group by SOI
+                </button>
+                <MaterialColumns cols={trCols} defs={TR_COLS} />
+              </>
             )}
           />
         )}
       </div>
+      {shown.length > 0 && <SummaryStrip s={summary} lv={lv} planMonth={filters.planMonth} />}
       <section className="bg-surface border rounded-[10px] overflow-hidden">
         {lines.length === 0 ? (
           <TableEmpty
-            title={showMonth ? "No material recorded yet" : month ? `Nothing filed under ${month}` : "The table is empty"}
+            title="The table is empty"
             hint={lv ? "Upload the Consumption Details sheet — the table fills from it." : "Upload the material sheet — the table fills from it."}
             action={canImport ? <ImportPanel product={product} /> : undefined}
           />
@@ -486,106 +728,47 @@ export function MaterialClient({ lines, month, canImport, product = "TR", odooBy
             action={<button type="button" className="btn btn-sm btn-secondary" onClick={() => changeFilters(EMPTY_MATERIAL_FILTERS)}><FilterX size={13} aria-hidden />Reset filters</button>}
             filtered
           />
-        ) : (
+        ) : lv ? (
           <TableFrame>
-            <table className="erp-table w-full border-collapse">
+            <table className="erp-table mat-runs w-full border-collapse">
               <thead>
-                {/* The Nesting Tracker's OWN columns, in the sheet's order and
-                    under the sheet's own names, so the tab reads as the sheet
-                    does — every figure from the sheet or worked out from it. */}
-                {lv ? (
-                  <>
-                  <GroupBand spans={[
-                    { span: 9, group: "source", label: <GroupLegend groups={["source", "computed"]} /> },
-                    { span: 1, group: "computed" },
-                    { span: 2, group: "source" },
-                    { span: 2, group: "computed" },
-                    { span: 1, group: "source" },
-                    ...(showMonth ? [{ span: 1 }] : []),
-                  ]} />
-                  <tr className="text-left align-bottom">
-                    <Th label="MO" group="source" />
-                    <Th label="Product" group="source" center />
-                    <Th label="Sec item" full="Sec Item" group="source" />
-                    <Th label="Planned" unit="pcs" full="Planned qty" group="source" num />
-                    <Th label="BOM" group="source" />
-                    <Th label="Material" group="source" />
-                    <Th label="Thk" unit="mm" full="Thickness" group="source" num />
-                    <Th label="Sheet size" full="Sheet Size" group="source" center />
-                    <Th label="BOM / unit" unit="sheets" full="No. of Sheets in BOM for one Unit" group="source" num />
-                    <Th label="BOM qty" unit="sheets" full="Sheets Qty as per BOM" hint="Per unit × planned qty" group="computed" num />
-                    <Th label="Actual / unit" unit="sheets" full="Actual per Unit" hint="Sheets one unit really takes, from the sheet — blank means the BOM's figure" group="source" num />
-                    <Th label="Produced" unit="pcs" hint="The sheet's count, else the panels painted on the tracker" group="source" num />
-                    <Th label="Consumed" unit="sheets" full="Actually Consumed" hint="Sheets the produced panels consumed — per unit × produced" group="computed" num />
-                    <Th label="Remaining" unit="pcs" full="Remaining units" group="computed" num />
-                    <Th label="Remarks" group="source" />
-                    {showMonth && <Th label="Month" />}
-                  </tr>
-                  </>
-                ) : (
-                <>
-                <GroupBand spans={[
-                  { span: 3, label: <GroupLegend groups={["source", "computed"]} />, className: "stick stick-end", style: STICK_ALL },
-                  { span: 10, group: "source" },
-                  { span: 1 }, // Odoo / unit — from Odoo's BoM, not the sheet
-                  { span: 1, group: "source" },
-                  { span: 1, group: "computed" },
-                  { span: 2, group: "source" },
-                  { span: 2, group: "computed" },
-                  { span: 1, group: "source" },
-                  ...(showMonth ? [{ span: 1 }] : []),
-                ]} />
+                <RunBand runs={LV_RUNS} layout={lvLayout} cols={lvCols} />
                 <tr className="text-left align-bottom">
-                  <Th label="MTR #" full="MTR Request #" hint="The material request the sheets were drawn on" group="source" className={stickCls(0)} style={stickStyle(0)} />
-                  <Th label="SOI" group="source" className={stickCls(1)} style={stickStyle(1)} />
-                  <Th label="MO" hint="Odoo's MO for the part — the ODOO log finds the line by it" group="source" className={stickCls(2)} style={stickStyle(2)} />
-                  <Th label="BOM" full="BOM Ref" group="source" />
-                  <Th label="Units" unit="pcs" full="Quantity of Units" group="source" num />
-                  <Th label="Part code" full="Part Code" group="source" />
-                  <Th label="Part name" full="Part Name" group="source" />
-                  <Th label="Mat. code" full="Material Code" group="source" />
-                  <Th label="Material" group="source" />
-                  <Th label="Thk" unit="mm" full="Thickness" group="source" num />
-                  <Th label="Sheet size" full="Sheet Size" group="source" center />
-                  <Th label="Weight" unit="kg" full="Weight(Kg)" hint="One sheet's weight" group="source" num />
-                  <Th label="BOM / unit" full="BOM Qty for one Unit" group="source" num />
-                  <Th label="Odoo / unit" full="The material one part takes per Odoo's BoM" hint="Not from the sheet: read off Odoo's BoM (Material → BoMs), shown beside it for comparison. Amber = differs from the sheet's BOM / unit" num />
-                  <Th label="Actual / unit" full="No. of Pieces in Actual Nesting for one Unit" hint="From the sheet — where it leaves it blank, Actual for job ÷ units" group="source" num />
-                  <Th label="BOM for job" full="BOM Pieces for Job" hint="BOM Qty for one Unit × units" group="computed" num className="emph" />
-                  <Th label="Actual for job" full="No. of Pieces in Actual Nesting for Job" hint="From the sheet" group="source" num className="emph" />
-                  <Th label="Utilization" full="Average Utilization" hint="As the sheet writes it — 0.85 or 85" group="source" num />
-                  <Th label="Actual weight" unit="kg" full="Actual Weight (Kg)" hint="Pieces in Actual Nesting for Job × Weight(Kg)" group="computed" num className="emph" />
-                  <Th label="Difference" hint="BOM Pieces for Job − Actual Nesting for Job. Red = ate more than the BOM allows" group="computed" num className="emph" />
-                  <Th label="Notes" group="source" />
-                  {showMonth && <Th label="Month" />}
+                  {lvLayout.shown.map((c) => <Th key={c.key} {...c.th} />)}
                 </tr>
-                </>
-                )}
               </thead>
               <tbody>
-                {lv || !bySoi
-                  ? shown.map((l) => <LineRow key={l.id} line={l} showMonth={showMonth} product={product} odoo={odooByMo} rates={odooRates} />)
+                {shown.map((l) => <LineRow key={l.id} line={l} layout={lvLayout} x={x} className={`border-t ${lvDone(l) ? "bg-ok-bg/30" : ""}`} />)}
+              </tbody>
+            </table>
+          </TableFrame>
+        ) : (
+          <TableFrame>
+            <table className="erp-table mat-runs w-full border-collapse">
+              <thead>
+                <RunBand runs={TR_RUNS} layout={trLayout} cols={trCols} />
+                <tr className="text-left align-bottom">
+                  {trLayout.shown.map((c) => {
+                    const st = trLayout.stick.get(c.key);
+                    return <Th key={c.key} {...c.th} className={`${c.th.className ?? ""} ${st?.className ?? ""}`} style={st?.style} />;
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {!bySoi
+                  ? shown.map((l) => <LineRow key={l.id} line={l} layout={trLayout} x={x} />)
                   : soiGroups.map((g) => (
                     // a SOI of one line needs no head: the line is the row
-                    g.lines.length === 1 ? <LineRow key={g.lines[0].id} line={g.lines[0]} showMonth={showMonth} product={product} odoo={odooByMo} rates={odooRates} /> : (
+                    g.lines.length === 1 ? <LineRow key={g.lines[0].id} line={g.lines[0]} layout={trLayout} x={x} /> : (
                     <Fragment key={`soi-${g.soi}`}>
-                      <SoiGroupRow g={g} open={!folded.has(g.soi)} onToggle={() => toggleFold(g.soi)} odoo={odooByMo} showMonth={showMonth} product={product} />
-                      {!folded.has(g.soi) && g.lines.map((l, i) => <LineRow key={l.id} line={l} showMonth={showMonth} product={product} odoo={odooByMo} rates={odooRates} inGroup={i === g.lines.length - 1 ? "last" : "child"} />)}
+                      <SoiGroupRow g={g} open={!folded.has(g.soi)} onToggle={() => toggleFold(g.soi)} layout={trLayout} x={x} soiShown={trCols.isOn("soi")} />
+                      {!folded.has(g.soi) && g.lines.map((l, i) => <LineRow key={l.id} line={l} layout={trLayout} x={x} inGroup={i === g.lines.length - 1 ? "last" : "child"} />)}
                     </Fragment>
                   )))}
               </tbody>
-              {!lv && (
-                // what the lines on screen add up to, pinned under the sheet
-                <tfoot className="mat-total">
-                  <tr>
-                    <td className="p-2 stick stick-end font-bold" colSpan={3} style={STICK_ALL}>
-                      Total <span className="text-xs text-muted font-semibold tabnum">· {shown.length} line{shown.length === 1 ? "" : "s"}{filtering ? " shown" : ""}</span>
-                    </td>
-                    <td colSpan={12} />
-                    <SumCells s={shownSums} showMonth={showMonth} />
-                  </tr>
-                </tfoot>
-              )}
+              <tfoot className="mat-total">
+                <TotalRow s={summary} count={shown.length} filtering={filtering} layout={trLayout} />
+              </tfoot>
             </table>
           </TableFrame>
         )}
