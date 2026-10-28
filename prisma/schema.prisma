@@ -2127,14 +2127,15 @@ model KpiSnapshot {
 // ---- Odoo, read on a schedule (lib/domain/odooSync.ts) ----
 //
 // The app READS Odoo — never writes to it — and not from the server: a
-// scheduled task on the owner's computer (09:00 and 13:00 Riyadh time, Sunday
-// to Thursday) opens Odoo in the Claude desktop app's browser with the user's
-// own login, runs /odoo-pull.js there (lib/domain/odooPull.ts) with the plan
-// the database's odoo_pull_plan() gives, and hands the result to
-// odoo_ingest() in one call (both functions: migration 20261027180000). What
-// it reads is kept in the tables below, apart from the rows people type: a
-// sync never moves a row's status, its MO or its version, so it can never
-// undo or block anyone's edit.
+// scheduled task on the owner's computer (about 09:00 and 13:00 Riyadh time,
+// Sunday to Thursday) takes a one-time pass from odoo_issue_ticket(), opens
+// Odoo in the Claude desktop app's browser with the user's own login and runs
+// /odoo-pull.js there (lib/domain/odooPull.ts); the page reads the plan and
+// writes what it read itself, through the "odoo-sync" Edge Function into
+// odoo_pull_plan_t / odoo_ingest_t. What it
+// reads is kept in the tables below, apart from the rows people type: a sync
+// never moves a row's status, its MO or its version, so it can never undo or
+// block anyone's edit.
 
 // One sync: when, what it found (odoo_ingest writes it, or odoo_sync_failed
 // when the task could not read Odoo). `slot` is "pull@<when Odoo was read>",
@@ -2211,4 +2212,15 @@ model OdooOrderSync {
   parentMo String   @id
   hash     String
   syncedAt DateTime @default(now())
+}
+
+// The scheduled task's one-time pass to the Odoo sync's database functions:
+// odoo_issue_ticket() makes one, and the Odoo page it is handed to may read
+// the plan and write what it read with it — through the "odoo-sync" Edge
+// Function into odoo_pull_plan_t / odoo_ingest_t — until it expires, 15
+// minutes on. Only the pass's SHA-256 is kept.
+model OdooSyncTicket {
+  hash      String   @id
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 }

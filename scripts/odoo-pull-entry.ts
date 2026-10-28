@@ -1,17 +1,36 @@
-// The browser side of the Odoo pull, as /odoo-pull.js: loaded by the scheduled
-// task into an Odoo page (the user's own login) and started with
-// window.__odooPullStart(plan); window.__odooPullJob then says when it is done
-// and holds the payload for odoo_ingest() in pieces (`chunks`, JSON strings
-// small enough to copy into one call each). Reads only.
-import { pageRpc, pullOdoo, splitPayload, type OdooPullPlan } from "../lib/domain/odooPull";
+// The browser side of the Odoo sync, as /odoo-pull.js: loaded by the scheduled
+// task into an Odoo page (the user's own login, reads only) and started with
+// window.__odooSyncStart({ url, key, ticket }) — the database's address, its
+// publishable key and the one-time pass from odoo_issue_ticket(). The page
+// reads the plan, pulls Odoo and writes what it read straight to the database;
+// window.__odooSyncJob says when it is done and what the database answered.
+// window.__odooPullStart(plan) only pulls, leaving the pieces in
+// window.__odooPullJob.chunks — for a hand check.
+import { pageRpc, pullOdoo, runOdooSync, splitPayload, supabaseDb, type OdooPullPlan, type OdooSyncTarget } from "../lib/domain/odooPull";
 
-type Job = { status: "running" | "done" | "error"; startedAt: number; chunks?: string[]; sizes?: number[]; summary?: string; error?: string };
-const w = window as unknown as { __odooPullJob?: Job; __odooPullStart?: (plan: OdooPullPlan) => string };
+type PullJob = { status: "running" | "done" | "error"; startedAt: number; chunks?: string[]; sizes?: number[]; summary?: string; error?: string };
+type SyncJob = { status: "running" | "done" | "error"; startedAt: number; finishedAt?: number; summary?: unknown; pieces?: number; chars?: number; error?: string };
+const w = window as unknown as {
+  __odooPullJob?: PullJob; __odooPullStart?: (plan: OdooPullPlan) => string;
+  __odooSyncJob?: SyncJob; __odooSyncStart?: (t: OdooSyncTarget) => string;
+};
+const odoo = () => pageRpc(window.fetch.bind(window));
+
+w.__odooSyncStart = (t) => {
+  const job: SyncJob = { status: "running", startedAt: Date.now() };
+  w.__odooSyncJob = job;
+  Promise.resolve()
+    .then(() => runOdooSync(odoo(), supabaseDb(window.fetch.bind(window), t)))
+    .then((r) => { Object.assign(job, r); job.status = "done"; })
+    .catch((e) => { job.error = String(e); job.status = "error"; })
+    .finally(() => { job.finishedAt = Date.now(); });
+  return "started";
+};
 
 w.__odooPullStart = (plan) => {
-  const job: Job = { status: "running", startedAt: Date.now() };
+  const job: PullJob = { status: "running", startedAt: Date.now() };
   w.__odooPullJob = job;
-  pullOdoo(pageRpc(window.fetch.bind(window)), plan)
+  pullOdoo(odoo(), plan)
     .then((p) => {
       job.chunks = splitPayload(p).map((c) => JSON.stringify(c));
       job.sizes = job.chunks.map((c) => c.length);

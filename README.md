@@ -239,12 +239,17 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
 
    **Odoo, read on a schedule** (`lib/domain/odooSync.ts`, `lib/domain/odooPull.ts`, `lib/domain/odooChildren.ts`).
    The app only ever READS Odoo, and not from its server: a scheduled task on the owner's computer, at about
-   09:00 and 13:00 Riyadh time Sunday to Thursday, opens Odoo in the Claude desktop app's browser with the
-   user's own login, gets the plan from the database (`odoo_pull_plan()`), loads `/odoo-pull.js` (the pull,
-   bundled by `scripts/gen-odoo-pull.ts`; a test keeps it current) into the Odoo page and runs it — reads only,
-   any other method refused — then hands what it read to `odoo_ingest()` in pieces small enough to copy (all
-   three database functions: migration `20261027180000_odoo_sync`, not callable by the public API's roles or
-   the assistant). A run reads three things, each on its own so one failing leaves the others: what Odoo says
+   09:00 and 13:00 Riyadh time Sunday to Thursday, takes a one-time pass from the database
+   (`odoo_issue_ticket()`, 15 minutes, owner only), opens Odoo in the Claude desktop app's browser with the
+   user's own login, loads `/odoo-pull.js` (the pull, bundled by `scripts/gen-odoo-pull.ts`; a test keeps it
+   current — fetched from the repository, since the plant's network does not open the app's own domain) into
+   the Odoo page and starts it with the pass (`window.__odooSyncStart`). Reads only — any other method is
+   refused. The page reads the plan and writes what it read in pieces itself, through the `odoo-sync` Edge
+   Function (`supabase/functions/odoo-sync`, deployed on its own with the anon key's JWT checked; it answers
+   the Odoo origin alone) into
+   `odoo_pull_plan_t` / `odoo_ingest_t`, which check the pass. Every Odoo function is the database owner's
+   alone — the tables stay off the public API (migrations `20261027180000_odoo_sync` and
+   `20261028080000_odoo_sync_ticket`). A run reads three things, each on its own so one failing leaves the others: what Odoo says
    about the close-out log's MOs not settled yet (`OdooMoState` — state, Odoo's own closing moment, the name it
    uses now when it renamed the first batch `…-001` on splitting the order); the shop floor's sub-assembly MOs
    under every open order (`OdooChildMo` — tank, top cover, core frame, cable box, arrester, monobloc box and
