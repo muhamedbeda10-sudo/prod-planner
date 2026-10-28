@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-material-one-bar-table-fills",
+    dateISO: "2026-10-28",
+    title: "The Material sheet fits the window again: one bar, a lower summary",
+    where: "Material → the nesting sheet",
+    href: "/material",
+    body: "The page itself no longer scrolls on a laptop screen with the table scrolling inside it. The Transformers | LV Panels switch, the filters, Group by SOI, Columns and the upload now share one bar, and each figure of the summary sits on one line with its note — so the table runs to the bottom of the window as before and scrolls on its own.",
+  },
+  {
     id: "2026-10-28-material-plan-month-columns",
     dateISO: "2026-10-28",
     title: "The Material sheet filters by plan month, adds it up, and keeps the columns you pick",
