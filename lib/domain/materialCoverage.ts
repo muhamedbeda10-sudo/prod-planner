@@ -5,6 +5,7 @@
 // Pure — the release checklist and the assistant read it.
 
 import type { LineSheetSpec } from "./machineMaterial";
+import type { OdooRates } from "./odooBom";
 import type { CheckStatus } from "./planningControl";
 import { stockTolerance } from "./physicalStock";
 
@@ -14,7 +15,25 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 export const normCode = (code: string) => code.trim().toUpperCase();
 
 /** Units a sheet count can be held against: pieces, or none written. */
-const countsSheets = (uom: string) => ["", "PC", "PCS", "NO", "NOS", "EA", "SHEET", "SHEETS"].includes(uom.trim().toUpperCase());
+const countsSheets = (uom: string) => ["", "PC", "PCS", "NO", "NOS", "EA", "UNIT", "UNITS", "SHEET", "SHEETS"].includes(uom.trim().toUpperCase());
+
+/** A part the nesting has no line for yet, priced off Odoo's BoM instead:
+ *  the materials one piece takes that the stock table carries, in the unit the
+ *  table counts them in (pieces with pieces, kilos with kilos — never mixed).
+ *  Bolts, wood and the like are not on the table, so they stay out. */
+export function specsFromOdoo(rate: OdooRates[string] | undefined, stock: readonly Pick<StockLine, "code" | "name" | "uom">[]): LineSheetSpec[] {
+  if (!rate) return [];
+  const byCode = new Map(stock.map((s) => [normCode(s.code), s]));
+  const out: LineSheetSpec[] = [];
+  for (const [code, r] of Object.entries(rate)) {
+    const s = byCode.get(normCode(code));
+    if (!s || !(r.qty > 0)) continue;
+    const a = s.uom.trim().toUpperCase(), b = r.uom.trim().toUpperCase();
+    if (!(a === b || (countsSheets(a) && countsSheets(b)))) continue;
+    out.push({ material: s.name || r.name || "", materialCode: s.code, thicknessMm: 0, sheetSize: "", perUnit: r.qty, actual: false, odoo: true });
+  }
+  return out.sort((x, y) => x.materialCode.localeCompare(y.materialCode));
+}
 
 /** One job's part still to cut, with the sheets it is cut from. */
 export interface PartNeed {
@@ -34,6 +53,8 @@ export interface SheetNeed {
   sheets: number;
   /** Some of it priced at the BOM's rate — the job is not nested yet. */
   estimated: boolean;
+  /** Some of it read off Odoo's BoM — a part with no nesting line yet. */
+  byOdoo: boolean;
   /** The jobs behind it, most sheets first. */
   jobs: { mo: string; item: string; sheets: number }[];
 }
@@ -42,6 +63,8 @@ export interface NeedSummary {
   byCode: SheetNeed[];
   /** Parts with pieces left but no nesting line — their sheets are unknown. */
   noNesting: { mo: string; item: string; pcsLeft: number }[];
+  /** Parts with no nesting line priced off Odoo's BoM instead. */
+  byOdoo: { mo: string; item: string; pcsLeft: number }[];
   /** Nesting lines with no product code — not matchable to the stock. */
   uncoded: { mo: string; item: string; sheet: string; sheets: number }[];
 }
@@ -50,24 +73,27 @@ export interface NeedSummary {
 export function sheetNeeds(parts: readonly PartNeed[]): NeedSummary {
   const by = new Map<string, SheetNeed>();
   const noNesting: NeedSummary["noNesting"] = [];
+  const byOdoo: NeedSummary["byOdoo"] = [];
   const uncoded: NeedSummary["uncoded"] = [];
   for (const p of parts) {
     if (!(p.pcsLeft > 0)) continue;
     if (p.specs.length === 0) { noNesting.push({ mo: p.mo, item: p.item, pcsLeft: p.pcsLeft }); continue; }
+    if (p.specs.every((s) => s.odoo)) byOdoo.push({ mo: p.mo, item: p.item, pcsLeft: p.pcsLeft });
     for (const s of p.specs) {
       const sheets = s.perUnit * p.pcsLeft;
       if (!(sheets > 0)) continue;
       const code = normCode(s.materialCode);
       if (!code) { uncoded.push({ mo: p.mo, item: p.item, sheet: `${s.thicknessMm} mm ${s.material} ${s.sheetSize}`.trim(), sheets: r2(sheets) }); continue; }
-      const n = by.get(code) ?? { code, material: s.material, thicknessMm: s.thicknessMm, sheetSize: s.sheetSize, sheets: 0, estimated: false, jobs: [] };
+      const n = by.get(code) ?? { code, material: s.material, thicknessMm: s.thicknessMm, sheetSize: s.sheetSize, sheets: 0, estimated: false, byOdoo: false, jobs: [] };
       n.sheets += sheets;
       n.estimated ||= !s.actual;
+      n.byOdoo ||= !!s.odoo;
       n.jobs.push({ mo: p.mo, item: p.item, sheets: r2(sheets) });
       by.set(code, n);
     }
   }
   const byCode = [...by.values()].map((n) => ({ ...n, sheets: r2(n.sheets), jobs: n.jobs.sort((a, b) => b.sheets - a.sheets) })).sort((a, b) => b.sheets - a.sheets || a.code.localeCompare(b.code));
-  return { byCode, noNesting, uncoded };
+  return { byCode, noNesting, byOdoo, uncoded };
 }
 
 export interface StockLine {
@@ -88,6 +114,7 @@ export interface CoverageRow {
   sheetSize: string;
   need: number;
   estimated: boolean;
+  byOdoo: boolean;
   /** Odoo's stock (SF01) and the store's count; null when the code is not on the table. */
   odoo: number | null;
   physical: number | null;
@@ -125,7 +152,7 @@ export function coverage(needs: readonly SheetNeed[], stock: readonly StockLine[
     const open = openDemand?.get(n.code);
     const mine = new Set(n.jobs.map((j) => j.mo));
     const base = {
-      code: n.code, material: n.material, thicknessMm: n.thicknessMm, sheetSize: n.sheetSize, need: n.sheets, estimated: n.estimated,
+      code: n.code, material: n.material, thicknessMm: n.thicknessMm, sheetSize: n.sheetSize, need: n.sheets, estimated: n.estimated, byOdoo: n.byOdoo,
       openDemand: open ? open.sheets : null, competing: (open?.jobs ?? []).filter((j) => !mine.has(j.mo)).slice(0, 6), jobs: n.jobs.slice(0, 8),
     };
     if (!s) return { ...base, name: null, odoo: null, physical: null, uom: null, balance: null, status: "not_listed" as const, contended: false, storeCounted: null };
@@ -142,7 +169,7 @@ export function coverage(needs: readonly SheetNeed[], stock: readonly StockLine[
 }
 
 /** The release checklist's material line, from an order's coverage. */
-export function stockCheck(rows: readonly CoverageRow[], gaps: Pick<NeedSummary, "noNesting" | "uncoded">): { status: CheckStatus; detail: string } {
+export function stockCheck(rows: readonly CoverageRow[], gaps: Pick<NeedSummary, "noNesting" | "uncoded"> & Partial<Pick<NeedSummary, "byOdoo">>): { status: CheckStatus; detail: string } {
   const list = (rs: readonly CoverageRow[]) => rs.map((r) => `${r.code} (needs ${r.need}${r.odoo === null ? "" : `, Odoo ${r.odoo}`})`).join(", ");
   const short = rows.filter((r) => r.status === "short");
   if (short.length) return { status: "blocked", detail: `Odoo holds less than this order needs: ${list(short)}.` };
@@ -154,6 +181,7 @@ export function stockCheck(rows: readonly CoverageRow[], gaps: Pick<NeedSummary,
   const unknown = rows.filter((r) => r.status === "not_listed" || r.status === "not_comparable");
   if (unknown.length) notes.push(`${unknown.map((r) => r.code).join(", ")} cannot be checked (${[...new Set(unknown.map((r) => COVER_TEXT[r.status]))].join("; ").toLowerCase()})`);
   if (gaps.noNesting.length) notes.push(`no nesting for ${gaps.noNesting.map((g) => g.item).join(", ")}, so its sheets are unknown`);
+  if (gaps.byOdoo?.length) notes.push(`no nesting for ${gaps.byOdoo.map((g) => g.item).join(", ")} yet, so its sheets are Odoo's BoM figures`);
   if (gaps.uncoded.length) notes.push(`${gaps.uncoded.length} nesting line(s) carry no product code`);
   if (rows.length === 0 && !gaps.noNesting.length && !gaps.uncoded.length) return { status: "ok", detail: "Nothing is left to cut — no sheets needed." };
   if (notes.length) {
@@ -170,6 +198,8 @@ export interface StockNeed {
   after: number | null;
   status: CoverStatus;
   estimated: boolean;
+  /** Some of it read off Odoo's BoM (a part with no nesting line yet). */
+  byOdoo: boolean;
   /** How many orders and jobs need the code, and the biggest of them. */
   orders: number;
   jobCount: number;
@@ -184,6 +214,8 @@ export function needByStock(summary: NeedSummary, stock: readonly StockLine[]): 
   byCode: Record<string, StockNeed>;
   missing: Pick<SheetNeed, "code" | "material" | "thicknessMm" | "sheetSize" | "sheets">[];
   unpriced: { noNesting: number; uncoded: number };
+  /** Parts with no nesting line that Odoo's BoM priced instead. */
+  byOdoo: number;
 } {
   const needs = summary.byCode;
   const full = new Map(needs.map((n) => [n.code, n]));
@@ -192,7 +224,7 @@ export function needByStock(summary: NeedSummary, stock: readonly StockLine[]): 
   for (const r of coverage(needs, stock)) {
     const n = full.get(r.code)!;
     if (r.status === "not_listed") { missing.push({ code: n.code, material: n.material, thicknessMm: n.thicknessMm, sheetSize: n.sheetSize, sheets: n.sheets }); continue; }
-    byCode[r.code] = { need: r.need, after: r.balance, status: r.status, estimated: r.estimated, orders: new Set(n.jobs.map((j) => j.mo)).size, jobCount: n.jobs.length, jobs: n.jobs.slice(0, 8) };
+    byCode[r.code] = { need: r.need, after: r.balance, status: r.status, estimated: r.estimated, byOdoo: r.byOdoo, orders: new Set(n.jobs.map((j) => j.mo)).size, jobCount: n.jobs.length, jobs: n.jobs.slice(0, 8) };
   }
-  return { byCode, missing, unpriced: { noNesting: summary.noNesting.length, uncoded: summary.uncoded.length } };
+  return { byCode, missing, unpriced: { noNesting: summary.noNesting.length, uncoded: summary.uncoded.length }, byOdoo: summary.byOdoo.length };
 }

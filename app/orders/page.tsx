@@ -7,6 +7,7 @@ import { MonthlyImport } from "@/components/MonthlyImport";
 import { OrdersTable } from "@/components/OrdersTable";
 import { LineSwitch } from "@/components/LineSwitch";
 import { getActiveLine } from "@/lib/server/line";
+import { getOrderBomChecks } from "@/lib/server/odooBom";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,8 @@ export default async function OrdersPage() {
   const line = await getActiveLine();
   const orders = await prisma.masterOrder.findMany({ where: { line }, orderBy: [{ createdAt: "desc" }, { mo: "asc" }] });
   const totalQty = orders.reduce((s, o) => s + o.planQty, 0);
+  // the transformers' orders whose components differ from Odoo's BoM
+  const bomChecks = line === "TR" ? await getOrderBomChecks() : {};
 
   return (
     <div className="space-y-6">
@@ -30,6 +33,7 @@ export default async function OrdersPage() {
           line={line}
           lineSwitch={<LineSwitch />}
           rows={orders.map(orderRowOf)}
+          bomChecks={bomChecks}
         />
       </div>
     </div>

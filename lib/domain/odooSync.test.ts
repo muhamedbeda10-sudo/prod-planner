@@ -163,6 +163,7 @@ describe("a run's summary", () => {
     const s = { log: { checked: 12, done: 8, open: 3, renamed: 1, notFound: 1 }, children: { orders: 3, mos: 20, unchanged: 75 }, stock: { updated: 5, unchanged: 99, missing: 0 }, issues: ["x"], ms: 30000 };
     expect(summaryText(s)).toBe("12 MOs checked · 3 orders with new sub-assembly MOs (75 unchanged) · SF01 stock: 5 updated · 1 issue");
     expect(summaryText({ ...s, stock: { ...s.stock, skipped: true }, issues: [] })).toBe("12 MOs checked · 3 orders with new sub-assembly MOs (75 unchanged) · SF01 stock skipped");
+    expect(summaryText({ ...s, boms: { written: 40, lines: 300, roots: 82, missing: 2 }, issues: [] })).toBe("12 MOs checked · 3 orders with new sub-assembly MOs (75 unchanged) · SF01 stock: 5 updated · BoMs: 40 written for 82 codes (2 not in Odoo)");
     expect(summaryText(null)).toBe("");
   });
 });

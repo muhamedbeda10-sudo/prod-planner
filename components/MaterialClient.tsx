@@ -13,6 +13,7 @@ import {
   type MaterialLineView, type MaterialFilters, type MaterialStatusFilter, type MaterialSoiGroup,
 } from "@/lib/domain/material";
 import { FIELD_DP, formatNumber, formatQty } from "@/lib/domain/format";
+import { odooRateOf, type OdooRates } from "@/lib/domain/odooBom";
 import { FilterSelect, PhoneFold } from "@/components/FilterControls";
 import { Check, ChevronDown, ChevronRight, FilterX, Search, Upload } from "lucide-react";
 import { GroupBand, GroupLegend, TableEmpty, TableFrame, Th, useConfirm } from "@/components/DataTable";
@@ -29,7 +30,11 @@ import { importMaterialAction } from "@/app/material/actions";
 // Sheets in BOM for one Unit · for Job · Actual Nesting for one Unit · for
 // Job · Difference · Notes. The sheet is the tab's only source: nothing is
 // typed, edited or deleted here — uploading the sheet again is how a line
-// changes. Sheets-for-job, actual weight and Difference are computed.
+// changes. Sheets-for-job, actual weight and Difference are computed. One
+// column of the transformers' table is read from elsewhere and only shown:
+// Odoo / unit, what Odoo's BoM (Material → BoMs) says the part takes, beside
+// the sheet's BOM / unit. The panels' sheet files a SEC item per thickness,
+// which no BoM line answers, so it has none.
 
 /* The sheet's own column names are sentences ("No. of Sheets in Actual
    Nesting for one Unit"): the headers carry a short label, and the sheet's
@@ -65,6 +70,22 @@ function Utilization({ v }: { v: number | null }) {
   return <span className="tabnum ltr">{v <= 1 ? `${Number((v * 100).toFixed(1))}%` : Number(v.toFixed(2))}</span>;
 }
 
+/** What Odoo's BoM says one unit of the part takes of the line's material,
+ *  beside the sheet's own figure (lib/domain/odooBom.ts odooRateOf): amber
+ *  where the two disagree; a figure in another unit than pieces is shown with
+ *  its unit and never compared with sheets. */
+function OdooRate({ line, rates }: { line: MaterialLineView; rates: OdooRates }) {
+  const r = odooRateOf(rates, line);
+  if (r.kind === "unknown") return <span className="text-muted" title={r.why}>—</span>;
+  if (r.kind === "absent") return <span className="pill pill-warn" title={`Odoo's BoM for ${line.partCode} has no ${line.materialCode}`}>not in BoM</span>;
+  if (!r.comparable) return <span className="tabnum ltr text-muted" title={`Odoo counts it in ${r.uom}, the sheet in sheets`}>{formatNumber(r.qty, FIELD_DP.factor)} {r.uom}</span>;
+  return (
+    <span className={`tabnum ltr ${r.differs ? "text-warn-fg font-bold" : ""}`} title={r.differs ? `The sheet says ${line.sheetsPerUnit}, Odoo's BoM ${r.qty}` : `Odoo's BoM: ${r.qty}`}>
+      {formatNumber(r.qty, FIELD_DP.factor)}
+    </span>
+  );
+}
+
 // ---- one row of the table ----
 
 /** The MO cell: the sheet's MO and whether the ODOO log carries it yet. */
@@ -83,8 +104,8 @@ function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
   );
 }
 
-function LineRow({ line, showMonth, product, odoo, inGroup }: {
-  line: MaterialLineView; showMonth: boolean; product: ProductLine; odoo: Record<string, string>;
+function LineRow({ line, showMonth, product, odoo, rates, inGroup }: {
+  line: MaterialLineView; showMonth: boolean; product: ProductLine; odoo: Record<string, string>; rates: OdooRates;
   /** A line under an opened SOI's head — framed with it; "last" closes the frame. */
   inGroup?: "child" | "last";
 }) {
@@ -135,6 +156,7 @@ function LineRow({ line, showMonth, product, odoo, inGroup }: {
       <td className="p-2 text-center whitespace-nowrap ltr tabnum">{line.sheetSize}</td>
       <td className={`p-2 ${NUM} tabnum`}><Sheets v={line.weightKg} digits={3} /></td>
       <td className={`p-2 ${NUM}`}><Sheets v={line.sheetsPerUnit} digits={FIELD_DP.factor} /></td>
+      <td className={`p-2 ${NUM}`}><OdooRate line={line} rates={rates} /></td>
       <td className={`p-2 ${NUM}`}><Sheets v={line.actualPerUnit} digits={FIELD_DP.factor} /></td>
       <td className={`p-2 ${NUM} emph`}><Sheets v={line.forJob} /></td>
       <td className={`p-2 ${NUM} emph`}><Sheets v={line.sheetsUsed} className="font-bold" /></td>
@@ -218,7 +240,7 @@ function SoiGroupRow({ g, open, onToggle, odoo, showMonth, product }: { g: Mater
           : <span className="text-muted" title={[...new Set(g.lines.map((l) => l.bom))].join(", ")}>{new Set(g.lines.map((l) => l.bom)).size} BOMs</span>}
       </td>
       <td className={`p-2 ${NUM}`}><Units v={sharedOf(g.lines.map((l) => l.units))} /></td>
-      <td className="p-2" colSpan={9}>
+      <td className="p-2" colSpan={10}>
         <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs ltr">
           <span className="font-semibold text-muted tabnum">{n} line{n === 1 ? "" : "s"}</span>
           {g.mos.length > 1 && shownMos.map((mo) => (
@@ -399,8 +421,10 @@ function FilterBar({ lines, filters, onChange, shown, lv, extra }: { lines: Mate
   );
 }
 
-export function MaterialClient({ lines, month, canImport, product = "TR", odooByMo = {}, lineSwitch }: {
+export function MaterialClient({ lines, month, canImport, product = "TR", odooByMo = {}, odooRates = {}, lineSwitch }: {
   lines: MaterialLineView[]; month: string;
+  /** Odoo's BOM figure per part and material (transformers; odooRateKey). */
+  odooRates?: OdooRates;
   /** May upload the sheet — the tab's only change; nothing is typed in it. */
   canImport: boolean;
   /** The page's Transformers | LV Panels switch, first in its toolbar. */
@@ -502,7 +526,9 @@ export function MaterialClient({ lines, month, canImport, product = "TR", odooBy
                 <>
                 <GroupBand spans={[
                   { span: 3, label: <GroupLegend groups={["source", "computed"]} />, className: "stick stick-end", style: STICK_ALL },
-                  { span: 11, group: "source" },
+                  { span: 10, group: "source" },
+                  { span: 1 }, // Odoo / unit — from Odoo's BoM, not the sheet
+                  { span: 1, group: "source" },
                   { span: 1, group: "computed" },
                   { span: 2, group: "source" },
                   { span: 2, group: "computed" },
@@ -523,6 +549,7 @@ export function MaterialClient({ lines, month, canImport, product = "TR", odooBy
                   <Th label="Sheet size" full="Sheet Size" group="source" center />
                   <Th label="Weight" unit="kg" full="Weight(Kg)" hint="One sheet's weight" group="source" num />
                   <Th label="BOM / unit" full="BOM Qty for one Unit" group="source" num />
+                  <Th label="Odoo / unit" full="The material one part takes per Odoo's BoM" hint="Not from the sheet: read off Odoo's BoM (Material → BoMs), shown beside it for comparison. Amber = differs from the sheet's BOM / unit" num />
                   <Th label="Actual / unit" full="No. of Pieces in Actual Nesting for one Unit" hint="From the sheet — where it leaves it blank, Actual for job ÷ units" group="source" num />
                   <Th label="BOM for job" full="BOM Pieces for Job" hint="BOM Qty for one Unit × units" group="computed" num className="emph" />
                   <Th label="Actual for job" full="No. of Pieces in Actual Nesting for Job" hint="From the sheet" group="source" num className="emph" />
@@ -537,13 +564,13 @@ export function MaterialClient({ lines, month, canImport, product = "TR", odooBy
               </thead>
               <tbody>
                 {lv || !bySoi
-                  ? shown.map((l) => <LineRow key={l.id} line={l} showMonth={showMonth} product={product} odoo={odooByMo} />)
+                  ? shown.map((l) => <LineRow key={l.id} line={l} showMonth={showMonth} product={product} odoo={odooByMo} rates={odooRates} />)
                   : soiGroups.map((g) => (
                     // a SOI of one line needs no head: the line is the row
-                    g.lines.length === 1 ? <LineRow key={g.lines[0].id} line={g.lines[0]} showMonth={showMonth} product={product} odoo={odooByMo} /> : (
+                    g.lines.length === 1 ? <LineRow key={g.lines[0].id} line={g.lines[0]} showMonth={showMonth} product={product} odoo={odooByMo} rates={odooRates} /> : (
                     <Fragment key={`soi-${g.soi}`}>
                       <SoiGroupRow g={g} open={!folded.has(g.soi)} onToggle={() => toggleFold(g.soi)} odoo={odooByMo} showMonth={showMonth} product={product} />
-                      {!folded.has(g.soi) && g.lines.map((l, i) => <LineRow key={l.id} line={l} showMonth={showMonth} product={product} odoo={odooByMo} inGroup={i === g.lines.length - 1 ? "last" : "child"} />)}
+                      {!folded.has(g.soi) && g.lines.map((l, i) => <LineRow key={l.id} line={l} showMonth={showMonth} product={product} odoo={odooByMo} rates={odooRates} inGroup={i === g.lines.length - 1 ? "last" : "child"} />)}
                     </Fragment>
                   )))}
               </tbody>
@@ -554,7 +581,7 @@ export function MaterialClient({ lines, month, canImport, product = "TR", odooBy
                     <td className="p-2 stick stick-end font-bold" colSpan={3} style={STICK_ALL}>
                       Total <span className="text-xs text-muted font-semibold tabnum">· {shown.length} line{shown.length === 1 ? "" : "s"}{filtering ? " shown" : ""}</span>
                     </td>
-                    <td colSpan={11} />
+                    <td colSpan={12} />
                     <SumCells s={shownSums} showMonth={showMonth} />
                   </tr>
                 </tfoot>

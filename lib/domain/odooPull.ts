@@ -8,6 +8,7 @@
 
 import { walkChildMos, MO_FIELDS, type OdooRpc, type RawMo } from "./odooChildren";
 import { batchBase, firstBatchName, hasBatchSuffix, normMo, odooErrorText, productCodeOf } from "./odooSync";
+import { pullBoms, type BomRootRow, type BomRow } from "./odooBomPull";
 
 /** What odoo_pull_plan() hands the pull. */
 export interface OdooPullPlan {
@@ -20,6 +21,10 @@ export interface OdooPullPlan {
   codes: string[];
   /** Each order's sub-assemblies as they read last time — unchanged orders are not sent again. */
   hashes: Record<string, string>;
+  /** The open orders' BOM codes, each with its MOs (the last way to its BoM). */
+  boms?: { bom: string; mos: string[] }[];
+  /** Each BoM's fingerprint as the database holds it — an unchanged BoM is not sent again. */
+  bomSigs?: Record<string, string>;
 }
 
 /** [name, found 0|1, currentName, odooId, state, productCode, qty, qtyProduced, doneAt] */
@@ -42,6 +47,10 @@ export interface OdooPullPayload {
   unchanged: number;
   /** SF01/Shop Floor Warehouse on-hand per code Odoo knows; null when the read failed. */
   stock: { values: [string, number][]; missing: string[] } | null;
+  /** The BoM each open code is built with — null when the BoMs were not read
+   *  (the read failed, or the plan asked for none) — and the BoMs that changed. */
+  bomRoots?: BomRootRow[] | null;
+  boms?: BomRow[];
   issues: string[];
 }
 
@@ -150,7 +159,7 @@ export async function pullStock(rpc: OdooRpc, codes: readonly string[]): Promise
  *  and leaves the others. */
 export async function pullOdoo(rpc: OdooRpc, plan: OdooPullPlan, now: () => number = Date.now): Promise<OdooPullPayload> {
   const t0 = now();
-  const out: OdooPullPayload = { v: 1, at: new Date(t0).toISOString(), ms: 0, log: [], orders: [], children: [], unchanged: 0, stock: null, issues: [] };
+  const out: OdooPullPayload = { v: 1, at: new Date(t0).toISOString(), ms: 0, log: [], orders: [], children: [], unchanged: 0, stock: null, bomRoots: null, boms: [], issues: [] };
   try {
     out.log = await pullLog(rpc, plan.logNames);
   } catch (e) {
@@ -172,6 +181,15 @@ export async function pullOdoo(rpc: OdooRpc, plan: OdooPullPlan, now: () => numb
   } catch (e) {
     out.issues.push(`SF01 stock: ${odooErrorText(e)}`);
   }
+  if (plan.boms?.length) {
+    try {
+      const b = await pullBoms(rpc, plan.boms, plan.bomSigs ?? {});
+      out.bomRoots = b.roots;
+      out.boms = b.boms;
+    } catch (e) {
+      out.issues.push(`BoMs: ${odooErrorText(e)}`);
+    }
+  }
   out.ms = now() - t0;
   return out;
 }
@@ -180,19 +198,22 @@ export async function pullOdoo(rpc: OdooRpc, plan: OdooPullPlan, now: () => numb
  * The payload cut into pieces of at most about `maxChars` of JSON, so each
  * fits one odoo_ingest() call the task can copy whole: the first carries the
  * stock, the issues and the count of unchanged orders; the log's MOs and the
- * orders (each with all of its rows, never split) fill the pieces in turn.
+ * orders (each with all of its rows, never split) and the BoMs that changed
+ * (each whole) fill the pieces in turn; every code's BoM root rides on the
+ * first piece.
  * Every piece names the same pull (`at`), so the database keeps one run.
  */
 export function splitPayload(p: OdooPullPayload, maxChars = 24_000): OdooPullPayload[] {
   const piece = (part: number): OdooPullPayload => ({
     v: 1, at: p.at, ms: p.ms, part, parts: 0, log: [], orders: [], children: [],
     unchanged: part === 0 ? p.unchanged : 0, stock: part === 0 ? p.stock : null, issues: part === 0 ? p.issues : [],
+    bomRoots: part === 0 ? (p.bomRoots ?? null) : null, boms: [],
   });
   const out: OdooPullPayload[] = [piece(0)];
   let size = JSON.stringify(out[0]).length;
   const room = (chars: number) => {
     const cur = out[out.length - 1];
-    const empty = !cur.log.length && !cur.orders.length;
+    const empty = !cur.log.length && !cur.orders.length && !cur.boms?.length;
     if (size + chars > maxChars && !empty) {
       out.push(piece(out.length));
       size = JSON.stringify(out[out.length - 1]).length;
@@ -209,6 +230,7 @@ export function splitPayload(p: OdooPullPayload, maxChars = 24_000): OdooPullPay
     cur.orders.push(o);
     cur.children.push(...rows);
   }
+  for (const b of p.boms ?? []) room(JSON.stringify(b).length + 1).boms!.push(b);
   return out.map((x) => ({ ...x, parts: out.length }));
 }
 

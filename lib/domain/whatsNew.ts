@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-odoo-boms",
+    dateISO: "2026-10-28",
+    title: "Odoo's BoMs in the app: the tree, the components check, and the open need fills its gaps",
+    where: "Material → BoMs, Material → Physical Material, the MATERIAL sheet, Orders Registry, Trace, the assistant",
+    href: "/bom",
+    body: "The Odoo sync now also reads the bills of materials the open orders are built with — read-only, Odoo is never changed. Material → BoMs lists every open code: whether Odoo has its BoM, the components it carries and how many orders disagree with it; open one for its whole tree level by level, the raw materials one unit takes, and each order's components against the BoM. The Orders Registry marks an order whose components differ (≠ BoM), and the trace links to its BoM. On Physical Material, a part with no nesting line yet is no longer left out of Open need: its sheets come off Odoo's BoM instead (marked ≈, and said in the hover). The transformers' MATERIAL sheet shows Odoo / unit beside the sheet's BOM / unit, amber where they differ. The assistant reads all of it.",
+  },
+  {
     id: "2026-10-28-assistant-no-sources-escape",
     dateISO: "2026-10-28",
     title: "The assistant's answers no longer list their sources, and Escape closes only what is on top",

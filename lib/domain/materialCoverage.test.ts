@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coverage, needByStock, normCode, sheetNeeds, stockCheck, type PartNeed, type StockLine } from "./materialCoverage";
+import { coverage, needByStock, normCode, sheetNeeds, specsFromOdoo, stockCheck, type PartNeed, type StockLine } from "./materialCoverage";
 import type { LineSheetSpec } from "./machineMaterial";
 
 const spec = (code: string, perUnit: number, o: Partial<LineSheetSpec> = {}): LineSheetSpec => ({ material: "Steel", materialCode: code, thicknessMm: 3, sheetSize: "1220*2440", perUnit, actual: true, ...o });
@@ -83,5 +83,42 @@ describe("the need beside each stock line", () => {
     expect(r.byCode).toEqual({ C1: expect.objectContaining({ need: 40, after: -15, status: "short", orders: 2, jobCount: 2, jobs: [{ mo: "B", item: "TC", sheets: 30 }, { mo: "A", item: "TN", sheets: 10 }] }) });
     expect(r.missing).toEqual([expect.objectContaining({ code: "C9", sheets: 20 })]);
     expect(r.unpriced).toEqual({ noNesting: 1, uncoded: 0 });
+  });
+});
+
+describe("a part with no nesting, priced off Odoo's BoM", () => {
+  const table = [stock("C-SHR-004", 10), stock("C-SHR-005", 5), stock("T-CRC-1.5X1100", 900, 900, "KG")];
+  const rate = {
+    "C-SHR-004": { qty: 2.23, uom: "PC", name: "HR Sheet 4mm" },
+    "c-shr-005": { qty: 0.268, uom: "Units" },
+    "T-CRC-1.5X1100": { qty: 377.53, uom: "KG" },
+    "C-CON-BOL-HEX-GI-M12X100": { qty: 4, uom: "PC" }, // a bolt: not on the table
+    "C-SAB-65X65": { qty: 0.047, uom: "PC" }, // not on the table either
+  };
+
+  it("takes the table's codes in the table's own unit, never mixing pieces and kilos", () => {
+    const specs = specsFromOdoo(rate, [...table, stock("C-SFB-50X5", 1, 1, "KG")]);
+    expect(specs.map((s) => [s.materialCode, s.perUnit, s.actual, s.odoo])).toEqual([
+      ["C-SHR-004", 2.23, false, true],
+      ["C-SHR-005", 0.268, false, true],
+      ["T-CRC-1.5X1100", 377.53, false, true],
+    ]);
+    expect(specs[0].material).toBe("C-SHR-004 sheet"); // the table's own name
+    expect(specsFromOdoo({ "C-SFB-50X5": { qty: 1, uom: "PC" } }, [stock("C-SFB-50X5", 1, 1, "KG")])).toEqual([]);
+    expect(specsFromOdoo(null, table)).toEqual([]);
+    expect(specsFromOdoo(undefined, table)).toEqual([]);
+  });
+
+  it("counts it in the need, marked as Odoo's and as an estimate", () => {
+    const n = sheetNeeds([part("A", "TN", 2, specsFromOdoo(rate, table)), part("B", "TC", 1, [spec("C-SHR-005", 0.34)])]);
+    expect(n.byOdoo).toEqual([{ mo: "A", item: "TN", pcsLeft: 2 }]);
+    expect(n.noNesting).toEqual([]);
+    const shr5 = n.byCode.find((c) => c.code === "C-SHR-005")!;
+    expect(shr5).toMatchObject({ sheets: 0.88, estimated: true, byOdoo: true });
+    const r = needByStock(n, table);
+    expect(r.byOdoo).toBe(1);
+    expect(r.byCode["C-SHR-004"]).toMatchObject({ need: 4.46, after: 5.54, byOdoo: true, estimated: true });
+    expect(r.byCode["T-CRC-1.5X1100"]).toMatchObject({ need: 755.06, after: null, status: "not_comparable" });
+    expect(stockCheck(coverage(n.byCode, table), n)).toMatchObject({ detail: expect.stringContaining("Odoo's BoM figures") });
   });
 });

@@ -28,8 +28,9 @@ export const TABS: TabDef[] = [
 
   { id: "material", label: "Material", group: "Production", paths: ["/material"] },
   { id: "analytics", label: "Dashboards · Material", group: "Production", paths: ["/dashboards/material", "/analytics"] },
-  // Physical Material and Consumables are places of the Material tab, each still switched on or off on its own
+  // Physical Material, BoMs and Consumables are places of the Material tab, each still switched on or off on its own
   { id: "physical", label: "Material · Physical Material", group: "Production", paths: ["/physical"] },
+  { id: "bom", label: "Material · BoMs (from Odoo)", group: "Production", paths: ["/bom"] },
   // each dashboard of the Dashboards tab is seen with the screen it reads
   { id: "odoo", label: "ODOO log (Plan Tracker) and its dashboard", group: "Plan Tracker", paths: ["/odoo", "/dashboards/odoo"] },
   { id: "consumables", label: "Material · Consumables (and its dashboard)", group: "Production", paths: ["/consumables", "/dashboards/consumables"] },

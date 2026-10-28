@@ -3,6 +3,8 @@
 import { traceHref } from "@/lib/domain/links";
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { hrefWithLine } from "@/lib/domain/lines";
+import type { ItemCheck } from "@/lib/domain/odooBom";
 import { useRouter } from "next/navigation";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { deleteOrders, previewOrderDelete, updateOrder } from "@/app/orders/actions";
@@ -16,9 +18,11 @@ export type { OrderRow };
  *  and colour; an LV panel by its type (LSS / USS), its SEC item, the
  *  enclosures bought outside and what the sheet said about its parts — so
  *  the middle of the table is the line's, and the rest is shared. */
-export function OrdersTable({ rows, line = "TR", lineSwitch }: {
+export function OrdersTable({ rows, line = "TR", lineSwitch, bomChecks = {} }: {
   rows: OrderRow[];
   line?: ProductLine;
+  /** Open orders whose components differ from their code's Odoo BoM, by MO. */
+  bomChecks?: Record<string, ItemCheck>;
   /** The page's Transformers | LV Panels switch, first in the filter bar. */
   lineSwitch?: React.ReactNode;
 }) {
@@ -244,6 +248,16 @@ export function OrdersTable({ rows, line = "TR", lineSwitch }: {
                 <td className="p-2 font-bold whitespace-nowrap text-xs">{r.mo}</td>
                 <td className="p-2 font-bold whitespace-nowrap">
                   <Link href={traceHref({ bom: r.bom, line })} className="text-brand-ink hover:underline">{r.bom}</Link>
+                  {bomChecks[r.mo] && (
+                    <Link
+                      href={hrefWithLine(`/bom?bom=${encodeURIComponent(r.bom)}`, line)}
+                      className="pill pill-warn ms-1"
+                      title={[
+                        bomChecks[r.mo].notInBom.length ? `Not in Odoo's BoM: ${bomChecks[r.mo].notInBom.join(", ")}` : "",
+                        bomChecks[r.mo].notRequired.length ? `The BoM also builds: ${bomChecks[r.mo].notRequired.join(", ")}` : "",
+                      ].filter(Boolean).join(" · ")}
+                    >≠ BoM</Link>
+                  )}
                 </td>
                 <td className="p-2 text-xs whitespace-nowrap">{r.soi ?? "—"}</td>
                 <td className="p-2 text-xs whitespace-nowrap">{r.customer ?? <span className="text-muted">—</span>}</td>
@@ -322,7 +336,7 @@ function EditRow({ r, lv, pending, err, onSave, onCancel }: { r: OrderRow; lv: b
       <td className="p-2 text-xs whitespace-nowrap text-muted">{r.createdAt.slice(0, 10)}</td>
       <td className="p-1 whitespace-nowrap no-print">
         <button type="submit" form={formId} className="btn btn-sm btn-primary" disabled={pending}>Save</button>
-        <button type="button" className="btn btn-sm btn-ghost ms-1" disabled={pending} onClick={onCancel}>✕</button>
+        <button type="button" className="btn btn-sm btn-ghost ms-1" disabled={pending} onClick={onCancel} aria-label="Cancel editing">✕</button>
         {err && <div className="text-[11px] text-bad-fg mt-1 max-w-[12rem]">{err}</div>}
       </td>
     </tr>
