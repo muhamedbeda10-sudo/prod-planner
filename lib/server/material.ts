@@ -4,8 +4,8 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { getActiveLine } from "./line";
 import {
-  actualPerUnit, parseNestingTracker, sheetsDifference, sheetsForJob, sheetsForProduced,
-  type MaterialLineView,
+  actualPerUnit, materialPlanIndex, materialPlanMonths, parseNestingTracker, sheetsDifference, sheetsForJob, sheetsForProduced,
+  type MaterialLineView, type MaterialPlanIndex,
 } from "@/lib/domain/material";
 import { lvActualRate, lvRemainingUnits, parseLvConsumption } from "@/lib/domain/lvMaterial";
 import { LV_ITEM } from "@/lib/domain/lv";
@@ -28,7 +28,8 @@ type Row = {
 
 /** `lv`: only the panels' tab counts units produced — a transformer line's
  *  old typed quantity is no longer shown or costed. */
-function toView(r: Row, lv: boolean, producedAuto: number | null = null): MaterialLineView {
+function toView(r: Row, lv: boolean, plans: MaterialPlanIndex, producedAuto: number | null = null): MaterialLineView {
+  const plan = materialPlanMonths(r, plans);
   const forJob = sheetsForJob(r.sheetsPerUnit, r.units);
   // the sheet's count; else the tracker's painted count on the line's own order
   const producedUsed = lv ? (r.producedQty ?? producedAuto) : null;
@@ -50,6 +51,8 @@ function toView(r: Row, lv: boolean, producedAuto: number | null = null): Materi
     forProduced: sheetsForProduced(r.actualPerUnit, r.sheetsUsed, r.units, producedUsed),
     updatedISO: r.updatedAt.toISOString().slice(0, 10),
     recordedBy: r.recordedBy,
+    planMonths: plan.months,
+    planMatch: plan.match,
   };
 }
 
@@ -58,7 +61,7 @@ function toView(r: Row, lv: boolean, producedAuto: number | null = null): Materi
 export async function getMaterialData(month: string): Promise<MaterialPageData> {
   const line = await getActiveLine(); // one product line at a time
   const lv = line === "LV";
-  const [rows, odoo, paintedByMo] = await Promise.all([
+  const [rows, odoo, orders, painted] = await Promise.all([
     prisma.materialUsage.findMany({
       where: month === "all" ? { line } : { month, line },
       // the sheet's own order — its rows come back the way they were laid out;
@@ -66,9 +69,13 @@ export async function getMaterialData(month: string): Promise<MaterialPageData> 
       orderBy: [{ month: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
     }),
     prisma.odooEntry.findMany({ where: { line, odooMo: { not: "" } }, select: { odooMo: true, status: true }, orderBy: { date: "asc" } }),
-    lv ? lvPaintedByMo() : Promise.resolve(new Map<string, number>()),
+    // every order of the line, closed ones too: a month's sheet stays that month's
+    prisma.masterOrder.findMany({ where: { line }, select: { mo: true, soi: true, bom: true, months: true, source: true, planQty: true } }),
+    lv ? prisma.handoverEntry.groupBy({ by: ["mo"], where: { dept: "Painting", item: LV_ITEM, mo: { not: null } }, _sum: { qty: true } }) : null,
   ]);
-  const lines = rows.map((r) => toView(r, lv, lv && r.mo ? (paintedByMo.get(r.mo) ?? 0) : null));
+  const paintedByMo = painted ? lvPaintedByMo(orders, painted) : new Map<string, number>();
+  const plans = materialPlanIndex(orders.map((o) => ({ ...o, months: (o.months || o.source || "").split(",") })));
+  const lines = rows.map((r) => toView(r, lv, plans, lv && r.mo ? (paintedByMo.get(r.mo) ?? 0) : null));
 
   // the latest row of an MO speaks for it
   const odooByMo: Record<string, string> = {};
@@ -80,11 +87,7 @@ export async function getMaterialData(month: string): Promise<MaterialPageData> 
 /** Each panel order's MO → the panels the tracker says were painted on it
  *  (never more than the order) — the produced count the LV tab costs its
  *  lines by where the sheet gives none. */
-async function lvPaintedByMo(): Promise<Map<string, number>> {
-  const [orders, painted] = await Promise.all([
-    prisma.masterOrder.findMany({ where: { line: "LV" }, select: { mo: true, planQty: true } }),
-    prisma.handoverEntry.groupBy({ by: ["mo"], where: { dept: "Painting", item: LV_ITEM, mo: { not: null } }, _sum: { qty: true } }),
-  ]);
+function lvPaintedByMo(orders: readonly { mo: string; planQty: number }[], painted: readonly { mo: string | null; _sum: { qty: number | null } }[]): Map<string, number> {
   const by = new Map(painted.map((p) => [p.mo!, Math.max(0, p._sum.qty ?? 0)]));
   return new Map(orders.map((o) => [o.mo, Math.min(o.planQty, by.get(o.mo) ?? 0)]));
 }

@@ -98,9 +98,11 @@ export function Th({
 /** The band over the header row: a coloured line over each run of columns,
  *  by where its figures come from. A span may carry a label; the first one
  *  usually carries the GroupLegend that names the colours. */
-export function GroupBand({ spans, className = "" }: { spans: { span: number; group?: ColGroup; label?: ReactNode; className?: string; style?: CSSProperties }[]; className?: string }) {
+/** `runs`: the band names runs of columns (each foldable) rather than where
+ *  figures come from — each header then carries its own source / computed hairline. */
+export function GroupBand({ spans, className = "", runs = false }: { spans: { span: number; group?: ColGroup; label?: ReactNode; className?: string; style?: CSSProperties }[]; className?: string; runs?: boolean }) {
   return (
-    <tr className={`dt-band ${className}`}>
+    <tr className={`dt-band ${className}`} data-runs={runs || undefined}>
       {spans.map((s, i) => (
         <th key={i} colSpan={s.span} data-group={s.group} className={`dt-band-cell ${s.className ?? ""}`} style={s.style} scope="colgroup" aria-label={s.group ? COL_GROUP_LABEL[s.group] : undefined}>
           {s.label}
