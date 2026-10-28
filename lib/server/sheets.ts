@@ -322,6 +322,7 @@ export function lvTrackerRows(rows: readonly LvTrackerRow[]): SheetRow[] {
   return rows.map((r) => ({
     MO: r.mo, SOI: r.soi ?? "", Customer: r.customer ?? "", Product: r.product ?? "", BoM: r.bom, "SEC Item": r.secItem ?? "",
     Required: r.state.required, Punched: r.state.punch, Bent: r.state.bend, Welded: r.state.weld, Painted: r.state.paint,
+    "Odoo closed": r.odooClosed ?? "Not tracked", // as the transformers' sheet says it
     Left: r.remaining, Status: r.status, "On hold": r.hold.onHold ? holdLabel(r.hold) : "",
   }));
 }

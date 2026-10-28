@@ -13,6 +13,8 @@ interface Order {
 interface Entry { id: number; date: Date | string; line: string; ledgerId: number | null; soi: string | null; fgCode: string; product: string; qty: number; status: string }
 interface Ledger { id: number; mo: string | null; bom: string; item: string }
 const norm = (s: string | null | undefined) => (s ?? "").trim().toUpperCase();
+/** How odooClosedByLedger keys an MO or item code. */
+export const odooKey = norm;
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 /** Older saved month settings still mean the first day of that month. */
@@ -50,33 +52,50 @@ export function isOdooExactOrder(order: Pick<Order, "source" | "months">, from =
   return !!month && Number.isFinite(monthRank(month)) && monthRank(month) >= monthRank(from);
 }
 
-/** A closing the ODOO log counts: a Done / Closed transformer row with a quantity. */
-const isClosingRow = (entry: Entry) => entry.line === "TR" && isDoneStatus(entry.status) && Number.isFinite(entry.qty) && entry.qty > 0;
+/** A closing the ODOO log counts: a Done / Closed row with a quantity — a transformer's, for the allocation. */
+const isClosedQty = (entry: Pick<Entry, "status" | "qty">) => isDoneStatus(entry.status) && Number.isFinite(entry.qty) && entry.qty > 0;
+const isClosingRow = (entry: Entry) => entry.line === "TR" && isClosedQty(entry);
 
 /**
- * The exact closings of the given orders, by MO and component: the qty of
- * every Done / Closed TR row of the ODOO log born from one of their own
- * daily-log closings, on that closing's MO and component. Not capped at the
- * plan qty: a closing over the plan shows as one. The ledger's MO is the
- * record — its BOM is not checked against the order's.
+ * The Done / Closed rows of the ODOO log born from a daily-log closing, summed
+ * by that closing's MO and item code (both upper case) — on any line: a
+ * panel's painting is born into the log the same way a tank's is. Not capped
+ * at the plan qty: a closing over the plan shows as one. The ledger's MO is
+ * the record — its BOM is not checked against the order's.
  */
+export function odooClosedByLedger(
+  entries: readonly Pick<Entry, "ledgerId" | "status" | "qty">[],
+  ledgers: readonly Pick<Ledger, "id" | "mo" | "item">[],
+): Map<string, Map<string, number>> {
+  const linked = new Map(ledgers.map((l) => [l.id, l]));
+  const out = new Map<string, Map<string, number>>();
+  for (const entry of entries) {
+    if (entry.ledgerId === null || !isClosedQty(entry)) continue;
+    const ledger = linked.get(entry.ledgerId);
+    if (!ledger?.mo) continue;
+    const mo = norm(ledger.mo), item = norm(ledger.item);
+    const row = out.get(mo) ?? new Map<string, number>();
+    row.set(item, (row.get(item) ?? 0) + entry.qty);
+    out.set(mo, row);
+  }
+  return out;
+}
+
+/** The exact closings of the given transformer orders, by MO and component
+ *  (odooClosedByLedger), leaving the components an order does not need. */
 export function exactOdooClosings(
   orders: readonly Pick<Order, "mo" | "eligibleItems">[],
   entries: readonly Entry[],
   ledgers: readonly Ledger[],
 ): Map<string, Partial<Record<Item, number>>> {
-  const byMo = new Map(orders.map((o) => [norm(o.mo), o]));
-  const linked = new Map(ledgers.map((l) => [l.id, l]));
+  const closed = odooClosedByLedger(entries.filter((e) => e.line === "TR"), ledgers);
   const counts = new Map<string, Partial<Record<Item, number>>>();
-  for (const entry of entries) {
-    if (entry.ledgerId === null || !isClosingRow(entry)) continue;
-    const ledger = linked.get(entry.ledgerId);
-    const order = ledger?.mo ? byMo.get(norm(ledger.mo)) : undefined;
-    const it = norm(ledger?.item);
-    if (!order || !isItem(it) || (order.eligibleItems && !order.eligibleItems.includes(it))) continue;
-    const row = counts.get(order.mo) ?? {};
-    row[it] = (row[it] ?? 0) + entry.qty;
-    counts.set(order.mo, row);
+  for (const order of orders) {
+    const row: Partial<Record<Item, number>> = {};
+    for (const [it, qty] of closed.get(norm(order.mo)) ?? []) {
+      if (isItem(it) && (!order.eligibleItems || order.eligibleItems.includes(it))) row[it] = qty;
+    }
+    if (Object.keys(row).length) counts.set(order.mo, row);
   }
   return counts;
 }

@@ -14,6 +14,8 @@ import { WEEKLY_STAGES, filterWeeklyDays, owedOf, weeklyCoverage, weeklyMetricOf
 import { itemColor } from "@/lib/domain/productColors";
 import { ITEMS, ITEM_NAME, isPaintExempt, type Item } from "@/lib/domain/constants";
 import { traceHref } from "@/lib/domain/links";
+import { ODOO_EXACT_FROM_LABEL } from "@/lib/domain/trackerOdoo";
+import { OdooCell, OdooNotCounted } from "@/components/TrackerColumns";
 import type { WeeklyPlanTracker, WeeklyPlanDay } from "@/lib/server/weeklyPlanTracker";
 
 /* One weekly plan by DELIVERY DAY. The date runs down the left edge as a rail
@@ -230,7 +232,8 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
       ) : (
         <div className={`print-flow print-fit print-tracker bg-surface border rounded-xl overflow-auto ${fabrication ? "md:max-h-[75vh]" : "md:flex-1 md:min-h-0"}`}>
           <table className="w-full text-sm border-collapse">
-            {days.map((d) => <DayBlock key={d.iso} day={d} stages={stages} metric={metric} planNo={data.planNo ?? 0} rec={rec} />)}
+            {/* the Cut worklist's view of the plan has no Odoo column — closing is not the floor's step */}
+            {days.map((d) => <DayBlock key={d.iso} day={d} stages={stages} metric={metric} planNo={data.planNo ?? 0} rec={rec} odoo={!fabrication} />)}
           </table>
         </div>
       )}
@@ -241,7 +244,9 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
 /** One delivery day: its date as a vertical rail down the left, its own header
  *  row, then a row per project. Each day is its own <tbody> so the rail can
  *  span exactly that day's rows. */
-function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; stages: readonly WeeklyStage[]; metric: WeeklyStage; planNo: number; rec: RecCtl }) {
+function DayBlock({ day, stages, metric, planNo, rec, odoo }: { day: WeeklyPlanDay; stages: readonly WeeklyStage[]; metric: WeeklyStage; planNo: number; rec: RecCtl; odoo: boolean }) {
+  // each component: Req, its stages, then Odoo
+  const span = 1 + stages.length + (odoo ? 1 : 0);
   const metricLabel = WEEKLY_STAGES.find((o) => o.value === metric)!;
   const pct = day.req > 0 ? day.covered / day.req : null;
   const late = day.isPast && (pct ?? 1) < 1; // the delivery date passed unfinished
@@ -269,7 +274,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
           <span className="block text-[9px] font-normal">{metricLabel.short}</span>
         </th>
         {day.items.map((it) => (
-          <th key={it} colSpan={1 + stages.length} className="px-2 py-1 bg-brand-fill text-white border-l border-border-strong">{it}</th>
+          <th key={it} colSpan={span} className="px-2 py-1 bg-brand-fill text-white border-l border-border-strong">{it}</th>
         ))}
       </tr>
       {/* each sub-header sits over the column it labels — one <th> each, never a
@@ -284,6 +289,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
                 {s === "finish" && isPaintExempt(it) ? "SHB" : WEEKLY_STAGES.find((o) => o.value === s)!.short}
               </th>
             ))}
+            {odoo && <th className="odoo-col px-1 py-0.5 font-medium" title={`Closed in Odoo — the day's orders' Done rows of the ODOO log, each on the MO it was recorded against, filling the earliest promise first. Counted from the ${ODOO_EXACT_FROM_LABEL} plans on; older orders read —`}>Odoo</th>}
           </Fragment>
         ))}
       </tr>
@@ -316,7 +322,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
                 // this project owes nothing of this component today — say so once
                 return (
                   // hatched, like a component an order does not need on the monthly tracker
-                  <td key={it} colSpan={1 + stages.length} className="na-cell px-1 py-1 border-l" title={`Nothing of ${it} is due from this project today`} aria-label={`${it} not due`}>
+                  <td key={it} colSpan={span} className="na-cell px-1 py-1 border-l" title={`Nothing of ${it} is due from this project today`} aria-label={`${it} not due`}>
                     <span className="sr-only">not due</span>
                   </td>
                 );
@@ -335,7 +341,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
                     <td className="px-1 py-1 tabnum text-xs border-l text-muted line-through opacity-50" title={why}>
                       {c.req}
                     </td>
-                    <td colSpan={stages.length} className="px-1 py-1 text-[10px] font-bold text-muted opacity-60" title={why}>
+                    <td colSpan={span - 1} className="px-1 py-1 text-[10px] font-bold text-muted opacity-60" title={why}>
                       {repeat ? "Already promised earlier this week" : "N/A — not manufactured"}
                     </td>
                   </Fragment>
@@ -432,6 +438,16 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
                       </td>
                     );
                   })}
+                  {odoo && (c.odoo == null ? (
+                    <OdooNotCounted className="px-1 py-1 text-xs" />
+                  ) : (
+                    <OdooCell
+                      className="px-1 py-1 text-xs"
+                      value={c.odoo}
+                      of={c.odooOf ?? owed}
+                      label={`${r.bom} · ${it}${(c.odooOf ?? owed) < owed ? ` (the orders planned from ${ODOO_EXACT_FROM_LABEL} on; the rest are not counted)` : ""}`}
+                    />
+                  ))}
                 </Fragment>
               );
             })}
