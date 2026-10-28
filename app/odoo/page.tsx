@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
-import { getActiveLine } from "@/lib/server/line";
 import { linePermKey } from "@/lib/domain/permissions";
 import { getOdooData } from "@/lib/server/odoo";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
@@ -22,11 +21,9 @@ export default async function OdooPage({
   await guardTab("/odoo");
   // viewing is free for every account, like the rest of the app; recording is
   // gated on each row's own line's Odoo key (odoo.edit / lv.odoo). Both lines
-  // share the tab and its dashboard — the line on screen (the address's, else
-  // the person's own) only picks the default line for a new row or a sheet.
+  // share the tab and its dashboard.
   const me = await getCurrentUser();
   if (!me) redirect("/login");
-  const line = await getActiveLine();
 
   const sp = await searchParams;
   // the last 30 days by default (the whole log grows without end and made the
@@ -64,7 +61,6 @@ export default async function OdooPage({
         nesting={nesting}
         needCtx={{ lv, soiBoms, soiMos }}
         canEditLine={{ TR: hasPerm(me, linePermKey("TR", "odoo")), LV: hasPerm(me, linePermKey("LV", "odoo")) }}
-        defaultLine={line}
         totalRows={totalRows}
         openRows={openRows}
       />

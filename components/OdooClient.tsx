@@ -26,16 +26,16 @@ import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { Modal } from "@/components/Modal";
 import { MO_MATERIAL_FLAG, MO_MATERIAL_STATES, entryMaterialNeed, moMaterialFlag, rowMaterialState, type MoMaterialFlagState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 import { ODOO_CHANGED_EVENT } from "@/lib/domain/odooAlerts";
-import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, addOdooNote, deleteOdooNote, updateOdooGroup, deleteOdooEntries } from "@/app/odoo/actions";
+import { updateOdooEntry, deleteOdooEntry, setOdooStatus, setOdooMo, addOdooNote, deleteOdooNote, updateOdooGroup, deleteOdooEntries } from "@/app/odoo/actions";
 import { factoryDayISO } from "@/lib/domain/dates";
 
 // The ODOO log — the office's daily log of Odoo close attempts, one strip per
 // row, the columns of the sheet it replaces: Date · SOI# · FG-CODE · Product ·
-// MO# · QTY · Status. Two people work a row: the clerk enters it, the planner
-// moves the Status in place and keeps Notes on it — a list, each deletable.
-// A row can also be BORN here: a painting record (or the core's shot blast)
-// writes its own row with everything but Odoo's MO, which the clerk types in
-// place — and an FG-CODE the app had to compose is flagged until it is looked at.
+// MO# · QTY · Status. The page adds no rows of its own: a row is BORN here when
+// a painting record (or the core's shot blast) writes it with everything but
+// Odoo's MO, which the clerk types in place — and an FG-CODE the app had to
+// compose is flagged until it is looked at — or comes from the assistant. The
+// planner moves the Status in place and keeps Notes on it — a list, each deletable.
 
 function useAction() {
   const [pending, startTransition] = useTransition();
@@ -140,76 +140,9 @@ function RowFields({
   );
 }
 
-// the columns that change from row to row on the same day; date stays
-const PER_ROW = ["soi", "product", "odooMo", "qty"] as const;
-
-/** Which line a new row or a sheet goes to — only the lines this person may
- *  record on; a single one is fixed and shown. */
-function LinePick({ lines, defaultLine }: { lines: readonly string[]; defaultLine: string }) {
-  const start = lines.includes(defaultLine) ? defaultLine : lines[0];
-  if (lines.length === 1) {
-    return (
-      <label className="inline-flex flex-col gap-0.5">
-        <span className="text-[11px] font-bold text-muted uppercase tracking-wide">Line</span>
-        <input type="hidden" name="line" value={start} />
-        <span className="pill pill-muted">{start === "LV" ? "LV Panels" : "Transformers"}</span>
-      </label>
-    );
-  }
-  return (
-    <label className="inline-flex flex-col gap-0.5">
-      <span className="text-[11px] font-bold text-muted uppercase tracking-wide">Line</span>
-      <select name="line" defaultValue={start} className={`${F} w-36`}>
-        {lines.map((l) => <option key={l} value={l}>{l === "LV" ? "LV Panels" : "Transformers"}</option>)}
-      </select>
-    </label>
-  );
-}
-
-function AddRow({ day, knownSois, lines, defaultLine }: { day: string; knownSois: string[]; lines: readonly string[]; defaultLine: string }) {
-  const add = useAction();
-  const [open, setOpen] = useState(false);
-  function clearForNext(form: HTMLFormElement) {
-    for (const n of PER_ROW) {
-      const el = form.elements.namedItem(n);
-      if (el instanceof HTMLInputElement) el.value = "";
-    }
-    const first = form.elements.namedItem("soi");
-    if (first instanceof HTMLInputElement) first.focus();
-  }
-  return (
-    <>
-      <button type="button" className="btn btn-sm btn-primary" onClick={() => setOpen(true)}>
-        ➕ Add a row
-      </button>
-      {open && (
-        <Modal title="➕ Add a row" sub="After Add, the date and status stay for the next row." onClose={() => setOpen(false)} busy={add.pending} width="max-w-4xl">
-          <form
-            onSubmit={(ev) => {
-              ev.preventDefault();
-              const form = ev.currentTarget;
-              add.run(createOdooEntry, new FormData(form), "Added — next row.", () => clearForNext(form));
-            }}
-          >
-            <div className="flex flex-wrap items-end gap-2">
-              <LinePick lines={lines} defaultLine={defaultLine} />
-              <RowFields day={day} knownSois={knownSois} disabled={add.pending} />
-            </div>
-            <Msg msg={add.msg} />
-            <div className="flex justify-end gap-2 pt-3 mt-3 border-t">
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)} disabled={add.pending}>Close</button>
-              <button type="submit" className="btn btn-primary btn-sm" disabled={add.pending}>{add.pending ? "Adding…" : "Add"}</button>
-            </div>
-          </form>
-        </Modal>
-      )}
-    </>
-  );
-}
-
 // ---- Status: the planner's ✓ / ✗, ticked in place ----
 
-/** The Add / Edit form's status choices, plus whatever the row already says if it is not one of them. */
+/** The Edit form's status choices, plus whatever the row already says if it is not one of them. */
 function statusOptions(current?: string | null): string[] {
   const cur = (current ?? "").trim();
   return cur && !(ODOO_STATUSES as readonly string[]).includes(cur) ? [...ODOO_STATUSES, cur] : [...ODOO_STATUSES];
@@ -816,59 +749,6 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
   );
 }
 
-// ---- import: the sheet, once — its first seven columns ----
-
-function ImportPanel({ day, lines, defaultLine }: { day: string; lines: readonly string[]; defaultLine: string }) {
-  const [pending, startTransition] = useTransition();
-  const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null);
-  const [issues, setIssues] = useState<string[]>([]);
-  const [open, setOpen] = useState(false);
-  function submit(form: HTMLFormElement, preview: boolean) {
-    const fd = new FormData(form);
-    fd.set("preview", String(preview));
-    fd.set("day", singleDayOf(day) ?? "");
-    startTransition(async () => {
-      const r = await importOdooAction(fd);
-      setIssues(r.issues ?? []);
-      if (!r.ok) { setRes({ ok: false, text: r.error ?? "Import failed." }); return; }
-      const tail = `${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged`;
-      setRes({ ok: true, text: preview ? `Preview only — nothing saved: ${tail}.` : `Imported: ${tail}.` });
-    });
-  }
-  const button = <button type="button" className="btn btn-sm" onClick={() => { setRes(null); setIssues([]); setOpen(true); }}>📥 Import Excel</button>;
-  if (!open) return button;
-  return (
-    <>
-    {button}
-    <Modal title="📥 Import Excel" onClose={() => setOpen(false)} busy={pending}>
-    <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="block">
-          <span className="text-xs font-bold text-muted">Excel file</span>
-          <input type="file" name="file" accept=".xlsx,.xlsm,.xls,.csv" required className="block text-sm mt-1" />
-        </label>
-        <LinePick lines={lines} defaultLine={defaultLine} />
-      </div>
-      <p className="text-xs text-muted">
-        Reads the sheet&apos;s first seven columns — Date · SOI# · FG-CODE · Product · MO# · QTY · Status. Notes are
-        never read. The same MO on the same day is updated, never doubled, and its Status stays as moved here
-        {singleDayOf(day) ? `; rows with a blank Date are filed under ${day}` : ""}.
-      </p>
-      <Msg msg={res} />
-      {issues.length > 0 && (
-        <ul className="text-xs text-warn-fg list-disc ps-5 space-y-0.5 max-h-40 overflow-y-auto">{issues.map((i, n) => <li key={n}>{i}</li>)}</ul>
-      )}
-      <div className="flex justify-end gap-2 pt-3 border-t">
-        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)} disabled={pending}>Close</button>
-        <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, true)}>Preview</button>
-        <button type="button" className="btn btn-primary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, false)}>{pending ? "Working…" : "Import"}</button>
-      </div>
-    </form>
-    </Modal>
-    </>
-  );
-}
-
 // ---- filters: one row above the table ----
 // Every visit opens the same way: every day, the rows still marked "MO to be
 // close" — the office's to-do list. A filter changed here holds while the tab
@@ -987,7 +867,6 @@ export function OdooClient({
   nesting,
   needCtx,
   canEditLine,
-  defaultLine,
   totalRows,
   openRows,
 }: {
@@ -1000,8 +879,6 @@ export function OdooClient({
   needCtx: NeedContext;
   /** Both lines share the tab; a row is editable with its own line's Odoo right. */
   canEditLine: Record<string, boolean>;
-  /** The line a new row or a sheet goes to unless another is picked — the line on screen. */
-  defaultLine: string;
   /** The whole log behind this day — see ElsewhereBanner. */
   totalRows: number;
   openRows: number;
@@ -1010,7 +887,6 @@ export function OdooClient({
   // the colour a row's MO reads on the Material tab — red / yellow / green —
   // as one more filter over the rest
   const [matState, setMatState] = useState<"" | "missing" | "partial" | "ok">("");
-  const editableLines = (["TR", "LV"] as const).filter((l) => canEditLine[l]);
   const byMat = useCallback(
     (rows: OdooEntryView[], st: typeof matState = matState) => (st ? rows.filter((e) => rowMaterialState(nesting, e, { ...needCtx, lv: e.line === "LV" }) === st) : rows),
     [nesting, matState, needCtx]
@@ -1143,7 +1019,7 @@ export function OdooClient({
         {entries.length === 0 ? (
           <TableEmpty
             title={day === "all" ? "No rows logged yet" : singleDayOf(day) ? `Nothing logged on ${formatDate(singleDayOf(day))}` : `Nothing logged ${odooScopeLabel(day)}`}
-            hint={day !== "all" && singleDayOf(day) ? "Add the day's rows below, or import the sheet." : undefined}
+            hint="Rows come in from the floor's closings (painting, shot blast) — or ask the assistant to add them."
             action={elsewhereLink || undefined}
           />
         ) : shown.length === 0 ? (
@@ -1187,12 +1063,6 @@ export function OdooClient({
         )}
         {shown.length > 0 && <FlagLegend />}
       </section>
-      {editableLines.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <AddRow day={day} knownSois={knownSois} lines={editableLines} defaultLine={defaultLine} />
-          <ImportPanel day={day} lines={editableLines} defaultLine={defaultLine} />
-        </div>
-      )}
     </div>
   );
 }

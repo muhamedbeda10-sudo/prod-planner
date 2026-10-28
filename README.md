@@ -196,9 +196,9 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    nested / with produced / over BOM) or a search across BOM, SOI, part, code and note — the Total row
    follows the filter.
 7. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
-   close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status, plus Notes. Two people work a row: the
-   clerk types it in (or imports the sheet — its first seven columns, the same MO on the same day
-   updated, never doubled); the planner then ticks the Status in place — ✓ Done or ✗ Cancelled, a second click opens it
+   close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status, plus Notes. Rows come from the floor's
+   closings and from the assistant (which can also import the sheet — its first seven columns, the same MO
+   on the same day updated, never doubled); the page itself has no Add a row or Import Excel. The planner ticks the Status in place — ✓ Done or ✗ Cancelled, a second click opens it
    again; ✗ only once a note says why — marking it Done stamps the moment, shown under the marks and
    exported as "Done at" — and
    keeps Notes on it — a list with time and author, each deletable on its own. A filter row (search across
@@ -239,7 +239,7 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    counted, by a **Closed day · Logged day** switch, on the day each row's status went to Done
    (the default: a row logged in August and closed in September is one of September's closings,
    under its product) or on the day it was logged — over today, yesterday, 7/30/90 days, this
-   month, all time or a custom from/to, with the numbers as a table (the assistant makes its Excel).
+   month, all time or a custom from/to (the assistant makes its Excel of the numbers).
 8. **Shift log** (`/shifts`) — the supervisors' page, one day at a time: every worker registered in a
    section (Tools → Production Workers), narrowed to a line, a section or a search. Each worker gets ONE
    choice that says whether he came and on which shift — ☀ **Day** (07:00–16:00), 🌙 **Night** (19:00–04:00)

@@ -1586,9 +1586,20 @@ html.ai-modal { overflow: hidden; }
 .ai-panel { animation: aipanel-in 0.18s ease-out; }
 @media (prefers-reduced-motion: reduce) { .ai-panel { animation: none; } }
 
-/* the composer: one rounded box holding the question, its files and its buttons */
-.composer { position: relative; border: 1px solid var(--border-strong); border-radius: 14px; background: var(--surface); transition: border-color 0.15s ease, box-shadow 0.15s ease; }
-.composer:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent); }
+/* the composer: one rounded box holding the question, its files and its buttons,
+   in a frame of the app's colours turning slowly round it */
+@property --composer-turn { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.composer {
+  position: relative; border: 2px solid transparent; border-radius: 14px;
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    conic-gradient(from var(--composer-turn), var(--brand), var(--viz-2), var(--viz-4), var(--viz-6), var(--viz-5), var(--viz-3), var(--brand)) border-box;
+  animation: composer-turn 4s linear infinite;
+  transition: box-shadow 0.15s ease;
+}
+.composer:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--viz-2) 45%, transparent); }
+@keyframes composer-turn { to { --composer-turn: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .composer { animation: none; } }
 main .composer textarea, .composer textarea { border: 0; background: transparent; box-shadow: none; border-radius: 0; padding: 10px 14px 4px; }
 main .composer textarea:focus, .composer textarea:focus { outline: none; box-shadow: none; border: 0; }
 .composer-send { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--brand-fill); color: #fff; transition: background-color 0.15s ease, opacity 0.15s ease; }
@@ -1596,7 +1607,7 @@ main .composer textarea:focus, .composer textarea:focus { outline: none; box-sha
 .composer-send:disabled { opacity: 0.35; cursor: not-allowed; }
 .composer-send:not(:disabled):active { transform: scale(0.92); }
 /* while an answer is being written, a light runs along the composer's top edge */
-.composer-busy::before { content: ""; position: absolute; inset-inline: 14px; top: -1px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--brand), var(--viz-2), transparent); background-size: 200% 100%; animation: ai-run 1.4s linear infinite; }
+.composer-busy::before { content: ""; position: absolute; inset-inline: 14px; top: -2px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--brand), var(--viz-2), transparent); background-size: 200% 100%; animation: ai-run 1.4s linear infinite; }
 .ai-quick-btn { color: var(--brand-ink); }
 .ai-quick-btn:not(:disabled):hover svg { animation: ai-twinkle 0.6s ease; }
 

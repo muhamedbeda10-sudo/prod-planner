@@ -24,6 +24,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "Each component on the monthly Plan Tracker ends with an Odoo column: the pieces closed in Odoo — every row of the ODOO log marked Done, counted on the MO it was recorded against, never spread by BOM or guessed. It starts with the October 2026 plans; an order from an earlier plan reads —. A row counts the moment it is moved to Done; click the figure for the order's On Odoo records. A merged BOM row adds up its MOs. The order's closing by itself and the assistant read the same figure.",
   },
   {
+    id: "2026-10-28-tidier-stock-odoo-pages",
+    dateISO: "2026-10-28",
+    title: "Tidier Physical Material and ODOO pages, and a colour frame round the assistant's question box",
+    where: "Material → Physical Material · Plan Tracker → ODOO log · Dashboards → ODOO · the AI assistant",
+    body: "Physical Material's cards now sit in one row across the page, and the notes under its table are gone. The ODOO log no longer has Add a row or Import Excel under its table — its rows come from the floor's closings (and the assistant can still add or import them). The ODOO dashboard no longer ends with The numbers as a table. The box you type a question in to the assistant now has a frame of the app's colours turning slowly round it.",
+  },
+  {
     id: "2026-10-28-odoo-boms-removed",
     dateISO: "2026-10-28",
     title: "Odoo's BoMs are taken out of the app",

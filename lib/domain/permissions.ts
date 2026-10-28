@@ -64,7 +64,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
   {
     name: "Odoo",
     perms: [
-      { key: "odoo.edit", label: "Odoo close-out log — record", desc: "Add and edit the rows on the ODOO log — the daily log of which Odoo manufacturing orders were closed and what Odoo answered" },
+      { key: "odoo.edit", label: "Odoo close-out log — record", desc: "Edit the rows on the ODOO log — the daily log of which Odoo manufacturing orders were closed and what Odoo answered" },
       { key: "odoo.needMo", notify: true, label: "Odoo alerts — rows that need an MO", desc: "Not an access right but a notification: a count on the ODOO log and a popup whenever a row lands on the log without Odoo's MO number (a painting / shot-blast closing), with a box to type the MO right there. Ticked per person, admins included." },
       { key: "odoo.alerts", notify: true, label: "Odoo alerts — rows ready to close", desc: "Not an access right but a notification: a count on the ODOO log and a popup whenever a row has Odoo's MO and is still open, closable from the popup. Ticked per person, admins included." },
     ],
