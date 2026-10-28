@@ -8,7 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList, Warehouse,
   Table2, BookOpenCheck, ListChecks, ChevronDown,
   CalendarDays, CalendarRange, Users, Timer,
-  MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus, Bot, Gauge,
+  MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus, Bot, Gauge, ListTree,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -68,8 +68,8 @@ const LINE_GROUPS = PRODUCT_LINES.map((line) => ({ line, label: LINE_LABEL[line]
 // toolbar (components/ViewTabs.tsx).
 //   Dashboards   → every dashboard, one place each: Planning (the home page),
 //                  Production, Material, Consumables, ODOO
-//   Material     → the nesting sheets, the store's physical count, and the
-//                  consumables it hands out
+//   Material     → the nesting sheets, the store's physical count, Odoo's
+//                  BoMs, and the consumables it hands out
 //   Plan Tracker → the tracker, the daily log, the what-if simulator and the ODOO close-out log
 // Chat is not here at all — it is the icon in the right cluster.
 const DASHBOARD_PLACES: Place[] = [
@@ -82,6 +82,7 @@ const DASHBOARD_PLACES: Place[] = [
 const MATERIAL_PLACES: Place[] = [
   { href: "/material", label: "Material", icon: Layers, title: "The nesting project tracker — what each order consumed" },
   { href: "/physical", label: "Physical Material", icon: Warehouse, title: "The store's count against Odoo's stock, code by code" },
+  { href: "/bom", label: "BoMs", icon: ListTree, title: "The open orders' bills of materials from Odoo — the tree, the raw materials, the components check" },
   { href: "/consumables", label: "Consumables", icon: PackageMinus, title: "What the store hands out to the floor — item, quantity, department, worker" },
 ];
 const TRACKER_PLACES: Place[] = [
@@ -120,6 +121,7 @@ const DRAWER_VIEWS: Item[] = [
   { href: "/handover", label: "Daily log", icon: BookOpenCheck },
   { href: "/odoo", label: "ODOO log", icon: Boxes },
   { href: "/physical", label: "Physical Material", icon: Warehouse },
+  { href: "/bom", label: "BoMs", icon: ListTree },
   { href: "/consumables", label: "Consumables", icon: PackageMinus },
   { href: "/chat", label: "Chat", icon: MessagesSquare },
 ];

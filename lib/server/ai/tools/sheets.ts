@@ -1,4 +1,5 @@
 import "server-only";
+import { getPartRates } from "@/lib/server/odooBom";
 import { floorRequest } from "@/lib/domain/floorKpis";
 import { outputByTypeRows } from "@/lib/domain/outputByType";
 import { productionDayRows, productionRequest, productionSheetRows } from "@/lib/domain/productionDashboard";
@@ -400,7 +401,9 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
     }
     case "material": {
       const { lines } = await withLine(line, () => getMaterialData(""));
-      return { rows: materialRows(lines, line), name: `material-sheet${line === "LV" ? "-lv" : ""}`, sheet: "Material", scope: `${line} Material sheet` };
+      // Odoo's BOM figure beside the sheet's, as the screen shows it (transformers)
+      const rates = line === "LV" ? {} : await getPartRates(lines.filter((l) => l.partCode.trim()).map((l) => ({ partCode: l.partCode, bom: l.bom })));
+      return { rows: materialRows(lines, line, rates), name: `material-sheet${line === "LV" ? "-lv" : ""}`, sheet: "Material", scope: `${line} Material sheet` };
     }
     case "material_dashboard": {
       const req = materialScopeRequest(i, today);

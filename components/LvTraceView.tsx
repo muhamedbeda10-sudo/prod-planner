@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { hrefWithLine } from "@/lib/domain/lines";
 import { traceHref, trackerHref } from "@/lib/domain/links";
 import { PageHeader, Soi } from "@/components/ui";
 import { TraceSearch } from "@/components/TraceSearch";
@@ -27,6 +28,7 @@ export function LvTraceView({ t }: { t: LvTraceResult }) {
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="pill pill-muted">LV Panels</span>
         <span className="font-bold">{t.bom}</span>
+        {t.bom && <Link href={hrefWithLine(`/bom?bom=${encodeURIComponent(t.bom)}`, "LV")} className="text-brand-ink text-xs font-semibold hover:underline">Odoo BoM</Link>}
         <span className="text-muted">·</span>
         <span>{t.members.length} order(s), {open.length} open{urgent > 0 ? `, ${urgent} urgent` : ""}</span>
         <span className="text-muted">·</span>

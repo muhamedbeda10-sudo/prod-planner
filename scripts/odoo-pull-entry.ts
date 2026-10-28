@@ -34,7 +34,7 @@ w.__odooPullStart = (plan) => {
     .then((p) => {
       job.chunks = splitPayload(p).map((c) => JSON.stringify(c));
       job.sizes = job.chunks.map((c) => c.length);
-      job.summary = `${p.log.length} log MOs, ${p.orders.length} orders changed (${p.children.length} MOs), ${p.unchanged} unchanged, stock ${p.stock ? p.stock.values.length : "not read"}, ${p.issues.length} issues, ${p.ms} ms`;
+      job.summary = `${p.log.length} log MOs, ${p.orders.length} orders changed (${p.children.length} MOs), ${p.unchanged} unchanged, stock ${p.stock ? p.stock.values.length : "not read"}, BoMs ${p.bomRoots ? `${p.boms?.length ?? 0} changed of ${p.bomRoots.length} codes` : "not read"}, ${p.issues.length} issues, ${p.ms} ms`;
       job.status = "done";
     })
     .catch((e) => { job.error = String(e); job.status = "error"; });

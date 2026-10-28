@@ -2224,3 +2224,55 @@ model OdooSyncTicket {
   expiresAt DateTime
   createdAt DateTime @default(now())
 }
+
+// ---- Odoo's BoMs, read with the Odoo sync (lib/domain/odooBom.ts) ----
+//
+// The bills of materials the open orders are built with, mirrored read-only:
+// the Odoo sync's pull (lib/domain/odooPull.ts pullBoms) walks every BoM
+// reached from the open orders' codes and odoo_ingest writes them here, each
+// BoM once with its own lines — a sub-assembly shared by many transformers is
+// stored once, and a line built in house names the sub-BoM it is built with.
+// The trees, the component check, Odoo's rate on the MATERIAL sheet and the
+// open need's gaps (Physical Material) are built from these.
+model OdooBom {
+  id          Int           @id @default(autoincrement())
+  odooId      Int           @unique // mrp.bom id
+  code        String // Odoo's reference: FG-64022E11M11, FB-022-64022E11M11 …
+  productCode String // the product it builds
+  productName String        @default("")
+  qty         Float         @default(1) // the quantity its lines are written for
+  uom         String        @default("")
+  sig         String        @default("") // the pull's fingerprint — an unchanged BoM is not sent again
+  syncedAt    DateTime      @default(now())
+  lines       OdooBomLine[]
+
+  @@index([code])
+  @@index([productCode])
+}
+
+model OdooBomLine {
+  id          Int     @id @default(autoincrement())
+  bomId       Int
+  bom         OdooBom @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  seq         Int // the line's place in the BoM
+  productCode String
+  productName String  @default("")
+  qty         Float // for the BoM's qty, in `uom`
+  uom         String  @default("")
+  stockQty    Float // the same, in the product's own (stock) unit
+  stockUom    String  @default("")
+  childOdooId Int? // the sub-BoM Odoo builds this component with; null = bought / raw
+
+  @@index([bomId])
+  @@index([productCode])
+}
+
+// Which Odoo BoM an order's BOM code (MasterOrder.bom) is built with — found
+// by Odoo's reference (FG-/TX- + code, or the code itself), else the product
+// of that code, else the BoM of one of its MOs. odooId null = Odoo has none.
+model OdooBomRoot {
+  bom      String   @id // the app's BOM code, upper case
+  odooId   Int?
+  via      String   @default("") // code | product | mo | missing
+  syncedAt DateTime @default(now())
+}

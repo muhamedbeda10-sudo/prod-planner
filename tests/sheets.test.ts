@@ -138,9 +138,10 @@ describe("physicalRows", () => {
     const items = [item("C1", 25), item("C2", 5)];
     expect(physicalRows(items)[0]).not.toHaveProperty("Open Orders Need (sheets)");
     const need = {
-      byCode: { C1: { need: 40, after: -15, status: "short" as const, estimated: false, orders: 2, jobCount: 2, jobs: [] }, C2: { need: 3, after: null, status: "not_comparable" as const, estimated: false, orders: 1, jobCount: 1, jobs: [] } },
+      byCode: { C1: { need: 40, after: -15, status: "short" as const, estimated: false, byOdoo: false, orders: 2, jobCount: 2, jobs: [] }, C2: { need: 3, after: null, status: "not_comparable" as const, estimated: false, byOdoo: false, orders: 1, jobCount: 1, jobs: [] } },
       missing: [{ code: "C9", material: "Steel", thicknessMm: 5, sheetSize: "1220*2440", sheets: 12 }],
       unpriced: { noNesting: 0, uncoded: 0 },
+      byOdoo: 0,
     };
     const rows = physicalRows([...items, item("C3", 1)], need);
     expect(rows[0]).toMatchObject({ "SF01 Stock In Odoo": 25, "Open Orders Need (sheets)": 40, "Odoo After Need": -15 });

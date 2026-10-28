@@ -270,6 +270,9 @@ export interface OdooSyncSummary {
   /** The store's SF01 on-hand: codes updated, unchanged, not found in Odoo;
    *  `skipped` when the read looked broken (most stocks gone to zero). */
   stock: { updated: number; unchanged: number; missing: number; skipped?: boolean };
+  /** Odoo's BoMs: BoMs written (new or changed), their lines, the open codes
+   *  tied to a BoM and those Odoo has none for. Absent on a run before BoMs. */
+  boms?: { written: number; lines: number; roots: number; missing: number };
   /** What went wrong in a part that did not stop the rest. */
   issues: string[];
   ms: number;
@@ -282,6 +285,7 @@ export function summaryText(s: OdooSyncSummary | null | undefined): string {
     `${s.log.checked} MOs checked`,
     `${s.children.orders} order${s.children.orders === 1 ? "" : "s"} with new sub-assembly MOs (${s.children.unchanged} unchanged)`,
     s.stock.skipped ? "SF01 stock skipped" : `SF01 stock: ${s.stock.updated} updated`,
+    ...(s.boms ? [`BoMs: ${s.boms.written} written for ${s.boms.roots} codes${s.boms.missing ? ` (${s.boms.missing} not in Odoo)` : ""}`] : []),
   ];
   return parts.join(" · ") + (s.issues.length ? ` · ${s.issues.length} issue${s.issues.length === 1 ? "" : "s"}` : "");
 }

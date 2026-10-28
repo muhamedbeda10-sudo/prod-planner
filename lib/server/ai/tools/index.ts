@@ -30,6 +30,7 @@ import { DOWNTIME_TOOLS } from "./downtime";
 import { KPI_TOOLS } from "./kpis";
 import { PLANNING_CONTROL_TOOLS } from "./planningControl";
 import { MATERIAL_DASHBOARD_TOOLS } from "./materialDashboard";
+import { BOM_TOOLS } from "./bom";
 import { CATALOGUE_TOOLS } from "./catalogue";
 import { SETUP_TOOLS } from "./setup";
 import { USER_TOOLS } from "./users";
@@ -72,6 +73,7 @@ export const AI_TOOLS: readonly AiTool[] = [
   ...KPI_TOOLS,
   ...PLANNING_CONTROL_TOOLS,
   ...MATERIAL_DASHBOARD_TOOLS,
+  ...BOM_TOOLS,
   ...CATALOGUE_TOOLS,
   ...SETUP_TOOLS,
   ...IMPORT_TOOLS,
