@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-27-odoo-sync",
+    dateISO: "2026-10-27",
+    title: "The app reads Odoo by itself",
+    where: "ODOO log, Odoo alerts, Trace, Physical Material, Admin → Settings → Odoo sync",
+    href: "/odoo",
+    body: "A scheduled task reads Odoo at about 09:00 and 13:00 Riyadh time, Sunday to Thursday — in the Claude desktop app's browser, with your own Odoo login — and writes what it read here. It only reads; nothing is ever changed in Odoo. On the ODOO log each MO shows what Odoo says: Odoo ✓ when it is closed there, Still open in Odoo when a row is Done here but not there, Closed in Odoo when Odoo closed what is still open here, MO of another part, Not in Odoo, and the new name when Odoo renamed the MO on splitting it. A new count, differ from Odoo, filters to those rows. A row waiting for its MO now offers the open MOs Odoo has for its order and component, its own batch first — one click books it, in the log and in the alerts popup. The Trace shows every sub-assembly MO under the order with Odoo's state, and the closings count on Odoo's own closing day on the ODOO and Material dashboards. Physical Material's Odoo column is filled from SF01/Shop Floor Warehouse on each run. Admin → Settings shows the last run and says when one was missed. Nothing anyone typed is ever changed by a sync.",
+  },
+  {
     id: "2026-10-27-assistant-answers-laid-out",
     dateISO: "2026-10-27",
     title: "The assistant's answers are laid out to scan",

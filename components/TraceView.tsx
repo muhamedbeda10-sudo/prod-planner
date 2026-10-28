@@ -16,6 +16,7 @@ import { TraceSearch } from "@/components/TraceSearch";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { Soi } from "@/components/ui";
 import { Meter } from "@/components/Meter";
+import { ODOO_AGREEMENT_TEXT, odooDiffers, odooStateLabel, type ChildMoView } from "@/lib/domain/odooSync";
 
 /* ============================================================================
    Trace — premium ERP record view.
@@ -110,6 +111,7 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
           <StagePipeline stages={stages} totalReq={totalReq} pipeline={t.pipeline} />
           <ComponentProgress pipeline={t.pipeline} />
           <OnOdoo rows={t.odoo} />
+          <OdooChildren rows={t.odooChildren} />
           <Records t={t} />
         </div>
 
@@ -603,7 +605,16 @@ function OnOdoo({ rows }: { rows: TraceOdooRow[] }) {
                   <td className="px-4 py-2 ltr font-bold whitespace-nowrap select-all">{r.odooMo || <Chip tone="warn">needs MO</Chip>}</td>
                   <td className="px-4 py-2 ltr text-xs text-muted whitespace-nowrap">{r.fgCode || "—"}</td>
                   <td className="px-4 py-2 text-end tabnum font-bold">{r.qty}</td>
-                  <td className="px-4 py-2"><Chip tone={r.done ? "ok" : r.status === "Blocked" ? "bad" : r.status === "Cancelled" ? "muted" : "warn"}>{r.status}</Chip></td>
+                  <td className="px-4 py-2">
+                    <span className="inline-flex flex-wrap items-center gap-1">
+                      <Chip tone={r.done ? "ok" : r.status === "Blocked" ? "bad" : r.status === "Cancelled" ? "muted" : "warn"}>{r.status}</Chip>
+                      {odooDiffers(r.agreement) && (
+                        <span title={ODOO_AGREEMENT_TEXT[r.agreement].hint}>
+                          <Chip tone={r.agreement === "closedInOdoo" ? "ok" : "bad"}>{ODOO_AGREEMENT_TEXT[r.agreement].label}</Chip>
+                        </span>
+                      )}
+                    </span>
+                  </td>
                   <td className="px-4 py-2 tabnum ltr whitespace-nowrap">{formatDateTime(r.doneAtISO)}</td>
                   <td className="px-4 py-2 text-xs text-muted whitespace-nowrap">{r.by ?? "—"}</td>
                 </tr>
@@ -612,6 +623,56 @@ function OnOdoo({ rows }: { rows: TraceOdooRow[] }) {
           </table>
         </div>
       )}
+    </section>
+  );
+}
+
+/** The sub-assembly MOs Odoo has under the order — its tank, top cover, core
+ *  frame, cable box, arrester and monobloc box, and the fins under the tank —
+ *  as the last Odoo sync read them. */
+function OdooChildren({ rows }: { rows: ChildMoView[] }) {
+  if (rows.length === 0) return null;
+  const orders = [...new Set(rows.map((r) => r.parentMo))];
+  const open = rows.filter((r) => r.state !== "done").length;
+  return (
+    <section id="odoo-mos" className="rounded-2xl bg-surface border border-border/60 shadow-sm overflow-hidden scroll-mt-28">
+      <div className="px-5 py-3 border-b border-border/40 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h2 className="text-sm font-extrabold uppercase tracking-wide">Odoo MOs</h2>
+        <span className="text-xs text-muted">the sub-assembly MOs under {orders.length === 1 ? "the order" : `${orders.length} orders`}, as Odoo links them</span>
+        <div className="ms-auto flex flex-wrap items-center gap-1.5">
+          <Chip tone={open ? "warn" : "ok"}>{rows.length - open}/{rows.length} done</Chip>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="text-left text-[11px] uppercase tracking-wide text-muted border-b border-border/40">
+              {orders.length > 1 && <th className="px-4 py-2">Order</th>}
+              <th className="px-4 py-2">Item</th>
+              <th className="px-4 py-2">Odoo MO</th>
+              <th className="px-4 py-2">Product</th>
+              <th className="px-4 py-2 text-end">Made / qty</th>
+              <th className="px-4 py-2">Odoo state</th>
+              <th className="px-4 py-2">Closed on</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={`${r.parentMo}|${r.name}`} className="border-t border-border/40 hover:bg-brand-light/20">
+                {orders.length > 1 && <td className="px-4 py-2 ltr text-xs whitespace-nowrap">{r.parentMo}</td>}
+                <td className="px-4 py-2 whitespace-nowrap"><b>{r.item || "—"}</b></td>
+                <td className="px-4 py-2 ltr font-bold whitespace-nowrap select-all" title={r.sharedWith.length ? `Shared with ${r.sharedWith.join(", ")}` : undefined}>
+                  {r.name}{r.sharedWith.length > 0 && <span className="text-muted font-normal text-xs"> · shared</span>}
+                </td>
+                <td className="px-4 py-2 ltr text-xs text-muted whitespace-nowrap">{r.productCode || "—"}</td>
+                <td className="px-4 py-2 text-end tabnum whitespace-nowrap">{r.qtyProduced} / <b>{r.qty}</b> <span className="text-xs text-muted">{r.uom}</span></td>
+                <td className="px-4 py-2"><Chip tone={r.state === "done" ? "ok" : r.linkHow === "unresolved" ? "bad" : "warn"}>{odooStateLabel(r.state)}</Chip></td>
+                <td className="px-4 py-2 tabnum ltr whitespace-nowrap">{formatDateTime(r.doneAtISO)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

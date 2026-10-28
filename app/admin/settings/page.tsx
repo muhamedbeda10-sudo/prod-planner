@@ -1,12 +1,14 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { getSettings } from "@/lib/server/data";
-import { Boxes } from "lucide-react";
+import { Boxes, PlugZap } from "lucide-react";
 import { PageHead } from "@/components/ui";
 import { SectionCard } from "@/components/primitives";
 import { TankTrackingToggle } from "./TankTrackingToggle";
 import { MachinePlanningToggle } from "./MachinePlanningToggle";
 import { OdooTrackingStart } from "@/components/OdooTrackingStart";
+import { OdooSyncCard } from "@/components/OdooSyncCard";
+import { getOdooSyncStatus } from "@/lib/server/odooSync";
 
 export const metadata = { title: "Settings — ATC" };
 export const dynamic = "force-dynamic";
@@ -20,7 +22,7 @@ export default async function SettingsPage() {
   if (!me) redirect("/login");
   if (!me.isAdmin) redirect("/");
 
-  const settings = await getSettings();
+  const [settings, odoo] = await Promise.all([getSettings(), getOdooSyncStatus()]);
 
   return (
     <div className="space-y-3">
@@ -31,6 +33,9 @@ export default async function SettingsPage() {
         <MachinePlanningToggle initialOn={settings.machinePlanning} />
         <SectionCard icon={<Boxes size={16} aria-hidden />} title="Odoo monthly plan tracking" description="Where the tracker starts reading Odoo's closings into the monthly plan">
           <OdooTrackingStart initialDate={settings.odooTrackingFrom} />
+        </SectionCard>
+        <SectionCard icon={<PlugZap size={16} aria-hidden />} title="Odoo sync" description="Odoo read twice a working day: the close-out log's MOs, the sub-assembly MOs under each open order, and SF01's on-hand">
+          <OdooSyncCard status={odoo} />
         </SectionCard>
       </div>
     </div>

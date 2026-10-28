@@ -173,7 +173,7 @@ export const AI_USER_COLUMNS = ["id", "name", "active"] as const;
  *  Only data that lives on ONE screen is listed: the orders, the daily log,
  *  the plans and the machines are every screen's, and stay readable. */
 export const AI_TAB_TABLES: Record<string, readonly string[]> = {
-  odoo: ["OdooEntry", "OdooNote"],
+  odoo: ["OdooEntry", "OdooNote", "OdooMoState"],
   consumables: [
     "ConsumableIssue", "ConsumableIssueRevision", "ConsumableItem", "ConsumableLimit",
     "ConsumableCatalogueChange", "ConsumableIssueRecipient", "PowderScrap", "PowderScrapRevision", "ConsumableHeadcount",

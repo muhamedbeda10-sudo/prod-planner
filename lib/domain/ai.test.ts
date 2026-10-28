@@ -220,7 +220,7 @@ describe("questionContext", () => {
 describe("hidden screens close their tables to the assistant", () => {
   it("finds a closed table a query names, quoted as it must be", () => {
     const blocked = blockedTablesFor(new Set(["odoo", "calendar"]));
-    expect(blocked).toEqual(["OdooEntry", "OdooNote"]);
+    expect(blocked).toEqual(["OdooEntry", "OdooNote", "OdooMoState"]);
     expect(blockedTableIn(`SELECT count(*) FROM "OdooEntry"`, blocked)).toBe("OdooEntry");
     expect(blockedTableIn(`SELECT count(*) FROM "MasterOrder"`, blocked)).toBeNull();
     // a query given as text, its name built with chr(34), is refused outright

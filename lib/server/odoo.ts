@@ -7,6 +7,8 @@ import { blockedItem, isDoneStatus, odooRowBom, odooRowBomLabel, parseOdooSheet,
 import { buildOdooDashboard, comparePeriod, type OdooBasis, type OdooCompare, type OdooDashboardData, type OdooPeriod, type OdooSeries } from "@/lib/domain/odooStats";
 import { buildOdooInsights, type OdooInsightRow, type OdooInsights } from "@/lib/domain/odooInsights";
 import { candidateBoms, candidateMos, moKey, moParent, nestingKey, rowMaterialState, type MoMaterialState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { effectiveDoneAt, normMo } from "@/lib/domain/odooSync";
+import { moStatesOf, odooFactsFor } from "@/lib/server/odooFacts";
 
 export interface OdooPageData {
   entries: OdooEntryView[];
@@ -61,9 +63,12 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
   // panel row's material sits under
   const ledgerIds = rows.map((r) => r.ledgerId).filter((id): id is number => id !== null);
   const ledgers = ledgerIds.length
-    ? await prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, mo: true, bom: true } })
+    ? await prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, mo: true, bom: true, item: true } })
     : [];
   const { moOfLedger, bomOfLedger } = ledgerMaps(ledgers);
+  // what the last Odoo sync read: each MO's state, and the open MOs a row
+  // still waiting for its number can take
+  const facts = await odooFactsFor(rows, new Map(ledgers.map((l) => [l.id, { mo: l.mo, item: l.item }])));
 
   const entries: OdooEntryView[] = rows.map((r) => ({
     mo: r.ledgerId !== null ? (moOfLedger.get(r.ledgerId) ?? null) : null,
@@ -85,6 +90,7 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
     fgGuessed: r.fgGuessed,
     bom: odooRowBom(r.fgCode, r.ledgerId !== null ? bomOfLedger.get(r.ledgerId) : null, soiBoms[(r.soi ?? "").trim().toUpperCase()] ?? []),
     notes: r.notes.map((n) => ({ id: n.id, text: n.text, atISO: n.at.toISOString(), by: n.recordedBy, blockedItem: blockedItem(n.text) })),
+    odoo: facts.get(r.id),
   }));
 
   const uniq = (xs: (string | null)[]) => [...new Set(xs.map((x) => (x ?? "").trim()).filter(Boolean))].sort();
@@ -191,7 +197,7 @@ export async function getOdooRowMaterial(id: number): Promise<{ entry: OdooEntry
   if (!r) return null;
   const soi = (r.soi ?? "").trim().toUpperCase();
   const [ledger, orders] = await Promise.all([
-    r.ledgerId !== null ? prisma.handoverEntry.findUnique({ where: { id: r.ledgerId }, select: { mo: true, bom: true } }) : Promise.resolve(null),
+    r.ledgerId !== null ? prisma.handoverEntry.findUnique({ where: { id: r.ledgerId }, select: { mo: true, bom: true, item: true } }) : Promise.resolve(null),
     soi ? prisma.masterOrder.findMany({ where: { line: r.line, soi: { equals: soi, mode: "insensitive" } }, select: { bom: true, mo: true } }) : Promise.resolve([]),
   ]);
   const soiBoms: Record<string, string[]> = soi ? { [soi]: [...new Set(orders.map((o) => o.bom.trim().toUpperCase()).filter(Boolean))] } : {};
@@ -216,6 +222,7 @@ export async function getOdooRowMaterial(id: number): Promise<{ entry: OdooEntry
     fgGuessed: r.fgGuessed,
     bom: odooRowBom(r.fgCode, ledger?.bom, soiBoms[soi] ?? []),
     notes: r.notes.map((n) => ({ id: n.id, text: n.text, atISO: n.at.toISOString(), by: n.recordedBy, blockedItem: blockedItem(n.text) })),
+    odoo: (await odooFactsFor([r], new Map(r.ledgerId !== null && ledger ? [[r.ledgerId, { mo: ledger.mo, item: ledger.item }]] : []))).get(r.id),
   };
   return { entry, nesting: await nestingOf([entry], r.line, soiBoms, soiMos), needCtx: { lv: r.line === "LV", soiBoms, soiMos } };
 }
@@ -310,13 +317,18 @@ async function statRows(fromISO: string | null, toISO: string): Promise<OdooInsi
     },
     select: { date: true, product: true, qty: true, status: true, doneAt: true, fgCode: true, odooMo: true, soi: true, ledgerId: true },
   });
-  const boms = await resolveRowBoms(rows);
-  return rows.map((r, i) => ({
+  const [boms, states] = await Promise.all([resolveRowBoms(rows), moStatesOf(rows.map((r) => r.odooMo))]);
+  return rows.map((r, i) => {
+    // the day a closing counts on: Odoo's own closing when the sync read it
+    const odooDone = states.get(normMo(r.odooMo))?.doneAtISO;
+    const closed = effectiveDoneAt(r, odooDone ? new Date(odooDone) : null);
+    return {
     dateISO: toISODate(r.date), product: r.product, qty: r.qty, status: r.status,
-    doneISO: r.doneAt ? factoryDayISO(r.doneAt) : null,
+    doneISO: closed ? factoryDayISO(closed) : null,
     bom: odooRowBomLabel(boms[i]),
     hasMo: r.odooMo.trim() !== "",
-  }));
+    };
+  });
 }
 
 /** The dashboard's numbers for one period, compared with the period before it. */

@@ -14,7 +14,7 @@ import { useCallback, useMemo, useState, useTransition, Fragment } from "react";
 import {
   ODOO_PRODUCTS, ODOO_STATUSES, ODOO_OPEN_STATUS, ODOO_DONE_STATUS, ODOO_CANCELLED_STATUS, CANCEL_NEEDS_NOTE,
   cancelLocked, isCancelledStatus, isDoneStatus, isOpenStatus, EMPTY_ODOO_FILTERS, filterOdooEntries, groupOdooEntries,
-  odooItemTotals, odooScopeLabel, singleDayOf, type OdooItemTotal,
+  odooItemTotals, odooScopeLabel, singleDayOf, odooDiffers, type OdooItemTotal,
   type OdooEntryView, type OdooGroup, type OdooNoteView, type OdooTone, type OdooFilters,
 } from "@/lib/domain/odoo";
 import { sourceLabel } from "@/lib/domain/odooMirror";
@@ -28,6 +28,7 @@ import { MO_MATERIAL_FLAG, MO_MATERIAL_STATES, entryMaterialNeed, moMaterialFlag
 import { ODOO_CHANGED_EVENT } from "@/lib/domain/odooAlerts";
 import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, addOdooNote, deleteOdooNote, updateOdooGroup, deleteOdooEntries } from "@/app/odoo/actions";
 import { factoryDayISO } from "@/lib/domain/dates";
+import { ODOO_AGREEMENT_TEXT, odooStateLabel, type RowOdooFacts } from "@/lib/domain/odooSync";
 
 // The ODOO log — the office's daily log of Odoo close attempts, one strip per
 // row, the columns of the sheet it replaces: Date · SOI# · FG-CODE · Product ·
@@ -283,6 +284,67 @@ function DoneStamp({ e }: { e: OdooEntryView }) {
   return (
     <span className="text-[10px] text-muted tabnum ltr" title="When the status was moved to Done — the day the dashboard counts the close on" suppressHydrationWarning>
       closed {stamp(e.doneAtISO)}
+    </span>
+  );
+}
+
+const AGREEMENT_PILL = { ok: "pill-ok", warn: "pill-warn", bad: "pill-bad", muted: "pill-muted" } as const;
+
+/** What the last Odoo sync read about the row's MO, under it: closed there,
+ *  still open there while Done here, renamed, or not found. Nothing while the
+ *  two agree on an open MO, or before the sync has read it. */
+function OdooStateTag({ facts }: { facts?: RowOdooFacts }) {
+  if (!facts?.state) return null;
+  const st = facts.state;
+  const t = ODOO_AGREEMENT_TEXT[facts.agreement];
+  const closedAt = st.doneAtISO ? ` on ${formatDateTime(st.doneAtISO)}` : "";
+  const renamed = st.found && st.currentName && st.currentName !== st.name;
+  const show = facts.agreement !== "agree" || st.state === "done";
+  if (!show && !renamed) return null;
+  const label = facts.agreement === "agree" ? "Odoo ✓" : t.label;
+  const title = [
+    facts.agreement === "agree" ? `Closed in Odoo${closedAt}` : `${t.hint}${closedAt}`,
+    st.found ? `Odoo state: ${odooStateLabel(st.state)}` : "",
+    renamed ? `Odoo renamed it ${st.currentName} when it split the order` : "",
+    `Read ${formatDateTime(st.checkedAtISO)}`,
+  ].filter(Boolean).join(" · ");
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1 font-normal" title={title}>
+      {show && <span className={`pill ${AGREEMENT_PILL[t.tone]} text-[10px]`}>{label}</span>}
+      {renamed && <span className="text-[10px] text-muted ltr">now {st.currentName}</span>}
+      <span className="sr-only">{title}</span>
+    </span>
+  );
+}
+
+/** The open MOs Odoo has under the closing's order and component — one click
+ *  books the row (or every row of the line) against it. Only a suggestion:
+ *  the MO can still be typed. */
+function MoSuggest({ ids, facts }: { ids: number[]; facts?: RowOdooFacts }) {
+  const a = useAction();
+  if (!facts?.suggest.length) return null;
+  const use = (mo: string) => {
+    const fd = new FormData();
+    fd.set("ids", ids.join(","));
+    fd.set("odooMo", mo);
+    a.run(setOdooMo, fd, "Saved.");
+  };
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1 font-normal no-print" role="group" aria-label="Odoo's open MOs for this closing">
+      <span className="text-[10px] text-muted">Odoo:</span>
+      {facts.suggest.map((c) => {
+        const left = Math.max(0, c.qty - c.qtyProduced);
+        return (
+          <button
+            key={c.name} type="button" disabled={a.pending} onClick={(ev) => { ev.stopPropagation(); use(c.name); }}
+            className="btn btn-sm btn-secondary !px-1.5 !py-0.5 min-h-6 text-[11px] ltr"
+            title={`Use ${c.name} — ${odooStateLabel(c.state)}, ${left} of ${c.qty} still to make${c.productCode ? ` · ${c.productCode}` : ""}${c.sharedWith.length ? ` · shared with ${c.sharedWith.join(", ")}` : ""}`}
+          >
+            {c.name} <span className="text-muted tabnum">· {left}</span>
+          </button>
+        );
+      })}
+      {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
     </span>
   );
 }
@@ -589,8 +651,13 @@ function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: 
         </td>
         <td className={cell} onClick={open} title={rowTitle}>{e.product}</td>
         <td className={`${cell} ltr text-xs font-bold`} onClick={!e.odooMo && canEdit ? undefined : open} title={flag ? flag.text : e.odooMo ? rowTitle : "Odoo's MO is not known here — type it once the MO is printed from Odoo"}>
-          {e.odooMo ? e.odooMo : canEdit ? (
-            <InlineValue ids={[e.id]} name="odooMo" value="" placeholder="SF01/MO/… (Enter)" action={setOdooMo} warn={false} hint="Type Odoo's MO number for this closing — Enter saves" />
+          {e.odooMo ? (
+            <span className="inline-flex flex-col gap-0.5">{e.odooMo}<OdooStateTag facts={e.odoo} /></span>
+          ) : canEdit ? (
+            <span className="inline-flex flex-col gap-1">
+              <InlineValue ids={[e.id]} name="odooMo" value="" placeholder="SF01/MO/… (Enter)" action={setOdooMo} warn={false} hint="Type Odoo's MO number for this closing — Enter saves" />
+              <MoSuggest ids={[e.id]} facts={e.odoo} />
+            </span>
           ) : (
             <span className="pill pill-warn text-[10px]">needs MO</span>
           )}
@@ -744,16 +811,21 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
         </td>
         <td className={cell} onClick={details} title={rowTitle}>{head.product}</td>
         <td className={`${cell} ltr text-xs font-bold`} onClick={!head.odooMo && canEdit ? undefined : details} title={flag?.text}>
-          {head.odooMo ? head.odooMo : canEdit ? (
-            <InlineValue
-              ids={ids}
-              name="odooMo"
-              value=""
-              placeholder="SF01/MO/… (Enter)"
-              action={setOdooMo}
-              warn={false}
-              hint={`Type Odoo's MO once — it is written to all ${g.rows.length} closings on this line`}
-            />
+          {head.odooMo ? (
+            <span className="inline-flex flex-col gap-0.5">{head.odooMo}<OdooStateTag facts={head.odoo} /></span>
+          ) : canEdit ? (
+            <span className="inline-flex flex-col gap-1">
+              <InlineValue
+                ids={ids}
+                name="odooMo"
+                value=""
+                placeholder="SF01/MO/… (Enter)"
+                action={setOdooMo}
+                warn={false}
+                hint={`Type Odoo's MO once — it is written to all ${g.rows.length} closings on this line`}
+              />
+              <MoSuggest ids={ids} facts={head.odoo} />
+            </span>
           ) : (
             <span className="pill pill-warn text-[10px]">needs MO</span>
           )}
@@ -1037,6 +1109,9 @@ export function OdooClient({
     [pick, filters]
   );
   const readyOn = filters.closed === "open" && filters.mo === "has";
+  // the rows the last Odoo sync read differently — Done here but open there,
+  // closed there but open here, cancelled there, or no such MO
+  const differs = useMemo(() => pick({ ...filters, odoo: "all" }).filter((e) => odooDiffers(e.odoo?.agreement)).length, [pick, filters]);
   // what the Notes and MO dropdowns did, as two more counts
   const withNotes = useMemo(() => pick({ ...filters, notes: "all" }).filter((e) => e.notes.length > 0).length, [pick, filters]);
   // the colours, each counted with the colour filter lifted
@@ -1105,6 +1180,16 @@ export function OdooClient({
               />
             </>
           )}
+          {(differs > 0 || filters.odoo === "differs") && (
+            <CountFilter
+              n={differs}
+              label="differ from Odoo"
+              tone="text-bad-fg"
+              on={filters.odoo === "differs"}
+              title="Rows the last Odoo sync read differently: Done here but still open in Odoo, closed in Odoo but open here, cancelled in Odoo, or an MO Odoo does not have"
+              onClick={() => setFilters({ ...filters, odoo: filters.odoo === "differs" ? "all" : "differs" })}
+            />
+          )}
           {elsewhereLink && <span className="ms-1">{elsewhereLink}</span>}
           {(needMo > 0 || filters.mo === "missing") && (
             <>
@@ -1163,7 +1248,7 @@ export function OdooClient({
                   <Th label="SOI #" full="SOI#" />
                   <Th label="BOM" full="The BOM — from the closing recorded on the Plan Tracker, else the SOI's order" />
                   <Th label="Product" />
-                  <Th label="MO #" full="MO#" hint="Odoo's MO number — typed once the MO is printed from Odoo" />
+                  <Th label="MO #" full="MO#" hint="Odoo's MO number — typed once the MO is printed from Odoo. Under it: what the last Odoo sync read (closed there, still open there, renamed, not found), and for a row with no MO the open MOs Odoo has for it" />
                   <Th label="Qty" unit="pcs" full="QTY" center />
                   <Th label="Status" hint="✓ Done · ✗ Cancelled — cancelling needs a note first" />
                   <Th label="Notes" hint="What Odoo said and what was done — one note at a time, newest first" />

@@ -1,6 +1,7 @@
 // ODOO close-out log — pure helpers shared by the server and the form.
 
 import { calendarDate, excelSerialToDate } from "./dates";
+import type { RowOdooFacts } from "./odooSync";
 
 /** The product names as Odoo's FG codes call them — a dropdown, not a
  *  constraint: anything typed is kept. */
@@ -115,6 +116,9 @@ export interface OdooEntryView {
   bom: OdooRowBom;
   /** Newest first. */
   notes: OdooNoteView[];
+  /** What the last Odoo sync read about the row's MO — absent where the
+   *  screen does not ask for it. */
+  odoo?: RowOdooFacts;
 }
 
 /** A row's BOM and how it is known: from the closing that wrote the row
@@ -289,9 +293,18 @@ export interface OdooFilters {
   closed: OdooClosedFilter;
   /** "" = both product lines, else TR or LV. */
   line: string;
+  /** Only the rows the last Odoo sync read differently from the log. */
+  odoo?: "all" | "differs";
 }
 
-export const EMPTY_ODOO_FILTERS: OdooFilters = { q: "", product: "", status: "", notes: "all", mo: "all", closed: "all", line: "" };
+export const EMPTY_ODOO_FILTERS: OdooFilters = { q: "", product: "", status: "", notes: "all", mo: "all", closed: "all", line: "", odoo: "all" };
+
+/** How a row and Odoo can read differently and want someone to look
+ *  (lib/domain/odooSync.ts odooAgreement): Done here but open in Odoo, open
+ *  here but closed there, cancelled there, an MO of another component, or no
+ *  such MO there. */
+export const ODOO_DIFFERS = ["openInOdoo", "closedInOdoo", "cancelledInOdoo", "otherPart", "notFound"] as const;
+export const odooDiffers = (agreement: string | null | undefined) => (ODOO_DIFFERS as readonly string[]).includes(agreement ?? "");
 
 /**
  * The BOM inside an FG code.
@@ -401,6 +414,7 @@ export function filterOdooEntries(entries: OdooEntryView[], f: OdooFilters): Odo
     if (f.mo === "guessed" && !e.fgGuessed) return false;
     if (f.closed === "open" && e.done) return false;
     if (f.closed === "done" && !e.done) return false;
+    if (f.odoo === "differs" && !odooDiffers(e.odoo?.agreement)) return false;
     if (q) {
       const hay = [e.soi ?? "", e.fgCode, ...e.bom.boms, e.odooMo, e.product, e.status, ...e.notes.map((n) => n.text)].join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
