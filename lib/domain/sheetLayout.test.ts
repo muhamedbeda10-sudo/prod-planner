@@ -47,6 +47,16 @@ describe("layoutSheets", () => {
     expect(r.sheets[0].rows).toHaveLength(4);
   });
 
+  it("keeps only the columns asked for, in their order, and lays out the rest on them", () => {
+    const r = ok(layoutSheets(nested, "S", { columns: ["actual sheets", "MO", "MO"], totals: ["Actual sheets"] }));
+    expect(r.sheets[0].rows[0]).toEqual({ "Actual sheets": 5, MO: "A" });
+    expect(Object.keys(r.sheets[0].rows[0])).toEqual(["Actual sheets", "MO"]);
+    expect(r.sheets[0].total).toEqual({ "Actual sheets": 9, MO: "Total" });
+    expect(layoutSheets(nested, "S", { columns: ["MO", "Weight"] })).toEqual({ error: expect.stringContaining(`no column "Weight"`) });
+    // a column left out is not there for the rest of the layout
+    expect(layoutSheets(nested, "S", { columns: ["MO"], totals: ["BOM sheets"] })).toEqual({ error: expect.stringContaining(`no column "BOM sheets"`) });
+  });
+
   it("refuses a column the sheet does not have, naming the ones it has", () => {
     expect(layoutSheets(nested, "S", { totals: ["Weight"] })).toEqual({ error: expect.stringMatching(/no column "Weight".*MO, Thickness mm/) });
     expect(layoutSheets(nested, "S", { splitBy: "Size", nonBlank: ["Kg"] })).toEqual({ error: expect.stringContaining(`"Size", "Kg"`) });

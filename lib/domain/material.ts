@@ -17,6 +17,8 @@
 //   sheets for produced  = actual per unit × units produced
 // "The sheet says 50 sheets made 30 units; 5 were made — so 8.333 were used."
 
+import { monthLabelSortKey } from "./dates";
+
 /** Sheet counts are fractions of a sheet (0.429 of a sheet per unit). Excel
  *  left 0.564 × 3 as 1.6919999999999997; the nesting sheet quotes its figures
  *  to FOUR decimals (0.6216 a unit, 1.8648 for the job), so that is the
@@ -194,6 +196,10 @@ export interface MaterialLineView extends MaterialLineInput {
   forProduced: number | null; // actualPerUnit × producedQty
   updatedISO: string;
   recordedBy: string | null;
+  /** The monthly plans the line's order was in, newest first (materialPlanMonths). */
+  planMonths: string[];
+  /** What tied the line to its plan: its own MO, its SOI, or its BOM; null when nothing did. */
+  planMatch: MaterialPlanMatch | null;
 }
 
 /** The identity of a line — one per month × BOM × order × part × material ×
@@ -412,9 +418,11 @@ export interface MaterialFilters {
   thicknessMm: string; // "" = any; the number as text, as the select carries it
   sheetSize: string; // "" = any
   status: MaterialStatusFilter;
+  /** A monthly plan's label ("October 2026"); NO_PLAN_MONTH for the lines no plan carries; "" = any. */
+  planMonth: string;
 }
 
-export const EMPTY_MATERIAL_FILTERS: MaterialFilters = { q: "", partCode: "", material: "", thicknessMm: "", sheetSize: "", status: "all" };
+export const EMPTY_MATERIAL_FILTERS: MaterialFilters = { q: "", partCode: "", material: "", thicknessMm: "", sheetSize: "", status: "all", planMonth: "" };
 
 export function filterMaterialLines(lines: MaterialLineView[], f: MaterialFilters): MaterialLineView[] {
   const q = f.q.trim().toLowerCase();
@@ -423,6 +431,7 @@ export function filterMaterialLines(lines: MaterialLineView[], f: MaterialFilter
     if (f.material && l.material !== f.material) return false;
     if (f.thicknessMm && String(l.thicknessMm) !== f.thicknessMm) return false;
     if (f.sheetSize && l.sheetSize !== f.sheetSize) return false;
+    if (f.planMonth && !(f.planMonth === NO_PLAN_MONTH ? l.planMonths.length === 0 : l.planMonths.includes(f.planMonth))) return false;
     switch (f.status) {
       case "nested": if (l.sheetsUsed === null) return false; break;
       case "notNested": if (l.sheetsUsed !== null) return false; break;
@@ -436,6 +445,134 @@ export function filterMaterialLines(lines: MaterialLineView[], f: MaterialFilter
     }
     return true;
   });
+}
+
+// ---- the monthly plan a line belongs to ----
+
+/** The filter value for the lines no monthly plan carries — the tracker's own "No month" mark. */
+export const NO_PLAN_MONTH = "—";
+
+export type MaterialPlanMatch = "mo" | "soi" | "bom";
+
+/** An order of the registry as the plan filter reads it: its keys and the monthly plans it was in. */
+export interface MaterialPlanOrder {
+  mo: string;
+  soi: string | null;
+  bom: string;
+  /** Every monthly plan the order appeared in (MasterOrder.months, else its source). */
+  months: string[];
+}
+
+export interface MaterialPlanIndex {
+  byMo: Map<string, string[]>;
+  bySoi: Map<string, string[]>;
+  byBom: Map<string, string[]>;
+}
+
+const planKey = (v: string | null | undefined) => (v ?? "").trim().toUpperCase();
+
+/** The registry's orders by MO, by SOI and by BOM — each key with the union
+ *  of its orders' months. */
+export function materialPlanIndex(orders: readonly MaterialPlanOrder[]): MaterialPlanIndex {
+  const idx: MaterialPlanIndex = { byMo: new Map(), bySoi: new Map(), byBom: new Map() };
+  const add = (m: Map<string, string[]>, k: string, months: string[]) => {
+    if (!k || months.length === 0) return;
+    const cur = m.get(k);
+    if (!cur) { m.set(k, [...months]); return; }
+    for (const x of months) if (!cur.includes(x)) cur.push(x);
+  };
+  for (const o of orders) {
+    const months = o.months.map((x) => x.trim()).filter(Boolean);
+    add(idx.byMo, planKey(o.mo), months);
+    add(idx.bySoi, planKey(o.soi), months);
+    add(idx.byBom, planKey(o.bom), months);
+  }
+  // each key's months sorted once, newest first — every line of it reads the same array
+  for (const m of [idx.byMo, idx.bySoi, idx.byBom]) for (const [k, v] of m) m.set(k, sortPlanMonths(v));
+  return idx;
+}
+
+/** Newest month first; labels that are not months last, in their own order. */
+export function sortPlanMonths(months: Iterable<string>): string[] {
+  return [...months].sort((a, b) => monthLabelSortKey(b) - monthLabelSortKey(a) || a.localeCompare(b));
+}
+
+/**
+ * The monthly plans a line of the sheet belongs to, by the surest key it
+ * shares with the registry: its own MO (the panels' sheet files each order's
+ * MO; a transformer line sometimes does), else its SOI (one sales order item,
+ * whatever MO each part got in Odoo). Only a line with NEITHER — one that
+ * covers its BOM as a whole — goes by its BOM, and so shows under every month
+ * the code was planned in. A line whose MO or SOI finds no order is in no
+ * plan: a mistyped key is shown, never guessed at through its BOM, which
+ * would file it under months that are not its own.
+ */
+export function materialPlanMonths(l: Pick<MaterialLineInput, "mo" | "soi" | "bom">, idx: MaterialPlanIndex): { months: string[]; match: MaterialPlanMatch | null } {
+  const byMo = idx.byMo.get(planKey(l.mo));
+  if (byMo) return { months: byMo, match: "mo" };
+  const bySoi = idx.bySoi.get(planKey(l.soi));
+  if (bySoi) return { months: bySoi, match: "soi" };
+  const own = !!planKey(l.mo) || !!planKey(l.soi);
+  const byBom = own ? undefined : idx.byBom.get(planKey(l.bom));
+  return byBom ? { months: byBom, match: "bom" } : { months: [], match: null };
+}
+
+/** A plan month as asked (the assistant, a typed value): the lines' own
+ *  label whatever its case, NO_PLAN_MONTH for "none" (or the mark itself), ""
+ *  for nothing asked — and null for a month no line carries. */
+export function resolvePlanMonth(asked: string, options: readonly string[]): string | null {
+  const a = asked.trim();
+  if (!a) return "";
+  if (a.toLowerCase() === "none" || a === NO_PLAN_MONTH) return NO_PLAN_MONTH;
+  return options.find((m) => m.toLowerCase() === a.toLowerCase()) ?? null;
+}
+
+/** The plan months the lines carry, newest first — the filter's options. */
+export function materialPlanMonthOptions(lines: readonly Pick<MaterialLineView, "planMonths">[]): string[] {
+  return sortPlanMonths(new Set(lines.flatMap((l) => l.planMonths)));
+}
+
+// ---- what the lines shown add up to: the strip above the table ----
+
+export interface MaterialSummary {
+  lines: number;
+  /** Distinct orders: by SOI where the line has one (as the SOI groups write it), else its MO, else its BOM. */
+  orders: number;
+  forJob: number;
+  /** Sums over the lines that carry the figure; null when none does. */
+  sheetsUsed: number | null;
+  actualWeightKg: number | null;
+  difference: number | null;
+  /** Lines that ate more than their BOM allows (difference below zero). */
+  overLines: number;
+  /** The panels' figures: units planned, sheets the produced units consumed, units still to make. */
+  units: number;
+  forProduced: number | null;
+  remainingUnits: number | null;
+}
+
+/** The sheets a panel line's produced units consumed, as its Consumed column
+ *  shows it: the line's own costing, else the BOM's rate × units produced;
+ *  null while nothing is produced. */
+export function sheetsConsumed(l: Pick<MaterialLineView, "forProduced" | "producedUsed" | "sheetsPerUnit">): number | null {
+  if (l.forProduced !== null) return l.forProduced;
+  return l.producedUsed === null ? null : round4(l.sheetsPerUnit * l.producedUsed);
+}
+
+export function materialSummary(lines: readonly MaterialLineView[]): MaterialSummary {
+  const orders = new Set(lines.map((l) => l.soi.trim() || l.mo.trim() || l.bom.trim()).filter(Boolean));
+  return {
+    lines: lines.length,
+    orders: orders.size,
+    forJob: round4(lines.reduce((a, l) => a + l.forJob, 0)),
+    sheetsUsed: sumOf(lines.map((l) => l.sheetsUsed)),
+    actualWeightKg: sumOf(lines.map((l) => l.actualWeightKg)),
+    difference: sumOf(lines.map((l) => l.difference)),
+    overLines: lines.filter((l) => l.difference !== null && l.difference < 0).length,
+    units: round4(lines.reduce((a, l) => a + l.units, 0)),
+    forProduced: sumOf(lines.map(sheetsConsumed)),
+    remainingUnits: sumOf(lines.map((l) => l.remainingUnits)),
+  };
 }
 
 // ---- the table grouped by SOI, the MOs under it ----

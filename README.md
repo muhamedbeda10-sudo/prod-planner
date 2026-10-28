@@ -195,11 +195,16 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    Units**, not read from its "for Job" column: that column is a figure somebody left behind — change the job
    size and it keeps the old answer (one row of the tracker says 17.6 sheets where 90 units at 0.568 a unit is
    51.1). A sheet with no per-unit rate still falls back to its job column, and the import says how many rows
-   were stale. Import the sheet for a
-   month (re-importing adds new lines and updates changed ones; the same BOM's tank and top-cover lines stay
-   apart), filter by month and, within it, by part, material, thickness, sheet size, status (nested / not
-   nested / with produced / over BOM) or a search across BOM, SOI, part, code and note — the Total row
-   follows the filter.
+   were stale. Import the sheet (re-importing adds new lines and updates changed ones; the same BOM's tank
+   and top-cover lines stay apart), filter by **Plan month** — the monthly plan the line's order is in on the
+   Plan Tracker, found by its MO, else its SOI (a line with neither goes by its BOM; "Not in a plan" lists
+   the lines none finds — a mistyped MO or SOI is never guessed at through the BOM) — and
+   by part, material, thickness, sheet size, status (nested / not nested / with produced / over BOM) or a
+   search across BOM, SOI, part, code and note. A strip above the table adds up what is shown (orders, BOM vs
+   actual for the job, actual weight, the difference and the lines over their BOM), and the Total row follows
+   the filter. **Columns ▾** keeps each person's columns on their account, and the arrows on the band over the
+   headers fold a run of columns (Order, Job, Part, Sheet, Per unit, For the job) and open it again, as on
+   the Plan Tracker.
 7. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
    close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status, plus Notes. Rows come from the floor's
    closings and from the assistant (which can also import the sheet — its first seven columns, the same MO
@@ -504,6 +509,12 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      in `data-ai-title` / `data-ai-about`. A row menu of its own (hold, close, trace…) carries the entry at its foot. The
      browser's own menu stays in a field, on selected text and on Shift + right-click; there is none of it for someone
      without the assistant. Each Ask AI is one question, from the person's AI allowance.
+   - **Export a table with AI** (`components/TableAiExport.tsx`, `lib/tableRead.ts`, `lib/domain/tableExport.ts`):
+     every table on a page carries the assistant's mark at its top-right corner (kept in view while the table scrolls
+     under the bar; none in print, nor for someone without the assistant). A click sends the table as the screen shows
+     it — filters and sort applied, a group's heading as a Group column, a merged cell repeated on each of its rows — as a
+     CSV attached to a new chat; the assistant asks which columns go in the file (all, or which), then makes the Excel
+     with `make_excel`'s `attached` sheet and its `columns` (plain figures become numbers; codes and MOs stay text).
    - **A chart's title explains it** (`components/ChartAbout.tsx`, the shared `Tooltip`'s `interactive` card): resting
      the pointer on a chart card's title or its ⓘ (a tap on a phone, Tab from the keyboard) opens a card with the chart's
      `about` and an **Ask AI about these numbers** button. It costs nothing until that button is pressed.
@@ -605,7 +616,7 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      headers (the Plan Tracker TR/LV, a weekly plan, the Daily log, the Orders Registry, a trace, the ODOO log and its
      days, Material, Physical Material, the consumables' log, limits, edits, summary, monthly review and powder scrap,
      a day's attendance and machine stops) — or the rows of one read-only SELECT, up to 50,000 rows. Any of them can be
-     laid out in the same file (`lib/domain/sheetLayout.ts`): `nonBlank` keeps the rows with given columns filled,
+     laid out in the same file (`lib/domain/sheetLayout.ts`): `columns` keeps only the columns named, in their order, `nonBlank` keeps the rows with given columns filled,
      `splitBy` puts each value of a column on its own sheet (a sheet per thickness, up to 50), and `totals` closes each
      sheet with a Total row over the columns named. Every workbook the app writes — these, and the Floor's and the
      chat's Export buttons (the writer is fetched on the first press) — comes in the house style
