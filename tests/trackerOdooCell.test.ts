@@ -42,8 +42,8 @@ const row = (mo: string, extra: Partial<MasterTrackerRow>, tank: Partial<MasterT
 // OLD was planned before the Odoo tracking start and carried into October:
 // its own closing is unknown. NEW is an October plan with a tracked closing.
 const rows = [
-  row("OLD", { months: ["July 2026", "October 2026"], odooPlanMonth: "July 2026" }, { odooTracked: false, odooClosed: 0 }),
-  row("NEW", { odooPlanMonth: "October 2026" }, { odooTracked: true, odooClosed: 3 }),
+  row("OLD", { months: ["July 2026", "October 2026"], odooPlanMonth: "July 2026", odooExact: false }, { odooTracked: false, odooClosed: 0 }),
+  row("NEW", { odooPlanMonth: "October 2026", odooExact: true }, { odooTracked: true, odooClosed: 3 }),
 ];
 
 function render() {
@@ -59,11 +59,16 @@ beforeEach(() => {
   for (const key of Object.keys(filters)) delete filters[key];
 });
 
-describe("Odoo closings off the Plan Tracker screen, still in the assistant's sheet", () => {
-  it("the screen has no Odoo column — its allocation was the sheet's heaviest work", () => {
+describe("Odoo closings on the Plan Tracker screen and in the assistant's sheet", () => {
+  it("each component ends with an Odoo column: the count from October 2026 on, — before", () => {
     const html = render();
-    expect(html).not.toContain("Odoo closed");
-    expect(html).not.toMatch(/>Odoo</);
+    expect(html.match(/>Odoo<\/th>/g)).toHaveLength(ITEMS.length);
+    // NEW's tank: 3 of 10 closed, a link to its On Odoo records
+    expect(html).toContain('title="Closed in Odoo · NEW · TN: 3 of 10"');
+    expect(html).toContain('href="/trace?mo=NEW&amp;line=TR#on-odoo"');
+    // OLD was planned in July: not counted, not a zero
+    expect(html).toContain("OLD was planned before October 2026");
+    expect(html).not.toContain("Closed in Odoo · OLD");
   });
 
   it("the assistant's sheet reads an MO older than the tracking start as unknown, not zero", () => {

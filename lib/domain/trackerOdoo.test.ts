@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ITEMS } from "./constants";
-import { closesByItself, finishedAndClosedInOdoo, normalizeOdooTrackingStart, odooPlanMonth, trackerOdooQuantities as allocateOdoo, trackerOdooTotal } from "./trackerOdoo";
+import { closesByItself, exactOdooClosings, finishedAndClosedInOdoo, isOdooExactOrder, normalizeOdooTrackingStart, odooPlanMonth, trackerOdooQuantities as allocateOdoo, trackerOdooTotal } from "./trackerOdoo";
 const order = (mo = "MO-1", bom = "BOM-A", soi: string | null = "SO-1", month = "October 2026", planQty = 100) => ({ mo, bom, soi, line: "TR", source: month, months: month, planQty });
-const trackerOdooQuantities = (...args: Parameters<typeof allocateOdoo>) => allocateOdoo(args[0], args[1], args[2], args[3] === undefined ? "2000-01" : args[3]);
+// the allocation of the orders planned before ODOO_EXACT_FROM: these cases
+// keep every order on it, whatever month they name
+const trackerOdooQuantities = (...args: Parameters<typeof allocateOdoo>) => allocateOdoo(args[0], args[1], args[2], args[3] === undefined ? "2000-01" : args[3], { exactFrom: "9999-12", ...args[4] });
 const entry = (extra = {}) => ({ id: 1, date: "2026-09-06", line: "TR", ledgerId: null as number | null, soi: "SO-1", fgCode: "FB-022-BOM-A", product: "Tank", qty: 5, status: "Done", ...extra });
 describe("Odoo closed quantities on the plan tracker", () => {
   it("reads quantities only from Done/Closed TR log rows, not pending attempts or LV", () => {
@@ -139,6 +141,70 @@ describe("Odoo closed quantities on the plan tracker", () => {
     expect(normalizeOdooTrackingStart("2026-09")).toBe("2026-09-01");
     expect(normalizeOdooTrackingStart("2026-09-06")).toBe("2026-09-06");
     expect(normalizeOdooTrackingStart("2026-09-31")).toBe(null);
+  });
+});
+
+describe("exact Odoo closings — the orders planned from October 2026 on", () => {
+  const exact = (...args: Parameters<typeof allocateOdoo>) => allocateOdoo(args[0], args[1], args[2], args[3] ?? "2026-09-06", args[4]);
+
+  it("starts with the October 2026 plan, by the plan that first brought the MO", () => {
+    expect(isOdooExactOrder(order("A", "BOM-A", "SO-1", "October 2026"))).toBe(true);
+    expect(isOdooExactOrder(order("A", "BOM-A", "SO-1", "January 2027"))).toBe(true);
+    expect(isOdooExactOrder(order("A", "BOM-A", "SO-1", "September 2026"))).toBe(false);
+    // carried from September into October: still September's order
+    expect(isOdooExactOrder({ source: "September 2026", months: "September 2026,October 2026" })).toBe(false);
+    expect(isOdooExactOrder({ source: null, months: "" })).toBe(false);
+  });
+
+  it("credits each Done row to the MO it was recorded against, uncapped, and nothing else", () => {
+    const orders = [order("OCT-1", "BOM-A", "SO-1", "October 2026", 4), order("OCT-2", "BOM-A", "SO-1", "October 2026", 4)];
+    const ledgers = [{ id: 7, mo: "OCT-2", bom: "BOM-A", item: "TN" }, { id: 8, mo: "OCT-2", bom: "BOM-A", item: "TC" }, { id: 9, mo: "OCT-2", bom: "BOM-A", item: "TN" }];
+    const entries = [
+      entry({ id: 1, ledgerId: 7, qty: 3 }), entry({ id: 2, ledgerId: 8, qty: 2, product: "Top Cover" }),
+      entry({ id: 3, ledgerId: 9, qty: 2 }), // over the plan: 5 of 4, shown as it is
+      entry({ id: 4, ledgerId: 9, qty: 9, status: "MO to be close" }), // not closed in Odoo yet
+      entry({ id: 5, qty: 50 }), // a project row with no MO: never spread onto an exact order
+    ];
+    const progress = exact(orders, entries, ledgers);
+    expect(progress.counts.get("OCT-2")).toEqual({ TN: 5, TC: 2 });
+    expect(progress.counts.has("OCT-1")).toBe(false);
+    expect(progress.tracked.has(JSON.stringify(["OCT-1", "CF"]))).toBe(true);
+    expect(exactOdooClosings(orders, entries, ledgers)).toEqual(progress.counts);
+  });
+
+  it("goes up as soon as a row is moved to Done", () => {
+    const orders = [order("OCT", "BOM-A", "SO-1", "October 2026", 10)];
+    const ledgers = [{ id: 7, mo: "OCT", bom: "BOM-A", item: "TN" }];
+    expect(exactOdooClosings(orders, [entry({ ledgerId: 7, status: "MO to be close" })], ledgers).size).toBe(0);
+    expect(exactOdooClosings(orders, [entry({ ledgerId: 7, status: "Done" })], ledgers).get("OCT")?.TN).toBe(5);
+  });
+
+  it("ties a typed row through its sub-assembly MO — only when one order holds it", () => {
+    const orders = [order("OCT-1", "BOM-A", "SO-1", "October 2026", 10), order("OCT-2", "BOM-A", "SO-1", "October 2026", 10)];
+    const children = [
+      { name: "SF01/MO/1", parentMo: "OCT-1", item: "TC" },
+      { name: "SF01/MO/2", parentMo: "OCT-1", item: "TN" }, { name: "SF01/MO/2", parentMo: "OCT-2", item: "TN" },
+    ];
+    const entries = [entry({ id: 1, odooMo: "sf01/mo/1 ", product: "Top Cover", qty: 4 }), entry({ id: 2, odooMo: "SF01/MO/2", qty: 6 })];
+    expect(exactOdooClosings(orders, entries, [], children)).toEqual(new Map([["OCT-1", { TC: 4 }]]));
+    // shared with an older order the sync lists apart: still not guessed
+    expect(exactOdooClosings(orders, [entry({ odooMo: "SF01/MO/3" })], [], [{ name: "SF01/MO/3", parentMo: "OCT-1", item: "TN", sharedWith: "SEP-1" }]).size).toBe(0);
+    // the row it credited is not allocated again; the shared one stays a pool
+    const progress = exact(orders, entries, [], null, { children });
+    expect(progress.counts.get("OCT-1")).toEqual({ TC: 4 });
+    expect(progress.unallocated).toEqual([expect.objectContaining({ item: "TN", qty: 6 })]);
+  });
+
+  it("leaves a component the order does not need, and keeps the older orders on the allocation", () => {
+    const orders = [{ ...order("OCT", "BOM-A", "SO-1", "October 2026", 10), eligibleItems: ["TN" as const] }, order("SEP", "BOM-B", "SO-2", "September 2026", 10)];
+    const ledgers = [{ id: 7, mo: "OCT", bom: "BOM-A", item: "CB" }];
+    const progress = exact(orders, [entry({ id: 1, ledgerId: 7, product: "Cable Box" }), entry({ id: 2, soi: "SO-2", fgCode: "FB-022-BOM-B", qty: 3 })], ledgers);
+    expect(progress.counts.has("OCT")).toBe(false);
+    expect(progress.counts.get("SEP")?.TN).toBe(3);
+    // a typed row on the October order's arrester stays its own, not spread onto September's tanks
+    const typed = exact(orders, [entry({ id: 3, odooMo: "SF01/MO/9", soi: "SO-2", fgCode: "FB-022-BOM-B", qty: 4 })], [], null, { children: [{ name: "SF01/MO/9", parentMo: "OCT", item: "AR" }] });
+    expect(typed.counts.size).toBe(0);
+    expect(typed.unallocated).toEqual([]);
   });
 });
 

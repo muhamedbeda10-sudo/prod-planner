@@ -265,25 +265,26 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
 
   const remarksByMo = new Map(masters.map((m) => [m.mo, (m.remarks ?? "").trim()]));
 
-  // ---- the ODOO log's rows born from these closings ----
+  // ---- the ODOO log's rows born from these closings, and the typed ones
+  // naming a sub-assembly MO only these orders hold (the tracker counts both) ----
   const itemOfLedger = new Map(handover.map((h) => [h.id, h.item]));
-  const odooRows = handover.length
+  const childMap = await childMosOf(masters.map((m) => m.mo));
+  const ownChild = new Map<string, string>();
+  for (const c of [...childMap.values()].flat()) if (c.item && c.sharedWith.length === 0) ownChild.set(normMo(c.name), c.item);
+  const odooRows = handover.length || ownChild.size
     ? await prisma.odooEntry.findMany({
-        where: { ledgerId: { in: handover.map((h) => h.id) } },
+        where: { OR: [{ ledgerId: { in: handover.map((h) => h.id) } }, ...(ownChild.size ? [{ ledgerId: null, line: "TR", odooMo: { in: [...ownChild.keys()] } }] : [])] },
         orderBy: [{ date: "asc" }, { id: "asc" }],
         select: { id: true, date: true, product: true, odooMo: true, qty: true, status: true, doneAt: true, fgCode: true, recordedBy: true, ledgerId: true },
       })
     : [];
-  const [states, childMap] = await Promise.all([
-    moStatesOf(odooRows.map((r) => r.odooMo)),
-    childMosOf(masters.map((m) => m.mo)),
-  ]);
+  const states = await moStatesOf(odooRows.map((r) => r.odooMo));
   const odoo: TraceOdooRow[] = odooRows.map((r) => {
     const st = states.get(normMo(r.odooMo)) ?? null;
     // closed on Odoo's own moment when the sync read it
     const closed = effectiveDoneAt(r, st?.doneAtISO ? new Date(st.doneAtISO) : null);
     return {
-      id: r.id, dateISO: toISODate(r.date), item: itemOfLedger.get(r.ledgerId!) ?? "", product: r.product, odooMo: r.odooMo, qty: r.qty,
+      id: r.id, dateISO: toISODate(r.date), item: (r.ledgerId === null ? ownChild.get(normMo(r.odooMo)) : itemOfLedger.get(r.ledgerId)) ?? "", product: r.product, odooMo: r.odooMo, qty: r.qty,
       status: r.status, done: isDoneStatus(r.status), doneAtISO: closed ? closed.toISOString() : null, fgCode: r.fgCode, by: r.recordedBy,
       agreement: odooAgreement(r, st),
     };

@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-tracker-odoo-column",
+    dateISO: "2026-10-28",
+    title: "The Plan Tracker shows what Odoo has closed, per component",
+    where: "Plan Tracker (monthly, transformers) · the assistant",
+    href: "/tracker",
+    body: "Each component on the monthly Plan Tracker ends with an Odoo column: the pieces closed in Odoo — every row of the ODOO log marked Done, counted on the MO it was recorded against, never spread by BOM or guessed. It starts with the October 2026 plans; an order from an earlier plan reads —. A row counts the moment it is moved to Done; click the figure for the order's On Odoo records. A merged BOM row adds up its MOs. The order's closing by itself and the assistant read the same figure.",
+  },
+  {
     id: "2026-10-28-odoo-boms",
     dateISO: "2026-10-28",
     title: "Odoo's BoMs in the app: the tree, the components check, and the open need fills its gaps",

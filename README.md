@@ -77,13 +77,17 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
 3. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item stages and Achievement %
    (completion = MIN over the needed components' final stage). Every number is click-through-traceable
    (`/trace`) to handover rows; the trace's **On Odoo → Closed on** is the real closing moment on the factory
-   clock, as the ODOO tab shows it. The screen shows no Odoo, ETA, Complete or Left columns — allocating the
-   whole Odoo log and forecasting every order made the sheet heavy (`getTrackerSheet` skips the Odoo work).
-   Odoo's closings per component, allocated as below, are still read by the auto-close, the BOM trace and the
-   assistant's tracker sheet (`getMasterTracker`). The sheet (both lines) opens on open orders: closed ones
+   clock, as the ODOO tab shows it. Each component ends with a read-only **Odoo** column: from the
+   **October 2026** plans on (`ODOO_EXACT_FROM`, by the plan that first brought the MO) it is the qty of every
+   Done / Closed row of the ODOO log credited to the MO it was recorded against — the daily-log closing it was
+   born from, or the one order whose sub-assembly MO it names — never spread by BOM and not capped
+   (`exactOdooClosings` in `lib/domain/trackerOdoo.ts`); an order from an earlier plan reads —. The screen reads
+   only those orders' rows (`getTrackerSheet`); the auto-close, the BOM trace and the assistant read the same
+   figure for them and the allocation below for the older orders (`getMasterTracker`). No ETA, Complete or
+   Left columns — forecasting every order made the sheet heavy. The sheet (both lines) opens on open orders: closed ones
    are sent only when **Status** is Closed or All (the table adds `?closed=1`), since they pile up month
    after month.
-   The BOM trace's **On Odoo** closing rows are the primary source per component; separate imports
+   For the orders planned before October 2026: the BOM trace's **On Odoo** closing rows are the primary source per component; separate imports
    are used only where that component has no linked closing records. The ledger identifies the part
    and planner MO, even if a freely typed product or FG code differs. Project-only quantities fill the
    oldest matching tracked plan first, up to each MO/component requirement. The plant’s confirmed recording

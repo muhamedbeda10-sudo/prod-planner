@@ -27,6 +27,7 @@ import { AchCell, ColumnMenu, FoldButton, meterStyle, stageState, stickAt, useAc
 import { itemFinishShare, rowBottleneck } from "@/lib/domain/trackerView";
 
 import { filterMasterTracker, trackerItemStats, trackerStagesOf } from "@/lib/domain/trackerSummary";
+import { ODOO_EXACT_FROM_LABEL } from "@/lib/domain/trackerOdoo";
 
 /** The order's spec columns. Every one of them is the planner's own — the
  *  monthly import writes none of them, so a re-import can never blank what he
@@ -480,7 +481,8 @@ export function MasterTrackerTable({
   // table shape under the stage filter: only the picked columns per item, no Achv.
   // MO, SOI, BOM, KVA, Required lead the row before the per-item stage columns
   // MO · SOI · Customer · BOM · KVA · Fins · Color · CRC · SFM · Required, then the items
-  const itemColsOf = (it: Item) => (!itemShown(it) ? 0 : folded(it) ? 1 : scoped ? stages.length : 4);
+  // an unfolded component ends with its Odoo column
+  const itemColsOf = (it: Item) => (!itemShown(it) ? 0 : folded(it) ? 1 : (scoped ? stages.length : 4) + 1);
   const tableCols =
     1 + COLS.filter((c) => show(c.key) && !(scoped && c.key === "achv")).length +
     ITEMS.reduce((n, it) => n + itemColsOf(it), 0);
@@ -859,8 +861,10 @@ export function MasterTrackerTable({
               {ITEMS.filter(itemShown).map((it) => (
                 <Fragment key={it}>
                   {folded(it) ? <th className="p-1 font-semibold on-tint border-r border-border-strong" title={`${ITEM_NAME[it]} made through its final stage`}>Made %</th>
-                    : scoped ? stages.map((s, i) => <StageHead key={s} shp={isPaintExempt(it)} only={s} borderR={i === stages.length - 1} />)
-                    : <StageHead shp={isPaintExempt(it)} />}
+                    : <>
+                      {scoped ? stages.map((s) => <StageHead key={s} shp={isPaintExempt(it)} only={s} borderR={false} />) : <StageHead shp={isPaintExempt(it)} borderR={false} />}
+                      <th className="p-1 font-semibold on-tint border-r border-border-strong" title={`Closed in Odoo — the Done rows of the ODOO log, each on the MO it was recorded against. Counted from the ${ODOO_EXACT_FROM_LABEL} plans on; an older order reads —`}>Odoo</th>
+                    </>}
                 </Fragment>
               ))}
             </tr>
@@ -941,16 +945,18 @@ export function MasterTrackerTable({
                         <Fragment key={it}>{groupShareCell(members, it)}</Fragment>
                       ) : scoped ? (
                         <Fragment key={it}>
-                          {stages.map((s, i) => (
-                            <Fragment key={s}>{groupCell(gBom, members, it, s, i === stages.length - 1)}</Fragment>
+                          {stages.map((s) => (
+                            <Fragment key={s}>{groupCell(gBom, members, it, s, false)}</Fragment>
                           ))}
+                          {groupOdooCell(gBom, members, it)}
                         </Fragment>
                       ) : (
                         <Fragment key={it}>
                           {groupCell(gBom, members, it, "Cut", false)}
                           {groupCell(gBom, members, it, "Welding", false)}
                           {groupCell(gBom, members, it, "Painting", false)}
-                          {groupCell(gBom, members, it, "Delivered", true)}
+                          {groupCell(gBom, members, it, "Delivered", false)}
+                          {groupOdooCell(gBom, members, it)}
                         </Fragment>
                       )
                     )}
@@ -1370,6 +1376,49 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     );
   }
 
+  /** An order's Odoo closings of one component: the Done rows of the ODOO
+   *  log recorded against its MO, read-only — a click opens its On Odoo
+   *  records. An order planned before ODOO_EXACT_FROM reads — (not counted). */
+  function odooCell(r: MasterTrackerRow, it: Item) {
+    if (!r.odooExact) {
+      return <td className="p-1 text-center text-muted border-r border-border-strong" title={`${r.mo} was planned before ${ODOO_EXACT_FROM_LABEL} — its Odoo closings are not counted here`}><span aria-hidden>—</span><span className="sr-only">Odoo not counted</span></td>;
+    }
+    const value = r.items[it].odooClosed ?? 0;
+    const target = Math.max(0, r.required - r.items[it].osp);
+    return odooFigure(value, target, `${r.mo} · ${it}`, `${traceHref({ mo: r.mo, line: "TR" })}#on-odoo`);
+  }
+  /** The same on a merged BOM row: the sum over its MOs that are counted. */
+  function groupOdooCell(gBom: string, members: MasterTrackerRow[], it: Item) {
+    const needed = members.filter((m) => m.items[it].eligible && !m.items[it].excluded);
+    if (needed.length === 0) {
+      return <td className="na-cell border-r border-border-strong" title={`${it} is not required for any of these ${members.length} MOs`} aria-label={`${it} not required`} />;
+    }
+    const counted = needed.filter((m) => m.odooExact);
+    if (counted.length === 0) {
+      return <td className="p-1 text-center text-muted border-r border-border-strong" title={`These MOs were planned before ${ODOO_EXACT_FROM_LABEL} — their Odoo closings are not counted here`}><span aria-hidden>—</span><span className="sr-only">Odoo not counted</span></td>;
+    }
+    const value = counted.reduce((s, m) => s + (m.items[it].odooClosed ?? 0), 0);
+    const target = counted.reduce((s, m) => s + Math.max(0, m.required - m.items[it].osp), 0);
+    // every piece bought out (OSP): hatched, like the stage cells beside it
+    if (target === 0 && value === 0 && counted.some((m) => m.items[it].osp > 0)) {
+      return <td className="na-cell border-r border-border-strong" title={`${it}: all outsourced (OSP) — nothing to close in Odoo`} aria-label={`${it} outsourced`} />;
+    }
+    const part = counted.length < needed.length ? ` (${counted.length} of ${needed.length} MOs — the others were planned before ${ODOO_EXACT_FROM_LABEL})` : "";
+    return odooFigure(value, target, `${gBom} · ${it}${part}`, `${traceHref({ bom: gBom, line: "TR" })}#on-odoo`);
+  }
+  function odooFigure(value: number, target: number, label: string, href: string) {
+    const meter = meterStyle(value, target);
+    const over = value > target ? ` — ${value - target} more than the plan` : "";
+    const words = `Closed in Odoo · ${label}: ${value <= 0 ? `nothing yet of ${target}` : `${value} of ${target}`}${over}`;
+    return (
+      <td className={`stage-cell ${stageState(value, target, false)} ${meter ? "stage-meter" : ""} p-1 text-center tabnum border-r border-border-strong`} style={meter} title={words}>
+        {value > 0 ? (
+          <Link href={href} onClick={(e) => e.stopPropagation()} className="print-as-text hover:underline" aria-label={words}>{value}</Link>
+        ) : ""}
+      </td>
+    );
+  }
+
   /** A folded component: how much of it is made through its last stage. */
   function shareCell(share: number | null, it: Item, label: string) {
     const pct = share === null ? null : Math.round(share * 100);
@@ -1572,19 +1621,18 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                   if (scoped) {
                     return (
                       <Fragment key={it}>
-                        {stages.map((s, i) => {
-                          const last = i === stages.length - 1;
-                          return (
-                            <Fragment key={s}>
-                              {s === "Cut" && stageCell(r, it, "Cut", c.cut, last, isBn(it, "Cut"))}
-                              {s === "Welding" && stageCell(r, it, "Welding", c.weld, last, isBn(it, "Welding"))}
-                              {s === "Painting" && (isPaintExempt(it)
-                                ? stageCell(r, it, "ShotBlast", c.shp, last, isBn(it, "ShotBlast"))
-                                : stageCell(r, it, "Painting", c.paint, last, isBn(it, "Painting")))}
-                              {s === "Delivered" && stageCell(r, it, "Delivered", c.delivered, last)}
-                            </Fragment>
-                          );
-                        })}
+                        {/* the Odoo column after them closes the component's border */}
+                        {stages.map((s) => (
+                          <Fragment key={s}>
+                            {s === "Cut" && stageCell(r, it, "Cut", c.cut, false, isBn(it, "Cut"))}
+                            {s === "Welding" && stageCell(r, it, "Welding", c.weld, false, isBn(it, "Welding"))}
+                            {s === "Painting" && (isPaintExempt(it)
+                              ? stageCell(r, it, "ShotBlast", c.shp, false, isBn(it, "ShotBlast"))
+                              : stageCell(r, it, "Painting", c.paint, false, isBn(it, "Painting")))}
+                            {s === "Delivered" && stageCell(r, it, "Delivered", c.delivered, false)}
+                          </Fragment>
+                        ))}
+                        {odooCell(r, it)}
                       </Fragment>
                     );
                   }
@@ -1597,7 +1645,8 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                       ) : (
                         stageCell(r, it, "Painting", c.paint, false, isBn(it, "Painting"))
                       )}
-                      {stageCell(r, it, "Delivered", c.delivered, true)}
+                      {stageCell(r, it, "Delivered", c.delivered, false)}
+                      {odooCell(r, it)}
                     </Fragment>
                   );
                 })}
