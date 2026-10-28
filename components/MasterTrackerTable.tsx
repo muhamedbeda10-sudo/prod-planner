@@ -23,7 +23,7 @@ import { itemColor } from "@/lib/domain/productColors";
 import { Check, CheckCheck, ChevronRight, CornerDownRight, Pause, Repeat, Star } from "lucide-react";
 import { useConfirm } from "@/components/DataTable";
 import type { UserPrefs } from "@/lib/domain/userPrefs";
-import { AchCell, ColumnMenu, FoldButton, meterStyle, stageState, stickAt, useAccountSet, useColumns, type Columns } from "@/components/TrackerColumns";
+import { AchCell, ColumnMenu, FoldButton, meterStyle, stageState, stageWords, stickAt, useAccountSet, useColumns, type Columns } from "@/components/TrackerColumns";
 import { itemFinishShare, rowBottleneck } from "@/lib/domain/trackerView";
 
 import { filterMasterTracker, trackerItemStats, trackerStagesOf } from "@/lib/domain/trackerSummary";
@@ -862,7 +862,7 @@ export function MasterTrackerTable({
                 <Fragment key={it}>
                   {folded(it) ? <th className="p-1 font-semibold on-tint border-r border-border-strong" title={`${ITEM_NAME[it]} made through its final stage`}>Made %</th>
                     : <>
-                      {scoped ? stages.map((s) => <StageHead key={s} shp={isPaintExempt(it)} only={s} borderR={false} />) : <StageHead shp={isPaintExempt(it)} borderR={false} />}
+                      {scoped ? stages.map((s) => <StageHead key={s} shp={isPaintExempt(it)} only={s} />) : <StageHead shp={isPaintExempt(it)} />}
                       <th className="p-1 font-semibold on-tint border-r border-border-strong" title={`Closed in Odoo — the Done rows of the ODOO log, each on the MO it was recorded against. Counted from the ${ODOO_EXACT_FROM_LABEL} plans on; an older order reads —`}>Odoo</th>
                     </>}
                 </Fragment>
@@ -946,16 +946,16 @@ export function MasterTrackerTable({
                       ) : scoped ? (
                         <Fragment key={it}>
                           {stages.map((s) => (
-                            <Fragment key={s}>{groupCell(gBom, members, it, s, false)}</Fragment>
+                            <Fragment key={s}>{groupCell(gBom, members, it, s)}</Fragment>
                           ))}
                           {groupOdooCell(gBom, members, it)}
                         </Fragment>
                       ) : (
                         <Fragment key={it}>
-                          {groupCell(gBom, members, it, "Cut", false)}
-                          {groupCell(gBom, members, it, "Welding", false)}
-                          {groupCell(gBom, members, it, "Painting", false)}
-                          {groupCell(gBom, members, it, "Delivered", false)}
+                          {groupCell(gBom, members, it, "Cut")}
+                          {groupCell(gBom, members, it, "Welding")}
+                          {groupCell(gBom, members, it, "Painting")}
+                          {groupCell(gBom, members, it, "Delivered")}
                           {groupOdooCell(gBom, members, it)}
                         </Fragment>
                       )
@@ -1159,7 +1159,7 @@ export function MasterTrackerTable({
    *  difference is recorded in the Daily Log dated today (and flows to the
    *  dept's worklist). A LOWER total records a NEGATIVE correction entry —
    *  the chain guard (painted ≤ welded ≤ cut ≤ order) blocks contradictions. */
-  function stageCell(r: MasterTrackerRow, it: Item, dept: string, value: number, borderR = false, bottleneck = false) {
+  function stageCell(r: MasterTrackerRow, it: Item, dept: string, value: number, bottleneck = false) {
     const k = `${r.mo}|${it}|${dept}`;
     const target = Math.max(0, r.required - r.items[it].osp);
     const state = stageState(value, target, r.hold.onHold);
@@ -1193,7 +1193,7 @@ export function MasterTrackerTable({
 
     return (
       <td
-        className={`stage-cell ${editable ? "stage-editable" : ""} ${state} ${!editing && meterStyle(value, target) ? "stage-meter" : ""} ${bottleneck ? "stage-bottleneck" : ""} p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`}
+        className={`stage-cell ${editable ? "stage-editable" : ""} ${state} ${!editing && meterStyle(value, target) ? "stage-meter" : ""} ${bottleneck ? "stage-bottleneck" : ""} p-1 text-center tabnum`}
         style={editing ? undefined : meterStyle(value, target)}
         title={editable ? undefined : `${deptLabel(dept)} · ${it}: ${status}${bottleneck ? " · the stage holding this order back" : ""}`}
       >
@@ -1266,7 +1266,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
    *  NEW group total and the difference is DISTRIBUTED over the member MOs in
    *  the order shown: each absorbs up to its chain headroom, the rest flows
    *  to the next; corrections come back off the last MOs first. */
-  function groupCell(gBom: string, members: MasterTrackerRow[], it: Item, stage: string, borderR: boolean) {
+  function groupCell(gBom: string, members: MasterTrackerRow[], it: Item, stage: string) {
     // the core's Painting column is its SHOT BLAST — same as the MO rows
     const dept = stage === "Painting" && isPaintExempt(it) ? "ShotBlast" : stage;
     const at = (r: MasterTrackerRow) =>
@@ -1298,7 +1298,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     if (eligibleMos.length === 0 || allOsp) {
       return (
         <td
-          className={`na-cell ${borderR ? "border-r border-border-strong" : ""}`}
+          className="na-cell"
           title={allOsp ? `${it}: every piece of the ${members.length} MOs of ${gBom} is outsourced (OSP)` : `${it} is not required for any of the ${members.length} MOs of ${gBom}`}
           aria-label={`${it} not required`}
           onClick={(e) => e.stopPropagation()}
@@ -1327,7 +1327,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
 
     return (
       <td
-        className={`stage-cell ${editable ? "stage-editable" : ""} ${state} ${!editing && meterStyle(value, target) ? "stage-meter" : ""} p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`}
+        className={`stage-cell ${editable ? "stage-editable" : ""} ${state} ${!editing && meterStyle(value, target) ? "stage-meter" : ""} p-1 text-center tabnum`}
         style={editing ? undefined : meterStyle(value, target)}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1380,9 +1380,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
    *  log recorded against its MO, read-only — a click opens its On Odoo
    *  records. An order planned before ODOO_EXACT_FROM reads — (not counted). */
   function odooCell(r: MasterTrackerRow, it: Item) {
-    if (!r.odooExact) {
-      return <td className="p-1 text-center text-muted border-r border-border-strong" title={`${r.mo} was planned before ${ODOO_EXACT_FROM_LABEL} — its Odoo closings are not counted here`}><span aria-hidden>—</span><span className="sr-only">Odoo not counted</span></td>;
-    }
+    if (!r.odooExact) return odooNotCounted(`${r.mo} was planned before ${ODOO_EXACT_FROM_LABEL} — its Odoo closings are not counted here`);
     const value = r.items[it].odooClosed ?? 0;
     const target = Math.max(0, r.required - r.items[it].osp);
     return odooFigure(value, target, `${r.mo} · ${it}`, `${traceHref({ mo: r.mo, line: "TR" })}#on-odoo`);
@@ -1394,9 +1392,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
       return <td className="na-cell border-r border-border-strong" title={`${it} is not required for any of these ${members.length} MOs`} aria-label={`${it} not required`} />;
     }
     const counted = needed.filter((m) => m.odooExact);
-    if (counted.length === 0) {
-      return <td className="p-1 text-center text-muted border-r border-border-strong" title={`These MOs were planned before ${ODOO_EXACT_FROM_LABEL} — their Odoo closings are not counted here`}><span aria-hidden>—</span><span className="sr-only">Odoo not counted</span></td>;
-    }
+    if (counted.length === 0) return odooNotCounted(`These MOs were planned before ${ODOO_EXACT_FROM_LABEL} — their Odoo closings are not counted here`);
     const value = counted.reduce((s, m) => s + (m.items[it].odooClosed ?? 0), 0);
     const target = counted.reduce((s, m) => s + Math.max(0, m.required - m.items[it].osp), 0);
     // every piece bought out (OSP): hatched, like the stage cells beside it
@@ -1406,10 +1402,13 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     const part = counted.length < needed.length ? ` (${counted.length} of ${needed.length} MOs — the others were planned before ${ODOO_EXACT_FROM_LABEL})` : "";
     return odooFigure(value, target, `${gBom} · ${it}${part}`, `${traceHref({ bom: gBom, line: "TR" })}#on-odoo`);
   }
+  function odooNotCounted(why: string) {
+    return <td className="p-1 text-center text-muted border-r border-border-strong" title={why}><span aria-hidden>—</span><span className="sr-only">Odoo not counted</span></td>;
+  }
   function odooFigure(value: number, target: number, label: string, href: string) {
     const meter = meterStyle(value, target);
     const over = value > target ? ` — ${value - target} more than the plan` : "";
-    const words = `Closed in Odoo · ${label}: ${value <= 0 ? `nothing yet of ${target}` : `${value} of ${target}`}${over}`;
+    const words = `Closed in Odoo · ${label}: ${stageWords(value, target)}${over}`;
     return (
       <td className={`stage-cell ${stageState(value, target, false)} ${meter ? "stage-meter" : ""} p-1 text-center tabnum border-r border-border-strong`} style={meter} title={words}>
         {value > 0 ? (
@@ -1624,12 +1623,12 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                         {/* the Odoo column after them closes the component's border */}
                         {stages.map((s) => (
                           <Fragment key={s}>
-                            {s === "Cut" && stageCell(r, it, "Cut", c.cut, false, isBn(it, "Cut"))}
-                            {s === "Welding" && stageCell(r, it, "Welding", c.weld, false, isBn(it, "Welding"))}
+                            {s === "Cut" && stageCell(r, it, "Cut", c.cut, isBn(it, "Cut"))}
+                            {s === "Welding" && stageCell(r, it, "Welding", c.weld, isBn(it, "Welding"))}
                             {s === "Painting" && (isPaintExempt(it)
-                              ? stageCell(r, it, "ShotBlast", c.shp, false, isBn(it, "ShotBlast"))
-                              : stageCell(r, it, "Painting", c.paint, false, isBn(it, "Painting")))}
-                            {s === "Delivered" && stageCell(r, it, "Delivered", c.delivered, false)}
+                              ? stageCell(r, it, "ShotBlast", c.shp, isBn(it, "ShotBlast"))
+                              : stageCell(r, it, "Painting", c.paint, isBn(it, "Painting")))}
+                            {s === "Delivered" && stageCell(r, it, "Delivered", c.delivered)}
                           </Fragment>
                         ))}
                         {odooCell(r, it)}
@@ -1638,14 +1637,14 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                   }
                   return (
                     <Fragment key={it}>
-                      {stageCell(r, it, "Cut", c.cut, false, isBn(it, "Cut"))}
-                      {stageCell(r, it, "Welding", c.weld, false, isBn(it, "Welding"))}
+                      {stageCell(r, it, "Cut", c.cut, isBn(it, "Cut"))}
+                      {stageCell(r, it, "Welding", c.weld, isBn(it, "Welding"))}
                       {isPaintExempt(it) ? (
-                        stageCell(r, it, "ShotBlast", c.shp, false, isBn(it, "ShotBlast"))
+                        stageCell(r, it, "ShotBlast", c.shp, isBn(it, "ShotBlast"))
                       ) : (
-                        stageCell(r, it, "Painting", c.paint, false, isBn(it, "Painting"))
+                        stageCell(r, it, "Painting", c.paint, isBn(it, "Painting"))
                       )}
-                      {stageCell(r, it, "Delivered", c.delivered, false)}
+                      {stageCell(r, it, "Delivered", c.delivered)}
                       {odooCell(r, it)}
                     </Fragment>
                   );
@@ -1777,7 +1776,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
 
 // stage sub-headers sit on the same tints as their data columns — readable
 // in both themes (the old dark-green fill swallowed the muted header text)
-function StageHead({ shp = false, only, borderR = true }: { shp?: boolean; only?: string; borderR?: boolean }) {
+function StageHead({ shp = false, only }: { shp?: boolean; only?: string }) {
   // The sub-header wears its ITEM's wash like the numbers under it, so the
   // whole column reads as one block. Which stage a column is stays in the
   // label — Fab / Weld / SHB / Paint / Dlvd — not in a colour of its own.
@@ -1788,7 +1787,7 @@ function StageHead({ shp = false, only, borderR = true }: { shp?: boolean; only?
       : only === "Delivered" ? ["Dlvd", "Delivered — received by the customer"]
       : shp ? ["SHB", "Shot Blast — the core's final stage after welding"]
       : ["Paint", undefined];
-    return <th className={`p-1 font-semibold on-tint ${borderR ? "border-r border-border-strong" : ""}`} title={title}>{label}</th>;
+    return <th className="p-1 font-semibold on-tint" title={title}>{label}</th>;
   }
   return (
     <>
@@ -1800,7 +1799,7 @@ function StageHead({ shp = false, only, borderR = true }: { shp?: boolean; only?
       ) : (
         <th className="p-1 font-semibold on-tint">Paint</th>
       )}
-      <th className={`p-1 font-semibold on-tint ${borderR ? "border-r border-border-strong" : ""}`} title="Delivered — received by the customer">Dlvd</th>
+      <th className="p-1 font-semibold on-tint" title="Delivered — received by the customer">Dlvd</th>
     </>
   );
 }

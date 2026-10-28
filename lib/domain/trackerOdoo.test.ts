@@ -188,7 +188,7 @@ describe("exact Odoo closings — the orders planned from October 2026 on", () =
     const entries = [entry({ id: 1, odooMo: "sf01/mo/1 ", product: "Top Cover", qty: 4 }), entry({ id: 2, odooMo: "SF01/MO/2", qty: 6 })];
     expect(exactOdooClosings(orders, entries, [], children)).toEqual(new Map([["OCT-1", { TC: 4 }]]));
     // shared with an older order the sync lists apart: still not guessed
-    expect(exactOdooClosings(orders, [entry({ odooMo: "SF01/MO/3" })], [], [{ name: "SF01/MO/3", parentMo: "OCT-1", item: "TN", sharedWith: "SEP-1" }]).size).toBe(0);
+    expect(exactOdooClosings(orders, [entry({ odooMo: "SF01/MO/3" })], [], [{ name: "SF01/MO/3", parentMo: "OCT-1", item: "TN", sharedWith: ["SEP-1"] }]).size).toBe(0);
     // the row it credited is not allocated again; the shared one stays a pool
     const progress = exact(orders, entries, [], null, { children });
     expect(progress.counts.get("OCT-1")).toEqual({ TC: 4 });

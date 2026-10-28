@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db";
 import { loadMasterOrders, loadSettingsRow } from "./loads";
 import { ITEMS, applicableItems, isPaintExempt, itemEligible, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
 import { shownStageTotal } from "@/lib/domain/trackerEdit";
+import { normMo } from "@/lib/domain/odooSync";
+import { childMosOf } from "./odooFacts";
 import { exactOdooClosings, isOdooExactOrder, odooPlanMonth, trackerOdooQuantities, type OdooUnallocatedQuantity } from "@/lib/domain/trackerOdoo";
 
 // Plan Tracker on the MONTHLY registry: one row per MO. Progress is GLOBAL —
@@ -57,9 +59,7 @@ export interface MasterTrackerRow {
 const ODOO_ENTRY_SELECT = { id: true, date: true, line: true, ledgerId: true, soi: true, fgCode: true, product: true, qty: true, status: true, odooMo: true } as const;
 
 /** The sub-assembly MOs the Odoo sync found under these orders. */
-async function childLinksOf(mos: readonly string[]) {
-  return mos.length ? prisma.odooChildMo.findMany({ where: { parentMo: { in: [...mos] } }, select: { name: true, parentMo: true, item: true, sharedWith: true } }) : [];
-}
+const childLinksOf = async (mos: readonly string[]) => [...(await childMosOf(mos)).values()].flat();
 
 /** The ODOO log rows that can close the given orders exactly — the ones born
  *  from their daily-log rows and the ones naming one of their sub-assembly
@@ -70,7 +70,7 @@ async function exactOdooRows(mos: readonly string[]) {
     prisma.handoverEntry.findMany({ where: { mo: { in: [...mos] } }, select: { id: true, mo: true, bom: true, item: true } }),
     childLinksOf(mos),
   ]);
-  const names = [...new Set(children.map((c) => c.name.trim().toUpperCase()))];
+  const names = [...new Set(children.map((c) => normMo(c.name)))];
   const entries = ledgers.length || names.length
     ? await prisma.odooEntry.findMany({
         where: { line: "TR", OR: [{ ledgerId: { in: ledgers.map((l) => l.id) } }, ...(names.length ? [{ ledgerId: null, odooMo: { in: names } }] : [])] },
@@ -111,7 +111,7 @@ async function computeMasterTracker({ odoo: mode = "all" }: { odoo?: "all" | "ex
   } else {
     const exact = await exactOdooRows([...exactMos]);
     const counts = exactOdooClosings(exactOrders, exact.entries, exact.ledgers, exact.children);
-    odooProgress = { counts, tracked: new Set([...exactMos].flatMap((mo) => ITEMS.map((it) => JSON.stringify([mo, it])))), unallocated: [] };
+    odooProgress = { counts, tracked: new Set(), unallocated: [] }; // every exact order is tracked (below)
   }
 
   const done = new Map<string, number>(); // mo|dept|item -> qty
@@ -142,7 +142,7 @@ async function computeMasterTracker({ odoo: mode = "all" }: { odoo?: "all" | "ex
       const delivered = cap(g(o.mo, "Delivered", it)); // what the customer received
       const eligible = itemEligible(it, o); // AR/MB when the KVA/rating rule matches, or the planner forced them on
       const isExcluded = excluded.has(it);
-      items[it] = { cut, weld, paint, shp, delivered, osp, excluded: isExcluded, eligible, odooClosed: odooProgress.counts.get(o.mo)?.[it] ?? 0, odooTracked: odooProgress.tracked.has(JSON.stringify([o.mo, it])) };
+      items[it] = { cut, weld, paint, shp, delivered, osp, excluded: isExcluded, eligible, odooClosed: odooProgress.counts.get(o.mo)?.[it] ?? 0, odooTracked: exactMos.has(o.mo) || odooProgress.tracked.has(JSON.stringify([o.mo, it])) };
       // a component gates completion only when the order needs it and it isn't N/A
       if (!eligible || isExcluded) continue;
       welded = Math.min(welded, cap(weld + osp));

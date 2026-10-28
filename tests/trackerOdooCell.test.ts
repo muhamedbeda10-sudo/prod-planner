@@ -64,7 +64,7 @@ describe("Odoo closings on the Plan Tracker screen and in the assistant's sheet"
     const html = render();
     expect(html.match(/>Odoo<\/th>/g)).toHaveLength(ITEMS.length);
     // NEW's tank: 3 of 10 closed, a link to its On Odoo records
-    expect(html).toContain('title="Closed in Odoo · NEW · TN: 3 of 10"');
+    expect(html).toContain('title="Closed in Odoo · NEW · TN: 3 of 10 — 7 left"');
     expect(html).toContain('href="/trace?mo=NEW&amp;line=TR#on-odoo"');
     // OLD was planned in July: not counted, not a zero
     expect(html).toContain("OLD was planned before October 2026");

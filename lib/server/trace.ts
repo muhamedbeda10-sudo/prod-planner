@@ -8,6 +8,7 @@ import { toISODate } from "@/lib/domain/dates";
 import { isDoneStatus } from "@/lib/domain/odoo";
 import { effectiveDoneAt, normMo, odooAgreement, type ChildMoView, type OdooAgreement } from "@/lib/domain/odooSync";
 import { childMosOf, moStatesOf } from "@/lib/server/odooFacts";
+import { childMoOwners } from "@/lib/domain/trackerOdoo";
 
 // One project's whole life — the Trace page. Works on a single manufacturing
 // order (mo) OR a whole code (bom). Everything is netted (negative corrections
@@ -128,15 +129,18 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
   const scope = isMo ? { mo } : { bom };
 
   const line = await getActiveLine(); // the trace stays inside the line on screen
-  const [orders, handover, allBoms, masters, plans, notes, returns, masterRows] = await Promise.all([
+  // the orders' sub-assembly MOs are read beside them, not after
+  const mastersRead = prisma.masterOrder.findMany({ where: { ...scope, line } });
+  const [orders, handover, allBoms, masters, plans, notes, returns, masterRows, childMap] = await Promise.all([
     prisma.planOrder.findMany({ where: scope, orderBy: [{ planNo: "asc" }, { mo: "asc" }, { item: "asc" }] }),
     prisma.handoverEntry.findMany({ where: { ...scope, ...ledgerItemWhere(line) }, orderBy: [{ date: "asc" }, { id: "asc" }] }),
     isMo ? Promise.resolve([]) : prisma.planOrder.groupBy({ by: ["bom"] }),
-    prisma.masterOrder.findMany({ where: { ...scope, line } }),
+    mastersRead,
     prisma.plan.findMany(),
     prisma.queueNote.findMany({ where: scope, orderBy: { createdAt: "asc" } }),
     prisma.returnEntry.findMany({ where: scope, orderBy: { date: "asc" } }),
     getMasterTracker(),
+    mastersRead.then((ms) => childMosOf(ms.map((m) => m.mo))),
   ]);
 
   // ---- plan labels ("July 2026", "Setup balances", disambiguated) ----
@@ -268,9 +272,8 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
   // ---- the ODOO log's rows born from these closings, and the typed ones
   // naming a sub-assembly MO only these orders hold (the tracker counts both) ----
   const itemOfLedger = new Map(handover.map((h) => [h.id, h.item]));
-  const childMap = await childMosOf(masters.map((m) => m.mo));
   const ownChild = new Map<string, string>();
-  for (const c of [...childMap.values()].flat()) if (c.item && c.sharedWith.length === 0) ownChild.set(normMo(c.name), c.item);
+  for (const [name, owner] of childMoOwners([...childMap.values()].flat())) if (owner?.item) ownChild.set(name, owner.item);
   const odooRows = handover.length || ownChild.size
     ? await prisma.odooEntry.findMany({
         where: { OR: [{ ledgerId: { in: handover.map((h) => h.id) } }, ...(ownChild.size ? [{ ledgerId: null, line: "TR", odooMo: { in: [...ownChild.keys()] } }] : [])] },
