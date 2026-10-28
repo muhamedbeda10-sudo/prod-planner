@@ -43,6 +43,9 @@
   --nav-bg: #157045;
   --nav-border: #136041;
   --nav-active: #ffffff;
+  /* a page that fills the window under the bar, from md up: the bar (3rem and
+     its 1px border) and <main>'s padding (md:py-4) taken off */
+  --page-fill: calc(100dvh - 5rem - 1px);
   /* informational status (in progress, notes) — the fifth of the status set */
   --info-bg: #e4eefb;
   --info-fg: #1d5aa8;
@@ -872,7 +875,7 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   .print-tight .text-xs, .print-tight .text-sm { font-size: 8.5px !important; }
   .print-tight .pill { font-size: 7px !important; padding: 0 3px !important; }
 
-  /* Screen layout pins the tracker to the viewport (h-[calc(100vh-7rem)]) and
+  /* Screen layout pins the tracker to the viewport (--page-fill) and
      scrolls the table inside its card. On paper that clips everything past the
      first page, so `print-flow` hands the height back to the document and lets
      the table run over as many pages as it needs. */
@@ -918,7 +921,9 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
 /* ---- sticky table headers: long tables scroll inside their card and the
    header row stays pinned at the top while scrolling ---- */
 div.overflow-x-auto:has(> table) {
-  max-height: 78vh;
+  /* let down to the bottom of the window where it is the page's last block
+     (components/TableFill sets --fill-h); otherwise a share of the screen */
+  max-height: var(--fill-h, 78vh);
   overflow-y: auto;
 }
 /* Shifts uses document scrolling; its tables only scroll horizontally on narrow screens. */
@@ -1326,19 +1331,47 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 }
 
 /* ---- the AI assistant (components/AiPanel), the inbox (InboxPanel) and the
-   chat (ChatDock): the assistant's round button in the corner; any of the
-   windows docked down the
-   right of the screen (the app moves left of it — components/FloatDock), the
-   whole screen when expanded or on a phone ---- */
-.ai-fab {
-  position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 29; /* under the bar (z-30): the phone drawer covers it */
-  width: 56px; height: 56px; border-radius: 999px; display: grid; place-items: center;
-  background: var(--brand-fill); color: #fff;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.28), 0 2px 6px rgb(0 0 0 / 0.2);
-  transition: transform 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+   chat (ChatDock): any of the windows docked down the right of the screen
+   (the app moves left of it — components/FloatDock), the whole screen when
+   expanded or on a phone ---- */
+/* the assistant's button in the bar (AppNav): a tile of its own colours with a
+   light running across it and a soft glow breathing round it, the way the
+   assistant's tiles shine inside. Both move by transform / opacity only, so
+   the bar is never repainted for them. */
+.nav-ai {
+  position: relative; flex-shrink: 0; display: grid; width: 34px; height: 34px; border-radius: 10px;
+  transition: transform 0.12s ease, filter 0.15s ease;
 }
-.ai-fab:hover { background: var(--brand-dark); transform: translateY(-1px); box-shadow: 0 12px 28px rgb(0 0 0 / 0.32), 0 2px 6px rgb(0 0 0 / 0.2); }
-.ai-fab:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+.nav-ai::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 12px 2px color-mix(in srgb, var(--viz-2) 60%, transparent);
+  opacity: 0; animation: nav-ai-glow 2.8s ease-in-out infinite;
+}
+.nav-ai-face {
+  position: relative; overflow: hidden; isolation: isolate; display: grid; place-items: center; border-radius: inherit;
+  color: #fff;
+  background: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--viz-2) 85%, black) 55%, color-mix(in srgb, var(--viz-4) 70%, black));
+  border: 1px solid rgb(255 255 255 / 0.35);
+}
+.nav-ai-face::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 45%; inset-inline-start: -70%; z-index: -1; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.6), transparent);
+  transform: skewX(-18deg);
+  animation: nav-ai-sweep 2.8s ease-in-out infinite;
+}
+.nav-ai-face > svg { transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@media (hover: hover) {
+  .nav-ai:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  .nav-ai:hover .nav-ai-face > svg { transform: scale(1.12) rotate(-6deg); }
+}
+.nav-ai:active { transform: scale(0.95); }
+.nav-ai:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* open: a white ring holds it, like the bar's active tab */
+.nav-ai-on .nav-ai-face { box-shadow: 0 0 0 2px rgb(255 255 255 / 0.85); }
+.nav-ai-on::before { animation: none; }
+@keyframes nav-ai-sweep { 0% { transform: translateX(0) skewX(-18deg); } 45%, 100% { transform: translateX(445%) skewX(-18deg); } }
+@keyframes nav-ai-glow { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .nav-ai::before, .nav-ai-face::after { animation: none; } }
 .ai-overlay { position: fixed; inset: 0; z-index: 36; background: rgb(0 0 0 / 0.45); backdrop-filter: blur(2px); animation: drawerfade 0.18s ease-out; }
 .ai-pop { position: fixed; z-index: 37; display: flex; flex-direction: column; background: var(--surface); color: var(--foreground); overflow: hidden; }
 /* docked (the assistant, the inbox or the chat): top to bottom on the right, as wide as dragged (--ai-dock, set
