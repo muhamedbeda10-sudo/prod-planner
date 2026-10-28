@@ -12,8 +12,6 @@ export interface PhysicalStockItem extends StockView {
 
 export interface PhysicalStockData {
   items: PhysicalStockItem[];
-  /** The newest change to the table: when, and by whom. */
-  lastUpdate: { atISO: string; by: string | null } | null;
 }
 
 export async function getPhysicalStock(): Promise<PhysicalStockData> {
@@ -22,8 +20,7 @@ export async function getPhysicalStock(): Promise<PhysicalStockData> {
     ...stockView({ code: r.code, name: r.name, uom: r.uom, physical: r.physical, odoo: r.odoo }),
     id: r.id, note: r.note, updatedBy: r.updatedBy, updatedAtISO: r.updatedAt.toISOString(),
   }));
-  const newest = rows.reduce<(typeof rows)[number] | null>((a, r) => (!a || r.updatedAt > a.updatedAt ? r : a), null);
-  return { items, lastUpdate: newest ? { atISO: newest.updatedAt.toISOString(), by: newest.updatedBy } : null };
+  return { items };
 }
 
 export interface PhysicalImportResult {

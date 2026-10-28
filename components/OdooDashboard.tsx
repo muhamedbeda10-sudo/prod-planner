@@ -1,6 +1,5 @@
 "use client";
 
-import { formatDate } from "@/lib/domain/format";
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
 import { useSetParam } from "@/components/useSetParam";
 import { productColor, productInk } from "@/lib/domain/productColors";
@@ -25,8 +24,8 @@ import {
 // the close-out is going (components/OdooInsights.tsx: close-rate gauge,
 // funnel, status donut, lead time, aging, burn-up, BOM mix), the stacked
 // columns per day (every count written on its segment), one small chart per
-// product, totals and closed-vs-open, and the same numbers as a table with an
-// Excel export — the chart is never the only way to read a value.
+// product, and totals and closed-vs-open. Every segment carries its count, so
+// no value hangs on the hover; the assistant makes the Excel of the numbers.
 
 // Every product wears its ONE colour from the app's product map
 // (lib/domain/productColors.ts) — the same here as on the Plan Tracker and
@@ -134,7 +133,7 @@ function useProductFilter() {
 /**
  * A card per product the period holds — every product, whatever the
  * narrowing, so the cards are also the way between products. Each is a
- * toggle: a click narrows every chart, table and export below to that
+ * toggle: a click narrows every chart and figure below to that
  * product; a click on the chosen card (or on "every product") widens
  * back. The card's own figures are the product's share of the WHOLE period
  * (lib/domain/odooStats.ts: `products`), so they hold still while the
@@ -292,63 +291,9 @@ function LoggedVsClosed({ d }: { d: OdooDashboardData }) {
   );
 }
 
-// ---- table view: the same numbers, readable without the chart ----
-
-function DayTable({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
-  const days = [...d.days].filter((p) => p.rows > 0 || p.loggedRows > 0 || p.doneRows > 0).reverse();
-  const closedBasis = d.basis === "closed";
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm border-collapse">
-        <thead>
-          <tr className="bg-surface-2 text-left">
-            <th className="p-2">Day</th>
-            {present.map((s) => (
-              <th key={s} className="p-2 text-center whitespace-nowrap">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm align-middle me-1" style={{ background: pal.color(s) }} />
-                {s}
-              </th>
-            ))}
-            <th className="p-2 text-center">{closedBasis ? "Closed qty" : "Logged qty"}</th>
-            <th className="p-2 text-center">Rows</th>
-            <th className="p-2 text-center text-muted" title={closedBasis ? "Quantity logged that day" : "Quantity whose status went to Done that day, whichever day it was logged"}>
-              {closedBasis ? "Logged qty" : "Closed qty"}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {days.map((p) => (
-            <tr key={p.dateISO} className="border-t">
-              <td className="p-2 whitespace-nowrap tabnum ltr">{formatDate(p.dateISO)}</td>
-              {present.map((s) => (
-                <td key={s} className="p-2 text-center tabnum">{p.bySeries[s] > 0 ? fmt(p.bySeries[s]) : <span className="text-muted">—</span>}</td>
-              ))}
-              <td className="p-2 text-center tabnum font-extrabold">{fmt(p.qty)}</td>
-              <td className="p-2 text-center tabnum">{p.rows}</td>
-              <td className="p-2 text-center tabnum text-muted">{(closedBasis ? p.loggedQty : p.doneQty) > 0 ? fmt(closedBasis ? p.loggedQty : p.doneQty) : "—"}</td>
-            </tr>
-          ))}
-          {days.length > 0 && (
-            <tr className="border-t bg-surface-2 font-extrabold">
-              <td className="p-2">Total</td>
-              {present.map((s) => (
-                <td key={s} className="p-2 text-center tabnum">{fmt(d.totals.find((t) => t.series === s)?.qty ?? 0)}</td>
-              ))}
-              <td className="p-2 text-center tabnum">{fmt(d.kpi.qty)}</td>
-              <td className="p-2 text-center tabnum">{d.kpi.rows}</td>
-              <td className="p-2 text-center tabnum text-muted">{fmt(closedBasis ? d.kpi.loggedQty : d.kpi.doneQty)}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 // ---- the page body ----
 
 export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insights: OdooInsights } }) {
-  const [showTable, setShowTable] = useState(false);
   const present = d.series;
   const pal = PAL;
   const title = periodLabel(d.period);
@@ -426,13 +371,6 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
         </ChartCard>
       </div>
 
-      <section className="bg-surface border rounded-xl overflow-hidden">
-        <button type="button" className="w-full text-left px-4 py-3 font-bold flex items-center justify-between" onClick={() => setShowTable((v) => !v)} aria-expanded={showTable}>
-          <span>The numbers as a table</span>
-          <span className="text-muted text-sm">{showTable ? "Hide" : "Show"}</span>
-        </button>
-        {showTable && <DayTable d={d} present={present} pal={pal} />}
-      </section>
     </div>
   );
 }
