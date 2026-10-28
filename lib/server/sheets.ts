@@ -87,6 +87,8 @@ export function materialRows(lines: MaterialPageData["lines"], line: ProductLine
     "MTR Request #": l.mtr,
     SOI: l.soi,
     MO: l.mo,
+    // not the sheet's: the order the part MO was closed against on the ODOO log
+    "Order MO": l.orderMos.join(", "),
     "BOM Ref": l.bom,
     "Quantity of Units": l.units,
     "Part Code": l.partCode,

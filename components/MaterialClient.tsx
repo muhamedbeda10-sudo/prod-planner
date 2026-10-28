@@ -83,12 +83,12 @@ function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
 /** Plan month, on either line's sheet: not from the sheet — read off the Plan Tracker. */
 const planCol = <K extends string>(): ColDef<K> => ({
   key: "plan" as K, name: "Plan month",
-  th: { label: "Plan month", hint: "The monthly plan the line's order is in on the Plan Tracker — found by its MO, else its SOI and BOM, else its SOI; a line with neither MO nor SOI, by its BOM. A line whose MO was closed Done on the ODOO log leaves the plans that began after that day. +n: it sits in more plans too" },
+  th: { label: "Plan month", hint: "The monthly plan the line's order is in on the Plan Tracker — found by its MO, else the order its part MO was closed against on the ODOO log, else its SOI and BOM, else its SOI; a line with neither MO nor SOI, by its BOM. A line whose MO was closed Done on the ODOO log leaves the plans that began after that day. +n: it sits in more plans too" },
   td: "p-2 text-xs",
   cell: (l) => <PlanCell months={l.planMonths} match={l.planMatch} />,
 });
 
-const MATCH_WORD: Record<MaterialPlanMatch, string> = { mo: "MO", soiBom: "SOI and BOM", soi: "SOI", bom: "BOM" };
+const MATCH_WORD: Record<MaterialPlanMatch, string> = { mo: "MO", odoo: "part MO's closing on the ODOO log", soiBom: "SOI and BOM", soi: "SOI", bom: "BOM" };
 
 /** The monthly plans the line's order was in: the newest, and +n for the
  *  other plans its key also sits in (an order carried over, or a SOI / BOM
@@ -135,7 +135,7 @@ interface ColDef<K extends string> {
 interface ColRun<K extends string> { label: string; cols: K[]; lead: K[] }
 
 type TrCol =
-  | "mtr" | "soi" | "mo" | "bom" | "units" | "plan" | "partCode" | "partName" | "matCode" | "material" | "thk" | "size" | "weight"
+  | "mtr" | "soi" | "mo" | "order" | "bom" | "units" | "plan" | "partCode" | "partName" | "matCode" | "material" | "thk" | "size" | "weight"
   | "bomUnit" | "actualUnit" | "bomJob" | "actualJob" | "util" | "actualWeight" | "diff" | "notes";
 
 /** The identifiers stay on screen while the figures scroll past: MTR, SOI and
@@ -171,6 +171,13 @@ const TR_COLS: ColDef<TrCol>[] = [
           </span>
         </span>
       );
+    } },
+  { key: "order", name: "Order MO", th: { label: "Order MO", hint: "Not from the sheet: the order this part's MO was closed against on the ODOO log — the transformer's own MO. Blank until the part is closed there" }, td: "p-2 whitespace-nowrap ltr text-xs",
+    cell: (l, x) => <OrderMos mos={l.orderMos} line={x.product} />,
+    head: (g, x) => {
+      const shared = sharedOf(g.lines.map((l) => l.orderMos.join(",")));
+      const all = [...new Set(g.lines.flatMap((l) => l.orderMos))];
+      return shared !== null ? <OrderMos mos={g.lines[0].orderMos} line={x.product} /> : <span className="text-muted" title={all.join(", ")}>{all.length} orders</span>;
     } },
   { key: "bom", name: "BOM", th: { label: "BOM", full: "BOM Ref", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs",
     cell: (l, x) => <BomLink bom={l.bom} line={x.product} />,
@@ -222,7 +229,7 @@ const TR_COLS: ColDef<TrCol>[] = [
 
 const TR_RUNS: ColRun<TrCol>[] = [
   { label: "Order", cols: ["mtr", "soi", "mo"], lead: ["mo"] },
-  { label: "Job", cols: ["bom", "units", "plan"], lead: ["bom"] },
+  { label: "Job", cols: ["order", "bom", "units", "plan"], lead: ["order", "bom"] },
   { label: "Part", cols: ["partCode", "partName"], lead: ["partCode"] },
   { label: "Sheet", cols: ["matCode", "material", "thk", "size", "weight"], lead: ["material", "thk"] },
   { label: "Per unit", cols: ["bomUnit", "actualUnit"], lead: ["actualUnit"] },
@@ -283,6 +290,8 @@ const LV_RUNS: ColRun<LvCol>[] = [
 const ALWAYS = "mo";
 // every column shows until the person picks otherwise
 const TR_DEFAULT = TR_COLS.map((c) => c.key).filter((k) => k !== ALWAYS);
+/** The transformers' columns each later version of the sheet brought (useColumns `added`). */
+const TR_ADDED: readonly (readonly TrCol[])[] = [["order"]];
 const LV_DEFAULT = LV_COLS.map((c) => c.key).filter((k) => k !== ALWAYS);
 
 /** The columns shown, in the sheet's order, each pinned identifier with its
@@ -443,7 +452,7 @@ export function MaterialLinesTable({ lines, product, odooByMo, prefs = {} }: {
   lines: MaterialLineView[]; product: ProductLine; odooByMo: Record<string, string>; prefs?: UserPrefs;
 }) {
   const lv = product === "LV";
-  const trCols = useColumns<TrCol>("material:cols", prefs["material:cols"], TR_DEFAULT);
+  const trCols = useColumns<TrCol>("material:cols", prefs["material:cols"], TR_DEFAULT, TR_ADDED);
   const lvCols = useColumns<LvCol>("material:colsLv", prefs["material:colsLv"], LV_DEFAULT);
   const trOn = TR_COLS.map((c) => trCols.isOn(c.key)).join();
   const lvOn = LV_COLS.map((c) => lvCols.isOn(c.key)).join();
@@ -722,7 +731,7 @@ export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}
   const filtering = shown.length !== lines.length;
   const summary = useMemo(() => materialSummary(shown), [shown]);
   // each person's columns, one set per line's sheet, kept on their account
-  const trCols = useColumns<TrCol>("material:cols", prefs["material:cols"], TR_DEFAULT);
+  const trCols = useColumns<TrCol>("material:cols", prefs["material:cols"], TR_DEFAULT, TR_ADDED);
   const lvCols = useColumns<LvCol>("material:colsLv", prefs["material:colsLv"], LV_DEFAULT);
   // rebuilt only when the columns picked change, not on every keystroke in the search
   const trOn = TR_COLS.map((c) => trCols.isOn(c.key)).join();
@@ -824,6 +833,16 @@ export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}
         )}
       </section>
     </div>
+  );
+}
+
+/** The orders a part's MO was closed against on the ODOO log, each opening its trace. */
+function OrderMos({ mos, line }: { mos: string[]; line: ProductLine }) {
+  if (mos.length === 0) return <span className="text-muted" title="Not closed against an order on the ODOO log yet">—</span>;
+  return (
+    <span className="inline-flex flex-wrap gap-x-2">
+      {mos.map((mo) => <Link key={mo} href={traceHref({ mo, line })} className="text-brand-ink font-semibold hover:underline" title="Open the order's trace">{mo}</Link>)}
+    </span>
   );
 }
 

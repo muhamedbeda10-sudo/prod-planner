@@ -79,8 +79,9 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    (`/trace`) to handover rows; the trace's **On Odoo → Closed on** is the real closing moment on the factory
    clock, as the ODOO tab shows it. Under it, the trace's **Material** shows the order's (or the code's) lines of
    the nesting sheet — the MATERIAL tab's columns as the person keeps them, with what they add up to and
-   **Open in Material** — found by its MO, its code under its SOI, or its SOI on a code no order of it
-   carries (`traceMaterialMatch`); the panels' trace shows its orders' Consumption Details lines the same
+   **Open in Material** — the lines whose part MO was closed against the order on the ODOO log, exactly;
+   until then by its MO, its code under its SOI, or its SOI on a code no order of it carries
+   (`traceMaterialMatch`); the panels' trace shows its orders' Consumption Details lines the same
    way. Only for whoever may open the MATERIAL tab. Each component ends with a read-only **Odoo** column: from the
    **October 2026** plans on (`ODOO_EXACT_FROM`, by the plan that first brought the MO) it is the qty of every
    Done / Closed row of the ODOO log born from that MO's own daily-log closing, on that closing's MO and
@@ -201,7 +202,9 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    51.1). A sheet with no per-unit rate still falls back to its job column, and the import says how many rows
    were stale. Import the sheet (re-importing adds new lines and updates changed ones; the same BOM's tank
    and top-cover lines stay apart), filter by **Plan month** — the monthly plan the line's order is in on the
-   Plan Tracker, found by its MO, else its SOI and BOM together, else its SOI (a line with neither MO nor SOI
+   Plan Tracker, found by its MO, else the order its part MO was closed against on the ODOO log (a row born
+   of the order's daily-log closing carries the part's own MO — the exact link, shown as **Order MO**), else
+   its SOI and BOM together, else its SOI (a line with neither MO nor SOI
    goes by its BOM; "Not in a plan" lists the lines none finds — a mistyped MO or SOI is never guessed at
    through the BOM). A line whose MO was closed Done on the ODOO log leaves the plan months that began after
    that day, so a sales item carried into a new month brings its balance there, not its finished nesting — and

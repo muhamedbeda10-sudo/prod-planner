@@ -131,7 +131,7 @@ function line(over: Partial<MaterialLineView>): MaterialLineView {
     material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
     sheetsPerUnit: 1, sheetsUsed: 10, producedQty: null, note: null, soi: "", mtr: "", weightKg: null, utilization: null, actualWeightKg: null, producedAuto: null, producedUsed: null, remainingUnits: null,
     forJob: 10, difference: 0, actualPerUnit: 1, forProduced: null,
-    updatedISO: "2026-09-07", recordedBy: null, planMonths: [], planMatch: null, ...over,
+    updatedISO: "2026-09-07", recordedBy: null, planMonths: [], planMatch: null, orderMos: [], ...over,
   };
 }
 
@@ -438,6 +438,14 @@ describe("materialPlanMonths", () => {
     // a sub-assembly's code no order carries: the SOI's months
     expect(materialPlanMonths({ mo: "SF01/MO/20500", soi: "S00262-1", bom: "00013S11" }, sb)).toEqual({ months: ["November 2026", "October 2026"], match: "soi" });
   });
+  it("takes the months of the order the part MO was closed against on the ODOO log before its SOI", () => {
+    const linked = materialPlanIndex([
+      { mo: "PF01/MO/1", soi: "S1", bom: "B1", months: ["October 2026"] },
+      { mo: "PF01/MO/2", soi: "S1", bom: "B1", months: ["November 2026"] },
+    ]);
+    expect(materialPlanMonths({ mo: "SF01/MO/9", soi: "S1", bom: "B1" }, linked, null, ["pf01/mo/2"])).toEqual({ months: ["November 2026"], match: "odoo" });
+    expect(materialPlanMonths({ mo: "SF01/MO/9", soi: "S1", bom: "B1" }, linked, null, ["PF01/MO/404"])).toEqual({ months: ["November 2026", "October 2026"], match: "soiBom" });
+  });
   it("leaves the plans that began after its MO was closed Done on the ODOO log", () => {
     const carried = materialPlanIndex([
       { mo: "PF01/MO/1", soi: "S1", bom: "B1", months: ["October 2026"] },
@@ -538,14 +546,14 @@ describe("traceMaterialMatch", () => {
     { mo: "PF01/MO/35300", soi: "S01193-3", bom: "12008E20M18" },
   ];
   const lines = [
-    { id: 1, mo: "SF01/MO/1", soi: "S01193-3", bom: "12008E18M18" },
-    { id: 2, mo: "SF01/MO/2", soi: "s01193-3", bom: "12008E16M18" },
-    { id: 3, mo: "SF01/MO/3", soi: "S01193-3", bom: "00001D11" },
-    { id: 4, mo: "SF01/MO/4", soi: "S01193-3", bom: "12008E20M18" },
-    { id: 5, mo: "SF01/MO/5", soi: "S09999-1", bom: "12008E18M18" },
-    { id: 6, mo: "", soi: "", bom: "12008e18m18" },
-    { id: 7, mo: "PF01/MO/35256-004", soi: "", bom: "X" },
-    { id: 8, mo: "PF01/MO/35256-005", soi: "S01193-3", bom: "12008E18M18" },
+    { id: 1, mo: "SF01/MO/1", soi: "S01193-3", bom: "12008E18M18", orderMos: [] as string[] },
+    { id: 2, mo: "SF01/MO/2", soi: "s01193-3", bom: "12008E16M18", orderMos: [] as string[] },
+    { id: 3, mo: "SF01/MO/3", soi: "S01193-3", bom: "00001D11", orderMos: [] as string[] },
+    { id: 4, mo: "SF01/MO/4", soi: "S01193-3", bom: "12008E20M18", orderMos: [] as string[] },
+    { id: 5, mo: "SF01/MO/5", soi: "S09999-1", bom: "12008E18M18", orderMos: [] as string[] },
+    { id: 6, mo: "", soi: "", bom: "12008e18m18", orderMos: [] as string[] },
+    { id: 7, mo: "PF01/MO/35256-004", soi: "", bom: "X", orderMos: [] as string[] },
+    { id: 8, mo: "PF01/MO/35256-005", soi: "S01193-3", bom: "12008E18M18", orderMos: [] as string[] },
   ];
   const ids = (scope: "mo" | "bom") =>
     lines.filter(traceMaterialMatch({ scope, mos: ["PF01/MO/35256-004"], sois: ["S01193-3"], bom: "12008E18M18", soiOrders })).map((l) => l.id);
@@ -557,6 +565,20 @@ describe("traceMaterialMatch", () => {
   });
   it("an order's trace leaves out a line filed on the SOI's other order's MO", () => {
     expect(ids("mo")).not.toContain(8);
+  });
+  it("an exact link on the ODOO log wins: the part's line belongs to the order it was closed against", () => {
+    const linked = [
+      { id: 21, mo: "SF01/MO/16397-001", soi: "S01193-3", bom: "12008E16M18", orderMos: ["PF01/MO/35256-004"] },
+      { id: 22, mo: "SF01/MO/16400", soi: "S01193-3", bom: "12008E18M18", orderMos: ["PF01/MO/35256-005"] },
+    ];
+    const pick = (scope: "mo" | "bom", mos: string[]) =>
+      linked.filter(traceMaterialMatch({ scope, mos, sois: ["S01193-3"], bom: "12008E18M18", soiOrders })).map((l) => l.id);
+    expect(pick("mo", ["PF01/MO/35256-004"])).toEqual([21]);
+    expect(pick("mo", ["PF01/MO/35256-005"])).toEqual([22]);
+    expect(pick("bom", ["PF01/MO/35256-004", "PF01/MO/35256-005"])).toEqual([21, 22]);
+    // a code's trace with no registry order: a line on the code still shows, closed or not
+    const lone = traceMaterialMatch({ scope: "bom", mos: [], sois: [], bom: "12008E18M18", soiOrders: [] });
+    expect(lone({ mo: "SF01/MO/16400", soi: "S01193-3", bom: "12008E18M18", orderMos: ["PF01/MO/1"] })).toBe(true);
   });
   it("never takes the SOI's line on another order's code", () => {
     expect(ids("bom")).not.toContain(4);

@@ -8,6 +8,7 @@ import { hrefWithLine, type ProductLine } from "@/lib/domain/lines";
 import type { UserPrefs } from "@/lib/domain/userPrefs";
 import { MATERIAL_FILTERS_KEY, MaterialLinesTable, readSavedFilters } from "@/components/MaterialClient";
 import { useStoredFilters } from "@/components/useStoredFilters";
+import { TableEmpty } from "@/components/DataTable";
 
 // An order's (or a code's) MATERIAL on its trace: the nesting sheet's lines
 // that belong to it (lib/domain/material.ts traceMaterialMatch), what they
@@ -18,7 +19,7 @@ export function TraceMaterial({ lines, odooByMo, product, prefs, search, code, m
   odooByMo: Record<string, string>;
   product: ProductLine;
   prefs?: UserPrefs;
-  /** What the MATERIAL tab is searched for when opened from here: the order's SOI, else its code. */
+  /** What the MATERIAL tab is searched for when opened from here: the order's MO, its SOI or its code. */
   search: string;
   /** The order's code (BOM) and MOs: a line on neither is here through its SOI alone. */
   code: string;
@@ -36,7 +37,9 @@ export function TraceMaterial({ lines, odooByMo, product, prefs, search, code, m
   // older revision) — the same lines show on each of the SOI's orders
   const key = (v: string) => v.trim().toUpperCase();
   const own = new Set(mos.map(key));
-  const viaSoi = lv ? 0 : lines.filter((l) => key(l.bom) !== key(code) && !own.has(key(l.mo))).length; // the panels' lines are found by their MO
+  // closed against this order on the ODOO log — the exact link
+  const linked = lv ? 0 : lines.filter((l) => l.orderMos.some((m) => own.has(key(m)))).length;
+  const viaSoi = lv ? 0 : lines.filter((l) => l.orderMos.length === 0 && key(l.bom) !== key(code) && !own.has(key(l.mo))).length; // the panels' lines are found by their MO
   return (
     <section id="material" className="rounded-2xl bg-surface border border-border/60 shadow-sm overflow-hidden scroll-mt-28">
       <div className="px-5 py-3 border-b border-border/40 flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -60,8 +63,13 @@ export function TraceMaterial({ lines, odooByMo, product, prefs, search, code, m
             )}
           </div>
         )}
+        {linked > 0 && (
+          <span className="pill pill-ok tabnum text-xs" title="Lines whose part MO was closed against this order on the ODOO log — linked exactly">
+            {linked} linked on ODOO
+          </span>
+        )}
         {viaSoi > 0 && (
-          <span className="pill pill-warn tabnum text-xs" title="Lines the sheet files under the order's SOI on another code (a sub-assembly, an older revision of the code) — they show on each order of the SOI">
+          <span className="pill pill-warn tabnum text-xs" title="Lines not closed on the ODOO log yet that the sheet files under the order's SOI on another code (a sub-assembly, an older revision of the code) — they show on each order of the SOI until their part MO is closed">
             {viaSoi} via the SOI
           </span>
         )}
@@ -70,9 +78,10 @@ export function TraceMaterial({ lines, odooByMo, product, prefs, search, code, m
         </button>
       </div>
       {lines.length === 0 ? (
-        <p className="px-5 py-4 text-sm text-muted text-center">
-          {lv ? "No line of the Consumption Details sheet carries this order yet." : "No line of the material sheet carries this order yet."}
-        </p>
+        <TableEmpty
+          title="No material for this order yet"
+          hint={lv ? "No line of the Consumption Details sheet carries it." : "No line of the material sheet carries it, and none of its parts' MOs closed on the ODOO log has one."}
+        />
       ) : (
         <MaterialLinesTable lines={lines} product={product} odooByMo={odooByMo} prefs={prefs} />
       )}

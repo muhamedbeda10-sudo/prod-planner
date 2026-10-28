@@ -65,9 +65,11 @@ export default async function TracePage({
       getTraceMaterial(line, { scope, mos: [...members.map((o) => o.mo), ...(scope === "mo" ? [key] : [])], sois: members.map((o) => o.soi ?? ""), bom: code }),
       getUserPrefs(me?.id, MATERIAL_PREF_KEYS),
     ]);
+    // the tab is searched for the order's MO when its parts' lines carry it
+    // (closed on the ODOO log), else for its SOI, else the code
     const sois = [...new Set(members.map((o) => (o.soi ?? "").trim()).filter(Boolean))];
-    // the tab is searched for the order's SOI, else the code
-    const search = scope === "mo" && sois.length === 1 ? sois[0] : code;
+    const linked = scope === "mo" && m.lines.some((l) => l.orderMos.some((o) => o.toUpperCase() === key.toUpperCase()));
+    const search = linked ? key : scope === "mo" && sois.length === 1 ? sois[0] : code;
     return <TraceMaterial lines={m.lines} odooByMo={m.odooByMo} product={line} prefs={prefs as UserPrefs} search={search} code={code} mos={scope === "mo" ? [key] : members.map((o) => o.mo)} />;
   };
 

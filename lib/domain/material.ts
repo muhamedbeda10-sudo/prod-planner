@@ -200,6 +200,11 @@ export interface MaterialLineView extends MaterialLineInput {
   planMonths: string[];
   /** What tied the line to its plan: its own MO, its SOI, or its BOM; null when nothing did. */
   planMatch: MaterialPlanMatch | null;
+  /** The orders (their MOs) this line's part MO was closed against on the
+   *  ODOO log — the closing row born of an order's daily-log closing carries
+   *  the part's own MO the clerk typed. Empty while the part is not closed
+   *  there, or on a row typed without a closing behind it. */
+  orderMos: string[];
 }
 
 /** The identity of a line — one per month × BOM × order × part × material ×
@@ -440,7 +445,7 @@ export function filterMaterialLines(lines: MaterialLineView[], f: MaterialFilter
       case "within": if (l.difference === null || l.difference < 0) return false; break;
     }
     if (q) {
-      const hay = [l.bom, l.soi ?? "", l.mtr ?? "", l.partCode, l.partName, l.materialCode, l.note ?? "", l.mo].join(" ").toLowerCase();
+      const hay = [l.bom, l.soi ?? "", l.mtr ?? "", l.partCode, l.partName, l.materialCode, l.note ?? "", l.mo, ...l.orderMos].join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -452,7 +457,7 @@ export function filterMaterialLines(lines: MaterialLineView[], f: MaterialFilter
 /** The filter value for the lines no monthly plan carries — the tracker's own "No month" mark. */
 export const NO_PLAN_MONTH = "—";
 
-export type MaterialPlanMatch = "mo" | "soiBom" | "soi" | "bom";
+export type MaterialPlanMatch = "mo" | "odoo" | "soiBom" | "soi" | "bom";
 
 /** An order of the registry as the plan filter reads it: its keys and the monthly plans it was in. */
 export interface MaterialPlanOrder {
@@ -504,7 +509,8 @@ export function sortPlanMonths(months: Iterable<string>): string[] {
  * The monthly plans a line of the sheet belongs to, by the surest key it
  * shares with the registry: its own MO (the panels' sheet files each order's
  * MO; a transformer line carries its PART's MO from Odoo, which no plan
- * lists), else its SOI and BOM together — one sales item is planned month
+ * lists), else the orders that part MO was closed against on the ODOO log
+ * (`orderMos` — exact), else its SOI and BOM together — one sales item is planned month
  * after month, each month on its own code — else its SOI alone (a part filed
  * under a sub-assembly or an older revision of the code). Only a line with
  * neither MO nor SOI — one that covers its BOM as a whole — goes by its BOM.
@@ -518,9 +524,9 @@ export function sortPlanMonths(months: Iterable<string>): string[] {
  * predates the plans on record.
  */
 export function materialPlanMonths(
-  l: Pick<MaterialLineInput, "mo" | "soi" | "bom">, idx: MaterialPlanIndex, doneISO: string | null = null,
+  l: Pick<MaterialLineInput, "mo" | "soi" | "bom">, idx: MaterialPlanIndex, doneISO: string | null = null, orderMos: readonly string[] = [],
 ): { months: string[]; match: MaterialPlanMatch | null } {
-  const found = planMonthsByKey(l, idx);
+  const found = planMonthsByKey(l, idx, orderMos);
   if (!doneISO || found.months.length === 0) return found;
   const doneMonth = doneISO.slice(0, 7);
   const dated = found.months.filter((m) => monthInputFromLabel(m) !== null);
@@ -530,9 +536,12 @@ export function materialPlanMonths(
   return { ...found, months: [...months, ...found.months.filter((m) => !dated.includes(m))] };
 }
 
-function planMonthsByKey(l: Pick<MaterialLineInput, "mo" | "soi" | "bom">, idx: MaterialPlanIndex): { months: string[]; match: MaterialPlanMatch | null } {
+function planMonthsByKey(l: Pick<MaterialLineInput, "mo" | "soi" | "bom">, idx: MaterialPlanIndex, orderMos: readonly string[]): { months: string[]; match: MaterialPlanMatch | null } {
   const byMo = idx.byMo.get(planKey(l.mo));
   if (byMo) return { months: byMo, match: "mo" };
+  // the part's MO closed against an order on the ODOO log: that order's months, exactly
+  const byOdoo = orderMos.flatMap((m) => idx.byMo.get(planKey(m)) ?? []);
+  if (byOdoo.length > 0) return { months: sortPlanMonths(new Set(byOdoo)), match: "odoo" };
   const soi = planKey(l.soi);
   const bySoiBom = soi && planKey(l.bom) ? idx.bySoiBom.get(`${soi}|${planKey(l.bom)}`) : undefined;
   if (bySoiBom) return { months: bySoiBom, match: "soiBom" };
@@ -545,7 +554,9 @@ function planMonthsByKey(l: Pick<MaterialLineInput, "mo" | "soi" | "bom">, idx: 
 
 /**
  * Whether a line of the sheet belongs to an order's (or a code's) trace.
- * A code's: every line on the code, whatever its order. An order's: the
+ * A line whose part MO was closed against an order on the ODOO log belongs
+ * to that order, exactly, and to no other. Otherwise —
+ * a code's: every line on the code, whatever its order. An order's: the
  * lines on its MO (the panels file each order's MO), on its code under its
  * SOI, or on its code with neither MO nor SOI (a line covering the code as a
  * whole). Either way, under one of its SOIs, a line on a code no order of
@@ -559,7 +570,7 @@ export function traceMaterialMatch(t: {
   mos: readonly string[]; sois: readonly string[]; bom: string;
   /** Every order of the SOIs in scope: its MO, SOI and code. */
   soiOrders: readonly { mo: string; soi: string; bom: string }[];
-}): (l: Pick<MaterialLineInput, "mo" | "soi" | "bom">) => boolean {
+}): (l: Pick<MaterialLineView, "mo" | "soi" | "bom" | "orderMos">) => boolean {
   const mos = new Set(t.mos.map(planKey));
   const sois = new Set(t.sois.map(planKey));
   const bom = planKey(t.bom);
@@ -569,8 +580,15 @@ export function traceMaterialMatch(t: {
   return (l) => {
     const mo = planKey(l.mo), soi = planKey(l.soi), lb = planKey(l.bom);
     if (mo && mos.has(mo)) return true;
-    if (t.scope === "mo" && others.has(mo)) return false;
     const onCode = !!bom && lb === bom;
+    // closed on the ODOO log against an order: exactly that order's — on a
+    // code's trace, also a line on the code closed against an order the
+    // registry does not list as one of the SOIs' others
+    if (l.orderMos.length > 0) {
+      return l.orderMos.some((m) => mos.has(planKey(m)))
+        || (t.scope === "bom" && onCode && !l.orderMos.some((m) => others.has(planKey(m))));
+    }
+    if (t.scope === "mo" && others.has(mo)) return false;
     if (soi && sois.has(soi) && (onCode || !carried.has(`${soi}|${lb}`))) return true;
     return onCode && (t.scope === "bom" || (!soi && !mo));
   };
