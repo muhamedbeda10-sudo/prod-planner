@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-top-bar-order",
+    dateISO: "2026-10-28",
+    title: "The top bar's tabs have a new order",
+    where: "The top bar",
+    body: "The tabs now run Material, Shifts, Floor, Plan Tracker, then Dashboards. Every tab holds the same places as before.",
+  },
+  {
     id: "2026-10-28-material-sheet-files-order-mo",
     dateISO: "2026-10-28",
     title: "The material sheet files the transformer's MO — the part's MOs come from the ODOO log",

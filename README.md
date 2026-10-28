@@ -26,8 +26,8 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 "Done" everywhere = Welding output; Cut gates Welding.
 
 ## Navigation
-Tabs, one per QUESTION rather than per screen — Floor (the worklists) · Dashboards · Material · Shifts · Plan
-Tracker. A tab that holds several places opens a panel of their icons when the pointer rests on it (or it
+Tabs, one per QUESTION rather than per screen, in this order — Material · Shifts · Floor (the worklists) · Plan
+Tracker · Dashboards. A tab that holds several places opens a panel of their icons when the pointer rests on it (or it
 takes the keyboard's focus) — the places' `places` in `components/AppNav.tsx`; the pages carry no strip and
 show no name of their own (the lit tab says where you are; `PageHead` gives the screen reader its `<h1>`), and
 each page puts its controls in ONE bar: the line switch first in its filter bar, its actions and views at the

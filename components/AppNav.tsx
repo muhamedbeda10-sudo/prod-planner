@@ -61,7 +61,7 @@ const FLOOR_DEPTS: readonly FloorDept[] = [
 const deptHref = (d: FloorDept) => hrefWithLine(d.path, d.line);
 const LINE_GROUPS = PRODUCT_LINES.map((line) => ({ line, label: LINE_LABEL[line] }));
 
-// Tabs after Floor. One tab per QUESTION, not per screen. Several hold more
+// The tabs beside Floor. One tab per QUESTION, not per screen. Several hold more
 // than one place: resting the pointer on the tab (or focusing it) opens a
 // panel of its places, which is the only way between them — the pages carry
 // no strip of their own. A place's own views stay behind the switch in its
@@ -93,17 +93,22 @@ const TRACKER_PLACES: Place[] = [
 const placesTab = (href: string, label: string, icon: Item["icon"], places: Place[]): Item =>
   ({ href, label, icon, places, also: places.map((p) => p.href).filter((h) => h !== href) });
 
-const REST: Item[] = [
-  // the home page; the tab lights on every dashboard
-  placesTab("/", "Dashboards", LayoutDashboard, DASHBOARD_PLACES),
-  // Material comes next: nesting is decided before a single sheet is cut. The
-  // store's physical count against Odoo's stock and the consumables it hands
-  // out to the floor live in the same tab, each with its own screens.
+// The bar's order, left to right: Material · Shifts · Floor · Plan Tracker ·
+// Dashboards. Floor is not an item of its own (its departments come from
+// FLOOR_DEPTS), so the tabs on either side of it are two lists.
+const BEFORE_FLOOR: Item[] = [
+  // nesting is decided before a single sheet is cut. The store's physical
+  // count against Odoo's stock and the consumables it hands out to the floor
+  // live in the same tab, each with its own screens.
   placesTab("/material", "Material", Layers, MATERIAL_PLACES),
   // who worked today, how long, on what — the supervisors' page
   { href: "/shifts", label: "Shifts", icon: Clock },
+];
+const AFTER_FLOOR: Item[] = [
   // the ODOO close-out log is one of its places; the tab carries its alerts' badge
   placesTab("/tracker", "Plan Tracker", Table2, TRACKER_PLACES),
+  // the home page; the tab lights on every dashboard
+  placesTab("/", "Dashboards", LayoutDashboard, DASHBOARD_PLACES),
   // the tanks' sticker sheet — its own tab while per-piece tracking is on
   // (TANK_ONLY drops it otherwise), and still a button on the painting worklist
   { href: "/barcode", label: "Tank Barcodes", icon: QrCode, match: "/barcode" },
@@ -347,11 +352,13 @@ export function AppNav({
     const to = [l.href, ...(l.also ?? [])].find(canSee);
     return to ? (to === l.href ? l : { ...l, href: to, match: l.match ?? l.href }) : null;
   };
-  const restTabs = REST.filter((l) => tankOk(l.href) && (machinePlanning || !MACHINE_ONLY.has(l.href)))
+  const barTabs = (items: Item[]) => items.filter((l) => tankOk(l.href) && (machinePlanning || !MACHINE_ONLY.has(l.href)))
     .map(reachable).filter((l): l is Item => l !== null);
+  const beforeFloor = barTabs(BEFORE_FLOOR);
+  const afterFloor = barTabs(AFTER_FLOOR);
   // the mobile drawer has vertical room — it lists the worklists directly
   const drawerDepts = machinePlanning ? worklistDepts : [];
-  const drawerTabs = REST.filter(shown);
+  const drawerTabs = [...BEFORE_FLOOR, ...AFTER_FLOOR].filter(shown);
   const drawerViews = DRAWER_VIEWS.filter((l) => tankOk(l.href) && canSee(l.href));
   const deptEdits = worklistDepts.filter((d) => user.perms.includes(d.perm));
   const singleDept = worklistDepts.length === 1 ? worklistDepts[0] : !user.isAdmin && deptEdits.length === 1 ? deptEdits[0] : null;
@@ -474,6 +481,31 @@ export function AppNav({
   const showTools = allTools.length > 0;
   const adminActive = allTools.some((l) => isActive(l.href));
 
+  /** One tab of the bar: a plain link, or a panel of its places when it holds two or more. */
+  const barTab = (l: Item) => {
+    const active = isActive(l.href, l.match, l.also);
+    const badge = l.also?.includes("/odoo") && canSee("/odoo") && odooBadge();
+    const places = (l.places ?? []).filter((p) => shown(p) && (on(p.href) || (pinnedLine(p.href) ?? line) === line));
+    if (places.length < 2) {
+      return (
+        <li key={l.href}>
+          <Link href={l.href} className={`nav-tab ${active ? "nav-tab-active" : ""}`}>
+            <l.icon size={15} className="shrink-0" />
+            {l.label}
+            {badge}
+          </Link>
+        </li>
+      );
+    }
+    return (
+      <MenuTab ctl={menuCtl} key={l.href} id={l.href} label={l.label} icon={l.icon} active={active} href={active ? placeHref(l.href) : l.href} badge={badge}>
+        {places.map((p, i) => (
+          <MenuRow key={p.href} href={active ? placeHref(p.href) : p.href} label={p.label} icon={p.icon} hint={p.title} active={on(p.href)} tone={i} className="whitespace-nowrap" />
+        ))}
+      </MenuTab>
+    );
+  };
+
   return (
     <header className="no-print sticky top-0 z-30 bg-[var(--nav-bg)] text-white border-b border-[var(--nav-border)] shadow-sm">
       <div className="w-full px-2.5 sm:px-4 md:px-6">
@@ -504,6 +536,7 @@ export function AppNav({
           {/* desktop: centered tabs */}
           <nav ref={navRef} className="hidden min-[1440px]:block flex-1 overflow-x-auto overflow-y-hidden">
             <ul className="flex items-center justify-center gap-1 w-max min-w-full">
+              {beforeFloor.map(barTab)}
               {/* Floor (the worklists) — opens the departments in a panel BELOW the tab.
                   They used to unroll sideways inside the bar, which shoved every
                   tab to its right along and left the bar a different width open
@@ -531,29 +564,7 @@ export function AppNav({
                 </MenuTab>
               )
               )}
-              {restTabs.map((l) => {
-                const active = isActive(l.href, l.match, l.also);
-                const badge = l.also?.includes("/odoo") && canSee("/odoo") && odooBadge();
-                const places = (l.places ?? []).filter((p) => shown(p) && (on(p.href) || (pinnedLine(p.href) ?? line) === line));
-                if (places.length < 2) {
-                  return (
-                    <li key={l.href}>
-                      <Link href={l.href} className={`nav-tab ${active ? "nav-tab-active" : ""}`}>
-                        <l.icon size={15} className="shrink-0" />
-                        {l.label}
-                        {badge}
-                      </Link>
-                    </li>
-                  );
-                }
-                return (
-                  <MenuTab ctl={menuCtl} key={l.href} id={l.href} label={l.label} icon={l.icon} active={active} href={active ? placeHref(l.href) : l.href} badge={badge}>
-                    {places.map((p, i) => (
-                      <MenuRow key={p.href} href={active ? placeHref(p.href) : p.href} label={p.label} icon={p.icon} hint={p.title} active={on(p.href)} tone={i} className="whitespace-nowrap" />
-                    ))}
-                  </MenuTab>
-                );
-              })}
+              {afterFloor.map(barTab)}
             </ul>
           </nav>
 
