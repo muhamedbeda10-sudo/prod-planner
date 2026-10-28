@@ -4,10 +4,7 @@ import { buildMaterialDashboard, type DoneRow, type MaterialDashboard, type Mate
 import { factoryDayISO, factoryDayStart } from "@/lib/domain/dates";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import type { ProductLine } from "@/lib/domain/lines";
-import { effectiveDoneAt, normMo } from "@/lib/domain/odooSync";
-import { moStatesOf } from "@/lib/server/odooFacts";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { isDoneStatus } from "@/lib/domain/odoo";
 
 // The material dashboard's one query pair, for the line on screen: every line
 // of its material sheet (every month — the domain reads one copy of each MO)
@@ -38,25 +35,17 @@ export async function getMaterialDashboard(req: MaterialRequest, line: ProductLi
       },
     }),
     prisma.odooEntry.findMany({
-      // a day wider each side: a closing counts on Odoo's own closing day
-      // when the sync read it, which can sit a day off the tick here
-      where: { line, doneAt: { not: null, ...(gte ? { gte: new Date(gte.getTime() - DAY_MS) } : {}), ...(lt ? { lt: new Date(lt.getTime() + DAY_MS) } : {}) } },
+      where: { line, doneAt: { not: null, ...(gte ? { gte } : {}), ...(lt ? { lt } : {}) } },
       select: { odooMo: true, qty: true, status: true, doneAt: true },
     }),
     prisma.materialUsage.aggregate({ where: { line }, _max: { updatedAt: true } }),
     prisma.odooEntry.aggregate({ where: { line }, _max: { updatedAt: true } }),
   ]);
 
-  // Done on Odoo, on the factory's day it was closed there — Odoo's own
-  // moment when the sync read it, else the moment it was ticked here
-  const states = await moStatesOf(done.map((r) => r.odooMo));
+  // Done on Odoo, on the factory's day it was moved there
   const rows: DoneRow[] = done
-    .flatMap((r) => {
-      const odooDone = states.get(normMo(r.odooMo))?.doneAtISO;
-      const at = effectiveDoneAt(r, odooDone ? new Date(odooDone) : null);
-      return at ? [{ dateISO: factoryDayISO(at), mo: r.odooMo ?? "", qty: r.qty }] : [];
-    })
-    .filter((r) => (!firstDay || r.dateISO >= firstDay) && r.dateISO <= req.toISO);
+    .filter((r) => r.doneAt && isDoneStatus(r.status))
+    .map((r) => ({ dateISO: factoryDayISO(r.doneAt!), mo: r.odooMo ?? "", qty: r.qty }));
   const lines: SheetLine[] = material;
 
   return {

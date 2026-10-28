@@ -6,8 +6,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({ findMany: vi.fn(), states: vi.fn() }));
 vi.mock("server-only", () => ({}));
-// what the Odoo sync read is its own tested module (lib/domain/odooSync.ts)
-vi.mock("@/lib/server/odooFacts", () => ({ odooFactsFor: async () => new Map() }));
 vi.mock("@/lib/db", () => ({ prisma: { odooEntry: { findMany: h.findMany } } }));
 vi.mock("@/lib/server/odoo", () => ({
   resolveRowBoms: async (rows: unknown[]) => rows.map(() => ({ boms: ["T-1"], ambiguous: false })),

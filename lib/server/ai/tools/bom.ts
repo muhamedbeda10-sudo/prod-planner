@@ -22,7 +22,7 @@ export const getBomTool: ReadTool<BomInput> = {
   name: "get_bom",
   title: "Reading Odoo's BoMs",
   description:
-    "Odoo's bills of materials as mirrored by the Odoo sync (Material → BoMs; about 09:00 and 13:00 Riyadh, Sunday to Thursday). With `bom` (an order's BOM code, e.g. 64022E11M11, or an LV panel code): its Odoo reference, the tree level by level (each line's qty for one unit of its parent and perRoot for ONE finished unit, in the product's stock unit; childCode = the sub-BoM it is built with), the raw materials one unit takes summed through every sub-BoM, the components it carries (CF TC TN CB AR MB) and each open order's required components against it (notInBom = the order needs it, the BoM has none; notRequired = the BoM builds it, the order does not count it). " +
+    "Odoo's bills of materials as last read from Odoo (Material → BoMs; the scheduled Odoo sync is off, so `syncedAt` says how old they are). With `bom` (an order's BOM code, e.g. 64022E11M11, or an LV panel code): its Odoo reference, the tree level by level (each line's qty for one unit of its parent and perRoot for ONE finished unit, in the product's stock unit; childCode = the sub-BoM it is built with), the raw materials one unit takes summed through every sub-BoM, the components it carries (CF TC TN CB AR MB) and each open order's required components against it (notInBom = the order needs it, the BoM has none; notRequired = the BoM builds it, the order does not count it). " +
     "Without `bom`: every open order's code — whether Odoo has its BoM, its components and how many of its orders disagree. `search` narrows the tree's lines to a code or name. Odoo is never changed by this; the mirror is as fresh as its last sync (syncedAt).",
   schema: {
     type: "object",
@@ -44,14 +44,14 @@ export const getBomTool: ReadTool<BomInput> = {
         ok: true,
         text: JSON.stringify({
           syncedAt: sync?.atISO ?? null,
-          codes: rows.map((r) => ({ bom: r.bom, line: r.line, orders: r.orders, units: r.units, odooBom: r.root?.code ?? (r.looked ? "NOT IN ODOO" : "not synced yet"), product: r.root?.productName ?? null, components: r.items, ordersDiffering: r.mismatched, levels: r.stats?.depth ?? null, lines: r.stats?.nodes ?? null })),
+          codes: rows.map((r) => ({ bom: r.bom, line: r.line, orders: r.orders, units: r.units, odooBom: r.root?.code ?? (r.looked ? "NOT IN ODOO" : "not read from Odoo"), product: r.root?.productName ?? null, components: r.items, ordersDiffering: r.mismatched, levels: r.stats?.depth ?? null, lines: r.stats?.nodes ?? null })),
         }),
         links: [{ label: "BoMs", href: "/bom" }],
       };
     }
     const t = await getBomTree(i.bom, ctx.line ?? "TR");
     if (!t.root) {
-      return { ok: true, text: JSON.stringify({ bom: t.bom, syncedAt: sync?.atISO ?? null, found: false, note: t.looked ? "The sync looked and Odoo has no BoM for this code (its reference FG-/TX-/the code, the product of this code, its orders' MOs)." : "No sync has looked this code up yet — it comes with the next sync." }), links: [{ label: `BoM ${t.bom}`, href: hrefWithLine(`/bom?bom=${encodeURIComponent(t.bom)}`, t.line) }] };
+      return { ok: true, text: JSON.stringify({ bom: t.bom, syncedAt: sync?.atISO ?? null, found: false, note: t.looked ? "Odoo was searched and has no BoM for this code (its reference FG-/TX-/the code, the product of this code, its orders' MOs)." : "Odoo was never read for this code (it was added after the last Odoo read, and the scheduled sync is off)." }), links: [{ label: `BoM ${t.bom}`, href: hrefWithLine(`/bom?bom=${encodeURIComponent(t.bom)}`, t.line) }] };
     }
     const needle = i.search?.trim().toLowerCase();
     const all = flattenNodes(t.nodes).filter((n) => !needle || `${n.productCode} ${n.productName}`.toLowerCase().includes(needle));

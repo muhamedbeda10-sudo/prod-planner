@@ -13,7 +13,7 @@ import type { BomListRow, BomTreeData, SyncView } from "@/lib/server/odooBom";
 import { hrefWithLine, type ProductLine } from "@/lib/domain/lines";
 
 // MATERIAL → BOMS — the bills of materials the open orders are built with, as
-// Odoo holds them (mirrored read-only by the Odoo sync). The
+// Odoo held them (mirrored read-only, as Odoo was last read). The
 // list: one row per code, whether Odoo has its BoM, the components it carries
 // and how many orders disagree with it. One code: its whole tree, level by
 // level, the raw materials one unit takes, and each open order's components
@@ -33,7 +33,7 @@ const VIA_LABEL: Record<string, string> = {
 
 /** When the BoMs came from Odoo and who ran it — or that none has yet. */
 export function SyncLine({ sync }: { sync: SyncView | null }) {
-  if (!sync) return <span className="text-xs text-muted">Not read from Odoo yet — the Odoo sync fills this in.</span>;
+  if (!sync) return <span className="text-xs text-muted">Not read from Odoo.</span>;
   return (
     <span className="text-xs text-muted" title={`${sync.boms} BoMs and ${sync.lines} lines held · ${sync.roots} codes found, ${sync.missing} not in Odoo`}>
       Read from Odoo <b className="text-foreground tabnum">{formatDateTime(sync.atISO)}</b>
@@ -55,7 +55,7 @@ function ItemPills({ items, tone = "pill-muted" }: { items: readonly Item[]; ton
 const LIST_STATUS = [
   { value: "found", label: "In Odoo" },
   { value: "missing", label: "Not in Odoo" },
-  { value: "unsynced", label: "Not synced yet" },
+  { value: "unsynced", label: "Not read from Odoo" },
   { value: "differ", label: "Components differ" },
 ] as const;
 
@@ -129,7 +129,7 @@ export function BomListClient({ rows, sync, lineSwitch }: { rows: BomListRow[]; 
                     <td className="p-2 whitespace-nowrap ltr text-xs">
                       {r.root
                         ? <span title={VIA_LABEL[r.root.via] ? `Found ${VIA_LABEL[r.root.via]}` : undefined}>{r.root.code}</span>
-                        : <span className={`pill ${r.looked ? "pill-bad" : "pill-muted"}`}>{r.looked ? "Not in Odoo" : "Not synced yet"}</span>}
+                        : <span className={`pill ${r.looked ? "pill-bad" : "pill-muted"}`}>{r.looked ? "Not in Odoo" : "Not read from Odoo"}</span>}
                     </td>
                     <td className="p-2 text-xs min-w-[16rem]">{r.root?.productName || <span className="text-muted">—</span>}</td>
                     <td className="p-2 num tabnum">{r.orders}</td>
@@ -212,10 +212,10 @@ export function BomTreeClient({ data, sync }: { data: BomTreeData; sync: SyncVie
         <div className="flex flex-wrap items-center gap-2">{back}<SyncLine sync={sync} /></div>
         <section className="bg-surface border rounded-[10px]">
           <TableEmpty
-            title={data.looked ? <>Odoo has no BoM for <span className="ltr">{data.bom}</span></> : <>No BoM synced for <span className="ltr">{data.bom}</span> yet</>}
+            title={data.looked ? <>Odoo has no BoM for <span className="ltr">{data.bom}</span></> : <>No BoM read for <span className="ltr">{data.bom}</span></>}
             hint={data.looked
-              ? "The sync looked for its reference (FG- / TX- and the code itself), the product with this code and its orders' MOs, and found none of them."
-              : "The Odoo sync reads the BoMs of the open orders' codes. A code added since then comes with the next sync."}
+              ? "Odoo was searched for its reference (FG- / TX- and the code itself), the product with this code and its orders' MOs, and none of them was found."
+              : "The BoMs were read for the codes open on the last Odoo read; a code added since was not read."}
           />
         </section>
       </div>
@@ -254,7 +254,7 @@ export function BomTreeClient({ data, sync }: { data: BomTreeData; sync: SyncVie
             {VIA_LABEL[data.root.via] ? <> · found {VIA_LABEL[data.root.via]}</> : null}
           </p>
           {data.incomplete.length > 0 && (
-            <p className="text-xs text-warn-fg mt-1">Not synced yet: <span className="ltr">{data.incomplete.slice(0, 6).join(", ")}</span>{data.incomplete.length > 6 ? ` +${data.incomplete.length - 6}` : ""}</p>
+            <p className="text-xs text-warn-fg mt-1">Not read from Odoo: <span className="ltr">{data.incomplete.slice(0, 6).join(", ")}</span>{data.incomplete.length > 6 ? ` +${data.incomplete.length - 6}` : ""}</p>
           )}
         </SectionCard>
         <SectionCard icon={Boxes} title="Components in the BoM" description="How many one unit takes">
@@ -311,7 +311,7 @@ export function BomTreeClient({ data, sync }: { data: BomTreeData; sync: SyncVie
                         <td className="p-2 text-center text-xs text-muted">{n.uom || "—"}</td>
                         <td className="p-2 num tabnum font-semibold" title={n.stockUom ? `${q(n.perRoot)} ${n.stockUom}` : undefined}>{q(n.perRoot)}</td>
                         <td className="p-2 whitespace-nowrap ltr text-xs">
-                          {n.childCode ?? (n.childMissing ? <span className="pill pill-warn">not synced</span> : <span className="text-muted">—</span>)}
+                          {n.childCode ?? (n.childMissing ? <span className="pill pill-warn">not read</span> : <span className="text-muted">—</span>)}
                         </td>
                       </tr>
                     );
