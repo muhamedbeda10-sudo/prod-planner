@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { AiLayout, AiTab, AiView } from "@/components/AiWorkspace";
 import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens, usePhone, useWindowChrome } from "@/components/floatWindow";
-import { handToAssistant } from "@/lib/aiAsk";
+import { handToAssistant, type HandedFile } from "@/lib/aiAsk";
 import { clampDockWidth } from "@/lib/domain/aiDock";
 import { FloatWindow } from "@/components/FloatDock";
 
@@ -60,9 +60,10 @@ interface PanelApi {
   /** Open where it was left. */
   open: () => void;
   /** Open a new chat with this question in its box, for the person to send —
-   *  or, with `explain`, sent at once to explain only. Nothing for someone
+   *  or, with `explain`, sent at once to explain only; with `files` (kept
+   *  for the chat already), sent at once with them. Nothing for someone
    *  without the chat. */
-  ask: (question: string, opts?: { explain?: boolean }) => void;
+  ask: (question: string, opts?: { explain?: boolean; files?: HandedFile[] }) => void;
   /** The chat is open to this person. */
   canAsk: boolean;
   close: () => void;

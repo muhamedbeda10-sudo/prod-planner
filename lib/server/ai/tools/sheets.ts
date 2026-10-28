@@ -49,7 +49,8 @@ import { parseRosterFilter, rosterDepts, rosterLineMatches, type RosterFilter } 
 import { filterLvTracker, filterMasterTracker, trackerStagesOf, type TrackerFilters } from "@/lib/domain/trackerSummary";
 import { WEEKLY_STAGES, filterWeeklyDays, weeklyMetricOf, weeklyPlanRows, weeklyStagesOf } from "@/lib/domain/weeklyPlanView";
 import { runAiRows } from "../reader";
-import { roomProblem, storeMadeWorkbook } from "../files";
+import { chatFile, roomProblem, sheetGrid, storeMadeWorkbook } from "../files";
+import { tableSheetRows } from "@/lib/domain/tableExport";
 import { MAX_SPLIT_SHEETS, columnsOf, isTotalRow, layoutSheets } from "@/lib/domain/sheetLayout";
 import { MARK_COLORS, MARK_OPERATORS, NUMBER_FORMATS, SHEET_THEMES, type SheetStyleInput } from "@/lib/domain/sheetStyle";
 import { TRACKER_FILTER_SCHEMA, trackerFiltersFor } from "./planning";
@@ -60,7 +61,9 @@ import type { ReadResult, ReadTool, ToolCtx } from "./types";
 // (the Floor's worklists aside): the person asks, and the assistant builds
 // the same sheet the button did — from the screen's own loader and filters,
 // through the same row builder (lib/server/sheets.ts), with the screen's own
-// headers — or, for anything no screen lists, from one SELECT. The workbook
+// headers — or, for anything no screen lists, from one SELECT; or from a
+// table the person sent off a screen (the AI mark at its corner,
+// components/TableAiExport), with the columns they pick. The workbook
 // is kept as the person's file in their chat, to download or print.
 
 /** The most rows one sheet carries — far more than any screen lists. */
@@ -76,7 +79,7 @@ const GUARD_HISTORY = 2000;
 const STAGE_VALUES = WEEKLY_STAGES.map((o) => o.value);
 
 /** The inputs every sheet takes: its file name and how its rows are laid out. */
-const COMMON = ["sheet", "name", "splitBy", "totals", "nonBlank", "style"] as const;
+const COMMON = ["sheet", "name", "columns", "splitBy", "totals", "nonBlank", "style"] as const;
 type Param = Exclude<keyof Input, (typeof COMMON)[number]>;
 
 /** Each sheet: the screen it comes from (its tab), whether it is the admin's,
@@ -104,6 +107,7 @@ const SHEETS = {
   production: { tab: "shifts", params: ["line", "from", "to", "dept"], about: "the Production dashboard's department table — each department's recorded days of the working days, person-days, booked hours, overtime, earned standard hours, efficiency and output in its unit, with the total row the tiles show — line (TR / LV; left out, the whole plant), from/to (default the last 7 days), dept" },
   production_days: { tab: "shifts", params: ["line", "from", "to", "dept"], about: "every unit-day behind the Production dashboard's figures (work centre or department, day by day): hours booked, earned, people, overtime, attendance rows, Not set, day / night hours — same inputs as production" },
   output_by_type: { tab: "shifts", params: ["from", "to"], about: "the Production dashboard's What did we make, item by item?: each line's pieces per stage in the period by item and type (transformers by component and KVA class, panels by plan and panel type) against the month's plan — from/to (default the last 7 days)" },
+  attached: { tab: null, params: ["file"], about: "a sheet attached in this chat, whole (its first sheet) — above all a table the person sent off a screen with the AI mark at its corner, a CSV of the table as the screen showed it: file is its number (file #N). Ask which of its columns they want before you make it (all, or which), then name them in columns" },
   query: { tab: null, params: ["sql"], about: "anything else: the rows of ONE read-only SELECT (sql), as query_database reads them" },
 } as const satisfies Record<string, { tab: string | null; admin?: true; params: readonly Param[]; about: string }>;
 type SheetKind = keyof typeof SHEETS;
@@ -134,6 +138,8 @@ interface Input extends MaterialScopeInput {
   basis?: "closed" | "logged";
   address?: string;
   sql?: string;
+  file?: number;
+  columns?: string[];
   splitBy?: string;
   totals?: string[];
   nonBlank?: string[];
@@ -230,6 +236,8 @@ export const makeSheetTool: ReadTool<Input> = {
       basis: { type: "string", enum: ["closed", "logged"], description: "odoo_daily: count by the day closed (default) or the day logged." },
       address: { type: "string", maxLength: 600, description: "consumables_dashboard: the dashboard's address query, exactly as on the screen — e.g. \"from=2026-10-01&to=2026-10-26&dept=WeldingTX&status=over\" (dept, item c<id> or t:<typed name>, link linked|unlinked, status over|near|within|none); empty for today with no filter." },
       sql: str(20000, "query: one SELECT statement — no semicolons, no writes."),
+      file: { type: "integer", minimum: 1, description: "attached: the file's number in this chat (file #N)." },
+      columns: COLUMNS("Any sheet: only these columns, in this order — every column when left out (the person asked for all of them).", 200),
       splitBy: { ...COLUMN, description: "Any sheet: a column whose every value gets its own sheet in the file (\"Thickness mm\" → 2 mm, 3 mm, …), in order." },
       totals: COLUMNS("Any sheet: the columns a Total row at the end of each sheet adds up.", 30),
       nonBlank: COLUMNS("Any sheet: keep only the rows with these columns filled.", 10),
@@ -242,6 +250,7 @@ export const makeSheetTool: ReadTool<Input> = {
     const foreign = Object.keys(i).filter((k) => !(COMMON as readonly string[]).includes(k) && !takes.includes(k));
     if (foreign.length > 0) return `${i.sheet} does not take ${foreign.join(", ")} — it takes ${takes.length ? takes.join(", ") : "nothing but its name"} (and ${COMMON.slice(2).join(", ")}).`;
     if (i.sheet === "query" && !i.sql) return "A query sheet needs its SELECT (sql).";
+    if (i.sheet === "attached" && !i.file) return "An attached sheet needs the file's number (file).";
     if (i.sheet === "trace" && !i.mo && !i.bom) return "A trace needs the order's MO or the code (bom).";
     if (i.from && i.to && i.from > i.to) return "from must not be after to.";
     if (i.sheet === "material_dashboard") { const problem = materialScopeProblem(i); if (problem) return problem; }
@@ -266,13 +275,15 @@ export const makeSheetTool: ReadTool<Input> = {
 async function keep(i: Input, made: Exclude<Made, { error: string }>, ctx: ToolCtx): Promise<ReadResult> {
   if (made.rows.length === 0) return { ok: true, text: JSON.stringify({ rows: 0, scope: made.scope, note: "Nothing matches, so no file was made — say so, and offer a wider scope." }) };
   if (made.rows.length > MAX_SHEET_ROWS) return { ok: false, text: `That is ${made.rows.length.toLocaleString("en-US")} rows — at most ${MAX_ROWS_TEXT} in one file. Narrow it (a shorter period, a filter) or make it in parts.` };
-  const laidOut = Boolean(i.splitBy || i.totals || i.nonBlank);
+  // only some columns keep the sheet's own Total row; a split, a filter or totals of their own do not
+  const reshaped = Boolean(i.splitBy || i.totals || i.nonBlank);
+  const laidOut = reshaped || Boolean(i.columns?.length);
   // a title's subtitle is the sheet's scope unless one is given
   const style = i.style?.title && !i.style.subtitle ? { ...i.style, subtitle: made.scope } : i.style;
   // a sheet's own closing Total row (the Production sheet's, a query's) is neither split nor added in again
   const ownTotal = isTotalRow(made.rows.at(-1));
-  const data = ownTotal ? made.rows.slice(0, -1) : made.rows;
-  const laid = laidOut ? layoutSheets(data, made.sheet, i) : { sheets: [{ name: made.sheet, rows: made.rows }], dropped: 0, notNumbers: 0 };
+  const data = ownTotal && reshaped ? made.rows.slice(0, -1) : made.rows;
+  const laid = laidOut ? layoutSheets(data, made.sheet, i) : { sheets: [{ name: made.sheet, rows: made.rows }], columns: columnsOf(made.rows), dropped: 0, notNumbers: 0 };
   if ("error" in laid) return { ok: false, text: laid.error };
   const rows = laidOut ? laid.sheets.reduce((n, s) => n + s.rows.length, 0) : data.length;
   const left = laid.dropped ? `${laid.dropped} rows with a blank in ${i.nonBlank!.join(", ")} are not in the file` : undefined;
@@ -290,10 +301,10 @@ async function keep(i: Input, made: Exclude<Made, { error: string }>, ctx: ToolC
   return {
     ok: true,
     text: JSON.stringify({
-      file: stored.file.name, scope: made.scope, rows, columns: columnsOf(made.rows), preview: laid.sheets[0].rows.slice(0, 3),
+      file: stored.file.name, scope: made.scope, rows, columns: laid.columns, preview: laid.sheets[0].rows.slice(0, 3),
       sheets: laidOut ? laid.sheets.map((s, n) => ({ name: stored.sheets[n], rows: s.rows.length, totals: s.total && sumsOf(s.total) })) : undefined,
       left,
-      ownTotal: laidOut && ownTotal ? "The sheet's own Total row is left out of the laid-out file" : undefined,
+      ownTotal: reshaped && ownTotal ? "The sheet's own Total row is left out of the laid-out file" : undefined,
       notSummed: laid.notNumbers ? `${laid.notNumbers} cells in the totals columns are text, not numbers — not in the totals; say so` : undefined,
       download, print,
       note: `Put both links in your answer: [Download ${stored.file.name}](${download}) · [Print](${print}). The file is kept for the person for ${AI_FILE_LIMITS.keepDays} days.`,
@@ -494,6 +505,16 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       const req = floorRequest({ from: i.from, to: i.to }, today);
       const { tr, lv } = await loadProductionAll(req, "all", ctx.now);
       return { rows: outputByTypeRows(tr.byType, lv.byType), name: `output-by-type-${tr.fromISO}_${tr.toISO}`, sheet: "By item", scope: `Output by item and type, ${tr.fromISO} – ${tr.toISO}` };
+    }
+    case "attached": {
+      const f = await chatFile(ctx, i.file!);
+      if ("error" in f) return f;
+      const grid = sheetGrid(f);
+      if ("error" in grid) return grid;
+      if (grid.length - 1 > MAX_SHEET_ROWS) return { error: `The file holds ${(grid.length - 1).toLocaleString("en-US")} rows — at most ${MAX_ROWS_TEXT} in one file.` };
+      const t = tableSheetRows(grid);
+      if ("error" in t) return t;
+      return { rows: t.rows, name: f.name, sheet: "Table", scope: `"${f.name}", ${t.rows.length} rows as sent` };
     }
     case "query": {
       const closed = blockedTableIn(i.sql!, blockedTablesFor(ctx.hidden));

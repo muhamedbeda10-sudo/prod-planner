@@ -1,5 +1,6 @@
 // How the assistant lays a sheet's rows out in its Excel file, past the
-// screen's own columns: the rows kept only where some columns are filled
+// screen's own columns: only some of the columns, in the order asked for
+// (columns), the rows kept only where some columns are filled
 // (nonBlank), one sheet per value of a column (splitBy) — a sheet per
 // thickness — and a Total row closing each sheet over the columns asked for
 // (totals). Pure: the rows in, the sheets out, or why not.
@@ -8,6 +9,8 @@ export type LayoutCell = string | number;
 export type LayoutRow = Record<string, LayoutCell>;
 
 export interface LayoutOptions {
+  /** Only these columns, in this order. */
+  columns?: readonly string[];
   splitBy?: string;
   totals?: readonly string[];
   nonBlank?: readonly string[];
@@ -23,6 +26,8 @@ export interface LaidSheet {
 
 export interface Layout {
   sheets: LaidSheet[];
+  /** The sheets' columns, in order. */
+  columns: string[];
   /** Rows left out for a blank in a nonBlank column. */
   dropped: number;
   /** Cells in a totals column that are text, not a number — left out of its sum. */
@@ -110,11 +115,25 @@ export function columnResolver(columns: readonly string[]): { resolve: (name: st
   };
 }
 
+/** The rows with only the columns asked for, in that order — all of them
+ *  when none are named. */
+function pickColumns(rows: readonly LayoutRow[], names: readonly string[] | undefined): { rows: readonly LayoutRow[]; columns: string[] } | { error: string } {
+  const all = columnsOf(rows);
+  if (!names || names.length === 0) return { rows, columns: all };
+  const { resolve, unknown } = columnResolver(all);
+  const problem = unknown(names);
+  if (problem) return { error: problem };
+  const columns = [...new Set(names.map((n) => resolve(n)!))];
+  return { rows: rows.map((r) => Object.fromEntries(columns.map((c) => [c, r[c] ?? ""]))), columns };
+}
+
 /** The rows laid out as asked — on one sheet named `sheet` unless split.
  *  Columns are named as the sheet heads them, case and spaces aside; a name
  *  it does not have is refused with the ones it has. */
-export function layoutSheets(rows: readonly LayoutRow[], sheet: string, o: LayoutOptions): Layout | { error: string } {
-  const columns = columnsOf(rows);
+export function layoutSheets(all: readonly LayoutRow[], sheet: string, o: LayoutOptions): Layout | { error: string } {
+  const picked = pickColumns(all, o.columns);
+  if ("error" in picked) return picked;
+  const { rows, columns } = picked;
   const { resolve, unknown } = columnResolver(columns);
   const problem = unknown([o.splitBy ?? [], o.totals ?? [], o.nonBlank ?? []].flat());
   if (problem) return { error: problem };
@@ -161,5 +180,5 @@ export function layoutSheets(rows: readonly LayoutRow[], sheet: string, o: Layou
     return { name: g.name, rows: g.rows, total };
   });
 
-  return { sheets, dropped: rows.length - kept.length, notNumbers };
+  return { sheets, columns, dropped: rows.length - kept.length, notNumbers };
 }
