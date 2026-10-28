@@ -3,7 +3,7 @@ import {
   normalizeMaterialType, normalizeSheetSize, parseSheetNumber, sheetNumberOr, sheetsForJob, sheetsDifference,
   actualPerUnit, sheetsForProduced, parseNestingTracker, materialKey, round3, partNameFor,
   filterMaterialLines, EMPTY_MATERIAL_FILTERS, groupMaterialBySoi,
-  materialPlanIndex, materialPlanMonths, materialPlanMonthOptions, materialSummary, sheetsConsumed, resolvePlanMonth, traceMaterialMatch, NO_PLAN_MONTH,
+  materialPlanIndex, materialPlanMonths, materialClosings, lineClosings, itemOfPartCode, adoptedPartLine, materialPlanMonthOptions, materialSummary, sheetsConsumed, resolvePlanMonth, traceMaterialMatch, NO_PLAN_MONTH,
   type MaterialLineView,
 } from "./material";
 import { monthLabelFromInput, monthInputFromLabel, monthLabelSortKey } from "./dates";
@@ -131,7 +131,7 @@ function line(over: Partial<MaterialLineView>): MaterialLineView {
     material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
     sheetsPerUnit: 1, sheetsUsed: 10, producedQty: null, note: null, soi: "", mtr: "", weightKg: null, utilization: null, actualWeightKg: null, producedAuto: null, producedUsed: null, remainingUnits: null,
     forJob: 10, difference: 0, actualPerUnit: 1, forProduced: null,
-    updatedISO: "2026-09-07", recordedBy: null, planMonths: [], planMatch: null, orderMos: [], ...over,
+    updatedISO: "2026-09-07", recordedBy: null, planMonths: [], planMatch: null, orderMos: [], partMos: [], ...over,
   };
 }
 
@@ -583,5 +583,72 @@ describe("traceMaterialMatch", () => {
   it("never takes the SOI's line on another order's code", () => {
     expect(ids("bom")).not.toContain(4);
     expect(ids("mo")).not.toContain(4);
+  });
+});
+
+describe("materialClosings / lineClosings", () => {
+  // order PF01/MO/1's tank closings: the clerk typed part MO SF01/MO/9 on both
+  // rows; one is Done, one still open; a cancelled row ties nothing
+  const ledger = new Map([[10, { mo: "pf01/mo/1", item: "TN" }], [11, { mo: "PF01/MO/1", item: "TN" }], [12, { mo: "PF01/MO/1", item: "TC" }]]);
+  const c = materialClosings([
+    { odooMo: "SF01/MO/9", status: "Done", qty: 6, ledgerId: 10 },
+    { odooMo: "SF01/MO/9", status: "MO to be close", qty: 4, ledgerId: 11 },
+    { odooMo: "SF01/MO/7", status: "Cancelled", qty: 5, ledgerId: 12 },
+    { odooMo: "SF01/MO/8", status: "Done", qty: 3, ledgerId: null },
+  ], ledger);
+  const isOrder = (mo: string) => mo === "PF01/MO/1";
+  it("knows a part code's component", () => {
+    expect(itemOfPartCode(" fb-022 ")).toBe("TN");
+    expect(itemOfPartCode("FB-999")).toBeNull();
+  });
+  it("a line filed on the ORDER's MO finds its part MOs and closed pieces through the order's closings of the part", () => {
+    expect(lineClosings({ mo: "PF01/MO/1", partCode: "FB-022", units: 10 }, isOrder, c)).toEqual({ orderMos: ["PF01/MO/1"], partMos: ["SF01/MO/9"], closed: 6 });
+    // nothing closed of the top cover yet (its only row was cancelled): 0, not unknown
+    expect(lineClosings({ mo: "PF01/MO/1", partCode: "FB-051", units: 10 }, isOrder, c)).toEqual({ orderMos: ["PF01/MO/1"], partMos: [], closed: 0 });
+    // a part code no component answers
+    expect(lineClosings({ mo: "PF01/MO/1", partCode: "XX-1", units: 10 }, isOrder, c).closed).toBeNull();
+  });
+  it("a line filed on the PART's MO finds its order and its closed pieces, never more than its units", () => {
+    expect(lineClosings({ mo: "SF01/MO/9", partCode: "FB-022", units: 4 }, isOrder, c)).toEqual({ orderMos: ["PF01/MO/1"], partMos: ["SF01/MO/9"], closed: 4 });
+    expect(lineClosings({ mo: "SF01/MO/8", partCode: "FB-022", units: 10 }, isOrder, c)).toEqual({ orderMos: [], partMos: ["SF01/MO/8"], closed: 3 });
+    expect(lineClosings({ mo: "", partCode: "FB-022", units: 10 }, isOrder, c)).toEqual({ orderMos: [], partMos: [], closed: null });
+  });
+  it("a cancelled row ties and counts nothing", () => {
+    expect(c.ordersByPart.has("SF01/MO/7")).toBe(false);
+    expect(c.doneByPart.has("SF01/MO/7")).toBe(false);
+  });
+});
+
+describe("adoptedPartLine", () => {
+  const spec = { bom: "B1", partCode: "FB-022", material: "Steel", thicknessMm: 5, sheetSize: "1220*2440", soi: "S1" };
+  const registry = new Set(["PF01/MO/1", "PF01/MO/2"]);
+  const isOrder = (mo: string) => registry.has(mo);
+  const closed: Record<string, string[]> = { "SF01/MO/9": ["PF01/MO/1"], "SF01/MO/8": ["PF01/MO/2"], "SF01/MO/5": ["PF01/MO/50"] };
+  const ordersOf = (mo: string) => closed[mo] ?? [];
+  const row = { ...spec, mo: "PF01/MO/1" };
+  const adopt = (r: typeof row, older: ({ id: number } & typeof row)[], rivals: typeof row[] = [r]) => adoptedPartLine(r, older, rivals, isOrder, ordersOf);
+  it("takes over the part-MO line closed against this order on the ODOO log", () => {
+    expect(adopt(row, [{ id: 1, ...spec, mo: "SF01/MO/8" }, { id: 2, ...spec, mo: "SF01/MO/9" }])?.id).toBe(2);
+    // the order not on the Plan Tracker yet: the ODOO log's closing still ties them
+    expect(adopt({ ...row, mo: "PF01/MO/50" }, [{ id: 7, ...spec, mo: "SF01/MO/5" }])?.id).toBe(7);
+    // the part's code in another case is the same part
+    expect(adopt({ ...row, partCode: "fb-022" }, [{ id: 2, ...spec, mo: "SF01/MO/9" }])?.id).toBe(2);
+  });
+  it("else the SOI's one part-MO line not closed anywhere yet, when the row is the SOI's only order on it", () => {
+    expect(adopt(row, [{ id: 3, ...spec, mo: "SF01/MO/7" }])?.id).toBe(3);
+    // two open candidates: neither is taken
+    expect(adopt(row, [{ id: 3, ...spec, mo: "SF01/MO/7" }, { id: 4, ...spec, mo: "SF01/MO/6" }])).toBeNull();
+    // another order of the SOI on the same part and sheet: whose the line is can't be told
+    expect(adopt(row, [{ id: 3, ...spec, mo: "SF01/MO/7" }], [row, { ...row, mo: "PF01/MO/2" }])).toBeNull();
+    // no SOI to tie them by
+    expect(adopt({ ...row, soi: "" }, [{ id: 3, ...spec, soi: "", mo: "SF01/MO/7" }])).toBeNull();
+    // closed against ANOTHER order: never this one's
+    expect(adopt(row, [{ id: 1, ...spec, mo: "SF01/MO/8" }])).toBeNull();
+  });
+  it("never for another sheet or part, nor for a row on a part's MO", () => {
+    expect(adopt(row, [{ id: 5, ...spec, thicknessMm: 3, mo: "SF01/MO/9" }])).toBeNull();
+    expect(adopt({ ...row, mo: "SF01/MO/9" }, [{ id: 3, ...spec, mo: "SF01/MO/7" }])).toBeNull();
+    // an order's own line is never taken over
+    expect(adopt(row, [{ id: 6, ...spec, mo: "PF01/MO/2" }])).toBeNull();
   });
 });

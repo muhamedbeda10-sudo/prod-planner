@@ -211,7 +211,13 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    by part, material, thickness, sheet size, status (nested / not nested / with produced / over BOM) or a
    search across BOM, SOI, part, code and note. A strip above the table adds up what is shown (orders, BOM vs
    actual for the job, actual weight, the difference and the lines over their BOM), and the Total row follows
-   the filter. **Columns ▾** keeps each person's columns on their account, and the arrows on the band over the
+   the filter. **Actual for job** is the nesting the sheet plans; what was really used is under **On ODOO**:
+   **Closed** (the part's pieces closed Done on the ODOO log, capped at the line's units) and **Consumed**
+   (closed × actual per unit) — the strip reads Nested for job beside Consumed (`lineClosings`). The sheet
+   files the transformer's MO (PF01/…) in its MO column, never the part's: the line finds its **Part MO**s on
+   the ODOO rows born of that order's closings of the part. An upload that moves a line from the part's MO to
+   the order's takes the older line over rather than add it twice (`adoptedPartLine`), and notes any row still
+   on an MO no order carries. **Columns ▾** keeps each person's columns on their account, and the arrows on the band over the
    headers fold a run of columns (Order, Job, Part, Sheet, Per unit, For the job) and open it again, as on
    the Plan Tracker.
 7. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to

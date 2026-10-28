@@ -59,7 +59,11 @@ const up = (v: string | null | undefined) => (v ?? "").trim().toUpperCase();
  * the same BOM nests the same way — and one line per sheet is kept, so two
  * jobs' lines never add up.
  */
-export function pickJobLines(all: readonly NestingLineLite[], soi: string | null): NestingLineLite[] {
+export function pickJobLines(all: readonly NestingLineLite[], soi: string | null, mo: string | null = null): NestingLineLite[] {
+  // the sheet filing the transformer's own MO: that order's lines, exactly
+  const m = up(mo);
+  const byMo = m ? all.filter((l) => up(l.mo) === m) : [];
+  if (byMo.length > 0) return byMo;
   const s = up(soi);
   const bySoi = s ? all.filter((l) => up(l.soi) === s) : [];
   if (bySoi.length > 0) return bySoi;

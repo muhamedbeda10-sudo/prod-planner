@@ -58,7 +58,7 @@ export async function getLinesMaterial(lines: readonly MaterialLineRef[], orderO
   for (const l of tr) {
     const all = byPart.get(`${up(partOf(l.item))}|${up(l.bom)}`) ?? [];
     const order = l.mo ? orderOf(l.mo) : undefined;
-    const m = lineMaterialOf(pickJobLines(all, order?.soi ?? null), order?.months ?? []);
+    const m = lineMaterialOf(pickJobLines(all, order?.soi ?? null, l.mo), order?.months ?? []);
     if (m && m.specs.length > 0) out[l.key] = m;
   }
   for (const l of lv) {

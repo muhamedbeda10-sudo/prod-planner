@@ -341,6 +341,7 @@ export const importMaterialSheetTool = importTool<MaterialInput, MaterialImportR
     changes: [
       { label: "New lines", before: "—", after: String(r.added ?? 0) },
       { label: "Lines updated", before: "—", after: String(r.updated ?? 0) },
+      ...(r.moved ? [{ label: "Lines moved from a part's MO to its order's", before: String(r.moved), after: "the transformer's MO" }] : []),
       ...(r.missing ? [{ label: "Lines the file no longer carries", before: String(r.missing), after: i.prune ? "removed" : "kept" }] : []),
       ...(r.issues?.length ? [{ label: "Rows the importer skips", before: "—", after: list(r.issues) }] : []),
     ],

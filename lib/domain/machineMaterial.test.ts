@@ -12,6 +12,11 @@ describe("pickJobLines", () => {
     expect(pickJobLines(all, "s1").map((l) => l.thicknessMm)).toEqual([4]);
     expect(pickJobLines(all, "S9").map((l) => l.thicknessMm)).toEqual([3]);
   });
+  it("takes the lines filed under the order's own MO before its SOI", () => {
+    const all = [L({ soi: "S1", mo: "PF01/MO/1", thicknessMm: 6 }), L({ soi: "S1", mo: "PF01/MO/2", thicknessMm: 4 })];
+    expect(pickJobLines(all, "S1", "pf01/mo/2").map((l) => l.thicknessMm)).toEqual([4]);
+    expect(pickJobLines(all, "S1", "PF01/MO/9").map((l) => l.thicknessMm)).toEqual([6, 4]);
+  });
   it("falls back on every job of the BOM when none is the order's", () => {
     const all = [L({ soi: "S1" }), L({ soi: "S2" })];
     expect(pickJobLines(all, "S9")).toHaveLength(2);

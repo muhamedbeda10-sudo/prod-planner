@@ -65,8 +65,22 @@ function Utilization({ v }: { v: number | null }) {
 // ---- the columns: each one on or off (Columns ▾), a run of them folded from the band ----
 
 /** The MO cell: the sheet's MO and whether the ODOO log carries it yet. */
-function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
+function MoCell({ mo, odoo, line }: { mo: string; odoo: Record<string, string>; line?: MaterialLineView }) {
   if (!mo) return <span className="text-muted">—</span>;
+  // the sheet files the order's own MO: no ODOO row carries it — its parts'
+  // rows do, so the badge says how much of the part they closed
+  if (line && isOrderLine(line) && line.producedUsed !== null) {
+    const closed = line.producedUsed ?? 0;
+    const tone = closed <= 0 ? "pill-muted" : line.units > 0 && closed >= line.units ? "pill-ok" : "pill-warn";
+    return (
+      <span className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+        <span className="shrink-0" title={mo}>{mo}</span>
+        <span className={`pill ${tone} min-w-0 tabnum`} title={line.partMos.length ? `Closed on the ODOO log through ${line.partMos.join(", ")}` : "None of this part is closed on the ODOO log yet"}>
+          {closed > 0 && <Check size={10} className="shrink-0" aria-hidden />}<span className="truncate">closed {formatQty(closed)}/{formatQty(line.units)}</span>
+        </span>
+      </span>
+    );
+  }
   const status = odoo[mo.trim().toUpperCase()];
   // one line: the MO, then where it stands on the ODOO log as a compact badge
   return (
@@ -79,6 +93,9 @@ function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
     </span>
   );
 }
+
+/** The sheet files the transformer's own MO on this line, not the part's. */
+const isOrderLine = (l: MaterialLineView) => l.orderMos.length === 1 && l.orderMos[0] === l.mo.trim().toUpperCase();
 
 /** Plan month, on either line's sheet: not from the sheet — read off the Plan Tracker. */
 const planCol = <K extends string>(): ColDef<K> => ({
@@ -110,8 +127,6 @@ function sharedOf<T>(values: T[]): T | null {
   return values.every((v) => v === values[0]) ? values[0] : null;
 }
 
-type Sums = Pick<MaterialSoiGroup, "forJob" | "sheetsUsed" | "actualWeightKg" | "difference">;
-
 const diffTone = (v: number | null) => (v === null ? "" : v < 0 ? "text-bad-fg" : v > 0 ? "text-ok-fg" : "text-muted");
 
 interface ColCtx { odoo: Record<string, string>; product: ProductLine }
@@ -127,7 +142,7 @@ interface ColDef<K extends string> {
   td: string | ((l: MaterialLineView) => string);
   cell: (l: MaterialLineView, x: ColCtx) => React.ReactNode;
   head?: (g: MaterialSoiGroup, x: ColCtx) => React.ReactNode;
-  sum?: (s: Sums) => React.ReactNode;
+  sum?: (s: MaterialSummary) => React.ReactNode;
 }
 
 /** A run of neighbouring columns under one name in the band; its arrow folds
@@ -135,8 +150,8 @@ interface ColDef<K extends string> {
 interface ColRun<K extends string> { label: string; cols: K[]; lead: K[] }
 
 type TrCol =
-  | "mtr" | "soi" | "mo" | "order" | "bom" | "units" | "plan" | "partCode" | "partName" | "matCode" | "material" | "thk" | "size" | "weight"
-  | "bomUnit" | "actualUnit" | "bomJob" | "actualJob" | "util" | "actualWeight" | "diff" | "notes";
+  | "mtr" | "soi" | "mo" | "order" | "partMo" | "bom" | "units" | "plan" | "partCode" | "partName" | "matCode" | "material" | "thk" | "size" | "weight"
+  | "bomUnit" | "actualUnit" | "bomJob" | "actualJob" | "util" | "actualWeight" | "diff" | "closed" | "consumed" | "notes";
 
 /** The identifiers stay on screen while the figures scroll past: MTR, SOI and
  *  MO are pinned (from a laptop up) at fixed widths, each shown one after the other. */
@@ -153,13 +168,28 @@ const TR_COLS: ColDef<TrCol>[] = [
   { key: "soi", name: "SOI", th: { label: "SOI", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs font-semibold",
     cell: (l) => <span className="block truncate" title={l.soi || undefined}>{l.soi || <span className="text-muted">—</span>}</span>,
     head: (g) => <span className="block truncate font-bold" title={g.soi || undefined}>{g.soi || <span className="text-muted font-semibold">No SOI</span>}</span> },
-  // the sheet files each part under Odoo's MO — the key an ODOO row finds it by
-  { key: "mo", name: "MO", th: { label: "MO", hint: "Odoo's MO for the part — the ODOO log finds the line by it", group: "source" }, td: "p-2 font-bold whitespace-nowrap ltr text-xs",
-    cell: (l, x) => <MoCell mo={l.mo} odoo={x.odoo} />,
+  // the sheet files the transformer's MO (older lines, the part's) — the part
+  // MOs come from the ODOO log's closings, under Part MO
+  { key: "mo", name: "MO", th: { label: "MO", hint: "The sheet's MO: the transformer's own (PF01/MO/…) — the part's MOs show under Part MO, read off the ODOO log when that part is closed. Older lines may still carry a part's MO", group: "source" }, td: "p-2 font-bold whitespace-nowrap ltr text-xs",
+    cell: (l, x) => <MoCell mo={l.mo} odoo={x.odoo} line={l} />,
     head: (g, x) => {
       const sharedMo = sharedOf(g.lines.map((l) => l.mo.trim()));
+      if (sharedMo !== null && g.lines.every(isOrderLine)) {
+        // one order's parts: how many of its lines the ODOO log closed in full
+        const full = g.lines.filter((l) => l.units > 0 && (l.producedUsed ?? 0) >= l.units).length;
+        const some = g.lines.some((l) => (l.producedUsed ?? 0) > 0);
+        return (
+          <span className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+            <span className="shrink-0" title={sharedMo}>{sharedMo}</span>
+            <span className={`pill tabnum ${full === g.lines.length ? "pill-ok" : some ? "pill-warn" : "pill-muted"}`} title="Lines whose part is closed in full on the ODOO log">
+              {some && <Check size={10} aria-hidden />}closed {full}/{g.lines.length}
+            </span>
+          </span>
+        );
+      }
       if (sharedMo !== null) return <MoCell mo={sharedMo} odoo={x.odoo} />;
-      const onOdoo = g.mos.filter((mo) => x.odoo[mo.toUpperCase()]);
+      // an order's MO is on the log through its parts' rows
+      const onOdoo = g.mos.filter((mo) => x.odoo[mo.toUpperCase()] || g.lines.some((l) => l.mo.trim() === mo && isOrderLine(l) && (l.producedUsed ?? 0) > 0));
       return (
         <span className="flex items-center gap-1.5">
           {g.mos.length} MOs
@@ -172,13 +202,15 @@ const TR_COLS: ColDef<TrCol>[] = [
         </span>
       );
     } },
-  { key: "order", name: "Order MO", th: { label: "Order MO", hint: "Not from the sheet: the order this part's MO was closed against on the ODOO log — the transformer's own MO. Blank until the part is closed there" }, td: "p-2 whitespace-nowrap ltr text-xs",
+  { key: "order", name: "Order MO", th: { label: "Order MO", hint: "Not from the sheet: the transformer's own MO — the sheet's MO where it files the order's, else the order this part's MO was closed against on the ODOO log (blank until it is closed there)" }, td: "p-2 whitespace-nowrap ltr text-xs",
     cell: (l, x) => <OrderMos mos={l.orderMos} line={x.product} />,
     head: (g, x) => {
       const shared = sharedOf(g.lines.map((l) => l.orderMos.join(",")));
       const all = [...new Set(g.lines.flatMap((l) => l.orderMos))];
       return shared !== null ? <OrderMos mos={g.lines[0].orderMos} line={x.product} /> : <span className="text-muted" title={all.join(", ")}>{all.length} orders</span>;
     } },
+  { key: "partMo", name: "Part MO", th: { label: "Part MO", hint: "Not from the sheet: the part's own MO in Odoo. The sheet's MO where it files the part's; where it files the order's, the part MOs typed on the ODOO rows born of that order's closings of this part — blank until it is closed there" }, td: "p-2 whitespace-nowrap ltr text-xs",
+    cell: (l, x) => <PartMos mos={l.partMos} odoo={x.odoo} /> },
   { key: "bom", name: "BOM", th: { label: "BOM", full: "BOM Ref", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs",
     cell: (l, x) => <BomLink bom={l.bom} line={x.product} />,
     head: (g, x) => {
@@ -223,17 +255,24 @@ const TR_COLS: ColDef<TrCol>[] = [
     cell: (l) => <Sheets v={l.difference} />,
     head: (g) => <span className={diffTone(g.difference)}><Sheets v={g.difference} /></span>,
     sum: (s) => <span className={diffTone(s.difference)}><Sheets v={s.difference} /></span> },
+  { key: "closed", name: "Closed", th: { label: "Closed", unit: "pcs", hint: "Not from the sheet: the pieces of this part closed Done on the ODOO log — never more than the line's units", group: "computed", num: true }, td: `p-2 ${NUM} tabnum ltr`,
+    cell: (l) => <Units v={l.producedUsed} /> },
+  { key: "consumed", name: "Consumed", th: { label: "Consumed", full: "Sheets the closed pieces consumed", hint: "Closed × Actual / unit (the BOM's per unit where the sheet has no actual) — what was really used, unlike Actual for job, which is the nesting planned", group: "computed", num: true, className: "emph" }, td: `p-2 ${NUM} emph`,
+    cell: (l) => <Sheets v={sheetsConsumed(l)} />,
+    head: (g) => <Sheets v={materialSummary(g.lines).forProduced} />,
+    sum: (s) => <Sheets v={s.forProduced} /> },
   { key: "notes", name: "Notes", th: { label: "Notes", group: "source" }, td: "p-2 text-xs min-w-[8rem] max-w-[200px]",
     cell: (l) => l.note, head: (g) => sharedOf(g.lines.map((l) => l.note ?? "")) ?? <span className="text-muted">…</span> },
 ];
 
 const TR_RUNS: ColRun<TrCol>[] = [
   { label: "Order", cols: ["mtr", "soi", "mo"], lead: ["mo"] },
-  { label: "Job", cols: ["order", "bom", "units", "plan"], lead: ["order", "bom"] },
+  { label: "Job", cols: ["order", "partMo", "bom", "units", "plan"], lead: ["order", "bom"] },
   { label: "Part", cols: ["partCode", "partName"], lead: ["partCode"] },
   { label: "Sheet", cols: ["matCode", "material", "thk", "size", "weight"], lead: ["material", "thk"] },
   { label: "Per unit", cols: ["bomUnit", "actualUnit"], lead: ["actualUnit"] },
   { label: "For the job", cols: ["bomJob", "actualJob", "util", "actualWeight", "diff"], lead: ["bomJob", "actualJob", "diff"] },
+  { label: "On ODOO", cols: ["closed", "consumed"], lead: ["closed", "consumed"] },
   { label: "", cols: ["notes"], lead: ["notes"] },
 ];
 
@@ -291,7 +330,7 @@ const ALWAYS = "mo";
 // every column shows until the person picks otherwise
 const TR_DEFAULT = TR_COLS.map((c) => c.key).filter((k) => k !== ALWAYS);
 /** The transformers' columns each later version of the sheet brought (useColumns `added`). */
-const TR_ADDED: readonly (readonly TrCol[])[] = [["order"]];
+const TR_ADDED: readonly (readonly TrCol[])[] = [["order"], ["partMo", "closed", "consumed"]];
 const LV_DEFAULT = LV_COLS.map((c) => c.key).filter((k) => k !== ALWAYS);
 
 /** The columns shown, in the sheet's order, each pinned identifier with its
@@ -527,7 +566,8 @@ function ImportPanel({ product }: { product: ProductLine }) {
       if (!r.ok) { setRes({ ok: false, text: r.error ?? "Import failed." }); return; }
       const stale = r.recomputed ? ` · ${r.recomputed} row(s) where the sheet's “Actual Nesting for Job” disagrees with its own per-unit rate × units — kept as written, worth a look` : "";
       const gone = r.missing ? (r.removed ? ` · ${r.removed} row(s) no longer in the file removed` : ` · ${r.missing} row(s) not in this file kept`) : "";
-      setRes({ ok: true, text: `Table updated: ${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged${r.sheet ? ` (sheet “${r.sheet}”)` : ""}${gone}${stale}.` });
+      const moved = r.moved ? ` · ${r.moved} moved from a part's MO to its order's` : "";
+      setRes({ ok: true, text: `Table updated: ${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged${r.sheet ? ` (sheet “${r.sheet}”)` : ""}${moved}${gone}${stale}.` });
       router.refresh();
     });
   }
@@ -688,8 +728,9 @@ function SummaryStrip({ s, lv, planMonth }: { s: MaterialSummary; lv: boolean; p
       ) : (
         <>
           {cell("BOM for job", formatNumber(s.forJob, FIELD_DP.sheets), "as the BOM allows")}
-          {cell("Actual for job", formatNumber(s.sheetsUsed, FIELD_DP.sheets), "nested on the sheet")}
-          {cell("Actual weight", s.actualWeightKg === null ? "—" : <>{formatNumber(s.actualWeightKg, 0)}<span className="text-sm text-muted ms-1">kg</span></>, "nested × one sheet's weight")}
+          {cell("Nested for job", formatNumber(s.sheetsUsed, FIELD_DP.sheets), "planned on the sheet — not used yet")}
+          {cell("Consumed", formatNumber(s.forProduced ?? 0, FIELD_DP.sheets), "closed on ODOO × actual / unit")}
+          {cell("Nested weight", s.actualWeightKg === null ? "—" : <>{formatNumber(s.actualWeightKg, 0)}<span className="text-sm text-muted ms-1">kg</span></>, "nested × one sheet's weight")}
           {cell("Difference", formatNumber(s.difference, FIELD_DP.sheets), s.overLines ? <span className="text-bad-fg font-semibold">{s.overLines} line{s.overLines === 1 ? "" : "s"} over the BOM</span> : "no line over the BOM", diffTone(s.difference))}
         </>
       )}
@@ -833,6 +874,16 @@ export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}
         )}
       </section>
     </div>
+  );
+}
+
+/** The parts' own MOs, each with where it stands on the ODOO log. */
+function PartMos({ mos, odoo }: { mos: string[]; odoo: Record<string, string> }) {
+  if (mos.length === 0) return <span className="text-muted" title="No part MO closed on the ODOO log yet">—</span>;
+  return (
+    <span className="inline-flex flex-wrap gap-x-2 gap-y-0.5">
+      {mos.map((mo) => <span key={mo} className="inline-flex items-center gap-1"><span title={mo}>{mo}</span>{odoo[mo.toUpperCase()] && <span className="pill pill-muted">{odoo[mo.toUpperCase()]}</span>}</span>)}
+    </span>
   );
 }
 

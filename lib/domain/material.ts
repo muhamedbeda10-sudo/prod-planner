@@ -18,6 +18,8 @@
 // "The sheet says 50 sheets made 30 units; 5 were made — so 8.333 were used."
 
 import { monthInputFromLabel, monthLabelSortKey } from "./dates";
+import { ITEM_PRODUCT } from "./odooMirror";
+import { isCancelledStatus, isDoneStatus } from "./odoo";
 
 /** Sheet counts are fractions of a sheet (0.429 of a sheet per unit). Excel
  *  left 0.564 × 3 as 1.6919999999999997; the nesting sheet quotes its figures
@@ -205,6 +207,11 @@ export interface MaterialLineView extends MaterialLineInput {
    *  the part's own MO the clerk typed. Empty while the part is not closed
    *  there, or on a row typed without a closing behind it. */
   orderMos: string[];
+  /** The parts' own MOs (Odoo's, SF01/…) this line's nesting went to: the
+   *  line's MO when the sheet files the part's, else — the sheet filing the
+   *  order's — the part MOs typed on the ODOO rows born of that order's
+   *  closings of this part. */
+  partMos: string[];
 }
 
 /** The identity of a line — one per month × BOM × order × part × material ×
@@ -218,8 +225,9 @@ export function materialKey(l: Pick<MaterialLineInput, "month" | "bom" | "mo" | 
 export interface NestingRow {
   rowNum: number; // 1-based sheet row, for the issues list
   bom: string;
-  /** Odoo's MO for this part (SF01/MO/20941) when the sheet has an MO column;
-   *  "" when the line covers the BOM, as the older sheet wrote it. */
+  /** The sheet's MO: the transformer's own (PF01/MO/…) — the sheet now files
+   *  the order's — or, on the older sheets, Odoo's MO for the part
+   *  (SF01/MO/20941); "" when the line covers the BOM. */
   mo: string;
   units: number;
   partCode: string;
@@ -330,7 +338,8 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
     return { rows: [], issues: ["No header row found — expected a row with 'BOM Ref' and 'Thickness'."], headerRow: 0, recomputed: 0, skipped: 0 };
   }
   const col = mapColumns(grid[headerIdx] ?? []);
-  // the newer sheet carries Odoo's MO per part: a column headed exactly "MO"
+  // the newer sheet carries an MO per line — the transformer's; older ones,
+  // the part's: a column headed exactly "MO"
   // (a fragment match would catch other headers), found apart from the rest
   const moCol = (grid[headerIdx] ?? []).findIndex((c) => /^mo\s*(#|no\.?)?$/i.test(cellText(c)));
   const soiCol = (grid[headerIdx] ?? []).findIndex((c) => /^soi\s*#?$/i.test(cellText(c)));
@@ -450,6 +459,117 @@ export function filterMaterialLines(lines: MaterialLineView[], f: MaterialFilter
     }
     return true;
   });
+}
+
+// ---- what the ODOO log closed of a line's part ----
+
+/** The component a part code is (FB-022 → TN) — the key a closing of the
+ *  daily log is recorded under. */
+const ITEM_BY_PART_CODE = new Map(Object.entries(ITEM_PRODUCT).flatMap(([item, v]) => (v.partCode ? [[v.partCode, item] as const] : [])));
+export function itemOfPartCode(partCode: string): string | null {
+  return ITEM_BY_PART_CODE.get(partCode.trim().toUpperCase()) ?? null;
+}
+
+export interface OdooClosingRow { odooMo: string; status: string; qty: number; ledgerId: number | null }
+
+export interface MaterialClosings {
+  /** Part MO → the pieces closed Done on it. */
+  doneByPart: Map<string, number>;
+  /** "ORDER MO|ITEM" → the part MOs typed on the rows born of that order's
+   *  closings of that component, and the pieces closed Done on them. */
+  byOrderItem: Map<string, { parts: Set<string>; done: number }>;
+  /** Part MO → the orders it was closed against. */
+  ordersByPart: Map<string, Set<string>>;
+}
+
+/**
+ * The ODOO log read for the material: what was closed Done on each part MO,
+ * and — through the daily-log closing a row was born of (`ledger`: its
+ * order's MO and component) — which order and component each part MO
+ * belongs to. A cancelled row ties and counts nothing.
+ */
+export function materialClosings(rows: readonly OdooClosingRow[], ledger: ReadonlyMap<number, { mo: string; item: string }>): MaterialClosings {
+  const c: MaterialClosings = { doneByPart: new Map(), byOrderItem: new Map(), ordersByPart: new Map() };
+  for (const r of rows) {
+    const part = planKey(r.odooMo);
+    if (!part || isCancelledStatus(r.status)) continue;
+    const done = isDoneStatus(r.status) ? r.qty : 0;
+    c.doneByPart.set(part, (c.doneByPart.get(part) ?? 0) + done);
+    const closing = r.ledgerId === null ? undefined : ledger.get(r.ledgerId);
+    if (!closing || !planKey(closing.mo)) continue;
+    const order = planKey(closing.mo);
+    (c.ordersByPart.get(part) ?? c.ordersByPart.set(part, new Set()).get(part)!).add(order);
+    const k = `${order}|${planKey(closing.item)}`;
+    const e = c.byOrderItem.get(k) ?? c.byOrderItem.set(k, { parts: new Set(), done: 0 }).get(k)!;
+    e.parts.add(part);
+    e.done += done;
+  }
+  return c;
+}
+
+/**
+ * A line's place on the ODOO log. The sheet files either the ORDER's MO
+ * (`isOrder` says so — the registry has it) or the PART's:
+ * - the order's: its part MOs are those typed on the rows born of the
+ *   order's closings of this part (the part code says which component), and
+ *   the pieces closed are theirs;
+ * - the part's: the orders it was closed against, and the pieces closed on it.
+ * `closed` — Done pieces, never more than the line's units — is 0 while
+ * nothing is closed yet, null when the line names no MO (or a part no
+ * component answers).
+ */
+export function lineClosings(
+  l: Pick<MaterialLineInput, "mo" | "partCode" | "units">, isOrder: (mo: string) => boolean, c: MaterialClosings,
+): { orderMos: string[]; partMos: string[]; closed: number | null } {
+  const mo = planKey(l.mo);
+  const cap = (n: number) => (l.units > 0 ? Math.min(n, l.units) : n);
+  if (!mo) return { orderMos: [], partMos: [], closed: null };
+  if (isOrder(mo)) {
+    const item = itemOfPartCode(l.partCode);
+    const e = item ? c.byOrderItem.get(`${mo}|${item}`) : undefined;
+    return { orderMos: [mo], partMos: e ? [...e.parts].sort() : [], closed: item ? cap(e?.done ?? 0) : null };
+  }
+  return { orderMos: [...(c.ordersByPart.get(mo) ?? [])].sort(), partMos: [mo], closed: cap(c.doneByPart.get(mo) ?? 0) };
+}
+
+// ---- the sheet moving from the part's MO to the order's ----
+
+type SpecLine = { id: number; bom: string; mo: string; partCode: string; material: string; thicknessMm: number; sheetSize: string; soi: string };
+
+/** The part and the sheet a line nests — what a line on the part's MO and
+ *  one on its order's MO have in common. */
+export const nestingSpecKey = (l: Pick<SpecLine, "bom" | "partCode" | "material" | "thicknessMm" | "sheetSize">) =>
+  [planKey(l.bom), planKey(l.partCode), l.material, l.thicknessMm, l.sheetSize].join("|");
+
+/**
+ * A row the sheet now files under its TRANSFORMER's MO, and the older line
+ * of the same part and sheet filed under the PART's MO (Odoo's SF01/…): the
+ * same nesting, which the import takes over — its MO becomes the order's —
+ * rather than add beside it, which would count the steel twice. `older` are
+ * the lines of the row's `nestingSpecKey`. Which one: the one whose part MO
+ * was closed against this order on the ODOO log (`ordersOf`); else, the part
+ * not closed anywhere yet, the SOI's only one — when the row is the only
+ * order of the SOI on that part and sheet (`rivals`, the sheet's other rows
+ * of the same spec). Null when no line could be it: the row is then a line
+ * of its own.
+ */
+export function adoptedPartLine<T extends SpecLine>(
+  row: Omit<SpecLine, "id">, older: readonly T[], rivals: readonly Omit<SpecLine, "id">[],
+  isOrder: (mo: string) => boolean, ordersOf: (partMo: string) => readonly string[],
+): T | null {
+  const order = planKey(row.mo);
+  // a row on a part's MO is the older sheet's: matched as it is
+  if (!order || ordersOf(order).length > 0) return null;
+  const spec = nestingSpecKey(row);
+  const parts = older.filter((l) => nestingSpecKey(l) === spec && planKey(l.mo) && !isOrder(planKey(l.mo)));
+  const linked = parts.filter((l) => ordersOf(planKey(l.mo)).some((o) => planKey(o) === order));
+  // the part split over several part MOs of the order: the first takes the row
+  if (linked.length > 0) return [...linked].sort((a, b) => a.id - b.id)[0];
+  const soi = planKey(row.soi);
+  if (!soi || !isOrder(order)) return null;
+  const contested = rivals.some((r) => planKey(r.soi) === soi && planKey(r.mo) !== order && nestingSpecKey(r) === spec);
+  const open = parts.filter((l) => planKey(l.soi) === soi && ordersOf(planKey(l.mo)).length === 0);
+  return !contested && open.length === 1 ? open[0] : null;
 }
 
 // ---- the monthly plan a line belongs to ----

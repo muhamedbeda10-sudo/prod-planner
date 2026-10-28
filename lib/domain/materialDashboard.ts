@@ -36,6 +36,10 @@ export interface SheetLine {
   /** The plan month the line was filed under; "" = the living sheet. */
   month: string;
   mo: string;
+  /** The key closings book against when it is not the MO itself: a line the
+   *  sheet files under the TRANSFORMER's MO takes `orderPartKey` — its order
+   *  and its part — so a tank's closing never books the top cover's sheets. */
+  closingKey?: string;
   soi: string;
   bom: string;
   partCode: string;
@@ -210,6 +214,11 @@ const up = (s: string) => s.trim().toUpperCase();
 /** An MO as the two sources are matched on it; "" never matches anything. */
 const moKey = (mo: string) => up(mo);
 
+/** The closing key of a part on a transformer's MO (SheetLine.closingKey,
+ *  DoneRow.mo): never an Odoo MO, so no backorder rule ever touches it. */
+export const orderPartKey = (orderMo: string, partCode: string) => `ORD|${up(orderMo)}|${up(partCode)}`;
+const isOrderPartKey = (k: string) => k.startsWith("ORD|");
+
 /** Utilization as a fraction, 0–1; the sheet may write 0.86 or 86. */
 export function utilizationFraction(u: number | null): number | null {
   if (u === null || !Number.isFinite(u) || u <= 0) return null;
@@ -259,7 +268,8 @@ export interface VersionInfo {
   skippedLines: number;
 }
 
-const versionKey = (l: SheetLine) => (l.mo.trim() ? `MO|${moKey(l.mo)}` : `BOM|${up(l.bom)}|${up(l.partCode) || up(l.partName)}`);
+// a part filed under its transformer's MO is a job of its own: the order × part
+const versionKey = (l: SheetLine) => l.closingKey ?? (l.mo.trim() ? `MO|${moKey(l.mo)}` : `BOM|${up(l.bom)}|${up(l.partCode) || up(l.partName)}`);
 const monthRank = (m: string) => (m === "" ? Number.MAX_SAFE_INTEGER : monthLabelSortKey(m));
 
 /**
@@ -582,7 +592,7 @@ function calcLine(l: SheetLine, i: number): LineCalc {
   return {
     l,
     key: `${i}`,
-    mo: l.mo.trim() ? moKey(l.mo) : "",
+    mo: l.closingKey ?? (l.mo.trim() ? moKey(l.mo) : ""),
     w: sheetWeight(l),
     rate: unitRate(l),
     bomS: sheetsForJob(l.sheetsPerUnit, l.units),
@@ -610,6 +620,7 @@ function moResolver(sheetMos: Iterable<string>): (mo: string) => string | null {
   const keys = new Set(sheetMos);
   const children = new Map<string, string[]>();
   for (const k of keys) {
+    if (isOrderPartKey(k)) continue; // an order × part is itself or nothing
     const parent = moParent(k);
     if (parent !== k) getOr(children, parent, () => []).push(k);
   }
@@ -618,6 +629,7 @@ function moResolver(sheetMos: Iterable<string>): (mo: string) => string | null {
     const k = moKey(mo);
     if (!k) return null;
     if (keys.has(k)) return k;
+    if (isOrderPartKey(k)) return null;
     const parent = moParent(k);
     if (keys.has(parent)) return parent;
     return children.get(parent)?.[0] ?? null;
