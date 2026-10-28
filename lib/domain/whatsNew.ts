@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-top-bar-order",
+    dateISO: "2026-10-28",
+    title: "The top bar's tabs have a new order",
+    where: "The top bar",
+    body: "The tabs now run Material, Shifts, Floor, Plan Tracker, then Dashboards. Every tab holds the same places as before.",
+  },
+  {
     id: "2026-10-28-material-no-endless-scroll",
     dateISO: "2026-10-28",
     title: "The Material page no longer scrolls on into empty space",
