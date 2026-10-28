@@ -24,6 +24,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The LV Panels tracker ends each panel order with an Odoo column after Dlvd: the panels closed in Odoo — the Done rows of the ODOO log born from that order's own painting. The weekly plan shows an Odoo column under each component: what Odoo has closed of that day's orders, filling the earliest promise first, like the stages. Both count from the October 2026 plans on; an older order reads —. Every Odoo column — the monthly tracker's too — now wears Odoo's own plum, so it is told from our stages at a glance. The assistant and its Excel files carry the same figures.",
   },
   {
+    id: "2026-10-28-what-looks-wrong-sources",
+    dateISO: "2026-10-28",
+    title: "What looks wrong checks what the app still keeps",
+    where: "The AI assistant → What looks wrong",
+    body: "The assistant's What looks wrong tile no longer asks for the plant watchdog's alerts, which were removed. It now checks the data the KPIs say is missing (standard times, delivery dates, shift days), the orders on hold, the work waiting between departments, and the ODOO log rows still open (with no MO, or ready to close), and ranks them with the fix for each.",
+  },
+  {
     id: "2026-10-28-tracker-odoo-column",
     dateISO: "2026-10-28",
     title: "The Plan Tracker shows what Odoo has closed, per component",
