@@ -83,12 +83,12 @@ function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
 /** Plan month, on either line's sheet: not from the sheet — read off the Plan Tracker. */
 const planCol = <K extends string>(): ColDef<K> => ({
   key: "plan" as K, name: "Plan month",
-  th: { label: "Plan month", hint: "The monthly plan the line's order is in on the Plan Tracker — found by its MO, else its SOI; a line with neither, by its BOM. +n: it sits in more plans too (an order carried over, or a SOI / BOM with orders in several)" },
+  th: { label: "Plan month", hint: "The monthly plan the line's order is in on the Plan Tracker — found by its MO, else its SOI and BOM, else its SOI; a line with neither MO nor SOI, by its BOM. A line whose MO was closed Done on the ODOO log leaves the plans that began after that day. +n: it sits in more plans too" },
   td: "p-2 text-xs",
   cell: (l) => <PlanCell months={l.planMonths} match={l.planMatch} />,
 });
 
-const MATCH_WORD: Record<MaterialPlanMatch, string> = { mo: "MO", soi: "SOI", bom: "BOM" };
+const MATCH_WORD: Record<MaterialPlanMatch, string> = { mo: "MO", soiBom: "SOI and BOM", soi: "SOI", bom: "BOM" };
 
 /** The monthly plans the line's order was in: the newest, and +n for the
  *  other plans its key also sits in (an order carried over, or a SOI / BOM
@@ -547,7 +547,13 @@ function Pick({ label, value, options, onChange, render }: {
   return <FilterSelect label={label} value={value} onChange={onChange} options={options.map((o) => ({ value: o, label: render ? render(o) : o }))} />;
 }
 
-function FilterBar({ lines, filters, onChange, shown, lv, extra }: { lines: MaterialLineView[]; filters: MaterialFilters; onChange: (f: MaterialFilters) => void; shown: number; lv: boolean; extra?: React.ReactNode }) {
+function FilterBar({ lines, filters, onChange, shown, lv, start, extra }: {
+  lines: MaterialLineView[]; filters: MaterialFilters; onChange: (f: MaterialFilters) => void; shown: number; lv: boolean;
+  /** First in the bar: the page's Transformers | LV Panels switch. */
+  start?: React.ReactNode;
+  /** At the bar's end: the views and the upload. */
+  extra?: React.ReactNode;
+}) {
   const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))].sort();
   const parts = uniq(lines.map((l) => l.partCode));
   // the part's name as the lines carry it (FB-024 · CABLE BOX), else the preset's
@@ -567,6 +573,7 @@ function FilterBar({ lines, filters, onChange, shown, lv, extra }: { lines: Mate
   const active = JSON.stringify(filters) !== JSON.stringify(EMPTY_MATERIAL_FILTERS);
   return (
     <div className="toolbar-row no-print">
+      {start}
       <label className="relative max-sm:basis-full">
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" aria-hidden />
         <input
@@ -590,7 +597,7 @@ function FilterBar({ lines, filters, onChange, shown, lv, extra }: { lines: Mate
         options={(Object.keys(MATERIAL_STATUS_FILTERS) as MaterialStatusFilter[]).filter((k) => k !== "all" && (lv || k !== "produced")).map((k) => ({ value: k, label: MATERIAL_STATUS_FILTERS[k] }))}
       />
       </PhoneFold>
-      <span className="ml-auto inline-flex items-center gap-3">
+      <span className="ml-auto inline-flex flex-wrap items-center justify-end gap-x-3 gap-y-2 min-w-0">
       {extra}
       <span className="text-xs text-muted tabnum whitespace-nowrap">
         {active ? <><b className="text-foreground font-semibold">{shown}</b> of {lines.length} lines</> : `${lines.length} lines`}
@@ -604,15 +611,19 @@ function FilterBar({ lines, filters, onChange, shown, lv, extra }: { lines: Mate
 /** What the lines shown add up to — a month's plan when one is picked. */
 function SummaryStrip({ s, lv, planMonth }: { s: MaterialSummary; lv: boolean; planMonth: string }) {
   const scope = planMonth === NO_PLAN_MONTH ? "Not in a plan" : planMonth || "Every plan";
+  // one line a figure — the figure, then what it means — so the strip stays
+  // low and the table under it keeps the room to run to the window's foot
   const cell = (label: string, value: React.ReactNode, sub: React.ReactNode, tone = "") => (
     <div className="kpi">
       <div className="kpi-label">{label}</div>
-      <div className={`kpi-value ltr ${tone}`}>{value}</div>
-      <div className="kpi-sub">{sub}</div>
+      <div className="kpi-line">
+        <span className={`kpi-value ltr ${tone}`}>{value}</span>
+        <span className="kpi-sub">{sub}</span>
+      </div>
     </div>
   );
   return (
-    <div className="kpi-strip" role="group" aria-label={`What the lines shown add up to — ${scope}`}>
+    <div className="kpi-strip kpi-strip-line" role="group" aria-label={`What the lines shown add up to — ${scope}`}>
       {cell("Orders", formatNumber(s.orders), `${scope} · ${s.lines} line${s.lines === 1 ? "" : "s"}`)}
       {lv ? (
         <>
@@ -684,24 +695,28 @@ export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}
   return (
     <div className="space-y-4">
       <div className="toolbar !mb-0">
-        {(canImport || lineSwitch) && (
+        {/* one bar: the line switch first, the filters, then the views and the upload at its end */}
+        {lines.length > 0 ? (
+          <FilterBar
+            lines={lines} filters={filters} onChange={changeFilters} shown={shown.length} lv={lv}
+            start={lineSwitch}
+            extra={(
+              <>
+                {!lv && (
+                  <button type="button" className="chip-toggle whitespace-nowrap" aria-pressed={bySoi} onClick={() => setBySoi((v) => !v)} title="Group the lines by SOI, each order's MOs under it">
+                    Group by SOI
+                  </button>
+                )}
+                {lv ? <MaterialColumns cols={lvCols} defs={LV_COLS} /> : <MaterialColumns cols={trCols} defs={TR_COLS} />}
+                {canImport && <ImportPanel product={product} />}
+              </>
+            )}
+          />
+        ) : (canImport || lineSwitch) && (
           <div className="toolbar-row no-print">
             {lineSwitch}
             {canImport && <ImportPanel product={product} />}
           </div>
-        )}
-        {lines.length > 0 && (
-          <FilterBar
-            lines={lines} filters={filters} onChange={changeFilters} shown={shown.length} lv={lv}
-            extra={lv ? <MaterialColumns cols={lvCols} defs={LV_COLS} /> : (
-              <>
-                <button type="button" className="chip-toggle" aria-pressed={bySoi} onClick={() => setBySoi((v) => !v)} title="Group the lines by SOI, each order's MOs under it">
-                  Group by SOI
-                </button>
-                <MaterialColumns cols={trCols} defs={TR_COLS} />
-              </>
-            )}
-          />
         )}
       </div>
       {shown.length > 0 && <SummaryStrip s={summary} lv={lv} planMonth={filters.planMonth} />}

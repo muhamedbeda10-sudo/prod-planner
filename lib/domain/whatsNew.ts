@@ -16,6 +16,22 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-material-plan-month-closed-nesting",
+    dateISO: "2026-10-28",
+    title: "A plan month on the Material sheet no longer shows the nesting already closed before it",
+    where: "Material → the nesting sheet → Plan month",
+    href: "/material",
+    body: "A sales item carried from one month's plan into the next used to bring all of its nesting with it, so the newest month listed parts already made and closed on Odoo. Now a line is tied to the plan by its SOI and BOM together (its SOI alone only when no order carries its code), and a line whose MO was closed Done on the ODOO log leaves every plan month that began after that day — the new month shows the work still open for it. The months before keep their lines.",
+  },
+  {
+    id: "2026-10-28-material-one-bar-table-fills",
+    dateISO: "2026-10-28",
+    title: "The Material sheet fits the window again: one bar, a lower summary",
+    where: "Material → the nesting sheet",
+    href: "/material",
+    body: "The page itself no longer scrolls on a laptop screen with the table scrolling inside it. The Transformers | LV Panels switch, the filters, Group by SOI, Columns and the upload now share one bar, and each figure of the summary sits on one line with its note — so the table runs to the bottom of the window as before and scrolls on its own.",
+  },
+  {
     id: "2026-10-28-required-teal-fins-plain",
     dateISO: "2026-10-28",
     title: "Required wears the teal now; Fins goes plain",

@@ -197,8 +197,10 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    51.1). A sheet with no per-unit rate still falls back to its job column, and the import says how many rows
    were stale. Import the sheet (re-importing adds new lines and updates changed ones; the same BOM's tank
    and top-cover lines stay apart), filter by **Plan month** — the monthly plan the line's order is in on the
-   Plan Tracker, found by its MO, else its SOI (a line with neither goes by its BOM; "Not in a plan" lists
-   the lines none finds — a mistyped MO or SOI is never guessed at through the BOM) — and
+   Plan Tracker, found by its MO, else its SOI and BOM together, else its SOI (a line with neither MO nor SOI
+   goes by its BOM; "Not in a plan" lists the lines none finds — a mistyped MO or SOI is never guessed at
+   through the BOM). A line whose MO was closed Done on the ODOO log leaves the plan months that began after
+   that day, so a sales item carried into a new month brings its balance there, not its finished nesting — and
    by part, material, thickness, sheet size, status (nested / not nested / with produced / over BOM) or a
    search across BOM, SOI, part, code and note. A strip above the table adds up what is shown (orders, BOM vs
    actual for the job, actual weight, the difference and the lines over their BOM), and the Total row follows

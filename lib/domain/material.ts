@@ -17,7 +17,7 @@
 //   sheets for produced  = actual per unit × units produced
 // "The sheet says 50 sheets made 30 units; 5 were made — so 8.333 were used."
 
-import { monthLabelSortKey } from "./dates";
+import { monthInputFromLabel, monthLabelSortKey } from "./dates";
 
 /** Sheet counts are fractions of a sheet (0.429 of a sheet per unit). Excel
  *  left 0.564 × 3 as 1.6919999999999997; the nesting sheet quotes its figures
@@ -452,7 +452,7 @@ export function filterMaterialLines(lines: MaterialLineView[], f: MaterialFilter
 /** The filter value for the lines no monthly plan carries — the tracker's own "No month" mark. */
 export const NO_PLAN_MONTH = "—";
 
-export type MaterialPlanMatch = "mo" | "soi" | "bom";
+export type MaterialPlanMatch = "mo" | "soiBom" | "soi" | "bom";
 
 /** An order of the registry as the plan filter reads it: its keys and the monthly plans it was in. */
 export interface MaterialPlanOrder {
@@ -465,6 +465,8 @@ export interface MaterialPlanOrder {
 
 export interface MaterialPlanIndex {
   byMo: Map<string, string[]>;
+  /** By SOI and BOM together ("SOI|BOM") — the order of one sales item on one code. */
+  bySoiBom: Map<string, string[]>;
   bySoi: Map<string, string[]>;
   byBom: Map<string, string[]>;
 }
@@ -474,7 +476,7 @@ const planKey = (v: string | null | undefined) => (v ?? "").trim().toUpperCase()
 /** The registry's orders by MO, by SOI and by BOM — each key with the union
  *  of its orders' months. */
 export function materialPlanIndex(orders: readonly MaterialPlanOrder[]): MaterialPlanIndex {
-  const idx: MaterialPlanIndex = { byMo: new Map(), bySoi: new Map(), byBom: new Map() };
+  const idx: MaterialPlanIndex = { byMo: new Map(), bySoiBom: new Map(), bySoi: new Map(), byBom: new Map() };
   const add = (m: Map<string, string[]>, k: string, months: string[]) => {
     if (!k || months.length === 0) return;
     const cur = m.get(k);
@@ -484,11 +486,12 @@ export function materialPlanIndex(orders: readonly MaterialPlanOrder[]): Materia
   for (const o of orders) {
     const months = o.months.map((x) => x.trim()).filter(Boolean);
     add(idx.byMo, planKey(o.mo), months);
+    if (planKey(o.soi) && planKey(o.bom)) add(idx.bySoiBom, `${planKey(o.soi)}|${planKey(o.bom)}`, months);
     add(idx.bySoi, planKey(o.soi), months);
     add(idx.byBom, planKey(o.bom), months);
   }
   // each key's months sorted once, newest first — every line of it reads the same array
-  for (const m of [idx.byMo, idx.bySoi, idx.byBom]) for (const [k, v] of m) m.set(k, sortPlanMonths(v));
+  for (const m of [idx.byMo, idx.bySoiBom, idx.bySoi, idx.byBom]) for (const [k, v] of m) m.set(k, sortPlanMonths(v));
   return idx;
 }
 
@@ -500,19 +503,42 @@ export function sortPlanMonths(months: Iterable<string>): string[] {
 /**
  * The monthly plans a line of the sheet belongs to, by the surest key it
  * shares with the registry: its own MO (the panels' sheet files each order's
- * MO; a transformer line sometimes does), else its SOI (one sales order item,
- * whatever MO each part got in Odoo). Only a line with NEITHER — one that
- * covers its BOM as a whole — goes by its BOM, and so shows under every month
- * the code was planned in. A line whose MO or SOI finds no order is in no
- * plan: a mistyped key is shown, never guessed at through its BOM, which
- * would file it under months that are not its own.
+ * MO; a transformer line carries its PART's MO from Odoo, which no plan
+ * lists), else its SOI and BOM together — one sales item is planned month
+ * after month, each month on its own code — else its SOI alone (a part filed
+ * under a sub-assembly or an older revision of the code). Only a line with
+ * neither MO nor SOI — one that covers its BOM as a whole — goes by its BOM.
+ * A line whose MO or SOI finds no order is in no plan: a mistyped key is
+ * shown, never guessed at through its BOM.
+ *
+ * `doneISO`, the day the line's MO was closed Done on the ODOO log, takes the
+ * line out of every plan month that began after it: a sales item carried into
+ * a new month brings its balance there, not the nesting it already finished.
+ * A line closed before all of its months keeps the earliest — its nesting
+ * predates the plans on record.
  */
-export function materialPlanMonths(l: Pick<MaterialLineInput, "mo" | "soi" | "bom">, idx: MaterialPlanIndex): { months: string[]; match: MaterialPlanMatch | null } {
+export function materialPlanMonths(
+  l: Pick<MaterialLineInput, "mo" | "soi" | "bom">, idx: MaterialPlanIndex, doneISO: string | null = null,
+): { months: string[]; match: MaterialPlanMatch | null } {
+  const found = planMonthsByKey(l, idx);
+  if (!doneISO || found.months.length === 0) return found;
+  const doneMonth = doneISO.slice(0, 7);
+  const dated = found.months.filter((m) => monthInputFromLabel(m) !== null);
+  // a month that began after the close loses the line; a label that is no month stays
+  const kept = dated.filter((m) => monthInputFromLabel(m)! <= doneMonth);
+  const months = kept.length > 0 ? kept : dated.slice(-1); // newest first: the last is the earliest
+  return { ...found, months: [...months, ...found.months.filter((m) => !dated.includes(m))] };
+}
+
+function planMonthsByKey(l: Pick<MaterialLineInput, "mo" | "soi" | "bom">, idx: MaterialPlanIndex): { months: string[]; match: MaterialPlanMatch | null } {
   const byMo = idx.byMo.get(planKey(l.mo));
   if (byMo) return { months: byMo, match: "mo" };
-  const bySoi = idx.bySoi.get(planKey(l.soi));
+  const soi = planKey(l.soi);
+  const bySoiBom = soi && planKey(l.bom) ? idx.bySoiBom.get(`${soi}|${planKey(l.bom)}`) : undefined;
+  if (bySoiBom) return { months: bySoiBom, match: "soiBom" };
+  const bySoi = idx.bySoi.get(soi);
   if (bySoi) return { months: bySoi, match: "soi" };
-  const own = !!planKey(l.mo) || !!planKey(l.soi);
+  const own = !!planKey(l.mo) || !!soi;
   const byBom = own ? undefined : idx.byBom.get(planKey(l.bom));
   return byBom ? { months: byBom, match: "bom" } : { months: [], match: null };
 }

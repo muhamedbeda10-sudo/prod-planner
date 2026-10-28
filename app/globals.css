@@ -1923,6 +1923,11 @@ html.ai-printing .md-table-folded .md-table tbody tr.md-row-over { display: tabl
 /* a few figures side by side even on a phone (a popup's three counts) */
 .kpi-strip.kpi-strip-tight { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
 .kpi-strip.kpi-strip-tight > .kpi { padding: 10px 12px; }
+/* a low strip over a table: each cell's figure and its note on one line */
+.kpi-strip.kpi-strip-line > .kpi { padding: 7px 14px; }
+.kpi-strip-line .kpi-line { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; margin-top: 1px; }
+.kpi-strip-line .kpi-value { font-size: 20px; margin-top: 0; flex-shrink: 0; }
+.kpi-strip-line .kpi-sub { margin-top: 0; min-width: 0; }
 
 /* ---- a choice among a few: option cards, a segmented control, chips ---- */
 .option { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; }

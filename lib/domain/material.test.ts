@@ -429,6 +429,31 @@ describe("materialPlanMonths", () => {
   it("falls back to the SOI — every order of it, newest month first", () => {
     expect(materialPlanMonths({ mo: "SF01/MO/999", soi: "s01035-1", bom: "X" }, idx)).toEqual({ months: ["October 2026", "September 2026"], match: "soi" });
   });
+  it("takes the SOI's order on the line's own BOM before the SOI as a whole", () => {
+    const sb = materialPlanIndex([
+      { mo: "PF01/MO/1", soi: "S00262-1", bom: "14002E17M18", months: ["October 2026"] },
+      { mo: "PF01/MO/2", soi: "S00262-1", bom: "14002E14M14", months: ["November 2026"] },
+    ]);
+    expect(materialPlanMonths({ mo: "SF01/MO/20432", soi: "S00262-1", bom: "14002e17m18" }, sb)).toEqual({ months: ["October 2026"], match: "soiBom" });
+    // a sub-assembly's code no order carries: the SOI's months
+    expect(materialPlanMonths({ mo: "SF01/MO/20500", soi: "S00262-1", bom: "00013S11" }, sb)).toEqual({ months: ["November 2026", "October 2026"], match: "soi" });
+  });
+  it("leaves the plans that began after its MO was closed Done on the ODOO log", () => {
+    const carried = materialPlanIndex([
+      { mo: "PF01/MO/1", soi: "S1", bom: "B1", months: ["October 2026"] },
+      { mo: "PF01/MO/1-001", soi: "S1", bom: "B1", months: ["November 2026"] },
+    ]);
+    const l = { mo: "SF01/MO/9", soi: "S1", bom: "B1" };
+    expect(materialPlanMonths(l, carried, "2026-10-20").months).toEqual(["October 2026"]);
+    // closed on the month's first day: still that month's
+    expect(materialPlanMonths(l, carried, "2026-11-01").months).toEqual(["November 2026", "October 2026"]);
+    expect(materialPlanMonths(l, carried, null).months).toEqual(["November 2026", "October 2026"]);
+    // closed before every month on record: the earliest stands
+    expect(materialPlanMonths(l, carried, "2026-08-02").months).toEqual(["October 2026"]);
+    // a label that is no month never stands in for the months
+    const odd = materialPlanIndex([{ mo: "PF01/MO/3", soi: "S2", bom: "B2", months: ["November 2026", "Backlog"] }]);
+    expect(materialPlanMonths({ mo: "SF01/MO/8", soi: "S2", bom: "B2" }, odd, "2026-10-15").months).toEqual(["November 2026", "Backlog"]);
+  });
   it("goes by the BOM only for a line with neither MO nor SOI — one covering the whole BOM", () => {
     expect(materialPlanMonths({ mo: "", soi: " ", bom: "40012e11m11" }, idx)).toEqual({ months: ["August 2026"], match: "bom" });
   });
