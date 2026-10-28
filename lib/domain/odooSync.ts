@@ -3,11 +3,15 @@
 // row agrees with what Odoo says about its MO, and which open sub-assembly MO
 // a row born from a closing should carry. No I/O.
 //
-// How the data arrives: a scheduled task on the owner's computer opens Odoo in
-// the Claude desktop app's browser, with the user's own login, and runs the
-// read-only pull there (lib/domain/odooPull.ts, served as /odoo-pull.js);
-// Claude then hands what it read to the database's odoo_ingest() in one call
-// (prisma/migrations/20261027180000_odoo_sync). Nothing is ever written to Odoo.
+// How the data arrives: a scheduled task on the owner's computer gets a
+// one-time pass from the database (odoo_issue_ticket()), opens Odoo in the
+// Claude desktop app's browser with the user's own login, loads the read-only
+// pull (lib/domain/odooPull.ts, /odoo-pull.js — fetched from the repository,
+// since the plant's network does not open the app's own domain) and starts it
+// with the pass; the page reads the plan and writes what it read itself,
+// through the "odoo-sync" Edge Function (supabase/functions) into
+// odoo_pull_plan_t / odoo_ingest_t (migrations 20261027180000 and
+// 20261028080000). Nothing is ever written to Odoo.
 
 import { isCancelledStatus, isDoneStatus } from "./odoo";
 

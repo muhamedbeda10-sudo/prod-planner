@@ -165,6 +165,8 @@ export const AI_PRIVATE_TABLES = [
   "AiSettings", "AiAccess", "AiConversation", "AiMessage", "AiUsage", "AiAction",
   "AiPlaybookEntry", "AiPlaybookRevision", "AiInboxItem", "PushSubscription", "PushKeys", "Automation", "AutomationRun", "AutomationIdea", "AiFile",
   "Task", "TaskAssignee", "TaskUpdate", "TaskTemplate", "TaskRepeat", "AppEvent", "AiFeedback", "AiMemory", "AiCheck",
+  // the Odoo sync's one-time passes
+  "OdooSyncTicket",
 ] as const;
 export const AI_USER_COLUMNS = ["id", "name", "active"] as const;
 

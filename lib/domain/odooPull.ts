@@ -228,3 +228,71 @@ export function pageRpc(fetchFn: typeof fetch): OdooRpc {
     return j.result;
   };
 }
+
+// ---- straight to the database: the scheduled task's one-time pass ----
+//
+// The task asks the database for a pass (odoo_issue_ticket(), good for 15
+// minutes) and hands it to the Odoo page with the database project's address
+// and anon key (the Edge Function's gateway checks that JWT). The page then reads the plan and writes what it read
+// itself, through the "odoo-sync" Edge Function (supabase/functions) into
+// odoo_pull_plan_t / odoo_ingest_t, which do nothing without a live pass — so
+// nothing big passes through the task. Reads from Odoo stay reads.
+
+export interface OdooSyncTarget {
+  /** https://<project>.supabase.co — nothing else is accepted. */
+  url: string;
+  /** The project's anon key (a JWT: the function's gateway checks it). */
+  key: string;
+  /** The one-time pass from odoo_issue_ticket(). */
+  ticket: string;
+}
+
+/** The database calls the sync makes — the plan, and each piece of what it read. */
+export interface OdooSyncDb {
+  plan(): Promise<OdooPullPlan>;
+  ingest(piece: OdooPullPayload): Promise<unknown>;
+}
+
+/** Only a Supabase project's own address takes the pass. */
+export function supabaseBase(url: string): string | null {
+  const m = /^https:\/\/([a-z0-9]{20})\.supabase\.co\/?$/.exec(url.trim());
+  return m ? `https://${m[1]}.supabase.co` : null;
+}
+
+/** The Edge Function the page posts to. */
+export const ODOO_SYNC_FUNCTION = "odoo-sync";
+
+export function supabaseDb(fetchFn: typeof fetch, t: OdooSyncTarget): OdooSyncDb {
+  const base = supabaseBase(t.url);
+  if (!base) throw new Error("Not a Supabase project address.");
+  if (!/^[0-9a-f]{64}$/.test(t.ticket)) throw new Error("Not a sync pass.");
+  const call = async (op: "plan" | "ingest", p?: OdooPullPayload) => {
+    const r = await fetchFn(`${base}/functions/v1/${ODOO_SYNC_FUNCTION}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: t.key, Authorization: `Bearer ${t.key}` },
+      body: JSON.stringify(p ? { op, ticket: t.ticket, p } : { op, ticket: t.ticket }),
+    });
+    const text = await r.text();
+    if (!r.ok) throw new Error(`${op}: HTTP ${r.status} ${text.slice(0, 300)}`);
+    return text ? JSON.parse(text) : null;
+  };
+  return {
+    plan: () => call("plan") as Promise<OdooPullPlan>,
+    ingest: (piece) => call("ingest", piece),
+  };
+}
+
+/** Read the plan, pull Odoo, write each piece — the whole run, from the page.
+ *  Returns what the database said after the last piece (the run's summary). */
+export async function runOdooSync(rpc: OdooRpc, db: OdooSyncDb, now: () => number = Date.now, maxChars = 400_000): Promise<{ summary: unknown; pieces: number; chars: number }> {
+  const plan = await db.plan();
+  const payload = await pullOdoo(rpc, plan, now);
+  const pieces = splitPayload(payload, maxChars);
+  let summary: unknown = null;
+  let chars = 0;
+  for (const piece of pieces) {
+    chars += JSON.stringify(piece).length;
+    summary = await db.ingest(piece);
+  }
+  return { summary, pieces: pieces.length, chars };
+}

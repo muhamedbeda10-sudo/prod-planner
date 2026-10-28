@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { pageRpc, pullLog, pullOdoo, pullStock, rowsHash, splitPayload, type ChildRow, type OdooPullPayload, type OdooPullPlan } from "./odooPull";
+import { pageRpc, pullLog, pullOdoo, pullStock, rowsHash, runOdooSync, splitPayload, supabaseBase, supabaseDb, type ChildRow, type OdooPullPayload, type OdooPullPlan } from "./odooPull";
 import { fakeOdoo, mo } from "../../tests/helpers/odooFake";
 
 // The pull the scheduled task runs inside an Odoo page: reads only, one
@@ -130,5 +130,46 @@ describe("the page's own JSON-RPC", () => {
   it("passes Odoo's own error words on", async () => {
     const rpc = pageRpc((async () => new Response(JSON.stringify({ jsonrpc: "2.0", error: { message: "Odoo Server Error", data: { message: "Access Denied" } } }))) as unknown as typeof fetch);
     await expect(rpc("mrp.production", "search_read", [[]])).rejects.toThrow("mrp.production.search_read: Access Denied");
+  });
+});
+
+describe("the run straight to the database", () => {
+  const ticket = "a".repeat(64);
+  const target = { url: "https://mcontmdqphegudetcbyq.supabase.co", key: "sb_publishable_x", ticket };
+
+  it("takes only a Supabase project's address and a real pass", () => {
+    expect(supabaseBase("https://mcontmdqphegudetcbyq.supabase.co/")).toBe("https://mcontmdqphegudetcbyq.supabase.co");
+    expect(supabaseBase("https://evil.example.com")).toBeNull();
+    expect(supabaseBase("http://mcontmdqphegudetcbyq.supabase.co")).toBeNull();
+    expect(supabaseBase("https://mcontmdqphegudetcbyq.supabase.co.evil.com")).toBeNull();
+    expect(() => supabaseDb(fetch, { ...target, url: "https://evil.example.com" })).toThrow(/Supabase/);
+    expect(() => supabaseDb(fetch, { ...target, ticket: "short" })).toThrow(/pass/);
+  });
+
+  it("reads the plan and writes each piece with the pass", async () => {
+    const calls: { url: string; body: Record<string, unknown>; headers: Record<string, string> }[] = [];
+    const fetchFn = vi.fn(async (url: string, init: { body: string; headers: Record<string, string> }) => {
+      const body = JSON.parse(init.body);
+      calls.push({ url, body, headers: init.headers });
+      if (body.op === "plan") return new Response(JSON.stringify(plan));
+      return new Response(JSON.stringify({ log: { checked: (body.p as OdooPullPayload).log.length } }));
+    });
+    const db = supabaseDb(fetchFn as unknown as typeof fetch, target);
+    const { rpc } = fakeOdoo(mos, {}, stock);
+    const r = await runOdooSync(rpc, db, () => 1_800_000_000_000, 700);
+    expect(calls[0]).toMatchObject({ url: "https://mcontmdqphegudetcbyq.supabase.co/functions/v1/odoo-sync", body: { op: "plan", ticket } });
+    expect(calls[0].headers).toMatchObject({ apikey: "sb_publishable_x", Authorization: "Bearer sb_publishable_x" });
+    const ingests = calls.slice(1);
+    expect(ingests.length).toBe(r.pieces);
+    expect(r.pieces).toBeGreaterThan(1);
+    expect(ingests.every((c) => c.url.endsWith("/functions/v1/odoo-sync") && c.body.op === "ingest" && c.body.ticket === ticket)).toBe(true);
+    expect(ingests.flatMap((c) => (c.body.p as OdooPullPayload).log).map((l) => l[0])).toEqual(plan.logNames.map((n) => n.toUpperCase()));
+    expect(r.summary).toEqual({ log: { checked: (ingests.at(-1)!.body.p as OdooPullPayload).log.length } });
+  });
+
+  it("stops with the database's own words when the pass is refused", async () => {
+    const fetchFn = vi.fn(async () => new Response('{"message":"odoo sync: no live pass"}', { status: 403 }));
+    const { rpc } = fakeOdoo(mos);
+    await expect(runOdooSync(rpc, supabaseDb(fetchFn as unknown as typeof fetch, target))).rejects.toThrow("plan: HTTP 403 {\"message\":\"odoo sync: no live pass\"}");
   });
 });
