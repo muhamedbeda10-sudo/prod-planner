@@ -2,9 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { applicableItems, ospOf, type Item } from "@/lib/domain/constants";
 import { ITEM_PRODUCT } from "@/lib/domain/odooMirror";
-import { sheetNeeds, specsFromOdoo, type NeedSummary, type PartNeed, type StockLine } from "@/lib/domain/materialCoverage";
-import { odooRateKey } from "@/lib/domain/odooBom";
-import { getPartRates } from "./odooBom";
+import { sheetNeeds, type NeedSummary, type PartNeed, type StockLine } from "@/lib/domain/materialCoverage";
 import { getLinesMaterial, type MaterialLineRef, type OrderRef } from "./machineMaterial";
 import { getTrackerSheet } from "./masterTracker";
 import { ledgerItemWhere, withLine } from "./line";
@@ -18,27 +16,10 @@ import { ledgerItemWhere, withLine } from "./line";
 const monthsOf = (csv: string | null | undefined) => (csv ?? "").split(",").map((m) => m.trim()).filter(Boolean);
 const hasPart = (item: Item) => ITEM_PRODUCT[item].partCode !== null;
 
-/** Each part's sheets: the MATERIAL tab's nesting, else — for a part the
- *  nesting has no line for yet — what Odoo's BoM (Material → BoMs) says one
- *  piece takes of the codes the stock table carries (specsFromOdoo). */
 async function withSpecs(parts: { mo: string; bom: string; item: Item; pcsLeft: number }[], orderOf: (mo: string) => OrderRef | undefined): Promise<PartNeed[]> {
   const lines: MaterialLineRef[] = parts.map((p) => ({ key: `${p.mo}|${p.item}`, bom: p.bom, mo: p.mo, item: p.item }));
   const material = await getLinesMaterial(lines, orderOf);
-  const nested = (p: (typeof parts)[number]) => material[`${p.mo}|${p.item}`]?.specs ?? [];
-  const bare = parts.filter((p) => nested(p).length === 0);
-  // the BoM mirror filling the gaps is a bonus: if it fails, the nesting's need stands
-  const [rates, stock] = bare.length
-    ? await Promise.all([
-      getPartRates(bare.map((p) => ({ partCode: ITEM_PRODUCT[p.item].partCode ?? "", bom: p.bom })).filter((k) => k.partCode)).catch(() => ({})),
-      prisma.physicalStock.findMany({ select: { code: true, name: true, uom: true } }),
-    ])
-    : [{}, []];
-  return parts.map((p) => {
-    const own = nested(p);
-    const part = ITEM_PRODUCT[p.item].partCode;
-    const specs = own.length || !part ? own : specsFromOdoo((rates as Record<string, Parameters<typeof specsFromOdoo>[0]>)[odooRateKey(part, p.bom)], stock);
-    return { mo: p.mo, item: p.item, pcsLeft: p.pcsLeft, specs };
-  });
+  return parts.map((p) => ({ mo: p.mo, item: p.item, pcsLeft: p.pcsLeft, specs: material[`${p.mo}|${p.item}`]?.specs ?? [] }));
 }
 
 /** One order's parts still to cut, with their sheets. */

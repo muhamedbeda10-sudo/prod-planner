@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-odoo-boms-removed",
+    dateISO: "2026-10-28",
+    title: "Odoo's BoMs are taken out of the app",
+    where: "Material → BoMs, Orders Registry, the MATERIAL sheet, Physical Material, Trace, the assistant",
+    body: "The BoMs read from Odoo are gone with the Odoo sync. Material → BoMs is no longer in the Material tab, the Orders Registry no longer flags ≠ BoM, the transformers' MATERIAL sheet and its Excel no longer show Odoo's quantity for one unit, the Trace no longer links to a BoM, and the assistant no longer answers from them. Physical Material's Open need counts the parts the nesting prices again, as before.",
+  },
+  {
     id: "2026-10-28-ai-in-bar-tables-full-height",
     dateISO: "2026-10-28",
     title: "The assistant's button moved up to the bar, and tables run to the bottom of the screen",
@@ -26,17 +33,9 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     id: "2026-10-28-odoo-sync-removed",
     dateISO: "2026-10-28",
     title: "The app no longer reads Odoo by itself",
-    where: "ODOO log, Odoo alerts, Trace, Admin → Settings, Material → BoMs",
+    where: "ODOO log, Odoo alerts, Trace, Admin → Settings",
     href: "/odoo",
-    body: "The scheduled Odoo sync is off and taken out of the app. The ODOO log is back to what you type: no Odoo ✓ / Still open in Odoo marks and no differ from Odoo count, and a row waiting for its MO no longer offers Odoo's MOs. The Trace no longer lists the sub-assembly MOs, the closings count on the day they were recorded here, and Admin → Settings has no Odoo sync card. Physical Material's Odoo column keeps its figures and is updated by the store's sheet again. Material → BoMs keeps the BoMs as Odoo was last read on 28 October; they are no longer refreshed.",
-  },
-  {
-    id: "2026-10-28-odoo-boms",
-    dateISO: "2026-10-28",
-    title: "Odoo's BoMs in the app: the tree, the components check, and the open need fills its gaps",
-    where: "Material → BoMs, Material → Physical Material, the MATERIAL sheet, Orders Registry, Trace, the assistant",
-    href: "/bom",
-    body: "The Odoo sync now also reads the bills of materials the open orders are built with — read-only, Odoo is never changed. Material → BoMs lists every open code: whether Odoo has its BoM, the components it carries and how many orders disagree with it; open one for its whole tree level by level, the raw materials one unit takes, and each order's components against the BoM. The Orders Registry marks an order whose components differ (≠ BoM), and the trace links to its BoM. On Physical Material, a part with no nesting line yet is no longer left out of Open need: its sheets come off Odoo's BoM instead (marked ≈, and said in the hover). The transformers' MATERIAL sheet shows Odoo / unit beside the sheet's BOM / unit, amber where they differ. The assistant reads all of it.",
+    body: "The scheduled Odoo sync is off and taken out of the app. The ODOO log is back to what you type: no Odoo ✓ / Still open in Odoo marks and no differ from Odoo count, and a row waiting for its MO no longer offers Odoo's MOs. The Trace no longer lists the sub-assembly MOs, the closings count on the day they were recorded here, and Admin → Settings has no Odoo sync card. Physical Material's Odoo column keeps its figures and is updated by the store's sheet again.",
   },
   {
     id: "2026-10-28-assistant-no-sources-escape",

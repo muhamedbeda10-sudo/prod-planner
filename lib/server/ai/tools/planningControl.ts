@@ -318,7 +318,7 @@ export const checkReleaseReadinessTool: ReadTool<ReleaseInput> = {
 // ---------------------------------------------------------------- material against the stock
 
 const MATERIAL_ASSUMPTIONS = [
-  "Sheets needed = the pieces Fabrication still owes × the nesting's sheets a piece (the actual nesting where the job was nested, else the BOM's rate — marked estimated); a part with no nesting line at all is priced off Odoo's BoM for the stock table's codes (byOdoo, also estimated).",
+  "Sheets needed = the pieces Fabrication still owes × the nesting's sheets a piece (the actual nesting where the job was nested, else the BOM's rate — marked estimated).",
   "Stock = the Physical Material table: Odoo's stock (SF01) and the store's own count, per Odoo product code, as last imported; sheets are compared only with codes held in pieces.",
   "Stock is not reserved per order: what one order takes, the next cannot.",
 ];
@@ -333,7 +333,7 @@ async function orderMaterial(order: Parameters<typeof getOrderPartNeeds>[0], ctx
   // the open work with this order counted once — a held order is not in it, but competes once released
   const demand = sheetNeeds([...open.parts.filter((p) => p.mo !== order.mo), ...needs]);
   const rows = coverage(mine.byCode, stock.lines, new Map(demand.byCode.map((n) => [n.code, n])));
-  return { stock: stockCheck(rows, mine), detail: { sheets: rows, noNesting: mine.noNesting, pricedByOdooBom: mine.byOdoo, uncoded: mine.uncoded, stockTableLastChange: stock.lastChange } };
+  return { stock: stockCheck(rows, mine), detail: { sheets: rows, noNesting: mine.noNesting, uncoded: mine.uncoded, stockTableLastChange: stock.lastChange } };
 }
 
 interface CoverageInput { mos?: string[]; shortOnly?: boolean; limit?: number }
@@ -342,7 +342,7 @@ export const getMaterialCoverageTool: ReadTool<CoverageInput> = {
   kind: "read", name: "get_material_coverage", title: "Setting the sheets needed against Odoo's stock", tabs: ["physical", "material"], cacheable: true,
   description:
     "Is there enough material? The sheets the open TR orders (not on hold) still need to cut — the pieces Fabrication owes × the MATERIAL tab's nesting rate — added up per Odoo product code and set against the Physical Material table: Odoo's stock (SF01), the store's count, the balance and a status (covered, short, store_short = Odoo enough but the store counted less, not_listed, not_comparable = held in KG), with the orders behind each code. " +
-    "A part with no nesting line yet is priced off Odoo's BoM instead (the codes the stock table carries, in its unit; byOdoo on the code, partsPricedByOdooBom) — an estimate, like the BOM's rate. Also the parts with neither (sheets unknown) and nesting lines with no code. Give mos for named orders only (still compared with all the open work's demand). Read it for \"do we have the sheets for this month?\", material shortages, before releasing several orders or promising dates; check_release_readiness reads the same for one order.",
+    "Also the parts with no nesting (sheets unknown) and nesting lines with no code. Give mos for named orders only (still compared with all the open work's demand). Read it for \"do we have the sheets for this month?\", material shortages, before releasing several orders or promising dates; check_release_readiness reads the same for one order.",
   schema: { type: "object", additionalProperties: false, properties: {
     mos: { type: "array", maxItems: 30, items: { type: "string", minLength: 1, maxLength: 60 } },
     shortOnly: { type: "boolean", description: "Only codes that are short, store-short or contended." },
@@ -362,13 +362,12 @@ export const getMaterialCoverageTool: ReadTool<CoverageInput> = {
       ok: true,
       text: toJson({
         scope: { line: "TR", orders: wanted ? [...wanted] : "every open order not on hold", stockTableLastChange: stock.lastChange },
-        formulas: { need: "sheets = pieces Fabrication still owes × sheets a piece (nesting; Odoo's BoM for a part with no nesting line)", balance: "balance = Odoo stock − sheets needed", contended: "all the open work needs as much of the code as Odoo holds, or more — competing lists the other orders behind it" },
+        formulas: { need: "sheets = pieces Fabrication still owes × sheets a piece (nesting)", balance: "balance = Odoo stock − sheets needed", contended: "all the open work needs as much of the code as Odoo holds, or more — competing lists the other orders behind it" },
         statusText: COVER_TEXT,
         counts,
         sheets: rows.slice(0, limit),
         truncated: rows.length > limit,
         partsWithoutNesting: { count: scope.noNesting.length, examples: scope.noNesting.slice(0, 10) },
-        partsPricedByOdooBom: { count: scope.byOdoo.length, examples: scope.byOdoo.slice(0, 10) },
         uncodedNestingLines: { count: scope.uncoded.length, examples: scope.uncoded.slice(0, 5) },
         notOpen: wanted ? [...wanted].filter((mo) => ![...open.openMos].some((m) => m.toUpperCase() === mo)) : undefined,
         nothingLeftToCut: wanted ? [...open.openMos].filter((m) => wanted.has(m.toUpperCase()) && !open.parts.some((p) => p.mo === m)) : undefined,
