@@ -56,7 +56,8 @@ export function TraceMaterial({ lines, odooByMo, product, prefs, search, code, m
             ) : (
               <>
                 <span className="pill pill-muted tabnum ltr">BOM {formatNumber(s.forJob, FIELD_DP.sheets)}</span>
-                {s.sheetsUsed !== null && <span className="pill pill-muted tabnum ltr">actual {formatNumber(s.sheetsUsed, FIELD_DP.sheets)}</span>}
+                {s.sheetsUsed !== null && <span className="pill pill-muted tabnum ltr" title="Planned on the nesting sheet — not used yet">nested {formatNumber(s.sheetsUsed, FIELD_DP.sheets)}</span>}
+                <span className="pill pill-muted tabnum ltr" title="The pieces closed Done on the ODOO log × actual per unit">consumed {formatNumber(s.forProduced ?? 0, FIELD_DP.sheets)}</span>
                 {s.actualWeightKg !== null && <span className="pill pill-muted tabnum ltr">{formatNumber(s.actualWeightKg, 0)} kg</span>}
                 <span className={`pill tabnum ${s.overLines ? "pill-bad" : "pill-ok"}`}>{s.overLines ? `${s.overLines} over the BOM` : "within the BOM"}</span>
               </>

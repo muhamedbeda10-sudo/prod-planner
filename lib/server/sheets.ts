@@ -9,7 +9,7 @@ import { downtimeLabel, stopDurationLabel } from "@/lib/domain/downtime";
 import { liveStopHours } from "@/lib/domain/downtimePeriods";
 import { holdLabel } from "@/lib/domain/hold";
 import type { ProductLine } from "@/lib/domain/lines";
-import { round3 } from "@/lib/domain/material";
+import { round3, sheetsConsumed } from "@/lib/domain/material";
 import { STATUS_LABEL } from "@/lib/domain/physicalStock";
 import { normCode, type needByStock } from "@/lib/domain/materialCoverage";
 import type { OrderRow } from "@/lib/domain/registryView";
@@ -87,8 +87,9 @@ export function materialRows(lines: MaterialPageData["lines"], line: ProductLine
     "MTR Request #": l.mtr,
     SOI: l.soi,
     MO: l.mo,
-    // not the sheet's: the order the part MO was closed against on the ODOO log
+    // not the sheet's: the order and the part MOs, as the ODOO log ties them
     "Order MO": l.orderMos.join(", "),
+    "Part MO": l.partMos.join(", "),
     "BOM Ref": l.bom,
     "Quantity of Units": l.units,
     "Part Code": l.partCode,
@@ -106,6 +107,8 @@ export function materialRows(lines: MaterialPageData["lines"], line: ProductLine
     "Actual Weight (Kg)": l.actualWeightKg ?? "",
     Difference: l.difference ?? "",
     Notes: l.note ?? "",
+    "Closed qty": l.producedUsed ?? "",
+    "Consumed sheets": sheetsConsumed(l) ?? "",
     "Plan month": l.planMonths.join(", "),
   }));
 }

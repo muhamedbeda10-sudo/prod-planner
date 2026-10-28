@@ -397,6 +397,29 @@ describe("a nested 0 is a value, a blank is none", () => {
   });
 });
 
+describe("a transformer row finds the lines the sheet files under its ORDER's MO", () => {
+  // the sheet files the transformer's MO; the row's closing came from that order
+  const byOrder: NestingLookup = {
+    [moKey("PF01/MO/35256-005")]: [
+      line({ id: 60, partCode: "FB-022", units: 10, sheetsPerUnit: 1, sheetsUsed: 11 }),
+      line({ id: 61, partCode: "FB-051", units: 10, sheetsPerUnit: 0.5, sheetsUsed: 5 }),
+    ],
+    // a sibling order: never read for this one
+    [moKey("PF01/MO/35256-004")]: [line({ id: 62, partCode: "FB-022", units: 3 })],
+  };
+  const row = { fgCode: "FB-022-12008E18M18", dateISO: "2026-10-04", soi: "S01193-3", odooMo: "SF01/MO/15968-001", mo: "pf01/mo/35256-005" };
+  it("takes the row's part among its order's lines, that order exactly", () => {
+    const need = entryMaterialNeed(byOrder, row, 10, EMPTY_NEED_CONTEXT)!;
+    expect(need.mo).toBe("PF01/MO/35256-005");
+    expect(need.via).toBe("ledger");
+    expect(need.lines.map((l) => l.id)).toEqual([60]);
+  });
+  it("colours the row by those lines", () => {
+    expect(rowMaterialState(byOrder, row, EMPTY_NEED_CONTEXT)).toBe("ok");
+    expect(rowMaterialState(byOrder, { ...row, mo: "PF01/MO/35256-009" }, EMPTY_NEED_CONTEXT)).toBe("missing");
+  });
+});
+
 describe("rowMaterialState", () => {
   const ctx = { lv: false, soiBoms: { "S01328-35": ["12012E16M15"] }, soiMos: {} };
   const partKey = nestingKey("FB-051", "12012E16M15");

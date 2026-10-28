@@ -258,10 +258,27 @@ export function entryMaterialNeed(
   if (ctx.lv) return materialNeedByMo(lookup, candidateMos(e, ctx.soiMos[soiOf(e.soi)] ?? []), qty, month);
   const odooMo = e.odooMo.trim().toUpperCase();
   const byMo = odooMo ? materialNeedByMo(lookup, [{ mo: odooMo, via: "odoo" }], qty, month) : null;
-  return byMo ?? materialNeed(lookup, e.fgCode, qty, month, ctx.soiBoms[soiOf(e.soi)] ?? [], {
+  return byMo ?? orderPartNeed(lookup, e, qty, month) ?? materialNeed(lookup, e.fgCode, qty, month, ctx.soiBoms[soiOf(e.soi)] ?? [], {
     rowBoms: e.bom?.boms ?? [],
     job: { soi: e.soi, odooMo: e.odooMo },
   });
+}
+
+/** The sheet filing the TRANSFORMER's MO on its lines: the row's part among
+ *  the lines of the order its closing came from — that MO exactly, never its
+ *  backorders or siblings, which are other orders. */
+function orderPartNeed(lookup: NestingLookup, e: { fgCode: string; mo?: string | null }, qty: number, month: string): MaterialNeed | null {
+  const lines = orderPartLines(lookup, e);
+  if (lines.length === 0) return null;
+  const part = lines[0].partCode.trim().toUpperCase();
+  return buildNeed(lines, { partCode: part, bom: lines.find((l) => l.bom)?.bom ?? "", mo: (e.mo ?? "").trim().toUpperCase(), via: "ledger" }, qty, month);
+}
+
+function orderPartLines(lookup: NestingLookup, e: { fgCode: string; mo?: string | null }): NestingLine[] {
+  const order = (e.mo ?? "").trim().toUpperCase();
+  const part = splitFgCode(e.fgCode)?.partCode.toUpperCase();
+  if (!order || !part) return [];
+  return (lookup[moKey(order)] ?? []).filter((l) => l.partCode.trim().toUpperCase() === part);
 }
 
 function buildNeed(all: readonly NestingLine[], key: { partCode: string; bom: string; mo: string | null; via: NeedVia }, qty: number, loggedMonth: string): MaterialNeed {
@@ -372,7 +389,11 @@ export function rowMaterialState(
       lines = linesOfMo(lookup, c.mo);
       if (lines.length > 0) break;
     }
-  } else if (lines.length === 0 && soi) {
+  } else if (lines.length === 0) {
+    // the sheet filing the transformer's MO: the row's part on the order its closing came from
+    lines = orderPartLines(lookup, e);
+  }
+  if (lines.length === 0 && !ctx.lv && soi) {
     const cand = candidateBoms(e.fgCode, ctx.soiBoms[soi] ?? [], e.bom?.boms ?? []);
     for (const c of cand?.boms ?? []) {
       lines = (lookup[nestingKey(cand!.partCode, c.bom)] ?? []).filter((l) => soiOf(l.soi ?? null) === soi);

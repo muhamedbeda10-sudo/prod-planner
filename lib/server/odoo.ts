@@ -169,8 +169,10 @@ async function nestingOfBothLines(
 }
 
 /** The material lines the rows may read: panels by their orders' MOs; a
- *  transformer row by its own Odoo MO (the newer sheet files each part under
- *  it) and by its part × BOM (the older sheet, and the rows with no MO yet). */
+ *  transformer row by its own Odoo MO (the sheets that filed each part under
+ *  it), by the order its closing came from (the sheet filing the
+ *  transformer's MO) and by its part × BOM (the older sheet, and the rows
+ *  with no MO yet). */
 async function nestingOf(
   entries: { fgCode: string; soi: string | null; odooMo: string; mo?: string | null; bom?: OdooRowBom }[],
   line: string, soiBoms: Record<string, string[]>, soiMos: Record<string, string[]>,
@@ -179,7 +181,9 @@ async function nestingOf(
   if (line === "LV") return linesByMo(entries.map((e) => candidateMos(e, soiMos[soi(e)] ?? []).map((c) => c.mo)), "LV");
   const [byPart, byMo] = await Promise.all([
     nestingFor(entries.map((e) => ({ fgCode: e.fgCode, boms: soiBoms[soi(e)] ?? [], rowBoms: e.bom?.boms })), line),
-    linesByMo(entries.map((e) => [e.odooMo.trim().toUpperCase()].filter(Boolean)), "TR"),
+    // the part's own MO (the older sheets), and the order's the row was born
+    // of (the sheet now files the transformer's MO on its lines)
+    linesByMo(entries.map((e) => [e.odooMo, e.mo ?? ""].map((m) => m.trim().toUpperCase()).filter(Boolean)), "TR"),
   ]);
   return { ...byPart, ...byMo };
 }
