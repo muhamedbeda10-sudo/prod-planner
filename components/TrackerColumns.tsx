@@ -56,12 +56,26 @@ export function useAccountSet(key: UserPrefKey, initial: string | null | undefin
   return [set, toggle];
 }
 
+/** The columns a saved value shows ("v<version>|key,key"): none saved, the
+ *  defaults; saved before a version that brought columns, those as well. */
+export function shownColumns(raw: string | null, defaults: readonly string[], added: readonly (readonly string[])[] = []): Set<string> {
+  const m = raw ? /^v(\d+)\|(.*)$/.exec(raw) : null;
+  if (!m) return new Set(defaults);
+  const set = new Set(m[2].split(",").filter(Boolean));
+  for (const keys of added.slice(Math.max(0, Number(m[1]) - 1))) for (const k of keys) set.add(k);
+  return set;
+}
+
 /** The columns shown, kept on the account — each person's own sheet. Nothing
- *  saved yet reads as the defaults. */
-export function useColumns<K extends string>(key: UserPrefKey, initial: string | null | undefined, defaults: readonly K[]) {
+ *  saved yet reads as the defaults. `added` are the columns a later version
+ *  of the sheet brought, one list per version after the first: a value saved
+ *  before them shows them too, so a new column is never hidden from whoever
+ *  had picked their columns already. */
+export function useColumns<K extends string>(key: UserPrefKey, initial: string | null | undefined, defaults: readonly K[], added: readonly (readonly K[])[] = []) {
   const [raw, saveRaw] = useAccountPref(key, initial);
-  const shown = useMemo(() => new Set<string>(raw?.startsWith("v1|") ? raw.slice(3).split(",").filter(Boolean) : defaults), [raw, defaults]);
-  const save = (next: Set<string>) => saveRaw(`v1|${[...next].join(",")}`);
+  const version = added.length + 1;
+  const shown = useMemo(() => shownColumns(raw, defaults, added), [raw, defaults, added]);
+  const save = (next: Set<string>) => saveRaw(`v${version}|${[...next].join(",")}`);
   const isOn = (k: K) => shown.has(k);
   const setOn = (keys: K[], on: boolean) => {
     const next = new Set(shown);

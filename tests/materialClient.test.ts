@@ -14,7 +14,7 @@ const line = (over: Partial<MaterialLineView>): MaterialLineView => ({
   material: "Steel", thicknessMm: 5, sheetSize: "1220*2440", sheetsPerUnit: 1, sheetsUsed: 11, producedQty: null, note: null,
   soi: "S01035-1", mtr: "MTR-7", weightKg: 117, utilization: 0.82, actualWeightKg: 1287, producedAuto: null, producedUsed: null, remainingUnits: null,
   forJob: 10, difference: -1, actualPerUnit: 1.1, forProduced: null, updatedISO: "2026-10-01", recordedBy: null,
-  planMonths: ["October 2026", "September 2026"], planMatch: "soi", ...over,
+  planMonths: ["October 2026", "September 2026"], planMatch: "soi", orderMos: [], ...over,
 });
 
 const render = (props: Partial<Parameters<typeof MaterialClient>[0]>) =>

@@ -83,12 +83,12 @@ function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
 /** Plan month, on either line's sheet: not from the sheet — read off the Plan Tracker. */
 const planCol = <K extends string>(): ColDef<K> => ({
   key: "plan" as K, name: "Plan month",
-  th: { label: "Plan month", hint: "The monthly plan the line's order is in on the Plan Tracker — found by its MO, else its SOI and BOM, else its SOI; a line with neither MO nor SOI, by its BOM. A line whose MO was closed Done on the ODOO log leaves the plans that began after that day. +n: it sits in more plans too" },
+  th: { label: "Plan month", hint: "The monthly plan the line's order is in on the Plan Tracker — found by its MO, else the order its part MO was closed against on the ODOO log, else its SOI and BOM, else its SOI; a line with neither MO nor SOI, by its BOM. A line whose MO was closed Done on the ODOO log leaves the plans that began after that day. +n: it sits in more plans too" },
   td: "p-2 text-xs",
   cell: (l) => <PlanCell months={l.planMonths} match={l.planMatch} />,
 });
 
-const MATCH_WORD: Record<MaterialPlanMatch, string> = { mo: "MO", soiBom: "SOI and BOM", soi: "SOI", bom: "BOM" };
+const MATCH_WORD: Record<MaterialPlanMatch, string> = { mo: "MO", odoo: "part MO's closing on the ODOO log", soiBom: "SOI and BOM", soi: "SOI", bom: "BOM" };
 
 /** The monthly plans the line's order was in: the newest, and +n for the
  *  other plans its key also sits in (an order carried over, or a SOI / BOM
@@ -135,7 +135,7 @@ interface ColDef<K extends string> {
 interface ColRun<K extends string> { label: string; cols: K[]; lead: K[] }
 
 type TrCol =
-  | "mtr" | "soi" | "mo" | "bom" | "units" | "plan" | "partCode" | "partName" | "matCode" | "material" | "thk" | "size" | "weight"
+  | "mtr" | "soi" | "mo" | "order" | "bom" | "units" | "plan" | "partCode" | "partName" | "matCode" | "material" | "thk" | "size" | "weight"
   | "bomUnit" | "actualUnit" | "bomJob" | "actualJob" | "util" | "actualWeight" | "diff" | "notes";
 
 /** The identifiers stay on screen while the figures scroll past: MTR, SOI and
@@ -171,6 +171,13 @@ const TR_COLS: ColDef<TrCol>[] = [
           </span>
         </span>
       );
+    } },
+  { key: "order", name: "Order MO", th: { label: "Order MO", hint: "Not from the sheet: the order this part's MO was closed against on the ODOO log — the transformer's own MO. Blank until the part is closed there" }, td: "p-2 whitespace-nowrap ltr text-xs",
+    cell: (l, x) => <OrderMos mos={l.orderMos} line={x.product} />,
+    head: (g, x) => {
+      const shared = sharedOf(g.lines.map((l) => l.orderMos.join(",")));
+      const all = [...new Set(g.lines.flatMap((l) => l.orderMos))];
+      return shared !== null ? <OrderMos mos={g.lines[0].orderMos} line={x.product} /> : <span className="text-muted" title={all.join(", ")}>{all.length} orders</span>;
     } },
   { key: "bom", name: "BOM", th: { label: "BOM", full: "BOM Ref", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs",
     cell: (l, x) => <BomLink bom={l.bom} line={x.product} />,
@@ -222,7 +229,7 @@ const TR_COLS: ColDef<TrCol>[] = [
 
 const TR_RUNS: ColRun<TrCol>[] = [
   { label: "Order", cols: ["mtr", "soi", "mo"], lead: ["mo"] },
-  { label: "Job", cols: ["bom", "units", "plan"], lead: ["bom"] },
+  { label: "Job", cols: ["order", "bom", "units", "plan"], lead: ["order", "bom"] },
   { label: "Part", cols: ["partCode", "partName"], lead: ["partCode"] },
   { label: "Sheet", cols: ["matCode", "material", "thk", "size", "weight"], lead: ["material", "thk"] },
   { label: "Per unit", cols: ["bomUnit", "actualUnit"], lead: ["actualUnit"] },
@@ -283,6 +290,8 @@ const LV_RUNS: ColRun<LvCol>[] = [
 const ALWAYS = "mo";
 // every column shows until the person picks otherwise
 const TR_DEFAULT = TR_COLS.map((c) => c.key).filter((k) => k !== ALWAYS);
+/** The transformers' columns each later version of the sheet brought (useColumns `added`). */
+const TR_ADDED: readonly (readonly TrCol[])[] = [["order"]];
 const LV_DEFAULT = LV_COLS.map((c) => c.key).filter((k) => k !== ALWAYS);
 
 /** The columns shown, in the sheet's order, each pinned identifier with its
@@ -398,10 +407,12 @@ function SoiGroupRow({ g, open, onToggle, layout, x, soiShown }: {
  *  block names it, each figure sits under its own column. */
 function TotalRow({ s, filtering, layout }: { s: MaterialSummary; filtering: boolean; layout: Layout<TrCol> }) {
   const count = s.lines;
-  const cells = spanCells(layout.shown.slice(layout.block.span), (c) => (c.sum ? <td key={c.key} className={`p-2 ${NUM} emph`}>{c.sum(s)}</td> : null));
+  // the label takes the pinned block, or the first column where nothing is pinned
+  const lead = Math.max(1, layout.block.span);
+  const cells = spanCells(layout.shown.slice(lead), (c) => (c.sum ? <td key={c.key} className={`p-2 ${NUM} emph`}>{c.sum(s)}</td> : null));
   return (
     <tr>
-      <td className="p-2 stick stick-end font-bold" colSpan={layout.block.span} style={layout.block.style}>
+      <td className={`p-2 font-bold whitespace-nowrap ${layout.block.span ? "stick stick-end" : ""}`} colSpan={lead} style={layout.block.span ? layout.block.style : undefined}>
         Total <span className="text-xs text-muted font-semibold tabnum">· {count} line{count === 1 ? "" : "s"}{filtering ? " shown" : ""}</span>
       </td>
       {cells}
@@ -429,6 +440,48 @@ function RunBand<K extends string>({ runs, layout, cols }: { runs: ColRun<K>[]; 
     }];
   });
   return <GroupBand spans={spans} runs />;
+}
+
+// ---- one order's lines, for its trace ----
+
+/** An order's (or a code's) lines of the sheet, on its trace: the tab's own
+ *  columns as this person keeps them (Columns ▾ on the tab; the band folds
+ *  the same runs here), in the sheet's order, nothing pinned — the trace's
+ *  column is narrower than the tab — and the transformers' Total under them. */
+export function MaterialLinesTable({ lines, product, odooByMo, prefs = {} }: {
+  lines: MaterialLineView[]; product: ProductLine; odooByMo: Record<string, string>; prefs?: UserPrefs;
+}) {
+  const lv = product === "LV";
+  const trCols = useColumns<TrCol>("material:cols", prefs["material:cols"], TR_DEFAULT, TR_ADDED);
+  const lvCols = useColumns<LvCol>("material:colsLv", prefs["material:colsLv"], LV_DEFAULT);
+  const trOn = TR_COLS.map((c) => trCols.isOn(c.key)).join();
+  const lvOn = LV_COLS.map((c) => lvCols.isOn(c.key)).join();
+  const trLayout = useMemo(() => layoutOf(TR_COLS, trCols.isOn, {}), [trOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lvLayout = useMemo(() => layoutOf(LV_COLS, lvCols.isOn, {}), [lvOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const x = useMemo<ColCtx>(() => ({ odoo: odooByMo, product }), [odooByMo, product]);
+  const summary = useMemo(() => materialSummary(lines), [lines]);
+  return (
+    <TableFrame>
+      <table className="erp-table w-full border-collapse">
+        <thead>
+          {lv ? <RunBand runs={LV_RUNS} layout={lvLayout} cols={lvCols} /> : <RunBand runs={TR_RUNS} layout={trLayout} cols={trCols} />}
+          <tr className="text-left align-bottom">
+            {(lv ? lvLayout.shown : trLayout.shown).map((c) => <Th key={c.key} {...c.th} />)}
+          </tr>
+        </thead>
+        <tbody>
+          {lv
+            ? lines.map((l) => <LineRow key={l.id} line={l} layout={lvLayout} x={x} className={`border-t ${lvDone(l) ? "bg-ok-bg/30" : ""}`} />)
+            : lines.map((l) => <LineRow key={l.id} line={l} layout={trLayout} x={x} />)}
+        </tbody>
+        {!lv && (
+          <tfoot className="mat-total">
+            <TotalRow s={summary} filtering={false} layout={trLayout} />
+          </tfoot>
+        )}
+      </table>
+    </TableFrame>
+  );
 }
 
 // ---- upload the sheet: it updates the table, row by MO ----
@@ -525,11 +578,11 @@ function ImportPanel({ product }: { product: ProductLine }) {
 
 // ---- filters: one row above the table; the totals follow what is shown ----
 
-const FILTERS_KEY = "material:filters";
+export const MATERIAL_FILTERS_KEY = "material:filters";
 
 /** Only the known fields, as strings, with a status the page knows — whatever
  *  an old or hand-edited saved value holds. */
-function readSavedFilters(raw: string): MaterialFilters {
+export function readSavedFilters(raw: string): MaterialFilters {
   const o = parseSaved(raw);
   const status = savedString(o, "status");
   return {
@@ -670,7 +723,7 @@ export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}
   prefs?: UserPrefs;
 }) {
   const lv = product === "LV";
-  const { filters: saved, setFilters: changeFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_MATERIAL_FILTERS);
+  const { filters: saved, setFilters: changeFilters } = useStoredFilters(MATERIAL_FILTERS_KEY, readSavedFilters, EMPTY_MATERIAL_FILTERS);
   // only the panels' tab counts units produced — a "with produced" kept from
   // there means nothing on the transformers' sheet
   const filters = useMemo(() => (!lv && saved.status === "produced" ? { ...saved, status: "all" as const } : saved), [lv, saved]);
@@ -678,7 +731,7 @@ export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}
   const filtering = shown.length !== lines.length;
   const summary = useMemo(() => materialSummary(shown), [shown]);
   // each person's columns, one set per line's sheet, kept on their account
-  const trCols = useColumns<TrCol>("material:cols", prefs["material:cols"], TR_DEFAULT);
+  const trCols = useColumns<TrCol>("material:cols", prefs["material:cols"], TR_DEFAULT, TR_ADDED);
   const lvCols = useColumns<LvCol>("material:colsLv", prefs["material:colsLv"], LV_DEFAULT);
   // rebuilt only when the columns picked change, not on every keystroke in the search
   const trOn = TR_COLS.map((c) => trCols.isOn(c.key)).join();
@@ -780,6 +833,16 @@ export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}
         )}
       </section>
     </div>
+  );
+}
+
+/** The orders a part's MO was closed against on the ODOO log, each opening its trace. */
+function OrderMos({ mos, line }: { mos: string[]; line: ProductLine }) {
+  if (mos.length === 0) return <span className="text-muted" title="Not closed against an order on the ODOO log yet">—</span>;
+  return (
+    <span className="inline-flex flex-wrap gap-x-2">
+      {mos.map((mo) => <Link key={mo} href={traceHref({ mo, line })} className="text-brand-ink font-semibold hover:underline" title="Open the order's trace">{mo}</Link>)}
+    </span>
   );
 }
 

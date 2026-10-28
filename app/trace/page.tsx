@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { guardTab } from "@/lib/server/auth";
+import { getCurrentUser, guardTab, hiddenTabsOf } from "@/lib/server/auth";
+import { canSeePath } from "@/lib/domain/tabs";
+import { getTraceMaterial } from "@/lib/server/material";
+import { getUserPrefs } from "@/lib/server/userPrefs";
+import { MATERIAL_PREF_KEYS, type UserPrefs } from "@/lib/domain/userPrefs";
+import { TraceMaterial } from "@/components/TraceMaterial";
 import { getTrace } from "@/lib/server/trace";
 import { getActiveLine, withLine } from "@/lib/server/line";
 import { prisma } from "@/lib/db";
@@ -50,6 +55,24 @@ export default async function TracePage({
     );
   }
 
+  // the order's lines of the nesting sheet — for whoever may open the MATERIAL tab
+  const me = await getCurrentUser();
+  const seesMaterial = canSeePath(hiddenTabsOf(me), "/material");
+  const materialOf = async (members: readonly { mo: string; soi: string | null }[], code: string, scope: "mo" | "bom", key: string) => {
+    if (!seesMaterial) return null;
+    const [m, prefs] = await Promise.all([
+      // an MO traced from the log alone has no registry row: its own MO still finds its lines
+      getTraceMaterial(line, { scope, mos: [...members.map((o) => o.mo), ...(scope === "mo" ? [key] : [])], sois: members.map((o) => o.soi ?? ""), bom: code }),
+      getUserPrefs(me?.id, MATERIAL_PREF_KEYS),
+    ]);
+    // the tab is searched for the order's MO when its parts' lines carry it
+    // (closed on the ODOO log), else for its SOI, else the code
+    const sois = [...new Set(members.map((o) => (o.soi ?? "").trim()).filter(Boolean))];
+    const linked = scope === "mo" && m.lines.some((l) => l.orderMos.some((o) => o.toUpperCase() === key.toUpperCase()));
+    const search = linked ? key : scope === "mo" && sois.length === 1 ? sois[0] : code;
+    return <TraceMaterial lines={m.lines} odooByMo={m.odooByMo} product={line} prefs={prefs as UserPrefs} search={search} code={code} mos={scope === "mo" ? [key] : members.map((o) => o.mo)} />;
+  };
+
   // a panel's trace is its own shape: orders on the chain and the rows that
   // moved them, not six components in a pipeline
   if (line === "LV") {
@@ -71,7 +94,7 @@ export default async function TracePage({
         </div>
       );
     }
-    return <LvTraceView t={lt} />;
+    return <LvTraceView t={lt} material={await materialOf(lt.members, lt.bom, lt.scope, lt.key)} />;
   }
 
   const t = await withLine("TR", () => getTrace({ mo, bom }));
@@ -94,5 +117,5 @@ export default async function TracePage({
     );
   }
 
-  return <TraceView t={t} planNo={planNo} view={view} />;
+  return <TraceView t={t} planNo={planNo} view={view} material={await materialOf(t.members, t.bom, t.scope, t.key)} />;
 }

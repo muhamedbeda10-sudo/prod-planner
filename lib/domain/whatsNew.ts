@@ -16,6 +16,21 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-material-no-endless-scroll",
+    dateISO: "2026-10-28",
+    title: "The Material page no longer scrolls on into empty space",
+    where: "Material → the nesting sheet",
+    href: "/material",
+    body: "Under the table the page kept scrolling, as long as the whole table, with nothing in it: the Plan month cells' hidden text for screen readers was stretching the page. The page now ends at the table, which scrolls on its own; the same guard covers every other table.",
+  },
+  {
+    id: "2026-10-28-trace-material",
+    dateISO: "2026-10-28",
+    title: "An order's trace shows its material",
+    where: "Trace (an order or a code, Transformers and LV Panels) → Material, under On ODOO",
+    body: "Open an order or a code from the tracker and, under On ODOO, the Material card lists its lines of the nesting sheet: the part, material, thickness and sheet, BOM against actual for the job, the actual weight, the difference and the plan month — the same columns you keep on the MATERIAL tab, folding the same way — with what they add up to and a red count of the lines over their BOM. A part is tied to its transformer exactly through the ODOO log: the part MO you type when you close it there belongs to the order that closing came from, so its nesting lines show on that order (linked on ODOO) and on no other. A part not closed there yet is found by its SOI and code; those filed under the SOI on another code (a sub-assembly, an older revision) are counted apart. The MATERIAL tab gets an Order MO column with the same link, its search finds a line by its order's MO, and the plan month follows the order the part was closed against. Open in Material takes you to the tab already searched for the order. The panels' trace shows its orders' Consumption Details lines.",
+  },
+  {
     id: "2026-10-28-material-plan-month-closed-nesting",
     dateISO: "2026-10-28",
     title: "A plan month on the Material sheet no longer shows the nesting already closed before it",

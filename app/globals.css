@@ -950,6 +950,10 @@ div.overflow-x-auto:has(> table) {
   max-height: none;
   overflow-y: hidden;
 }
+/* a screen reader's text inside a table (.sr-only is absolutely placed):
+   fixed, so it never adds to the page's scroll — absolute, it escaped the
+   table's scroll frame and stretched the page to the table's whole length */
+main table .sr-only { position: fixed; }
 div.overflow-x-auto > table thead {
   position: sticky;
   top: 0;
