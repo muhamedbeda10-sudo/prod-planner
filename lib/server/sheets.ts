@@ -29,7 +29,6 @@ import type { MaterialPageData } from "./material";
 import { RATE_SOURCE_LABEL, WEIGHT_SOURCE_LABEL, type DetailRow } from "@/lib/domain/materialDashboard";
 import type { OdooDashboardView, OdooPageData } from "./odoo";
 import type { PhysicalStockData } from "./physicalStock";
-import { odooRateOf, type OdooRates } from "@/lib/domain/odooBom";
 import type { PowderView } from "./powderScrap";
 import type { ShiftRosterData } from "./shifts";
 import type { SoiLookup } from "./soi";
@@ -63,7 +62,7 @@ export function odooLogRows(entries: OdooPageData["entries"]): SheetRow[] {
 
 /** The material sheet: its own column names in its order, then the tab's
  *  additions — the panels' sheet and the transformers' differ. */
-export function materialRows(lines: MaterialPageData["lines"], line: ProductLine, rates: OdooRates = {}): SheetRow[] {
+export function materialRows(lines: MaterialPageData["lines"], line: ProductLine): SheetRow[] {
   if (line === "LV") {
     return lines.map((l) => ({
       MO: l.mo,
@@ -96,8 +95,6 @@ export function materialRows(lines: MaterialPageData["lines"], line: ProductLine
     "Sheet Size": l.sheetSize,
     "Weight(Kg)": l.weightKg ?? "",
     "BOM Qty for one Unit": l.sheetsPerUnit,
-    // the screen's Odoo / unit: Odoo's BoM beside the sheet's figure (transformers)
-    "Odoo Qty for one Unit": (() => { const r = odooRateOf(rates, l); return r.kind === "value" ? (r.comparable ? r.qty : `${r.qty} ${r.uom}`) : r.kind === "absent" ? "not in BoM" : ""; })(),
     "No. of Pieces in Actual Nesting for one Unit": l.actualPerUnit === null ? "" : Number(l.actualPerUnit.toFixed(4)),
     "BOM Pieces for Job": l.forJob,
     "No. of Pieces in Actual Nesting for Job": l.sheetsUsed ?? "",

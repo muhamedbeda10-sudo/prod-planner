@@ -33,9 +33,6 @@ export interface LineSheetSpec {
   /** The nesting's sheets for the whole job — actually nested where it was,
    *  else the BOM's for its units. What the technician knows the job by. */
   jobSheets?: number | null;
-  /** Not the nesting's: read off Odoo's BoM for a part the nesting has no
-   *  line for yet (lib/domain/materialCoverage.ts specsFromOdoo). */
-  odoo?: boolean;
 }
 
 export interface LineMaterial {

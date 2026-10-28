@@ -18,8 +18,8 @@ import type { PhysicalStockItem } from "@/lib/server/physicalStock";
 // The gap is the store's count minus Odoo's: below zero the store holds less
 // than Odoo says, above it more. The sheet is uploaded straight in; a count
 // is corrected in its cell. Beside Odoo's stock, the sheets the open orders
-// still need (the MATERIAL tab's nesting × the pieces Fabrication owes; a part
-// not nested yet, by Odoo's BoM) and what Odoo holds after them.
+// still need (the MATERIAL tab's nesting × the pieces Fabrication owes) and
+// what Odoo holds after them.
 
 const STATUS_PILL: Record<StockStatus, string> = { match: "pill-ok", short: "pill-bad", over: "pill-warn", empty: "pill-muted" };
 
@@ -114,7 +114,7 @@ export function PhysicalStockClient({ items, canEdit, need, needFailed = false }
                   <Th label="UOM" center />
                   <Th label="Store count" full="Physically in the internal store" num group="input" />
                   <Th label="SF01 in Odoo" full="SF01's stock in Odoo" num group="source" />
-                  {need && <Th label="Open need" full="Sheets the open orders still need" hint="The pieces Fabrication still owes on every open order not on hold × the MATERIAL tab's sheets a piece (the actual nesting, or the BOM's rate where not nested yet — marked ≈). A part with no nesting line at all is priced off Odoo's BoM (Material → BoMs), also ≈. A part with neither, or a nesting line with no product code, is left out — the need is at least what is shown." num group="computed" />}
+                  {need && <Th label="Open need" full="Sheets the open orders still need" hint="The pieces Fabrication still owes on every open order not on hold × the MATERIAL tab's sheets a piece (the actual nesting, or the BOM's rate where not nested yet — marked ≈)." num group="computed" />}
                   {need && <Th label="After need" full="SF01 in Odoo − open need" hint="Below zero Odoo holds fewer sheets than the open orders still need. The need is in sheets, so a code held in kilos shows none." num group="computed" />}
                   <Th label="Difference" full="Store count − Odoo" hint="Below zero the store holds less than Odoo says; above zero, more. Under a hundredth of a piece (or a kilo on coils) counts as matching." num group="computed" />
                   <Th label="vs Odoo" full="The difference as a share of Odoo's stock" num group="computed" />
@@ -230,7 +230,6 @@ function NeedCell({ n }: { n: StockNeed | null }) {
       <Tooltip content={
         <span className="block max-w-[18rem] text-xs">
           <span className="block font-semibold">{n.orders} order{n.orders === 1 ? "" : "s"} need {qty(n.need)} sheets{n.estimated ? " (partly at the BOM's rate)" : ""}</span>
-          {n.byOdoo && <span className="block">Part of it is read off Odoo&apos;s BoM — a part with no nesting line yet.</span>}
           {n.jobs.map((j) => <span key={`${j.mo}|${j.item}`} className="block">{j.mo} · {j.item} · {qty(j.sheets)}</span>)}
           {n.jobCount > n.jobs.length && <span className="block opacity-75">…and {n.jobCount - n.jobs.length} more</span>}
         </span>

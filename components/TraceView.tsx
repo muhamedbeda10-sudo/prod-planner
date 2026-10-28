@@ -3,7 +3,6 @@
 import { formatDate, formatDateTime } from "@/lib/domain/format";
 import { Fragment, useState, useMemo } from "react";
 import Link from "next/link";
-import { hrefWithLine } from "@/lib/domain/lines";
 import { useRouter } from "next/navigation";
 import {
   Package, CheckCircle2, Truck, Hourglass, Gauge, AlertTriangle, RotateCw,
@@ -125,7 +124,6 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
                 ) : (
                   <Prop k="Orders">{t.members.length || "—"}{t.members.length > 0 && openOrders < t.members.length ? ` · ${openOrders} open` : ""}</Prop>
                 )}
-                {t.bom && <Prop k="Odoo BoM"><Link href={hrefWithLine(`/bom?bom=${encodeURIComponent(t.bom)}`, "TR")} className="text-brand-ink font-semibold hover:underline">Tree &amp; materials</Link></Prop>}
                 {t.kva && <Prop k="KVA">{t.kva}</Prop>}
                 {t.rating && <Prop k="Rating">{t.rating}</Prop>}
                 {monthsAll.length > 0 && <Prop k="Plan months">{monthsAll.join(" · ")}</Prop>}
