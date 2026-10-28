@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ITEMS } from "./constants";
-import { closesByItself, exactOdooClosings, finishedAndClosedInOdoo, isOdooExactOrder, normalizeOdooTrackingStart, odooPlanMonth, trackerOdooQuantities as allocateOdoo, trackerOdooTotal } from "./trackerOdoo";
+import { closesByItself, exactOdooClosings, odooClosedByLedger, finishedAndClosedInOdoo, isOdooExactOrder, normalizeOdooTrackingStart, odooPlanMonth, trackerOdooQuantities as allocateOdoo, trackerOdooTotal } from "./trackerOdoo";
 const order = (mo = "MO-1", bom = "BOM-A", soi: string | null = "SO-1", month = "October 2026", planQty = 100) => ({ mo, bom, soi, line: "TR", source: month, months: month, planQty });
 // the allocation of the orders planned before ODOO_EXACT_FROM: these cases
 // keep every order on it, whatever month they name
@@ -145,6 +145,16 @@ describe("Odoo closed quantities on the plan tracker", () => {
 });
 
 describe("exact Odoo closings — the orders planned from October 2026 on", () => {
+  it("sums any line's Done rows by the MO and item of the closing they were born from", () => {
+    const ledgers = [{ id: 1, mo: "sf01/mo/1", item: "PNL" }, { id: 2, mo: null, item: "PNL" }];
+    const closed = odooClosedByLedger([
+      { ledgerId: 1, status: "Done", qty: 4 }, { ledgerId: 1, status: "Closed", qty: 2 }, { ledgerId: 1, status: "Pending", qty: 9 },
+      { ledgerId: 2, status: "Done", qty: 5 }, // a closing with no MO is no order's
+      { ledgerId: null, status: "Done", qty: 7 }, // a typed row is tied to nothing
+    ], ledgers);
+    expect(closed).toEqual(new Map([["SF01/MO/1", new Map([["PNL", 6]])]]));
+  });
+
   const exact = (...args: Parameters<typeof allocateOdoo>) => allocateOdoo(args[0], args[1], args[2], args[3] ?? "2026-09-06", args[4]);
 
   it("starts with the October 2026 plan, by the plan that first brought the MO", () => {

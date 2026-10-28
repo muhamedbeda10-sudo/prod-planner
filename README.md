@@ -83,7 +83,12 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    component — never spread by BOM and not capped
    (`exactOdooClosings` in `lib/domain/trackerOdoo.ts`); an order from an earlier plan reads —. The screen reads
    only those orders' rows (`getTrackerSheet`); the auto-close, the BOM trace and the assistant read the same
-   figure for them and the allocation below for the older orders (`getMasterTracker`). No ETA, Complete or
+   figure for them and the allocation below for the older orders (`getMasterTracker`). The same rule
+   (`odooClosedByLedger`, read through `lib/server/odooClosings.ts`) gives the **LV panels'** tracker an Odoo
+   column after Dlvd (the Done rows born from the panel's own painting) and the **weekly plan** an Odoo
+   column per component, waterfalled over the order's promises earliest first and capped like the stages
+   (not on the Cut worklist's view). Every Odoo column wears Odoo's plum (`--odoo-head`, `--odoo-tint`,
+   `--odoo-fg`, class `.odoo-col`). No ETA, Complete or
    Left columns — forecasting every order made the sheet heavy. The sheet (both lines) opens on open orders: closed ones
    are sent only when **Status** is Closed or All (the table adds `?closed=1`), since they pile up month
    after month.

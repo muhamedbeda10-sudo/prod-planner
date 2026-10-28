@@ -12,7 +12,8 @@ const h = vi.hoisted(() => {
       plan: { findMany: fn() },
       planSchedule: { findMany: fn() },
       masterOrder: { findMany: fn() },
-      handoverEntry: { groupBy: fn() },
+      handoverEntry: { groupBy: fn(), findMany: fn() },
+      odooEntry: { findMany: fn() },
     },
   };
 });
@@ -317,5 +318,42 @@ describe("getWeeklyPlanTracker — a promise repeated later in the same plan", (
     expect(t.days[0].rows[0].items.CB).toMatchObject({ req: 2, na: 2, over: 0 });
     expect(t.days[1].rows[0].items.CB).toMatchObject({ req: 2, na: 2, over: 0 });
     expect(t.req).toBe(0);
+  });
+});
+
+describe("getWeeklyPlanTracker — closed in Odoo", () => {
+  it("waterfalls an October order's Odoo closings over its promises, earliest first, and leaves older orders uncounted", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1", { months: "October 2026", source: "October 2026" }), order("MO-OLD", { months: "September 2026", source: "September 2026" })]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([sched("MO-1", "TN", 4, D1), sched("MO-1", "TN", 6, D2), sched("MO-OLD", "TC", 5, D1, "B-2")]);
+    h.prisma.handoverEntry.findMany.mockResolvedValue([{ id: 9, mo: "MO-1", bom: "B-1", item: "TN" }]);
+    h.prisma.odooEntry.findMany.mockResolvedValue([
+      { id: 1, ledgerId: 9, status: "Done", qty: 7 },
+      { id: 2, ledgerId: 9, status: "MO to be close", qty: 3 }, // not closed in Odoo yet
+    ]);
+
+    const t = await getWeeklyPlanTracker(34, { odoo: true });
+    const cellOf = (i: number, bom: string, it: "TN" | "TC") => t.days[i].rows.find((r) => r.bom === bom)!.items[it]!;
+    expect(cellOf(0, "B-1", "TN")).toMatchObject({ odoo: 4, odooOf: 4 });
+    expect(cellOf(1, "B-1", "TN")).toMatchObject({ odoo: 3, odooOf: 6 });
+    expect(cellOf(0, "B-2", "TC").odoo).toBeNull();
+    // only the October order's closings are read, off its closing stages
+    expect(h.prisma.handoverEntry.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { mo: { in: ["MO-1"] }, dept: { in: ["Painting", "ShotBlast"] } } }));
+  });
+
+  it("measures a day shared with an older order against the counted order's promise alone", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-NEW", { months: "October 2026" }), order("MO-OLD", { months: "September 2026" })]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([sched("MO-NEW", "TN", 4, D1), sched("MO-OLD", "TN", 6, D1)]);
+    h.prisma.handoverEntry.findMany.mockResolvedValue([{ id: 9, mo: "MO-NEW", bom: "B-1", item: "TN" }]);
+    h.prisma.odooEntry.findMany.mockResolvedValue([{ id: 1, ledgerId: 9, status: "Done", qty: 4 }]);
+    const cell = (await getWeeklyPlanTracker(34, { odoo: true })).days[0].rows[0].items.TN!;
+    expect(cell).toMatchObject({ odoo: 4, odooOf: 4 });
+  });
+
+  it("reads nothing of Odoo for the views that do not show it (the Cut worklist, the KPIs)", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1", { months: "October 2026" })]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([sched("MO-1", "TN", 4, D1)]);
+    const cell = (await getWeeklyPlanTracker(34)).days[0].rows[0].items.TN!;
+    expect(cell.odoo).toBeUndefined();
+    expect(h.prisma.odooEntry.findMany).not.toHaveBeenCalled();
   });
 });

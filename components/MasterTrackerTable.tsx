@@ -23,7 +23,7 @@ import { itemColor } from "@/lib/domain/productColors";
 import { Check, CheckCheck, ChevronRight, CornerDownRight, Pause, Repeat, Star } from "lucide-react";
 import { useConfirm } from "@/components/DataTable";
 import type { UserPrefs } from "@/lib/domain/userPrefs";
-import { AchCell, ColumnMenu, FoldButton, meterStyle, stageState, stageWords, stickAt, useAccountSet, useColumns, type Columns } from "@/components/TrackerColumns";
+import { AchCell, ColumnMenu, FoldButton, OdooCell, OdooNotCounted, meterStyle, stageState, stickAt, useAccountSet, useColumns, type Columns } from "@/components/TrackerColumns";
 import { itemFinishShare, rowBottleneck } from "@/lib/domain/trackerView";
 
 import { filterMasterTracker, trackerItemStats, trackerStagesOf } from "@/lib/domain/trackerSummary";
@@ -59,6 +59,8 @@ const BOM_W = 7.5;
 const BOM_W_ALONE = 14;
 const REQ_W = 7;
 const REQ_CLS = "stick stick-end";
+/** An Odoo cell closes its component: the component's border after it. */
+const ODOO_CELL = "p-1 border-r border-border-strong";
 
 /** Every column the reader can show or hide (Columns ▾), in the sheet's
  *  order. BOM always shows — it is what the row is. */
@@ -863,7 +865,7 @@ export function MasterTrackerTable({
                   {folded(it) ? <th className="p-1 font-semibold on-tint border-r border-border-strong" title={`${ITEM_NAME[it]} made through its final stage`}>Made %</th>
                     : <>
                       {scoped ? stages.map((s) => <StageHead key={s} shp={isPaintExempt(it)} only={s} />) : <StageHead shp={isPaintExempt(it)} />}
-                      <th className="p-1 font-semibold on-tint border-r border-border-strong" title={`Closed in Odoo — the Done rows of the ODOO log, each on the MO it was recorded against. Counted from the ${ODOO_EXACT_FROM_LABEL} plans on; an older order reads —`}>Odoo</th>
+                      <th className="p-1 font-semibold odoo-col border-r border-border-strong" title={`Closed in Odoo — the Done rows of the ODOO log, each on the MO it was recorded against. Counted from the ${ODOO_EXACT_FROM_LABEL} plans on; an older order reads —`}>Odoo</th>
                     </>}
                 </Fragment>
               ))}
@@ -1380,10 +1382,8 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
    *  log recorded against its MO, read-only — a click opens its On Odoo
    *  records. An order planned before ODOO_EXACT_FROM reads — (not counted). */
   function odooCell(r: MasterTrackerRow, it: Item) {
-    if (!r.odooExact) return odooNotCounted(`${r.mo} was planned before ${ODOO_EXACT_FROM_LABEL} — its Odoo closings are not counted here`);
-    const value = r.items[it].odooClosed ?? 0;
-    const target = Math.max(0, r.required - r.items[it].osp);
-    return odooFigure(value, target, `${r.mo} · ${it}`, `${traceHref({ mo: r.mo, line: "TR" })}#on-odoo`);
+    if (!r.odooExact) return <OdooNotCounted className={ODOO_CELL} why={`${r.mo} was planned before ${ODOO_EXACT_FROM_LABEL} — its Odoo closings are not counted here`} />;
+    return <OdooCell className={ODOO_CELL} value={r.items[it].odooClosed ?? 0} of={Math.max(0, r.required - r.items[it].osp)} label={`${r.mo} · ${it}`} href={`${traceHref({ mo: r.mo, line: "TR" })}#on-odoo`} />;
   }
   /** The same on a merged BOM row: the sum over its MOs that are counted. */
   function groupOdooCell(gBom: string, members: MasterTrackerRow[], it: Item) {
@@ -1392,7 +1392,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
       return <td className="na-cell border-r border-border-strong" title={`${it} is not required for any of these ${members.length} MOs`} aria-label={`${it} not required`} />;
     }
     const counted = needed.filter((m) => m.odooExact);
-    if (counted.length === 0) return odooNotCounted(`These MOs were planned before ${ODOO_EXACT_FROM_LABEL} — their Odoo closings are not counted here`);
+    if (counted.length === 0) return <OdooNotCounted className={ODOO_CELL} why={`These MOs were planned before ${ODOO_EXACT_FROM_LABEL} — their Odoo closings are not counted here`} />;
     const value = counted.reduce((s, m) => s + (m.items[it].odooClosed ?? 0), 0);
     const target = counted.reduce((s, m) => s + Math.max(0, m.required - m.items[it].osp), 0);
     // every piece bought out (OSP): hatched, like the stage cells beside it
@@ -1400,22 +1400,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
       return <td className="na-cell border-r border-border-strong" title={`${it}: all outsourced (OSP) — nothing to close in Odoo`} aria-label={`${it} outsourced`} />;
     }
     const part = counted.length < needed.length ? ` (${counted.length} of ${needed.length} MOs — the others were planned before ${ODOO_EXACT_FROM_LABEL})` : "";
-    return odooFigure(value, target, `${gBom} · ${it}${part}`, `${traceHref({ bom: gBom, line: "TR" })}#on-odoo`);
-  }
-  function odooNotCounted(why: string) {
-    return <td className="p-1 text-center text-muted border-r border-border-strong" title={why}><span aria-hidden>—</span><span className="sr-only">Odoo not counted</span></td>;
-  }
-  function odooFigure(value: number, target: number, label: string, href: string) {
-    const meter = meterStyle(value, target);
-    const over = value > target ? ` — ${value - target} more than the plan` : "";
-    const words = `Closed in Odoo · ${label}: ${stageWords(value, target)}${over}`;
-    return (
-      <td className={`stage-cell ${stageState(value, target, false)} ${meter ? "stage-meter" : ""} p-1 text-center tabnum border-r border-border-strong`} style={meter} title={words}>
-        {value > 0 ? (
-          <Link href={href} onClick={(e) => e.stopPropagation()} className="print-as-text hover:underline" aria-label={words}>{value}</Link>
-        ) : ""}
-      </td>
-    );
+    return <OdooCell className={ODOO_CELL} value={value} of={target} label={`${gBom} · ${it}${part}`} href={`${traceHref({ bom: gBom, line: "TR" })}#on-odoo`} />;
   }
 
   /** A folded component: how much of it is made through its last stage. */

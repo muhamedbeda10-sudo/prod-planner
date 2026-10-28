@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-odoo-column-lv-weekly-plum",
+    dateISO: "2026-10-28",
+    title: "Odoo's closings on the LV Panels tracker and the weekly plan too, in Odoo's colour",
+    where: "Plan Tracker → LV Panels · Plan Tracker → Weekly · the assistant",
+    href: "/tracker",
+    body: "The LV Panels tracker ends each panel order with an Odoo column after Dlvd: the panels closed in Odoo — the Done rows of the ODOO log born from that order's own painting. The weekly plan shows an Odoo column under each component: what Odoo has closed of that day's orders, filling the earliest promise first, like the stages. Both count from the October 2026 plans on; an older order reads —. Every Odoo column — the monthly tracker's too — now wears Odoo's own plum, so it is told from our stages at a glance. The assistant and its Excel files carry the same figures.",
+  },
+  {
     id: "2026-10-28-what-looks-wrong-sources",
     dateISO: "2026-10-28",
     title: "What looks wrong checks what the app still keeps",

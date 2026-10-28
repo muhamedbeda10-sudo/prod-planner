@@ -14,7 +14,7 @@ import { LineSwitch } from "@/components/LineSwitch";
 import { PageHead } from "@/components/ui";
 import { LvTrackerTable } from "@/components/LvTrackerTable";
 import { getActiveLine } from "@/lib/server/line";
-import { getLvTracker } from "@/lib/server/lvTracker";
+import { getLvTrackerWithOdoo } from "@/lib/server/lvTracker";
 import { LV_CHAIN, lvPermKey } from "@/lib/domain/lv";
 import { getUserPrefs } from "@/lib/server/userPrefs";
 import { LV_TRACKER_PREF_KEYS, TRACKER_PREF_KEYS } from "@/lib/domain/userPrefs";
@@ -48,7 +48,7 @@ export default async function TrackerPage({
   // panels' own tracker key for that column.
   if ((await getActiveLine()) === "LV") {
     const user = await getCurrentUser(); // already read by guardTab — cached
-    const [sheet, lvPrefs] = await Promise.all([getLvTracker(), getUserPrefs(user?.id, LV_TRACKER_PREF_KEYS)]);
+    const [sheet, lvPrefs] = await Promise.all([getLvTrackerWithOdoo(), getUserPrefs(user?.id, LV_TRACKER_PREF_KEYS)]);
     return (
       <>
         <PrintHeader title="Plan Tracker — LV Panels" date={issued} />
@@ -67,7 +67,7 @@ export default async function TrackerPage({
 
   if (sp.view === "weekly") {
     // an unknown ?plan= falls back to the newest plan inside the loader
-    const [data, weeklyUser] = await Promise.all([getWeeklyPlanTracker(Number(sp.plan) || null), getCurrentUser()]);
+    const [data, weeklyUser] = await Promise.all([getWeeklyPlanTracker(Number(sp.plan) || null, { odoo: true }), getCurrentUser()]);
     const capacity = await getPlanCapacity(data.planNo);
     return (
       <>
