@@ -5,7 +5,7 @@ import type { User } from "@prisma/client";
 
 vi.mock("server-only", () => ({}));
 // Only the data loaders are replaced. Live mode runs the actual app agent,
-// prompt, model protocol, input validation, summary tool and source wrapping.
+// prompt, model protocol, input validation and summary tool.
 vi.mock("@/lib/server/masterTracker", () => ({ getMasterTracker: () => { throw Error("Live database reads are forbidden in this benchmark"); } }));
 vi.mock("@/lib/server/lvTracker", () => ({ getLvTracker: () => { throw Error("Live database reads are forbidden in this benchmark"); } }));
 vi.mock("@/lib/server/line", () => ({ withLine: (_line: string, run: () => unknown) => run() }));
@@ -14,13 +14,12 @@ vi.mock("@/lib/server/ai/changes", () => ({ handleWriteCall: () => { throw Error
 import { ask, questionMessages } from "@/lib/server/ai/agent";
 import { trackerSummaryTool } from "@/lib/server/ai/tools/planning";
 import { AI_MODELS, DEFAULT_AI_MODEL, costUsd, questionContext } from "@/lib/domain/ai";
-import { evidenceAnchor, type AiEvidence } from "@/lib/domain/aiEvidence";
 import { aiPageNote } from "@/lib/domain/aiScreen";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import { OUTSOURCED, PANELS, PLANNING_CASES, TRANSFORMERS, type PlanningCase } from "./fixtures";
 
 const offline: { id: string; passed: boolean; calculationMs: number; expected: PlanningCase["expected"] }[] = [];
-const live: { id: string; numericCorrect: boolean; citedSource: boolean; readToolUsed: boolean; latencyMs: number; estimatedCostUsd: number; error: boolean; answer: string }[] = [];
+const live: { id: string; numericCorrect: boolean; readToolUsed: boolean; latencyMs: number; estimatedCostUsd: number; error: boolean; answer: string }[] = [];
 const fixtureTool = (test: PlanningCase) => trackerSummaryTool({ tr: async () => test.outsourced ? OUTSOURCED : TRANSFORMERS, lv: async () => PANELS });
 const context = (test: PlanningCase): ToolCtx => ({
   user: { id: 1, name: "Reference planner" } as User, hidden: new Set(), now: new Date("2026-10-24T08:00:00Z"),
@@ -42,7 +41,7 @@ describe("production-planning reference calculations — synthetic data", () => 
   });
 });
 
-it.runIf(process.env.AI_EVAL_LIVE === "1")("measures model accuracy, citations, latency and estimated cost on the same reference cases", async () => {
+it.runIf(process.env.AI_EVAL_LIVE === "1")("measures model accuracy, latency and estimated cost on the same reference cases", async () => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw Error("Live evaluation requires ANTHROPIC_API_KEY in the process environment. Enter it securely; never commit it.");
   const model = process.env.AI_EVAL_MODEL ?? DEFAULT_AI_MODEL;
@@ -53,14 +52,13 @@ it.runIf(process.env.AI_EVAL_LIVE === "1")("measures model accuracy, citations, 
   for (const test of PLANNING_CASES.slice(0, limit)) {
     if (spent >= budget) break; // stop BETWEEN questions; this is not a provider hard cap
     const ctx = context(test);
-    const sources: AiEvidence[] = [];
     const tool = { ...fixtureTool(test), loaded: true as const };
-    const question = `${test.question}\nUse the current monthly tracker filters. Include a Markdown citation to the source you read. End with a JSON code block containing only numeric orders, required, complete, remaining and a sourceCitation string containing the exact source anchor. ${aiPageNote(ctx.page!)}`;
+    const question = `${test.question}\nUse the current monthly tracker filters. End with a JSON code block containing only numeric orders, required, complete and remaining. ${aiPageNote(ctx.page!)}`;
     const start = performance.now();
     const result = await ask({ apiKey, model, effort: "low", history: [], tools: [tool], ctx,
       question: questionMessages(question, questionContext({ askedBy: ctx.user.name, now: ctx.now, areas: [], canDelete: false, noconfirm: false, paused: true, notes: [], line: test.line })),
       settings: { actionsPaused: true }, maxCalls: 3, timeoutMs: 60_000,
-      events: { status: () => {}, text: () => {}, source: (source) => sources.push(source) },
+      events: { status: () => {}, text: () => {} },
     });
     let parsed: Record<string, unknown> = {};
     try { parsed = JSON.parse([...result.text.matchAll(/```json\s*([\s\S]*?)```/g)].at(-1)?.[1] ?? "{}"); } catch { /* invalid structured answer fails the score */ }
@@ -68,13 +66,12 @@ it.runIf(process.env.AI_EVAL_LIVE === "1")("measures model accuracy, citations, 
     spent += estimatedCostUsd;
     live.push({ id: test.id,
       numericCorrect: !result.error && Object.entries(test.expected).every(([key, value]) => parsed[key] === value),
-      citedSource: sources.some((source) => parsed.sourceCitation === `#${evidenceAnchor(source.id)}`),
-      readToolUsed: result.queries > 0 && sources.length > 0,
+      readToolUsed: result.queries > 0,
       latencyMs: performance.now() - start, estimatedCostUsd, error: !!result.error, answer: result.text,
     });
   }
   expect(live.length).toBeGreaterThan(0);
-  for (const result of live) expect(result, `Model evaluation failed for ${result.id}`).toMatchObject({ numericCorrect: true, citedSource: true, readToolUsed: true, error: false });
+  for (const result of live) expect(result, `Model evaluation failed for ${result.id}`).toMatchObject({ numericCorrect: true, readToolUsed: true, error: false });
 });
 
 afterAll(async () => {
@@ -84,7 +81,7 @@ afterAll(async () => {
     mode: live.length ? "offline-and-live-model" : "offline-calculations-only",
     model: live.length ? process.env.AI_EVAL_MODEL ?? DEFAULT_AI_MODEL : null,
     offline, live,
-    modelAccuracy: live.length ? live.filter((r) => r.numericCorrect && r.citedSource && r.readToolUsed && !r.error).length / live.length : null,
+    modelAccuracy: live.length ? live.filter((r) => r.numericCorrect && r.readToolUsed && !r.error).length / live.length : null,
     estimatedCostUsd: live.length ? live.reduce((sum, r) => sum + r.estimatedCostUsd, 0) : null,
     note: "Offline checks validate calculations, not model quality. Live runs use synthetic data and only a read-only tracker tool; latency excludes the production database and other tools. Cost is an estimate from the app's price table, not an invoice. Budget is checked between questions.",
   };

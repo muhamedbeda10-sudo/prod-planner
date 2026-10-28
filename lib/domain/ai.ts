@@ -3,7 +3,6 @@
 // and what the assistant's SQL may be and how its rows go back to it.
 
 import { filesOfNote, isAttachmentNote } from "./aiFiles";
-import { evidenceFromContent, type AiEvidence } from "./aiEvidence";
 import type { AiArea } from "./aiActions";
 
 export interface AiModelDef {
@@ -318,7 +317,6 @@ export interface AiStep {
 }
 
 export interface AiChatTurn {
-  sources?: AiEvidence[];
   role: "user" | "assistant";
   text: string;
   /** What the assistant looked up on the way (each look-up's purpose). */
@@ -347,15 +345,7 @@ export function displayTurns(rows: readonly { role: string; content: unknown; mo
     const blocks: Block[] = Array.isArray(r.content) ? (r.content as Block[]) : typeof r.content === "string" ? [{ type: "text", text: r.content }] : [];
     if (r.role === "user") {
       // tool results belong to the answer being worked out
-      if (blocks.some((b) => b.type === "tool_result")) {
-        const answer = out.at(-1);
-        if (answer?.role === "assistant") for (const block of blocks) {
-          if (block.type !== "tool_result" || !block.tool_use_id) continue;
-          const source = evidenceFromContent(block.content, block.tool_use_id);
-          if (source) (answer.sources ??= []).push(source);
-        }
-        continue;
-      }
+      if (blocks.some((b) => b.type === "tool_result")) continue;
       const texts = blocks.filter((b) => b.type === "text");
       const note = texts.find((b) => typeof b.text === "string" && isAttachmentNote(b.text));
       const own = texts.filter((b) => b !== note);
@@ -370,7 +360,7 @@ export function displayTurns(rows: readonly { role: string; content: unknown; mo
     }
     if (r.model) cur.model = r.model;
     for (const b of blocks) {
-      if (b.type === "text" && b.text) cur.text += (cur.text ? "\n\n" : "") + b.text;
+      if (b.type === "text" && b.text) cur.text += (cur.text ? "\n\n" : "") + withoutSourceLinks(b.text);
       if (b.type !== "tool_use") continue;
       const purpose = b.input?.purpose;
       if (typeof purpose === "string" && purpose.trim()) cur.lookups.push(purpose.trim());
@@ -379,6 +369,18 @@ export function displayTurns(rows: readonly { role: string; content: unknown; mo
     }
   }
   return out;
+}
+
+/** The anchor answers and reads cited before 28 Oct 2026 ("#ai-source-…") —
+ *  the source cards it opened are gone. */
+export const LEGACY_SOURCE_ANCHOR = "#ai-source-";
+
+const SOURCE_LINK = /\s*(?:\(\[[^\]]*\]\(#ai-source-[^)]*\)\)|\[[^\]]*\]\(#ai-source-[^)]*\))/g;
+
+/** Such an answer's source links ("([Source](#ai-source-…))", "[المصدر](…)")
+ *  taken out — done once, as a kept chat is read back (displayTurns). */
+export function withoutSourceLinks(markdown: string): string {
+  return markdown.includes(LEGACY_SOURCE_ANCHOR) ? markdown.replace(SOURCE_LINK, "") : markdown;
 }
 
 /** Each kept message with the model of the question it belongs to: the

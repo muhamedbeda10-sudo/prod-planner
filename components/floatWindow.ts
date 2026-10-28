@@ -116,7 +116,7 @@ export function useWindowChrome(name: FloatName, shown: boolean, modal: boolean,
   useEffect(() => {
     if (!shown || !modal) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape" && !e.defaultPrevented) close();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

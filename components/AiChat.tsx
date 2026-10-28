@@ -29,8 +29,6 @@ import { captureAiPage } from "@/lib/domain/aiScreen";
 import { tabForPath } from "@/lib/domain/tabs";
 import { useActiveLine, useCarryLine } from "@/components/LineContext";
 import { readAiStream } from "@/lib/aiStream";
-import { isAiEvidence } from "@/lib/domain/aiEvidence";
-import { AiSources } from "@/components/AiSources";
 import { AnswerRating } from "@/components/AiFeedback";
 import type { AiFeedbackRating } from "@/lib/domain/aiLearn";
 
@@ -379,11 +377,6 @@ export function AiChat({
       setLive(null);
       delta.current += String(ev.delta ?? "");
       if (!flushTimer.current) flushTimer.current = setTimeout(flush, 60);
-    } else if (ev.type === "source") {
-      if (isAiEvidence(ev.source)) {
-        const source = ev.source;
-        patchLast((t) => ({ ...t, sources: [...(t.sources ?? []).filter((s) => s.id !== source.id), source] }));
-      }
     } else if (ev.type === "action") {
       const v = ev.action as AiActionView;
       putAction(v);
@@ -905,7 +898,6 @@ function Answer({
       <div className="flex-1 min-w-0">
         <Steps steps={turn.steps} lookups={turn.lookups} streaming={streaming} />
         {turn.text && <AiMarkdown text={turn.text} streaming={streaming} className="ai-answer" />}
-        <AiSources sources={turn.sources ?? []} />
         {live && <Live text={live} since={turn.startedAt} />}
         {turn.remembered?.map((m, k) => (
           <p key={k} className="mt-2 flex items-start gap-1.5 text-xs text-muted" dir="auto">

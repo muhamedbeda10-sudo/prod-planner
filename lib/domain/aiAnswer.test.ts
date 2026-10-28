@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AI_CHATS_BULK_MAX, AI_DEFAULT_SUGGESTIONS, chatIdsOf, chatTextOf, depthPlan, followupsOf, hasPageSuggestions, scopeLineOf, suggestionsFor, withoutFollowups, withoutSourceLinks } from "./aiAnswer";
+import { AI_CHATS_BULK_MAX, AI_DEFAULT_SUGGESTIONS, chatIdsOf, chatTextOf, depthPlan, followupsOf, hasPageSuggestions, scopeLineOf, safeHref, suggestionsFor, withoutFollowups } from "./aiAnswer";
 
 describe("follow-up questions in an answer", () => {
   it("reads the JSON list of the last followups block, at most three, no duplicates", () => {
@@ -25,8 +25,11 @@ describe("the scope line", () => {
     expect(scopeLineOf("The scope of the plan is wide.")).toBeNull();
     expect(scopeLineOf(`Scope: ${"x".repeat(201)}`)).toBeNull();
   });
-  it("takes the chat's source links out of a shared answer", () => {
-    expect(withoutSourceLinks("Ten late ([Source](#ai-source-a)). See [the order](/trace?mo=1).")).toBe("Ten late. See [the order](/trace?mo=1).");
+  it("safeHref is the one rule for a link the assistant may draw — in-app paths only", () => {
+    expect(safeHref("/tracker?view=monthly#row-3")).toBe(true);
+    for (const bad of ["//evil.test", "https://evil.test", "javascript:alert(1)", "/\\evil", "/trace\n", "/a\u0000b", "tracker", "", "/" + "x".repeat(500)]) {
+      expect(safeHref(bad), JSON.stringify(bad)).toBe(false);
+    }
   });
   it("drops a follow-up longer than a line", () => {
     expect(followupsOf(`\`\`\`followups\n["${"x".repeat(161)}", "Short"]\n\`\`\``)).toEqual(["Short"]);
@@ -65,8 +68,8 @@ describe("the suggestions on an empty chat", () => {
 });
 
 describe("an answer as the team chat takes it", () => {
-  it("drops charts, follow-ups and source links, and flattens tables and marks", () => {
-    const md = "**Ten late** ([Source](#ai-source-a)).\n\n| MO | Days |\n|---|---:|\n| 4471 | 3 |\n\n```chart\n{\"type\":\"kpi\"}\n```\n\n> ⚠️ Check it\n\n```followups\n[\"Why?\"]\n```";
+  it("drops charts and follow-ups, and flattens tables and marks", () => {
+    const md = "**Ten late**.\n\n| MO | Days |\n|---|---:|\n| 4471 | 3 |\n\n```chart\n{\"type\":\"kpi\"}\n```\n\n> ⚠️ Check it\n\n```followups\n[\"Why?\"]\n```";
     expect(chatTextOf(md)).toBe("Ten late.\n\nMO · Days\n4471 · 3\n\n⚠️ Check it");
   });
 });

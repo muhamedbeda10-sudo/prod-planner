@@ -14,7 +14,6 @@
 
 import { AI_CALLS_RANGE, aiModel, type AiEffort } from "./ai";
 import { BY_STRENGTH } from "./aiLearn";
-import { evidenceAnchor } from "./aiEvidence";
 
 export const AI_FOLLOWUPS_MAX = 3;
 const FOLLOWUP_MAX_CHARS = 160;
@@ -91,19 +90,14 @@ export function chatIdsOf(ids: unknown): number[] {
   return [...out];
 }
 
-const SOURCE_LINK = new RegExp(`\\s*\\(?\\[[^\\]]*\\]\\(#${evidenceAnchor("")}[^)]*\\)\\)?`, "g");
-
-/** The source links an answer carries ("([Source](#ai-source-…))") — they
- *  open the chat's own source cards, which no other screen has — taken out:
- *  what a shared answer or the chat's plain text carries. */
-export function withoutSourceLinks(markdown: string): string {
-  return markdown.replace(SOURCE_LINK, "");
-}
+/** A link an answer may draw: an in-app path only — nothing outside the
+ *  app, no protocol-relative or control characters. */
+export const safeHref = (href: string) => href.startsWith("/") && !href.startsWith("//") && !/[\\\u0000-\u001f\u007f]/.test(href) && href.length <= 500;
 
 /** An answer as plain text for the team chat: no chart or follow-up
- *  blocks, no source links, the Markdown marks off, a table as lines. */
+ *  blocks, the Markdown marks off, a table as lines. */
 export function chatTextOf(markdown: string): string {
-  return withoutSourceLinks(withoutFollowups(markdown))
+  return withoutFollowups(markdown)
     .replace(/```[a-z-]*\s*\n[\s\S]*?```/gi, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$\n?/gm, "")

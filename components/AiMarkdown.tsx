@@ -7,9 +7,8 @@ import remarkGfm from "remark-gfm";
 import { Activity, AlertTriangle, BarChart3, BadgeCheck, CalendarClock, CheckCircle2, ChevronDown, ClipboardList, Crosshair, FileSpreadsheet, LayoutList, Lightbulb, ListChecks, ListTodo, Package, Printer, Search, ShieldAlert, StickyNote, XCircle, type LucideIcon } from "lucide-react";
 import { isChartBlock } from "@/lib/domain/aiChart";
 import { humanizeKey, looksLikeColumn, readableDate } from "@/lib/domain/fieldNames";
-import { isEvidenceAnchor, safeHref } from "@/lib/domain/aiEvidence";
 import { fileLinkKind } from "@/lib/domain/aiFiles";
-import { scopeLineOf } from "@/lib/domain/aiAnswer";
+import { safeHref, scopeLineOf } from "@/lib/domain/aiAnswer";
 import { writesArabic } from "@/lib/domain/ai";
 import { calloutOf, columnKind, FIGURE_UNITS, groupedFigure, sectionOf, TABLE_FOLD_AT, withoutCalloutMark, withoutLeadingEmoji, type SectionKind } from "@/lib/domain/aiTable";
 import { downloadXlsx } from "@/components/ExportButton";
@@ -269,13 +268,8 @@ function components(streaming: boolean, ownFiles: boolean): Components {
     a: ({ children, href }) => {
       const file = href ? fileLinkKind(href) : null;
       if (file) return ownFiles ? <FileLink kind={file} href={href!}>{children}</FileLink> : <span>{children}</span>;
-      return href && (safeHref(href) || isEvidenceAnchor(href)) ? (
-        <a href={href} className="text-brand-ink underline underline-offset-2" onClick={isEvidenceAnchor(href) ? (event) => {
-          const source = document.getElementById(href.slice(1));
-          if (source instanceof HTMLDetailsElement) {
-            event.preventDefault(); source.open = true; source.scrollIntoView({ block: "nearest", behavior: "smooth" });
-          }
-        } : undefined}>{children}</a>
+      return href && safeHref(href) ? (
+        <a href={href} className="text-brand-ink underline underline-offset-2">{children}</a>
       ) : (
         <span>{children}{href ? <span className="text-muted text-xs ltr"> ({href})</span> : null}</span>
       );

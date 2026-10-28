@@ -73,8 +73,15 @@ export function Modal({
       if (ev.key === "Escape" && !busyRef.current) closeRef.current();
       trapTab(ev, box.current);
     };
+    // the Escape is the box's: marked handled before anything under it (the
+    // assistant's or the inbox's window) reads it, so only the box closes
+    const claim = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") ev.preventDefault();
+    };
+    window.addEventListener("keydown", claim, true);
     window.addEventListener("keydown", onKey);
     return () => {
+      window.removeEventListener("keydown", claim, true);
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = overflow;
       before?.focus?.();

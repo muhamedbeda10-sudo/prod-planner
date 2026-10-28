@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  aiDecision, aiEffort, aiVisible, blockedTableIn, blockedTablesFor, conversationTitle, costUsd, displayTurns, withModelsByTime, formatRows, jsonSafe, monthStart, prepareSql, questionContext, readerUrl, usdText, type AiGate,
+  aiDecision, aiEffort, aiVisible, blockedTableIn, blockedTablesFor, conversationTitle, costUsd, displayTurns, withModelsByTime, withoutSourceLinks, formatRows, jsonSafe, monthStart, prepareSql, questionContext, readerUrl, usdText, type AiGate,
 } from "./ai";
 
 const gate = (o: Partial<AiGate>): AiGate => ({
@@ -159,6 +159,21 @@ describe("conversationTitle / displayTurns", () => {
       { role: "assistant", text: "There are **3**.", lookups: ["Late orders"] },
       { role: "user", text: "Which?", lookups: [] },
     ]);
+  });
+  it("takes the source links of answers kept from before out, and nothing else", () => {
+    expect(withoutSourceLinks("Ten late ([Source](#ai-source-a)). See [the order](/trace?mo=1).")).toBe("Ten late. See [the order](/trace?mo=1).");
+    expect(withoutSourceLinks("باقي 6 أوامر. [المصدر](#ai-source-t1)\n\nالترتيب")).toBe("باقي 6 أوامر.\n\nالترتيب");
+    // a closing bracket the link did not open stays
+    expect(withoutSourceLinks("(41 pieces remain [Source](#ai-source-t1))")).toBe("(41 pieces remain)");
+  });
+  it("shows an answer kept from when it cited its sources without its source links", () => {
+    const turns = displayTurns([
+      { role: "user", content: "Plan?" },
+      { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "get_tracker_summary", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: '{"data":{"remaining":6},"source":{"id":"t1","citation":"#ai-source-t1"}}' }] },
+      { role: "assistant", content: [{ type: "text", text: "6 remain ([Source](#ai-source-t1)). [المصدر](#ai-source-t1)" }] },
+    ]);
+    expect(turns[1].text).toBe("6 remain.");
   });
 });
 

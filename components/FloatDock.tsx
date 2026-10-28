@@ -106,7 +106,9 @@ export function FloatWindow({
         className={`ai-pop ${layout === "compact" ? "ai-pop-dock" : `ai-pop-${layout}`}`}
         // docked beside the page, it takes Escape from inside itself only —
         // Escape in the page stays the page's (the expanded and phone
-        // windows take it from anywhere: floatWindow's useWindowChrome)
+        // windows take it from anywhere: floatWindow's useWindowChrome);
+        // a box or menu open over it takes its own Escape first (Modal,
+        // ContextMenu mark it handled), and the window stays
         onKeyDown={layout === "compact" ? (e) => e.key === "Escape" && !e.defaultPrevented && onClose() : undefined}
       >
         {layout === "compact" && (

@@ -176,7 +176,6 @@ export async function POST(request: Request) {
           settings,
           playbook,
           events: {
-            source: (source) => send({ type: "source", source }),
             status: (text) => send({ type: "status", text }),
             step: (step) => send({ type: "step", ...step }),
             text: (delta) => send({ type: "text", delta }),
