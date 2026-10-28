@@ -3,7 +3,7 @@
 import { useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ResizeHandle } from "@/components/ResizeHandle";
-import { escapeForOther, type FloatName } from "@/components/floatWindow";
+import type { FloatName } from "@/components/floatWindow";
 import { AI_DOCK_DEFAULT, AI_DOCK_MIN, AI_DOCK_STEP, clampDockWidth, dockMax } from "@/lib/domain/aiDock";
 
 // The shell of a floating window — the AI assistant, the inbox or the chat
@@ -107,8 +107,9 @@ export function FloatWindow({
         // docked beside the page, it takes Escape from inside itself only —
         // Escape in the page stays the page's (the expanded and phone
         // windows take it from anywhere: floatWindow's useWindowChrome);
-        // a dialog or menu open over it closes on its own Escape, not it
-        onKeyDown={layout === "compact" ? (e) => e.key === "Escape" && !escapeForOther(e) && onClose() : undefined}
+        // a box or menu open over it takes its own Escape first (Modal,
+        // ContextMenu mark it handled), and the window stays
+        onKeyDown={layout === "compact" ? (e) => e.key === "Escape" && !e.defaultPrevented && onClose() : undefined}
       >
         {layout === "compact" && (
           <ResizeHandle

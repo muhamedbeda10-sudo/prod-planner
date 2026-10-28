@@ -369,13 +369,16 @@ export function displayTurns(rows: readonly { role: string; content: unknown; mo
   return out;
 }
 
+/** The anchor answers and reads cited before 28 Oct 2026 ("#ai-source-…") —
+ *  the source cards it opened are gone. */
+export const LEGACY_SOURCE_ANCHOR = "#ai-source-";
+
 const SOURCE_LINK = /\s*(?:\(\[[^\]]*\]\(#ai-source-[^)]*\)\)|\[[^\]]*\]\(#ai-source-[^)]*\))/g;
 
-/** The source links answers written before 28 Oct 2026 carry
- *  ("([Source](#ai-source-…))", "[المصدر](…)") — the cards they opened are
- *  gone — taken out wherever such an answer is drawn, copied or shared. */
+/** Such an answer's source links ("([Source](#ai-source-…))", "[المصدر](…)")
+ *  taken out — done once, as a kept chat is read back (displayTurns). */
 export function withoutSourceLinks(markdown: string): string {
-  return markdown.replace(SOURCE_LINK, "");
+  return markdown.includes(LEGACY_SOURCE_ANCHOR) ? markdown.replace(SOURCE_LINK, "") : markdown;
 }
 
 /** Each kept message with the model of the question it belongs to: the

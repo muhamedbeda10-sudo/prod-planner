@@ -15,7 +15,7 @@ import { hasPerm, hiddenTabsOf } from "@/lib/server/auth";
 import { deliverToInbox } from "@/lib/server/inbox";
 import { sendMessageFromPerson } from "@/lib/server/inboxMessage";
 import { sendChatMessage } from "@/app/chat/actions";
-import { AI_CONVERSATION_TITLE_MAX, chatIdsOf, chatTextOf, withoutFollowups, withoutSourceLinks } from "@/lib/domain/aiAnswer";
+import { AI_CONVERSATION_TITLE_MAX, chatIdsOf, chatTextOf, withoutFollowups } from "@/lib/domain/aiAnswer";
 import { INBOX_BODY_MAX, INBOX_TITLE_MAX } from "@/lib/domain/inbox";
 import { CHAT_MESSAGE_MAX } from "@/lib/domain/chatTopic";
 import { AUTOMATIONS_KEY } from "@/lib/server/automations/store";
@@ -129,12 +129,11 @@ export async function loadAiShareTargets(): Promise<{ ok: boolean; people?: { id
   return { ok: true, people, groups, inbox, chat };
 }
 
-/** The answer as it is sent on: without the chat's follow-up chips and
- *  its source links (they open cards only the chat has), the question it
- *  answered quoted first. */
+/** The answer as it is sent on: without the chat's follow-up chips, the
+ *  question it answered quoted first. */
 function sharedBody(question: unknown, body: string): string {
   const q = typeof question === "string" && question.trim() ? `> ${question.replace(/\s+/g, " ").trim().slice(0, 300)}\n\n` : "";
-  return `${q}${withoutSourceLinks(withoutFollowups(body)).trim()}`;
+  return `${q}${withoutFollowups(body).trim()}`;
 }
 
 /** An answer sent on — to colleagues' inboxes as a message from the person

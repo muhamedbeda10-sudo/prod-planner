@@ -102,15 +102,16 @@ export function ContextMenu({ x, y, entries: own, target, onClose }: { x: number
   // container into view as it takes focus, a beat after the menu is up
   useEffect(() => {
     const openedAt = Date.now();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    // the Escape is the menu's — marked handled first, so a window under it stays
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
     const onDown = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) onClose(); };
     const onScroll = () => { if (Date.now() - openedAt > 300) onClose(); };
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
     window.addEventListener("mousedown", onDown);
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onClose);
     return () => {
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("mousedown", onDown);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onClose);

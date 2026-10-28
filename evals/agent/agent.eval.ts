@@ -183,9 +183,7 @@ const readOf = <T,>(toolResult: unknown): T => {
   const v = JSON.parse(String(toolResult)) as { data?: T; links?: unknown };
   return (v && typeof v === "object" && "data" in v && "links" in v ? v.data : v) as T;
 };
-const totalsIn = (toolResult: unknown) => {
-  return readOf<{ totals: Record<string, number> }>(toolResult).totals;
-};
+const totalsIn = (toolResult: unknown) => readOf<{ totals: Record<string, number> }>(toolResult).totals;
 const toolResults = (added: { role: string; content: unknown }[]) =>
   added.flatMap((m) => (Array.isArray(m.content) ? (m.content as { type: string; tool_use_id?: string; content?: unknown; is_error?: boolean }[]).filter((b) => b.type === "tool_result") : []));
 

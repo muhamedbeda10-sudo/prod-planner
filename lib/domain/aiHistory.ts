@@ -1,3 +1,5 @@
+import { LEGACY_SOURCE_ANCHOR } from "./ai";
+
 // A long chat, as it is sent back to the model: the results its earlier
 // look-ups brought back are what grows it — a few hundred rows a time — and
 // the model has long since written its answer from them. Before it is sent,
@@ -34,25 +36,37 @@ export function foldedResult(content: string): string {
   return `(omitted: ${content.length.toLocaleString("en")} characters read earlier in this chat — read it again if this answer needs it)`;
 }
 
-/** What a read sends the model: the tool's own text — with the app's own
- *  links to the screens behind it, when it has any, as { data, links }. */
-export function readContent(text: string, links: readonly { label: string; href: string }[]): string {
-  if (!links.length) return text;
+type ReadLink = { label: string; href: string };
+
+// a read with the app's links to the screens behind it goes as { data, links }
+const withLinks = (data: unknown, links: readonly ReadLink[]) => JSON.stringify({ data, links });
+
+/** What a read sends the model — the tool's own text, with the app's own
+ *  links to the screens behind it when it has any — and its data, parsed
+ *  once (JSON, else the sentence it is). */
+export function readContent(text: string, links: readonly ReadLink[]): { content: string; data: unknown } {
   let data: unknown = text;
-  try { data = JSON.parse(text); } catch { /* a sentence stays a sentence */ }
-  return JSON.stringify({ data, links });
+  const t = text.trimStart();
+  if (t.startsWith("{") || t.startsWith("[")) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      /* not JSON after all — a sentence */
+    }
+  }
+  return { content: links.length ? withLinks(data, links) : text, data };
 }
 
 /** A read kept from before 28 Oct 2026 came wrapped with a source to cite
  *  ({ data, source: { citation, links } }) — sent back as a read is now: its
  *  data, with its links when it had any, never the citation. */
 export function withoutLegacySource(content: string): string {
-  if (!content.includes("#ai-source-")) return content;
+  if (!content.startsWith('{"data":') || !content.includes(LEGACY_SOURCE_ANCHOR)) return content;
   try {
     const v = JSON.parse(content) as { data?: unknown; source?: { links?: unknown } } | null;
     if (!v || typeof v !== "object" || !("data" in v) || !v.source || typeof v.source !== "object") return content;
-    const links = Array.isArray(v.source.links) ? (v.source.links as { label: string; href: string }[]) : [];
-    if (links.length) return JSON.stringify({ data: v.data, links });
+    const links = Array.isArray(v.source.links) ? (v.source.links as ReadLink[]) : [];
+    if (links.length) return withLinks(v.data, links);
     return typeof v.data === "string" ? v.data : JSON.stringify(v.data);
   } catch {
     return content;

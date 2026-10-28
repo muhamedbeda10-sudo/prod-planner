@@ -12,9 +12,7 @@
 //               and the calls it may take, chosen by the person per question
 //               (Quick / Standard / Deep) — the chat itself is on Auto.
 
-import { AI_CALLS_RANGE, aiModel, withoutSourceLinks, type AiEffort } from "./ai";
-
-export { withoutSourceLinks };
+import { AI_CALLS_RANGE, aiModel, type AiEffort } from "./ai";
 import { BY_STRENGTH } from "./aiLearn";
 
 export const AI_FOLLOWUPS_MAX = 3;
@@ -97,9 +95,9 @@ export function chatIdsOf(ids: unknown): number[] {
 export const safeHref = (href: string) => href.startsWith("/") && !href.startsWith("//") && !/[\\\u0000-\u001f\u007f]/.test(href) && href.length <= 500;
 
 /** An answer as plain text for the team chat: no chart or follow-up
- *  blocks, no source links, the Markdown marks off, a table as lines. */
+ *  blocks, the Markdown marks off, a table as lines. */
 export function chatTextOf(markdown: string): string {
-  return withoutSourceLinks(withoutFollowups(markdown))
+  return withoutFollowups(markdown)
     .replace(/```[a-z-]*\s*\n[\s\S]*?```/gi, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$\n?/gm, "")

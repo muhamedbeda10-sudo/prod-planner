@@ -28,7 +28,7 @@ vi.mock("@/app/chat/actions", () => ({ sendChatMessage: h.send }));
 
 import { deleteAiConversations, loadAiShareTargets, pinAiConversations, renameAiConversation, shareAiAnswer, shareAiAnswerToChat } from "@/app/ai/actions";
 
-const answer = "**Ten late** ([Source](#ai-source-a)).\n\n```followups\n[\"Why?\"]\n```";
+const answer = "**Ten late**.\n\n```followups\n[\"Why?\"]\n```";
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -41,7 +41,7 @@ beforeEach(() => {
 });
 
 describe("sharing an answer", () => {
-  it("sends to colleagues as a message from me, without the chat's follow-ups and source links, and keeps a report for me", async () => {
+  it("sends to colleagues as a message from me, without the chat's follow-ups, and keeps a report for me", async () => {
     h.perms.add("ai.automations");
     expect(await shareAiAnswer({ title: "Late", body: answer, question: "Who is late?", userIds: [2, 2, 7, 3], keep: true })).toEqual({ ok: true, sent: 3 });
     expect(h.deliver.mock.calls[0][0]).toEqual([

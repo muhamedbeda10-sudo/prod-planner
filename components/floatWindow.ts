@@ -95,14 +95,6 @@ export function useCloseWhenOtherOpens(name: FloatName, open: boolean, close: ()
   }, [name, open, close]);
 }
 
-/** An Escape meant for something open over the window — a confirm or a
- *  form box (a modal dialog), a menu: each closes itself on it — or already
- *  handled: not for the window, which stays as it is under it. Read off the
- *  page, not the key's target, so it holds wherever the focus fell. */
-export function escapeForOther(e: { defaultPrevented: boolean }): boolean {
-  return e.defaultPrevented || !!document.querySelector('[role="dialog"][aria-modal="true"]:not(.ai-pop), [role="menu"]');
-}
-
 // the windows holding the page still right now — the page scrolls again only
 // when none does, whichever order they open and close in
 const holding = new Set<FloatName>();
@@ -124,7 +116,7 @@ export function useWindowChrome(name: FloatName, shown: boolean, modal: boolean,
   useEffect(() => {
     if (!shown || !modal) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !escapeForOther(e)) close();
+      if (e.key === "Escape" && !e.defaultPrevented) close();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

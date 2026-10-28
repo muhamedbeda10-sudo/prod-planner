@@ -5,8 +5,8 @@ import { addTokens, aiEffort, aiModel, AI_CALLS_RANGE, NO_TOKENS, type AiEffort,
 import { aiPageNote, type AiPageContext } from "@/lib/domain/aiScreen";
 import { safeHref, withoutFollowups } from "@/lib/domain/aiAnswer";
 import { readContent } from "@/lib/domain/aiHistory";
-import { canSeePath, TABS } from "@/lib/domain/tabs";
 import { CR_ON_SCHEDULE, LOAD_OVER, LOAD_TIGHT } from "@/lib/domain/planningControl";
+import { canSeePath, TABS } from "@/lib/domain/tabs";
 import type { AiActionView } from "@/lib/domain/aiActions";
 import type { ActorVia } from "@/lib/server/actor";
 import { AI_SCHEMA_TEXT } from "./schemaText.generated";
@@ -222,6 +222,13 @@ export interface AskResult {
 /** How many rows a read brought back, from its result as the tools write
  *  it ({columns, rowCount, rows} or a list) — the parsed result, or its
  *  text — null when it is not counted. */
+/** The app's links to the screens behind a read — its own, else its tool's
+ *  tab — that this person may open, in-app paths only. */
+function readLinks(links: ReadResult["links"], tool: { title: string; tabs?: readonly string[] }, hidden: ReadonlySet<string>): { label: string; href: string }[] {
+  const all = links ?? (tool.tabs ?? []).flatMap((id) => TABS.find((tab) => tab.id === id)?.paths.slice(0, 1).map((href) => ({ label: tool.title, href })) ?? []);
+  return all.filter((link) => safeHref(link.href) && canSeePath(hidden, link.href) && (!link.href.startsWith("/trace") || !hidden.has("tracker"))).slice(0, 20);
+}
+
 export function rowsOf(result: unknown): number | null {
   let v = result;
   if (typeof v === "string") {
@@ -610,10 +617,9 @@ export async function ask(opts: {
           r = await p;
         }
         if (r.ok && r.memory) events.memory?.(r.memory);
-        // the app's links to the screens behind the read, those this person may open
-        const links = r.ok ? (r.links ?? (tool.tabs ?? []).flatMap((id) => TABS.find((tab) => tab.id === id)?.paths.slice(0, 1).map((href) => ({ label: tool.title, href })) ?? [])) : [];
-        const content = r.ok ? readContent(r.text, links.filter((link) => safeHref(link.href) && canSeePath(opts.ctx.hidden, link.href) && (!link.href.startsWith("/trace") || !opts.ctx.hidden.has("tracker"))).slice(0, 20)) : r.text;
-        const rows = r.ok ? rowsOf(r.text) : null;
+        const read = readContent(r.text, r.ok ? readLinks(r.links, tool, opts.ctx.hidden) : []);
+        const content = read.content;
+        const rows = r.ok ? rowsOf(read.data) : null;
         events.step?.({ id: u.id, kind: "read", text: title, state: r.ok ? "done" : "error", ms: Date.now() - t0, ...(rows === null ? {} : { rows }) });
         results.set(u.id, { type: "tool_result", tool_use_id: u.id, ...(r.ok ? {} : { is_error: true }), content });
       };

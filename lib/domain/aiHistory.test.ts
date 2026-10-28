@@ -43,9 +43,11 @@ describe("folding an old chat's look-ups", () => {
 
 describe("what a read sends the model", () => {
   it("is the tool's own text, with the app's links beside its data when it has any", () => {
-    expect(readContent('{"remaining":6}', [])).toBe('{"remaining":6}');
-    expect(JSON.parse(readContent('{"remaining":6}', [{ label: "MO A", href: "/trace?mo=A" }]))).toEqual({ data: { remaining: 6 }, links: [{ label: "MO A", href: "/trace?mo=A" }] });
-    expect(JSON.parse(readContent("No orders.", [{ label: "Tracker", href: "/tracker" }]))).toEqual({ data: "No orders.", links: [{ label: "Tracker", href: "/tracker" }] });
+    expect(readContent('{"remaining":6}', [])).toEqual({ content: '{"remaining":6}', data: { remaining: 6 } });
+    expect(JSON.parse(readContent('{"remaining":6}', [{ label: "MO A", href: "/trace?mo=A" }]).content)).toEqual({ data: { remaining: 6 }, links: [{ label: "MO A", href: "/trace?mo=A" }] });
+    expect(JSON.parse(readContent("No orders.", [{ label: "Tracker", href: "/tracker" }]).content)).toEqual({ data: "No orders.", links: [{ label: "Tracker", href: "/tracker" }] });
+    // a sentence is its own data; broken JSON stays as it came
+    expect(readContent("{ not json", []).data).toBe("{ not json");
   });
   it("drops an old read's source wrapper and citation, keeping its data and links", () => {
     expect(withoutLegacySource(legacy)).toBe(big);
