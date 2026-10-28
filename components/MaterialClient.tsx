@@ -398,10 +398,12 @@ function SoiGroupRow({ g, open, onToggle, layout, x, soiShown }: {
  *  block names it, each figure sits under its own column. */
 function TotalRow({ s, filtering, layout }: { s: MaterialSummary; filtering: boolean; layout: Layout<TrCol> }) {
   const count = s.lines;
-  const cells = spanCells(layout.shown.slice(layout.block.span), (c) => (c.sum ? <td key={c.key} className={`p-2 ${NUM} emph`}>{c.sum(s)}</td> : null));
+  // the label takes the pinned block, or the first column where nothing is pinned
+  const lead = Math.max(1, layout.block.span);
+  const cells = spanCells(layout.shown.slice(lead), (c) => (c.sum ? <td key={c.key} className={`p-2 ${NUM} emph`}>{c.sum(s)}</td> : null));
   return (
     <tr>
-      <td className="p-2 stick stick-end font-bold" colSpan={layout.block.span} style={layout.block.style}>
+      <td className={`p-2 font-bold whitespace-nowrap ${layout.block.span ? "stick stick-end" : ""}`} colSpan={lead} style={layout.block.span ? layout.block.style : undefined}>
         Total <span className="text-xs text-muted font-semibold tabnum">· {count} line{count === 1 ? "" : "s"}{filtering ? " shown" : ""}</span>
       </td>
       {cells}
@@ -429,6 +431,48 @@ function RunBand<K extends string>({ runs, layout, cols }: { runs: ColRun<K>[]; 
     }];
   });
   return <GroupBand spans={spans} runs />;
+}
+
+// ---- one order's lines, for its trace ----
+
+/** An order's (or a code's) lines of the sheet, on its trace: the tab's own
+ *  columns as this person keeps them (Columns ▾ on the tab; the band folds
+ *  the same runs here), in the sheet's order, nothing pinned — the trace's
+ *  column is narrower than the tab — and the transformers' Total under them. */
+export function MaterialLinesTable({ lines, product, odooByMo, prefs = {} }: {
+  lines: MaterialLineView[]; product: ProductLine; odooByMo: Record<string, string>; prefs?: UserPrefs;
+}) {
+  const lv = product === "LV";
+  const trCols = useColumns<TrCol>("material:cols", prefs["material:cols"], TR_DEFAULT);
+  const lvCols = useColumns<LvCol>("material:colsLv", prefs["material:colsLv"], LV_DEFAULT);
+  const trOn = TR_COLS.map((c) => trCols.isOn(c.key)).join();
+  const lvOn = LV_COLS.map((c) => lvCols.isOn(c.key)).join();
+  const trLayout = useMemo(() => layoutOf(TR_COLS, trCols.isOn, {}), [trOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lvLayout = useMemo(() => layoutOf(LV_COLS, lvCols.isOn, {}), [lvOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const x = useMemo<ColCtx>(() => ({ odoo: odooByMo, product }), [odooByMo, product]);
+  const summary = useMemo(() => materialSummary(lines), [lines]);
+  return (
+    <TableFrame>
+      <table className="erp-table w-full border-collapse">
+        <thead>
+          {lv ? <RunBand runs={LV_RUNS} layout={lvLayout} cols={lvCols} /> : <RunBand runs={TR_RUNS} layout={trLayout} cols={trCols} />}
+          <tr className="text-left align-bottom">
+            {(lv ? lvLayout.shown : trLayout.shown).map((c) => <Th key={c.key} {...c.th} />)}
+          </tr>
+        </thead>
+        <tbody>
+          {lv
+            ? lines.map((l) => <LineRow key={l.id} line={l} layout={lvLayout} x={x} className={`border-t ${lvDone(l) ? "bg-ok-bg/30" : ""}`} />)
+            : lines.map((l) => <LineRow key={l.id} line={l} layout={trLayout} x={x} />)}
+        </tbody>
+        {!lv && (
+          <tfoot className="mat-total">
+            <TotalRow s={summary} filtering={false} layout={trLayout} />
+          </tfoot>
+        )}
+      </table>
+    </TableFrame>
+  );
 }
 
 // ---- upload the sheet: it updates the table, row by MO ----
@@ -525,11 +569,11 @@ function ImportPanel({ product }: { product: ProductLine }) {
 
 // ---- filters: one row above the table; the totals follow what is shown ----
 
-const FILTERS_KEY = "material:filters";
+export const MATERIAL_FILTERS_KEY = "material:filters";
 
 /** Only the known fields, as strings, with a status the page knows — whatever
  *  an old or hand-edited saved value holds. */
-function readSavedFilters(raw: string): MaterialFilters {
+export function readSavedFilters(raw: string): MaterialFilters {
   const o = parseSaved(raw);
   const status = savedString(o, "status");
   return {
@@ -670,7 +714,7 @@ export function MaterialClient({ lines, canImport, product = "TR", odooByMo = {}
   prefs?: UserPrefs;
 }) {
   const lv = product === "LV";
-  const { filters: saved, setFilters: changeFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_MATERIAL_FILTERS);
+  const { filters: saved, setFilters: changeFilters } = useStoredFilters(MATERIAL_FILTERS_KEY, readSavedFilters, EMPTY_MATERIAL_FILTERS);
   // only the panels' tab counts units produced — a "with produced" kept from
   // there means nothing on the transformers' sheet
   const filters = useMemo(() => (!lv && saved.status === "produced" ? { ...saved, status: "all" as const } : saved), [lv, saved]);

@@ -16,6 +16,21 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-material-no-endless-scroll",
+    dateISO: "2026-10-28",
+    title: "The Material page no longer scrolls on into empty space",
+    where: "Material → the nesting sheet",
+    href: "/material",
+    body: "Under the table the page kept scrolling, as long as the whole table, with nothing in it: the Plan month cells' hidden text for screen readers was stretching the page. The page now ends at the table, which scrolls on its own; the same guard covers every other table.",
+  },
+  {
+    id: "2026-10-28-trace-material",
+    dateISO: "2026-10-28",
+    title: "An order's trace shows its material",
+    where: "Trace (an order or a code, Transformers and LV Panels) → Material, under On ODOO",
+    body: "Open an order or a code from the tracker and, under On ODOO, the Material card lists its lines of the nesting sheet: the part, material, thickness and sheet, BOM against actual for the job, the actual weight, the difference and the plan month — the same columns you keep on the MATERIAL tab, folding the same way — with what they add up to and a red count of the lines over their BOM. Lines the sheet files under the order's SOI on another code (a sub-assembly, an older revision) are counted apart, as they show on each order of that SOI. Open in Material takes you to the tab already searched for the order. The panels' trace shows its orders' Consumption Details lines.",
+  },
+  {
     id: "2026-10-28-material-plan-month-closed-nesting",
     dateISO: "2026-10-28",
     title: "A plan month on the Material sheet no longer shows the nesting already closed before it",

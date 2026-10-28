@@ -4,12 +4,13 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { getActiveLine } from "./line";
 import {
-  actualPerUnit, materialPlanIndex, materialPlanMonths, parseNestingTracker, sheetsDifference, sheetsForJob, sheetsForProduced,
+  actualPerUnit, materialPlanIndex, materialPlanMonths, traceMaterialMatch, parseNestingTracker, sheetsDifference, sheetsForJob, sheetsForProduced,
   type MaterialLineView, type MaterialPlanIndex,
 } from "@/lib/domain/material";
 import { lvActualRate, lvRemainingUnits, parseLvConsumption } from "@/lib/domain/lvMaterial";
 import { LV_ITEM } from "@/lib/domain/lv";
 import { ODOO_DONE_STATUS } from "@/lib/domain/odoo";
+import type { ProductLine } from "@/lib/domain/lines";
 
 export interface MaterialPageData {
   lines: MaterialLineView[];
@@ -61,10 +62,35 @@ function toView(r: Row, lv: boolean, plans: MaterialPlanIndex, doneByMo: Readonl
  *  filed under its plan month, or everything ("all"). */
 export async function getMaterialData(month: string): Promise<MaterialPageData> {
   const line = await getActiveLine(); // one product line at a time
+  return loadMaterial(line, month === "all" ? { line } : { month, line });
+}
+
+/** One order's (or one code's) lines of the sheet, for its trace — which
+ *  lines, lib/domain/material.ts traceMaterialMatch says. */
+export async function getTraceMaterial(line: ProductLine, target: { scope: "mo" | "bom"; mos: readonly string[]; bom: string; sois: readonly string[] }): Promise<MaterialPageData> {
+  const up = (v: string) => v.trim().toUpperCase();
+  const mos = [...new Set(target.mos.map(up).filter(Boolean))];
+  const sois = [...new Set(target.sois.map(up).filter(Boolean))];
+  const bom = up(target.bom);
+  const any = (field: "mo" | "soi" | "bom", values: readonly string[]) => values.map((v) => ({ [field]: { equals: v, mode: "insensitive" as const } }));
+  const or: Prisma.MaterialUsageWhereInput[] = [...any("mo", mos), ...any("soi", sois), ...(bom ? any("bom", [bom]) : [])];
+  if (or.length === 0) return { lines: [], odooByMo: {} };
+  const [data, soiOrders] = await Promise.all([
+    // the living table, as the tab shows it
+    loadMaterial(line, { line, month: "", OR: or }),
+    sois.length > 0
+      ? prisma.masterOrder.findMany({ where: { line, OR: any("soi", sois) as Prisma.MasterOrderWhereInput[] }, select: { mo: true, soi: true, bom: true } })
+      : Promise.resolve([]),
+  ]);
+  const lines = data.lines.filter(traceMaterialMatch({ scope: target.scope, mos, sois, bom, soiOrders: soiOrders.map((o) => ({ mo: o.mo, soi: o.soi ?? "", bom: o.bom })) }));
+  return { lines, odooByMo: data.odooByMo };
+}
+
+async function loadMaterial(line: ProductLine, where: Prisma.MaterialUsageWhereInput): Promise<MaterialPageData> {
   const lv = line === "LV";
   const [rows, odoo, orders, painted] = await Promise.all([
     prisma.materialUsage.findMany({
-      where: month === "all" ? { line } : { month, line },
+      where,
       // the sheet's own order — its rows come back the way they were laid out;
       // lines typed in the tab (sortOrder 0, or the manual marker) sort by age
       orderBy: [{ month: "desc" }, { sortOrder: "asc" }, { id: "asc" }],

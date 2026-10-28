@@ -3,7 +3,7 @@ import {
   normalizeMaterialType, normalizeSheetSize, parseSheetNumber, sheetNumberOr, sheetsForJob, sheetsDifference,
   actualPerUnit, sheetsForProduced, parseNestingTracker, materialKey, round3, partNameFor,
   filterMaterialLines, EMPTY_MATERIAL_FILTERS, groupMaterialBySoi,
-  materialPlanIndex, materialPlanMonths, materialPlanMonthOptions, materialSummary, sheetsConsumed, resolvePlanMonth, NO_PLAN_MONTH,
+  materialPlanIndex, materialPlanMonths, materialPlanMonthOptions, materialSummary, sheetsConsumed, resolvePlanMonth, traceMaterialMatch, NO_PLAN_MONTH,
   type MaterialLineView,
 } from "./material";
 import { monthLabelFromInput, monthInputFromLabel, monthLabelSortKey } from "./dates";
@@ -526,5 +526,40 @@ describe("resolvePlanMonth", () => {
   });
   it("refuses a month no line carries", () => {
     expect(resolvePlanMonth("March 2020", months)).toBeNull();
+  });
+});
+
+describe("traceMaterialMatch", () => {
+  // S01193-3 has orders on E18 and E20; the sheet also files E16 (an older
+  // revision) and 00001D11 (a sub-assembly) under it
+  const soiOrders = [
+    { mo: "PF01/MO/35256-004", soi: "S01193-3", bom: "12008E18M18" },
+    { mo: "PF01/MO/35256-005", soi: "S01193-3", bom: "12008E18M18" },
+    { mo: "PF01/MO/35300", soi: "S01193-3", bom: "12008E20M18" },
+  ];
+  const lines = [
+    { id: 1, mo: "SF01/MO/1", soi: "S01193-3", bom: "12008E18M18" },
+    { id: 2, mo: "SF01/MO/2", soi: "s01193-3", bom: "12008E16M18" },
+    { id: 3, mo: "SF01/MO/3", soi: "S01193-3", bom: "00001D11" },
+    { id: 4, mo: "SF01/MO/4", soi: "S01193-3", bom: "12008E20M18" },
+    { id: 5, mo: "SF01/MO/5", soi: "S09999-1", bom: "12008E18M18" },
+    { id: 6, mo: "", soi: "", bom: "12008e18m18" },
+    { id: 7, mo: "PF01/MO/35256-004", soi: "", bom: "X" },
+    { id: 8, mo: "PF01/MO/35256-005", soi: "S01193-3", bom: "12008E18M18" },
+  ];
+  const ids = (scope: "mo" | "bom") =>
+    lines.filter(traceMaterialMatch({ scope, mos: ["PF01/MO/35256-004"], sois: ["S01193-3"], bom: "12008E18M18", soiOrders })).map((l) => l.id);
+  it("a code's trace: every line on the code, the SOI's lines on codes no order carries, and the order's own MO", () => {
+    expect(ids("bom")).toEqual([1, 2, 3, 5, 6, 7, 8]);
+  });
+  it("an order's trace leaves out another SOI's lines on the same code", () => {
+    expect(ids("mo")).toEqual([1, 2, 3, 6, 7]);
+  });
+  it("an order's trace leaves out a line filed on the SOI's other order's MO", () => {
+    expect(ids("mo")).not.toContain(8);
+  });
+  it("never takes the SOI's line on another order's code", () => {
+    expect(ids("bom")).not.toContain(4);
+    expect(ids("mo")).not.toContain(4);
   });
 });

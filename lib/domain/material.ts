@@ -543,6 +543,39 @@ function planMonthsByKey(l: Pick<MaterialLineInput, "mo" | "soi" | "bom">, idx: 
   return byBom ? { months: byBom, match: "bom" } : { months: [], match: null };
 }
 
+/**
+ * Whether a line of the sheet belongs to an order's (or a code's) trace.
+ * A code's: every line on the code, whatever its order. An order's: the
+ * lines on its MO (the panels file each order's MO), on its code under its
+ * SOI, or on its code with neither MO nor SOI (a line covering the code as a
+ * whole). Either way, under one of its SOIs, a line on a code no order of
+ * that SOI carries (a sub-assembly, an older revision of the code) — the
+ * keys materialPlanMonths ties a line to its plan by. A line of the same SOI
+ * on ANOTHER order's code — or on another order's MO — is that order's, not
+ * this one's.
+ */
+export function traceMaterialMatch(t: {
+  scope: "mo" | "bom";
+  mos: readonly string[]; sois: readonly string[]; bom: string;
+  /** Every order of the SOIs in scope: its MO, SOI and code. */
+  soiOrders: readonly { mo: string; soi: string; bom: string }[];
+}): (l: Pick<MaterialLineInput, "mo" | "soi" | "bom">) => boolean {
+  const mos = new Set(t.mos.map(planKey));
+  const sois = new Set(t.sois.map(planKey));
+  const bom = planKey(t.bom);
+  const carried = new Set(t.soiOrders.map((o) => `${planKey(o.soi)}|${planKey(o.bom)}`));
+  // the SOIs' other orders: a line filed on one of their MOs is theirs
+  const others = new Set(t.soiOrders.map((o) => planKey(o.mo)).filter((m) => m && !mos.has(m)));
+  return (l) => {
+    const mo = planKey(l.mo), soi = planKey(l.soi), lb = planKey(l.bom);
+    if (mo && mos.has(mo)) return true;
+    if (t.scope === "mo" && others.has(mo)) return false;
+    const onCode = !!bom && lb === bom;
+    if (soi && sois.has(soi) && (onCode || !carried.has(`${soi}|${lb}`))) return true;
+    return onCode && (t.scope === "bom" || (!soi && !mo));
+  };
+}
+
 /** A plan month as asked (the assistant, a typed value): the lines' own
  *  label whatever its case, NO_PLAN_MONTH for "none" (or the mark itself), ""
  *  for nothing asked — and null for a month no line carries. */

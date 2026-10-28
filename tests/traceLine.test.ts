@@ -1,6 +1,9 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const h = vi.hoisted(() => ({ guard: vi.fn(), line: vi.fn(), withLine: vi.fn(), tr: vi.fn(), lv: vi.fn(), order: vi.fn() }));
-vi.mock("@/lib/server/auth", () => ({ guardTab: h.guard }));
+const h = vi.hoisted(() => ({ guard: vi.fn(), line: vi.fn(), withLine: vi.fn(), tr: vi.fn(), lv: vi.fn(), order: vi.fn(), me: vi.fn(), material: vi.fn(), prefs: vi.fn() }));
+vi.mock("@/lib/server/auth", () => ({ guardTab: h.guard, getCurrentUser: h.me, hiddenTabsOf: (u: { hiddenTabs?: string } | null) => new Set((u?.hiddenTabs ?? "").split(",").filter(Boolean)) }));
+vi.mock("@/lib/server/material", () => ({ getTraceMaterial: h.material }));
+vi.mock("@/lib/server/userPrefs", () => ({ getUserPrefs: h.prefs }));
+vi.mock("@/components/TraceMaterial", () => ({ TraceMaterial: () => null }));
 vi.mock("@/lib/server/line", () => ({ getActiveLine: h.line, withLine: h.withLine }));
 vi.mock("@/lib/server/trace", () => ({ getTrace: h.tr }));
 vi.mock("@/lib/db", () => ({ prisma: { masterOrder: { findUnique: h.order } } }));
@@ -14,9 +17,12 @@ beforeEach(() => {
   vi.resetAllMocks();
   h.line.mockResolvedValue("TR");
   h.withLine.mockImplementation((_line, run) => run());
-  h.tr.mockResolvedValue({ exists: true });
-  h.lv.mockResolvedValue({ exists: true });
+  h.tr.mockResolvedValue({ exists: true, members: [{ mo: "MO-1", soi: "S1" }], bom: "B-1", scope: "bom" });
+  h.lv.mockResolvedValue({ exists: true, members: [], bom: "B-1", scope: "bom" });
   h.order.mockResolvedValue(null);
+  h.me.mockResolvedValue({ id: 1, hiddenTabs: "" });
+  h.material.mockResolvedValue({ lines: [], odooByMo: {} });
+  h.prefs.mockResolvedValue({});
 });
 it("opens the cited panel record even when the screen is on the transformers", async () => {
   await TracePage({ searchParams: Promise.resolve({ mo: "LV-A", line: "LV" }) });
@@ -51,4 +57,13 @@ it("checks access before loading either line", async () => {
   await expect(TracePage({ searchParams: Promise.resolve({ mo: "LV-A", line: "LV" }) })).rejects.toThrow("Hidden");
   expect(h.lv).not.toHaveBeenCalled();
   expect(h.tr).not.toHaveBeenCalled();
+});
+it("reads the order's material on its own line, by its MOs, SOIs and code", async () => {
+  await TracePage({ searchParams: Promise.resolve({ bom: "B-1", line: "TR" }) });
+  expect(h.material).toHaveBeenCalledWith("TR", { scope: "bom", mos: ["MO-1"], sois: ["S1"], bom: "B-1" });
+});
+it("leaves the material out for whoever cannot open the MATERIAL tab", async () => {
+  h.me.mockResolvedValue({ id: 1, hiddenTabs: "material" });
+  await TracePage({ searchParams: Promise.resolve({ bom: "B-1", line: "TR" }) });
+  expect(h.material).not.toHaveBeenCalled();
 });

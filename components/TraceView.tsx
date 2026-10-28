@@ -27,7 +27,11 @@ import { Meter } from "@/components/Meter";
 
 const pctOf = (v: number, req: number) => (req > 0 ? Math.round((v / req) * 100) : 0);
 
-export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: number; view?: string }) {
+export function TraceView({ t, planNo, view = "", material }: {
+  t: TraceResult; planNo: number; view?: string;
+  /** The order's lines of the nesting sheet (components/TraceMaterial) — none for whoever cannot open the MATERIAL tab. */
+  material?: React.ReactNode;
+}) {
   const router = useRouter();
   const [sidebar, setSidebar] = useState(true);
 
@@ -110,6 +114,7 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
           <StagePipeline stages={stages} totalReq={totalReq} pipeline={t.pipeline} />
           <ComponentProgress pipeline={t.pipeline} />
           <OnOdoo rows={t.odoo} />
+          {material}
           <Records t={t} />
         </div>
 

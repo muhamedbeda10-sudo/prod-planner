@@ -12,7 +12,11 @@ import type { LvTraceResult } from "@/lib/server/lvTrace";
 const fmt = (n: number) => n.toLocaleString();
 const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
-export function LvTraceView({ t }: { t: LvTraceResult }) {
+export function LvTraceView({ t, material }: {
+  t: LvTraceResult;
+  /** The order's lines of the Consumption Details sheet (components/TraceMaterial) — none for whoever cannot open the MATERIAL tab. */
+  material?: React.ReactNode;
+}) {
   const open = t.members.filter((m) => m.status === "open");
   const urgent = t.members.filter((m) => m.urgent).length;
 
@@ -97,6 +101,9 @@ export function LvTraceView({ t }: { t: LvTraceResult }) {
           </tbody>
         </table>
       </section>
+
+      {/* the sheets the orders consume, off the Consumption Details sheet */}
+      {material}
 
       {/* every ledger row, newest first */}
       <section className="bg-surface border rounded-xl overflow-hidden">

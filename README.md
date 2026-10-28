@@ -77,7 +77,11 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
 3. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item stages and Achievement %
    (completion = MIN over the needed components' final stage). Every number is click-through-traceable
    (`/trace`) to handover rows; the trace's **On Odoo → Closed on** is the real closing moment on the factory
-   clock, as the ODOO tab shows it. Each component ends with a read-only **Odoo** column: from the
+   clock, as the ODOO tab shows it. Under it, the trace's **Material** shows the order's (or the code's) lines of
+   the nesting sheet — the MATERIAL tab's columns as the person keeps them, with what they add up to and
+   **Open in Material** — found by its MO, its code under its SOI, or its SOI on a code no order of it
+   carries (`traceMaterialMatch`); the panels' trace shows its orders' Consumption Details lines the same
+   way. Only for whoever may open the MATERIAL tab. Each component ends with a read-only **Odoo** column: from the
    **October 2026** plans on (`ODOO_EXACT_FROM`, by the plan that first brought the MO) it is the qty of every
    Done / Closed row of the ODOO log born from that MO's own daily-log closing, on that closing's MO and
    component — never spread by BOM and not capped
