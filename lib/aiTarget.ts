@@ -44,9 +44,13 @@ function registeredAbove(el: Element): { el: Element; info: Registered; section:
 
 /** A table's column names, by cell position: each column's lowest header
  *  cell, a group's name before its own ("Welding · Done") — header rows laid
- *  out as the browser does, cells spanning rows and columns taken in. */
-function headers(table: HTMLTableElement): { names: string[]; colOf: Map<Element, number> } {
-  const rows = table.tHead ? Array.from(table.tHead.rows) : [];
+ *  out as the browser does, cells spanning rows and columns taken in. Each
+ *  cell named by `nameOf` (its text), from `rows` (the table's head). */
+export function tableHeaders(
+  table: HTMLTableElement,
+  nameOf: (cell: HTMLTableCellElement) => string = text,
+  rows: HTMLTableRowElement[] = table.tHead ? Array.from(table.tHead.rows) : [],
+): { names: string[]; colOf: Map<Element, number> } {
   const grid: string[][] = rows.map(() => []);
   const colOf = new Map<Element, number>();
   rows.forEach((tr, r) => {
@@ -54,7 +58,7 @@ function headers(table: HTMLTableElement): { names: string[]; colOf: Map<Element
     for (const c of Array.from(tr.cells)) {
       while (grid[r][col] !== undefined) col++;
       colOf.set(c, col);
-      const name = text(c);
+      const name = nameOf(c);
       for (let dr = 0; dr < Math.max(1, c.rowSpan) && r + dr < rows.length; dr++) {
         for (let dc = 0; dc < Math.max(1, c.colSpan); dc++) grid[r + dr][col + dc] = name;
       }
@@ -106,6 +110,11 @@ function nameAround(el: Element, reg = registeredAbove(el)): string | undefined 
   return h ? text(h) || undefined : undefined;
 }
 
+/** What a table is called: the card or section it sits in, else its caption or label. */
+export function tableTitle(table: HTMLTableElement): string {
+  return nameAround(table) || text(table.caption) || table.getAttribute("aria-label") || "";
+}
+
 /** The blocks an item reads as one: a list entry, a card, a form's field. */
 const BLOCK = "li, button, a[href], label, dt, dd, [role=button], [role=row], [role=listitem], fieldset, details, section, article, [role=dialog]";
 /** A block, or a card drawn as one (a bordered, rounded box). */
@@ -134,7 +143,7 @@ export function readAiTarget(el: Element | null): AiTarget | null {
   const tr = cell?.closest<HTMLTableRowElement>("tr");
   const table = tr?.closest<HTMLTableElement>("table");
   if (cell && tr && table && (!reg || reg.el.contains(table))) {
-    const { names, colOf } = headers(table);
+    const { names, colOf } = tableHeaders(table);
     const within = nameAround(table, reg);
     // the card the table is in says how it is counted
     const about = reg?.info.about;

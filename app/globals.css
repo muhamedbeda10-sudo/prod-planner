@@ -1339,6 +1339,7 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
    light running across it and a soft glow breathing round it, the way the
    assistant's tiles shine inside. Both move by transform / opacity only, so
    the bar is never repainted for them. */
+:root { --ai-face: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--viz-2) 85%, black) 55%, color-mix(in srgb, var(--viz-4) 70%, black)); }
 .nav-ai {
   position: relative; flex-shrink: 0; display: grid; width: 34px; height: 34px; border-radius: 10px;
   transition: transform 0.12s ease, filter 0.15s ease;
@@ -1351,7 +1352,7 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 .nav-ai-face {
   position: relative; overflow: hidden; isolation: isolate; display: grid; place-items: center; border-radius: inherit;
   color: #fff;
-  background: linear-gradient(135deg, var(--brand-fill), color-mix(in srgb, var(--viz-2) 85%, black) 55%, color-mix(in srgb, var(--viz-4) 70%, black));
+  background: var(--ai-face);
   border: 1px solid rgb(255 255 255 / 0.35);
 }
 /* the light is the rows' and tiles' sweep (.ai-cap::after, declared further
@@ -1373,6 +1374,28 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 @keyframes nav-ai-sweep { 0% { transform: translateX(0) skewX(-18deg); } 45%, 100% { transform: translateX(445%) skewX(-18deg); } }
 @keyframes nav-ai-glow { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .nav-ai::before, .nav-ai-face::after { animation: none; } }
+/* the assistant's mark at a table's top-right corner (components/TableAiExport):
+   a small tile in the bar button's colours that sends the table to the
+   assistant for an Excel. Fixed over the page, under the bar and the windows;
+   in a dialog, over it. The first header row's last cell leaves it room. */
+.table-ai-spot { position: fixed; z-index: 28; display: flex; }
+.table-ai-spot.table-ai-over { z-index: 51; }
+.table-ai {
+  display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--r-sm);
+  color: #fff; background: var(--ai-face); border: 1px solid rgb(255 255 255 / 0.35);
+  box-shadow: var(--shadow-md); opacity: 0.9; cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+.table-ai:hover, .table-ai:focus-visible, .table-ai[aria-busy="true"] { opacity: 1; }
+.table-ai:disabled:not([aria-busy="true"]) { opacity: 0.45; cursor: default; }
+@media (hover: hover) { .table-ai:not(:disabled):hover { transform: scale(1.1); } }
+.table-ai:active { transform: scale(0.95); }
+.table-ai:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+/* why a table could not be sent: the tooltip's bubble, ending under the mark */
+.table-ai-note { max-width: 260px; transform: translateX(-100%); }
+@media screen {
+  html.table-ai-on :is(main, [role=dialog]) table:not(.ai-pop table, [role=menu] table, [data-ai-skip] table, table table) > thead > tr:first-child > :last-child { padding-inline-end: 32px; }
+}
 .ai-overlay { position: fixed; inset: 0; z-index: 36; background: rgb(0 0 0 / 0.45); backdrop-filter: blur(2px); animation: drawerfade 0.18s ease-out; }
 .ai-pop { position: fixed; z-index: 37; display: flex; flex-direction: column; background: var(--surface); color: var(--foreground); overflow: hidden; }
 /* docked (the assistant, the inbox or the chat): top to bottom on the right, as wide as dragged (--ai-dock, set

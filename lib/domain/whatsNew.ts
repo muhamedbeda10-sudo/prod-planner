@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-table-ai-export",
+    dateISO: "2026-10-28",
+    title: "Any table goes to Excel through the assistant, from the mark at its corner",
+    where: "Every page with a table → the small AI tile at the table's top-right corner",
+    body: "Every table now carries the assistant's small tile at its top-right corner. Click it and the table, as you see it with your filters and sort, goes to the assistant in a new chat. The assistant asks which columns you want — all of them, or which ones — then gives you the Excel to download or print, with a Total row or a title if you ask for one.",
+  },
+  {
     id: "2026-10-28-tracker-odoo-column",
     dateISO: "2026-10-28",
     title: "The Plan Tracker shows what Odoo has closed, per component",

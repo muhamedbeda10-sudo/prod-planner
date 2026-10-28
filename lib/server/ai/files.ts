@@ -6,6 +6,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
 import { AI_FILE_LIMITS, XLSX_TYPE, aiFileKind, cleanFileName, madeFileName, fileRefId, fileSizeText, filesToSend, isSeenKind, questionSeenProblem, type AiFileKind, type AttachedFile, type SeenImageType } from "@/lib/domain/aiFiles";
 import { MAX_TITLE_LINES, type SheetStyleInput } from "@/lib/domain/sheetStyle";
+import { parseCsv } from "@/lib/domain/tableExport";
 import type { WorkbookSheet } from "@/lib/excel/workbook";
 import { streamedWorkbookBytes } from "@/lib/server/excel";
 import type { ToolCtx } from "./tools/types";
@@ -202,6 +203,17 @@ export function readSheet(f: Pick<AiFile, "data" | "kind">, o: { sheet?: string;
     return cells;
   });
   return { sheets: wb.SheetNames, sheet, fromRow: from, totalRows: grid.length, rows };
+}
+
+/** A kept sheet whole, as text, its header row first — a CSV read as the
+ *  UTF-8 it is written in (a table sent from a screen, Arabic and all), a
+ *  workbook's first sheet as it shows its cells. */
+export function sheetGrid(f: Pick<AiFile, "data" | "kind" | "name">): string[][] | { error: string } {
+  if (isSeenKind(f.kind)) return { error: `"${f.name}" is ${f.kind === "pdf" ? "a PDF" : "a photo"}, not a sheet.` };
+  if (f.kind === "csv") return parseCsv(new TextDecoder("utf-8").decode(f.data));
+  const wb = workbookOf(f.data);
+  if (!wb) return { error: `"${f.name}" cannot be read as a sheet.` };
+  return textGrid(wb.Sheets[wb.SheetNames[0]]);
 }
 
 export interface PrintableSheet {
