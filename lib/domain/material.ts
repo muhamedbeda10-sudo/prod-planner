@@ -225,8 +225,9 @@ export function materialKey(l: Pick<MaterialLineInput, "month" | "bom" | "mo" | 
 export interface NestingRow {
   rowNum: number; // 1-based sheet row, for the issues list
   bom: string;
-  /** Odoo's MO for this part (SF01/MO/20941) when the sheet has an MO column;
-   *  "" when the line covers the BOM, as the older sheet wrote it. */
+  /** The sheet's MO: the transformer's own (PF01/MO/…) — the sheet now files
+   *  the order's — or, on the older sheets, Odoo's MO for the part
+   *  (SF01/MO/20941); "" when the line covers the BOM. */
   mo: string;
   units: number;
   partCode: string;
@@ -337,7 +338,8 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
     return { rows: [], issues: ["No header row found — expected a row with 'BOM Ref' and 'Thickness'."], headerRow: 0, recomputed: 0, skipped: 0 };
   }
   const col = mapColumns(grid[headerIdx] ?? []);
-  // the newer sheet carries Odoo's MO per part: a column headed exactly "MO"
+  // the newer sheet carries an MO per line — the transformer's; older ones,
+  // the part's: a column headed exactly "MO"
   // (a fragment match would catch other headers), found apart from the rest
   const moCol = (grid[headerIdx] ?? []).findIndex((c) => /^mo\s*(#|no\.?)?$/i.test(cellText(c)));
   const soiCol = (grid[headerIdx] ?? []).findIndex((c) => /^soi\s*#?$/i.test(cellText(c)));
@@ -528,6 +530,46 @@ export function lineClosings(
     return { orderMos: [mo], partMos: e ? [...e.parts].sort() : [], closed: item ? cap(e?.done ?? 0) : null };
   }
   return { orderMos: [...(c.ordersByPart.get(mo) ?? [])].sort(), partMos: [mo], closed: cap(c.doneByPart.get(mo) ?? 0) };
+}
+
+// ---- the sheet moving from the part's MO to the order's ----
+
+type SpecLine = { id: number; bom: string; mo: string; partCode: string; material: string; thicknessMm: number; sheetSize: string; soi: string };
+
+/** The part and the sheet a line nests — what a line on the part's MO and
+ *  one on its order's MO have in common. */
+export const nestingSpecKey = (l: Pick<SpecLine, "bom" | "partCode" | "material" | "thicknessMm" | "sheetSize">) =>
+  [planKey(l.bom), planKey(l.partCode), l.material, l.thicknessMm, l.sheetSize].join("|");
+
+/**
+ * A row the sheet now files under its TRANSFORMER's MO, and the older line
+ * of the same part and sheet filed under the PART's MO (Odoo's SF01/…): the
+ * same nesting, which the import takes over — its MO becomes the order's —
+ * rather than add beside it, which would count the steel twice. `older` are
+ * the lines of the row's `nestingSpecKey`. Which one: the one whose part MO
+ * was closed against this order on the ODOO log (`ordersOf`); else, the part
+ * not closed anywhere yet, the SOI's only one — when the row is the only
+ * order of the SOI on that part and sheet (`rivals`, the sheet's other rows
+ * of the same spec). Null when no line could be it: the row is then a line
+ * of its own.
+ */
+export function adoptedPartLine<T extends SpecLine>(
+  row: Omit<SpecLine, "id">, older: readonly T[], rivals: readonly Omit<SpecLine, "id">[],
+  isOrder: (mo: string) => boolean, ordersOf: (partMo: string) => readonly string[],
+): T | null {
+  const order = planKey(row.mo);
+  // a row on a part's MO is the older sheet's: matched as it is
+  if (!order || ordersOf(order).length > 0) return null;
+  const spec = nestingSpecKey(row);
+  const parts = older.filter((l) => nestingSpecKey(l) === spec && planKey(l.mo) && !isOrder(planKey(l.mo)));
+  const linked = parts.filter((l) => ordersOf(planKey(l.mo)).some((o) => planKey(o) === order));
+  // the part split over several part MOs of the order: the first takes the row
+  if (linked.length > 0) return [...linked].sort((a, b) => a.id - b.id)[0];
+  const soi = planKey(row.soi);
+  if (!soi || !isOrder(order)) return null;
+  const contested = rivals.some((r) => planKey(r.soi) === soi && planKey(r.mo) !== order && nestingSpecKey(r) === spec);
+  const open = parts.filter((l) => planKey(l.soi) === soi && ordersOf(planKey(l.mo)).length === 0);
+  return !contested && open.length === 1 ? open[0] : null;
 }
 
 // ---- the monthly plan a line belongs to ----

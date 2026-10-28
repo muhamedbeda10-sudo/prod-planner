@@ -168,8 +168,9 @@ const TR_COLS: ColDef<TrCol>[] = [
   { key: "soi", name: "SOI", th: { label: "SOI", group: "source" }, td: "p-2 whitespace-nowrap ltr text-xs font-semibold",
     cell: (l) => <span className="block truncate" title={l.soi || undefined}>{l.soi || <span className="text-muted">—</span>}</span>,
     head: (g) => <span className="block truncate font-bold" title={g.soi || undefined}>{g.soi || <span className="text-muted font-semibold">No SOI</span>}</span> },
-  // the sheet files each part under Odoo's MO — the key an ODOO row finds it by
-  { key: "mo", name: "MO", th: { label: "MO", hint: "Odoo's MO for the part — the ODOO log finds the line by it", group: "source" }, td: "p-2 font-bold whitespace-nowrap ltr text-xs",
+  // the sheet files the transformer's MO (older lines, the part's) — the part
+  // MOs come from the ODOO log's closings, under Part MO
+  { key: "mo", name: "MO", th: { label: "MO", hint: "The sheet's MO: the transformer's own (PF01/MO/…) — the part's MOs show under Part MO, read off the ODOO log when that part is closed. Older lines may still carry a part's MO", group: "source" }, td: "p-2 font-bold whitespace-nowrap ltr text-xs",
     cell: (l, x) => <MoCell mo={l.mo} odoo={x.odoo} line={l} />,
     head: (g, x) => {
       const sharedMo = sharedOf(g.lines.map((l) => l.mo.trim()));
@@ -565,7 +566,8 @@ function ImportPanel({ product }: { product: ProductLine }) {
       if (!r.ok) { setRes({ ok: false, text: r.error ?? "Import failed." }); return; }
       const stale = r.recomputed ? ` · ${r.recomputed} row(s) where the sheet's “Actual Nesting for Job” disagrees with its own per-unit rate × units — kept as written, worth a look` : "";
       const gone = r.missing ? (r.removed ? ` · ${r.removed} row(s) no longer in the file removed` : ` · ${r.missing} row(s) not in this file kept`) : "";
-      setRes({ ok: true, text: `Table updated: ${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged${r.sheet ? ` (sheet “${r.sheet}”)` : ""}${gone}${stale}.` });
+      const moved = r.moved ? ` · ${r.moved} moved from a part's MO to its order's` : "";
+      setRes({ ok: true, text: `Table updated: ${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged${r.sheet ? ` (sheet “${r.sheet}”)` : ""}${moved}${gone}${stale}.` });
       router.refresh();
     });
   }

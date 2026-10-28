@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-material-sheet-files-order-mo",
+    dateISO: "2026-10-28",
+    title: "The material sheet files the transformer's MO — the part's MOs come from the ODOO log",
+    where: "Material → Import, the nesting sheet's MO and Part MO columns",
+    href: "/material",
+    body: "The sheet's MO column now carries the transformer's own MO (PF01/MO/…), not the part's. The part's MOs (SF01/MO/…) are not typed on the sheet any more: they show under Part MO as soon as that part is closed on the ODOO log against the order. Uploading the sheet on the order's MO takes over each older line filed on a part's MO — the one closed against that order, or else the SOI's only open one — so the same nesting is never counted twice; the upload says how many lines moved, and notes any row still on an MO no order of the Plan Tracker has.",
+  },
+  {
     id: "2026-10-28-material-consumed-from-odoo",
     dateISO: "2026-10-28",
     title: "The Material sheet tells the nesting planned from the sheets really consumed",

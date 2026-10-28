@@ -12,6 +12,9 @@ const h = vi.hoisted(() => {
   return {
     prisma: {
       materialUsage: { findMany: fn(), createMany: fn(), update: fn(), deleteMany: fn() },
+      masterOrder: { findMany: fn() },
+      odooEntry: { findMany: fn() },
+      handoverEntry: { findMany: fn() },
       $transaction: fn(),
     },
   };
@@ -46,6 +49,9 @@ beforeEach(() => {
   h.prisma.materialUsage.update.mockImplementation((a: unknown) => a);
   h.prisma.materialUsage.deleteMany.mockResolvedValue({ count: 1 });
   h.prisma.$transaction.mockImplementation(async (ops: unknown[]) => ops);
+  h.prisma.masterOrder.findMany.mockResolvedValue([]);
+  h.prisma.odooEntry.findMany.mockResolvedValue([]);
+  h.prisma.handoverEntry.findMany.mockResolvedValue([]);
 });
 
 describe("the material sheet import", () => {
@@ -77,5 +83,48 @@ describe("the material sheet import", () => {
     const r = await importNestingTracker(file, "Sara");
     expect(r).toMatchObject({ ok: true, missing: 1, removed: 0 });
     expect(h.prisma.materialUsage.deleteMany).not.toHaveBeenCalled();
+  });
+
+  describe("the sheet moving from the part's MO to the transformer's", () => {
+    const ORDER = "PF01/MO/100";
+    const onOrder = sheet([HEADER, [ORDER, "B1", 4, "FB-022", "TANK", "Steel", 3, "1220*2440", 0.5, 0.25, 1, null]]);
+    // the part MO was closed against the order on the ODOO log
+    const closedOnOdoo = () => {
+      h.prisma.masterOrder.findMany.mockResolvedValue([{ mo: ORDER }]);
+      h.prisma.odooEntry.findMany.mockResolvedValue([{ odooMo: MO, status: "Done", qty: 2, ledgerId: 50 }]);
+      h.prisma.handoverEntry.findMany.mockResolvedValue([{ id: 50, mo: ORDER, item: "TN" }]);
+    };
+
+    it("takes the older part-MO line over — its MO becomes the order's — rather than add it twice", async () => {
+      closedOnOdoo();
+      h.prisma.materialUsage.findMany.mockResolvedValue([held({ actualPerUnit: 0.25, actualPerUnitManual: false })]);
+      const r = await importNestingTracker(onOrder, "Sara");
+      expect(r).toMatchObject({ ok: true, added: 0, updated: 1, moved: 1 });
+      expect(h.prisma.materialUsage.update).toHaveBeenCalledWith({ where: { id: 7 }, data: expect.objectContaining({ mo: ORDER, bom: "B1", partCode: "FB-022" }) });
+      expect(h.prisma.materialUsage.createMany).not.toHaveBeenCalled();
+    });
+
+    it("a preview moves nothing, yet says what would move", async () => {
+      closedOnOdoo();
+      h.prisma.materialUsage.findMany.mockResolvedValue([held()]);
+      const r = await importNestingTracker(onOrder, "Sara", true);
+      expect(r).toMatchObject({ ok: true, moved: 1, updated: 1 });
+      expect(h.prisma.materialUsage.update).not.toHaveBeenCalled();
+    });
+
+    it("notes a row still on an MO no order has", async () => {
+      h.prisma.materialUsage.findMany.mockResolvedValue([]);
+      const r = await importNestingTracker(file, "Sara");
+      expect(r.issues?.some((i) => i.includes("no order of the Plan Tracker has"))).toBe(true);
+      expect(h.prisma.odooEntry.findMany).toHaveBeenCalled();
+    });
+
+    it("a sheet with no MO column reads nothing more", async () => {
+      h.prisma.materialUsage.findMany.mockResolvedValue([]);
+      const noMo = sheet([HEADER.slice(1), ["B1", 4, "FB-022", "TANK", "Steel", 3, "1220*2440", 0.5, 0.25, 1, null]]);
+      const r = await importNestingTracker(noMo, "Sara");
+      expect(r).toMatchObject({ ok: true, added: 1 });
+      expect(h.prisma.odooEntry.findMany).not.toHaveBeenCalled();
+    });
   });
 });
