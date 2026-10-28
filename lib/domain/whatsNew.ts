@@ -24,6 +24,14 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "Pick a month in the new Plan month filter to see every order of that monthly plan and what it was nested on — the line's order is found on the Plan Tracker by its MO, else its SOI (a line with neither, by its BOM); Not in a plan lists the lines none of them finds, worth a look for a mistyped MO or SOI. A Plan month column shows each line's plan (+n when it sits in more plans too — an order carried over, or a SOI with orders in several). A strip above the table adds up what is shown: the orders, BOM for job against actual for job, the actual weight and the difference, with the lines over their BOM in red (the panels: planned, BOM qty, consumed, remaining). Columns at the end of the bar lets you switch any column on or off — kept on your account — and the arrows on the band over the headers fold a run of columns (Order, Job, Part, Sheet, Per unit, For the job) and open it again, as on the Plan Tracker. Ask the assistant for the Material Excel of a plan month and it comes with the Plan month column.",
   },
   {
+    id: "2026-10-28-fins-teal",
+    dateISO: "2026-10-28",
+    title: "The Fins column turns teal",
+    where: "Plan Tracker (monthly, transformers)",
+    href: "/tracker",
+    body: "The Fins column now reads in teal instead of rose, so it is no longer mistaken for the Odoo columns in Odoo's plum.",
+  },
+  {
     id: "2026-10-28-odoo-column-lv-weekly-plum",
     dateISO: "2026-10-28",
     title: "Odoo's closings on the LV Panels tracker and the weekly plan too, in Odoo's colour",

@@ -116,10 +116,10 @@
   --paint-tint: #f3ecdf;
   --dlvd-tint: #ece3f7;
   /* the tracker's Fins column: it stands between the specs and the components
-     and belongs to neither, so it gets a rose of its own — the one hue none of
-     the stage tints, the status pills or the brand green already speak */
-  --fins-tint: #fae4ee;
-  --fins-fg: #9c2f68;
+     and belongs to neither, so it gets a teal of its own — a hue none of the
+     stage tints, Odoo's plum, the status pills or the brand green speak */
+  --fins-tint: #cdeef1;
+  --fins-fg: #0a5560;
   /* the trackers' Odoo columns: what Odoo has closed is not a stage of ours,
      so it reads in Odoo's own plum (#714B67, its title bar) — the header in
      the plum itself, the cells in a wash of it with the plum as ink */
@@ -288,8 +288,8 @@ html.dark {
   --weld-tint: #1e2d40;
   --paint-tint: #352e1e;
   --dlvd-tint: #2e263b;
-  --fins-tint: #33232d;
-  --fins-fg: #e9a6c6;
+  --fins-tint: #183539;
+  --fins-fg: #8fdbe2;
   --odoo-head: #5e3c55;
   --odoo-head-fg: #ffffff;
   --odoo-tint: #3d2737;
@@ -777,8 +777,8 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
     --weld-tint: #dfeaf3;
     --paint-tint: #f3ecdf;
     --dlvd-tint: #ece3f7;
-    --fins-tint: #fae4ee;
-    --fins-fg: #9c2f68;
+    --fins-tint: #cdeef1;
+    --fins-fg: #0a5560;
     --odoo-head: #714b67;
     --odoo-head-fg: #ffffff;
     --odoo-tint: #e4d0de;
