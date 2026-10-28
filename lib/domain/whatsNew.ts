@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-28-material-consumed-from-odoo",
+    dateISO: "2026-10-28",
+    title: "The Material sheet tells the nesting planned from the sheets really consumed",
+    where: "Material → the nesting sheet, the order's trace → Material, the assistant's Material Excel",
+    href: "/material",
+    body: "Actual for job is the nesting the sheet plans, not what was used — so a month that has not started showed sheets as if spent. Two new columns under On ODOO show what was: Closed, the pieces of the part closed Done on the ODOO log, and Consumed, those pieces × the actual per unit. The strip above the table now reads Nested for job (planned) beside Consumed, and Nested weight; a month nothing was closed in reads 0 consumed. The sheet can now carry the transformer's own MO (PF01/…) in its MO column instead of the part's: the line then finds its part MOs by itself — the ones you type on the ODOO rows when that order's part is closed — shown in the new Part MO column, with what they closed. The rest of the app reads the order's MO the same way: the ODOO log's material popup and its colours take the row's part among its order's lines, the Material dashboard books a closing against that part of the order only, and the machines' sheets read the order's own lines first. A line still filed on the part's MO keeps working as before.",
+  },
+  {
     id: "2026-10-28-material-no-endless-scroll",
     dateISO: "2026-10-28",
     title: "The Material page no longer scrolls on into empty space",

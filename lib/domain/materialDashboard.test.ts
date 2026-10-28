@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  EMPTY_MATERIAL_DASH_FILTERS, buildMaterialDashboard, changePct, materialQuery, materialRequest, pickSheetVersions, sheetWeight, unitRate,
+  EMPTY_MATERIAL_DASH_FILTERS, buildMaterialDashboard, changePct, orderPartKey, materialQuery, materialRequest, pickSheetVersions, sheetWeight, unitRate,
   utilizationFraction, type DoneRow, type MaterialRequest, type SheetLine,
 } from "./materialDashboard";
 
@@ -162,6 +162,21 @@ describe("buildMaterialDashboard", () => {
     // and a closing of the parent finds the sheet's backorder line
     const y = buildMaterialDashboard([L({ mo: "SF01/MO/7-001" })], [{ dateISO: "2026-09-29", mo: "SF01/MO/7", qty: 1 }], REQ);
     expect(y.link.linkedRows).toBe(1);
+  });
+
+  it("books a closing against its part only, where the sheet files the transformer's MO", () => {
+    const order = "PF01/MO/35256-005";
+    const sheet = [
+      L({ mo: order, partCode: "FB-022", closingKey: orderPartKey(order, "FB-022"), weightKg: 100 }),
+      L({ mo: order, partCode: "FB-051", partName: "TOP COVER", closingKey: orderPartKey(order, "FB-051"), weightKg: 50 }),
+    ];
+    const x = buildMaterialDashboard(sheet, [{ dateISO: "2026-09-29", mo: orderPartKey(order, "fb-022"), qty: 2 }], REQ);
+    expect(x.link.linkedRows).toBe(1);
+    // the tank's two units × 1 sheet × 100 kg — the top cover is not touched
+    expect(x.consumption).toMatchObject({ units: 2, kg: 200 });
+    // an order × part the sheet does not carry is off the sheet, never a "backorder" of another order
+    const y = buildMaterialDashboard(sheet, [{ dateISO: "2026-09-29", mo: orderPartKey("PF01/MO/35256-006", "FB-022"), qty: 1 }], REQ);
+    expect(y.link).toMatchObject({ linkedRows: 0, offSheetRows: 1 });
   });
 
   it("each group of the breakdown carries its own filter — a blank one none", () => {

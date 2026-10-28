@@ -18,6 +18,8 @@
 // "The sheet says 50 sheets made 30 units; 5 were made — so 8.333 were used."
 
 import { monthInputFromLabel, monthLabelSortKey } from "./dates";
+import { ITEM_PRODUCT } from "./odooMirror";
+import { isCancelledStatus, isDoneStatus } from "./odoo";
 
 /** Sheet counts are fractions of a sheet (0.429 of a sheet per unit). Excel
  *  left 0.564 × 3 as 1.6919999999999997; the nesting sheet quotes its figures
@@ -205,6 +207,11 @@ export interface MaterialLineView extends MaterialLineInput {
    *  the part's own MO the clerk typed. Empty while the part is not closed
    *  there, or on a row typed without a closing behind it. */
   orderMos: string[];
+  /** The parts' own MOs (Odoo's, SF01/…) this line's nesting went to: the
+   *  line's MO when the sheet files the part's, else — the sheet filing the
+   *  order's — the part MOs typed on the ODOO rows born of that order's
+   *  closings of this part. */
+  partMos: string[];
 }
 
 /** The identity of a line — one per month × BOM × order × part × material ×
@@ -450,6 +457,77 @@ export function filterMaterialLines(lines: MaterialLineView[], f: MaterialFilter
     }
     return true;
   });
+}
+
+// ---- what the ODOO log closed of a line's part ----
+
+/** The component a part code is (FB-022 → TN) — the key a closing of the
+ *  daily log is recorded under. */
+const ITEM_BY_PART_CODE = new Map(Object.entries(ITEM_PRODUCT).flatMap(([item, v]) => (v.partCode ? [[v.partCode, item] as const] : [])));
+export function itemOfPartCode(partCode: string): string | null {
+  return ITEM_BY_PART_CODE.get(partCode.trim().toUpperCase()) ?? null;
+}
+
+export interface OdooClosingRow { odooMo: string; status: string; qty: number; ledgerId: number | null }
+
+export interface MaterialClosings {
+  /** Part MO → the pieces closed Done on it. */
+  doneByPart: Map<string, number>;
+  /** "ORDER MO|ITEM" → the part MOs typed on the rows born of that order's
+   *  closings of that component, and the pieces closed Done on them. */
+  byOrderItem: Map<string, { parts: Set<string>; done: number }>;
+  /** Part MO → the orders it was closed against. */
+  ordersByPart: Map<string, Set<string>>;
+}
+
+/**
+ * The ODOO log read for the material: what was closed Done on each part MO,
+ * and — through the daily-log closing a row was born of (`ledger`: its
+ * order's MO and component) — which order and component each part MO
+ * belongs to. A cancelled row ties and counts nothing.
+ */
+export function materialClosings(rows: readonly OdooClosingRow[], ledger: ReadonlyMap<number, { mo: string; item: string }>): MaterialClosings {
+  const c: MaterialClosings = { doneByPart: new Map(), byOrderItem: new Map(), ordersByPart: new Map() };
+  for (const r of rows) {
+    const part = planKey(r.odooMo);
+    if (!part || isCancelledStatus(r.status)) continue;
+    const done = isDoneStatus(r.status) ? r.qty : 0;
+    c.doneByPart.set(part, (c.doneByPart.get(part) ?? 0) + done);
+    const closing = r.ledgerId === null ? undefined : ledger.get(r.ledgerId);
+    if (!closing || !planKey(closing.mo)) continue;
+    const order = planKey(closing.mo);
+    (c.ordersByPart.get(part) ?? c.ordersByPart.set(part, new Set()).get(part)!).add(order);
+    const k = `${order}|${planKey(closing.item)}`;
+    const e = c.byOrderItem.get(k) ?? c.byOrderItem.set(k, { parts: new Set(), done: 0 }).get(k)!;
+    e.parts.add(part);
+    e.done += done;
+  }
+  return c;
+}
+
+/**
+ * A line's place on the ODOO log. The sheet files either the ORDER's MO
+ * (`isOrder` says so — the registry has it) or the PART's:
+ * - the order's: its part MOs are those typed on the rows born of the
+ *   order's closings of this part (the part code says which component), and
+ *   the pieces closed are theirs;
+ * - the part's: the orders it was closed against, and the pieces closed on it.
+ * `closed` — Done pieces, never more than the line's units — is 0 while
+ * nothing is closed yet, null when the line names no MO (or a part no
+ * component answers).
+ */
+export function lineClosings(
+  l: Pick<MaterialLineInput, "mo" | "partCode" | "units">, isOrder: (mo: string) => boolean, c: MaterialClosings,
+): { orderMos: string[]; partMos: string[]; closed: number | null } {
+  const mo = planKey(l.mo);
+  const cap = (n: number) => (l.units > 0 ? Math.min(n, l.units) : n);
+  if (!mo) return { orderMos: [], partMos: [], closed: null };
+  if (isOrder(mo)) {
+    const item = itemOfPartCode(l.partCode);
+    const e = item ? c.byOrderItem.get(`${mo}|${item}`) : undefined;
+    return { orderMos: [mo], partMos: e ? [...e.parts].sort() : [], closed: item ? cap(e?.done ?? 0) : null };
+  }
+  return { orderMos: [...(c.ordersByPart.get(mo) ?? [])].sort(), partMos: [mo], closed: cap(c.doneByPart.get(mo) ?? 0) };
 }
 
 // ---- the monthly plan a line belongs to ----

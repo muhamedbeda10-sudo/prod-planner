@@ -3,7 +3,7 @@ import {
   normalizeMaterialType, normalizeSheetSize, parseSheetNumber, sheetNumberOr, sheetsForJob, sheetsDifference,
   actualPerUnit, sheetsForProduced, parseNestingTracker, materialKey, round3, partNameFor,
   filterMaterialLines, EMPTY_MATERIAL_FILTERS, groupMaterialBySoi,
-  materialPlanIndex, materialPlanMonths, materialPlanMonthOptions, materialSummary, sheetsConsumed, resolvePlanMonth, traceMaterialMatch, NO_PLAN_MONTH,
+  materialPlanIndex, materialPlanMonths, materialClosings, lineClosings, itemOfPartCode, materialPlanMonthOptions, materialSummary, sheetsConsumed, resolvePlanMonth, traceMaterialMatch, NO_PLAN_MONTH,
   type MaterialLineView,
 } from "./material";
 import { monthLabelFromInput, monthInputFromLabel, monthLabelSortKey } from "./dates";
@@ -131,7 +131,7 @@ function line(over: Partial<MaterialLineView>): MaterialLineView {
     material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
     sheetsPerUnit: 1, sheetsUsed: 10, producedQty: null, note: null, soi: "", mtr: "", weightKg: null, utilization: null, actualWeightKg: null, producedAuto: null, producedUsed: null, remainingUnits: null,
     forJob: 10, difference: 0, actualPerUnit: 1, forProduced: null,
-    updatedISO: "2026-09-07", recordedBy: null, planMonths: [], planMatch: null, orderMos: [], ...over,
+    updatedISO: "2026-09-07", recordedBy: null, planMonths: [], planMatch: null, orderMos: [], partMos: [], ...over,
   };
 }
 
@@ -583,5 +583,38 @@ describe("traceMaterialMatch", () => {
   it("never takes the SOI's line on another order's code", () => {
     expect(ids("bom")).not.toContain(4);
     expect(ids("mo")).not.toContain(4);
+  });
+});
+
+describe("materialClosings / lineClosings", () => {
+  // order PF01/MO/1's tank closings: the clerk typed part MO SF01/MO/9 on both
+  // rows; one is Done, one still open; a cancelled row ties nothing
+  const ledger = new Map([[10, { mo: "pf01/mo/1", item: "TN" }], [11, { mo: "PF01/MO/1", item: "TN" }], [12, { mo: "PF01/MO/1", item: "TC" }]]);
+  const c = materialClosings([
+    { odooMo: "SF01/MO/9", status: "Done", qty: 6, ledgerId: 10 },
+    { odooMo: "SF01/MO/9", status: "MO to be close", qty: 4, ledgerId: 11 },
+    { odooMo: "SF01/MO/7", status: "Cancelled", qty: 5, ledgerId: 12 },
+    { odooMo: "SF01/MO/8", status: "Done", qty: 3, ledgerId: null },
+  ], ledger);
+  const isOrder = (mo: string) => mo === "PF01/MO/1";
+  it("knows a part code's component", () => {
+    expect(itemOfPartCode(" fb-022 ")).toBe("TN");
+    expect(itemOfPartCode("FB-999")).toBeNull();
+  });
+  it("a line filed on the ORDER's MO finds its part MOs and closed pieces through the order's closings of the part", () => {
+    expect(lineClosings({ mo: "PF01/MO/1", partCode: "FB-022", units: 10 }, isOrder, c)).toEqual({ orderMos: ["PF01/MO/1"], partMos: ["SF01/MO/9"], closed: 6 });
+    // nothing closed of the top cover yet (its only row was cancelled): 0, not unknown
+    expect(lineClosings({ mo: "PF01/MO/1", partCode: "FB-051", units: 10 }, isOrder, c)).toEqual({ orderMos: ["PF01/MO/1"], partMos: [], closed: 0 });
+    // a part code no component answers
+    expect(lineClosings({ mo: "PF01/MO/1", partCode: "XX-1", units: 10 }, isOrder, c).closed).toBeNull();
+  });
+  it("a line filed on the PART's MO finds its order and its closed pieces, never more than its units", () => {
+    expect(lineClosings({ mo: "SF01/MO/9", partCode: "FB-022", units: 4 }, isOrder, c)).toEqual({ orderMos: ["PF01/MO/1"], partMos: ["SF01/MO/9"], closed: 4 });
+    expect(lineClosings({ mo: "SF01/MO/8", partCode: "FB-022", units: 10 }, isOrder, c)).toEqual({ orderMos: [], partMos: ["SF01/MO/8"], closed: 3 });
+    expect(lineClosings({ mo: "", partCode: "FB-022", units: 10 }, isOrder, c)).toEqual({ orderMos: [], partMos: [], closed: null });
+  });
+  it("a cancelled row ties and counts nothing", () => {
+    expect(c.ordersByPart.has("SF01/MO/7")).toBe(false);
+    expect(c.doneByPart.has("SF01/MO/7")).toBe(false);
   });
 });

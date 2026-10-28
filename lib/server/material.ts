@@ -4,12 +4,12 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { getActiveLine } from "./line";
 import {
-  actualPerUnit, materialPlanIndex, materialPlanMonths, traceMaterialMatch, parseNestingTracker, sheetsDifference, sheetsForJob, sheetsForProduced,
+  actualPerUnit, lineClosings, materialClosings, materialPlanIndex, materialPlanMonths, traceMaterialMatch, type MaterialClosings, parseNestingTracker, sheetsDifference, sheetsForJob, sheetsForProduced,
   type MaterialLineView, type MaterialPlanIndex,
 } from "@/lib/domain/material";
 import { lvActualRate, lvRemainingUnits, parseLvConsumption } from "@/lib/domain/lvMaterial";
 import { LV_ITEM } from "@/lib/domain/lv";
-import { ODOO_CANCELLED_STATUS, ODOO_DONE_STATUS } from "@/lib/domain/odoo";
+import { ODOO_CANCELLED_STATUS, isDoneStatus } from "@/lib/domain/odoo";
 import type { ProductLine } from "@/lib/domain/lines";
 
 export interface MaterialPageData {
@@ -28,24 +28,29 @@ type Row = {
   note: string | null; recordedBy: string | null; updatedAt: Date;
 };
 
-/** What the ODOO log says of a part MO: the day it was closed Done, and the
- *  orders it was closed against. */
+/** What the ODOO log says of the lines' MOs: the day a part MO was closed
+ *  Done, what each closed and whose it is; and which MOs are orders of the
+ *  registry (the sheet may file the order's MO rather than the part's). */
 interface OdooLinks {
   doneByMo: ReadonlyMap<string, string>;
-  ordersByPart: ReadonlyMap<string, ReadonlySet<string>>;
+  closings: MaterialClosings;
+  isOrder: (mo: string) => boolean;
 }
 
-/** `lv`: only the panels' tab counts units produced — a transformer line's
- *  old typed quantity is no longer shown or costed. */
+/** `lv`: the panels' tab counts units produced (the sheet's count, else the
+ *  tracker's painted); the transformers' counts the pieces closed Done on the
+ *  ODOO log — a transformer line's old typed quantity is not shown or costed. */
 function toView(r: Row, lv: boolean, plans: MaterialPlanIndex, odoo: OdooLinks, producedAuto: number | null = null): MaterialLineView {
   const mo = r.mo.trim().toUpperCase();
-  const orderMos = [...(odoo.ordersByPart.get(mo) ?? [])].sort();
-  const plan = materialPlanMonths(r, plans, odoo.doneByMo.get(mo) ?? null, orderMos);
+  // the panels' sheet files each order's MO and counts painted panels; the
+  // ODOO log's part MOs are the transformers'
+  const link = lv ? { orderMos: [], partMos: [], closed: null } : lineClosings(r, odoo.isOrder, odoo.closings);
+  const plan = materialPlanMonths(r, plans, odoo.doneByMo.get(mo) ?? null, link.orderMos);
   const forJob = sheetsForJob(r.sheetsPerUnit, r.units);
   // the sheet's count; else the tracker's painted count on the line's own order
-  const producedUsed = lv ? (r.producedQty ?? producedAuto) : null;
+  const producedUsed = lv ? (r.producedQty ?? producedAuto) : link.closed;
   return {
-    producedAuto,
+    producedAuto: lv ? producedAuto : link.closed,
     producedUsed,
     remainingUnits: r.mo ? lvRemainingUnits(r.units, producedUsed) : null,
     id: r.id, month: r.month, bom: r.bom, mo: r.mo, units: r.units,
@@ -64,7 +69,8 @@ function toView(r: Row, lv: boolean, plans: MaterialPlanIndex, odoo: OdooLinks, 
     recordedBy: r.recordedBy,
     planMonths: plan.months,
     planMatch: plan.match,
-    orderMos,
+    orderMos: link.orderMos,
+    partMos: link.partMos,
   };
 }
 
@@ -105,8 +111,8 @@ export async function getTraceMaterial(line: ProductLine, target: { scope: "mo" 
   return { lines, odooByMo: data.odooByMo };
 }
 
-type OdooRow = { odooMo: string; status: string; date: Date; ledgerId: number | null };
-const ODOO_SELECT = { odooMo: true, status: true, date: true, ledgerId: true } as const;
+type OdooRow = { odooMo: string; status: string; qty: number; date: Date; ledgerId: number | null };
+const ODOO_SELECT = { odooMo: true, status: true, qty: true, date: true, ledgerId: true } as const;
 const ODOO_ORDER = [{ date: "asc" as const }, { id: "asc" as const }];
 const ORDER_SELECT = { mo: true, soi: true, bom: true, months: true, source: true, planQty: true } as const;
 const PAINTING = { dept: "Painting", item: LV_ITEM } as const;
@@ -144,7 +150,15 @@ async function narrowSource(line: ProductLine, where: Prisma.MaterialUsageWhereI
     ? prisma.handoverEntry.groupBy({ by: ["mo"], where: { ...PAINTING, mo: { in: mos, mode: "insensitive" } }, _sum: { qty: true } })
     : Promise.resolve(null);
   painted.catch(() => undefined);
-  const odoo = mos.length > 0 ? await prisma.odooEntry.findMany({ where: { line, odooMo: { in: mos, mode: "insensitive" } }, select: ODOO_SELECT, orderBy: ODOO_ORDER }) : [];
+  // the ODOO rows of the lines' MOs: on a part's MO, or born of an order's
+  // closings where the sheet files the order's MO
+  const ownClosings = mos.length > 0 ? await prisma.handoverEntry.findMany({ where: { mo: { in: mos, mode: "insensitive" } }, select: { id: true } }) : [];
+  const odoo = mos.length > 0
+    ? await prisma.odooEntry.findMany({
+        where: { line, odooMo: { not: "" }, OR: [{ odooMo: { in: mos, mode: "insensitive" } }, { ledgerId: { in: ownClosings.map((c) => c.id) } }] },
+        select: ODOO_SELECT, orderBy: ODOO_ORDER,
+      })
+    : [];
   // the registry rows these lines can be tied to: by MO (theirs, or the
   // orders their parts were closed against), by SOI, by code
   const orders = (linked: readonly string[]) => prisma.masterOrder.findMany({
@@ -175,29 +189,23 @@ async function loadMaterial(line: ProductLine, where: Prisma.MaterialUsageWhereI
   for (const o of odoo) {
     const mo = o.odooMo.trim().toUpperCase();
     odooByMo[mo] = o.status;
-    if (o.status === ODOO_DONE_STATUS) doneByMo.set(mo, o.date.toISOString().slice(0, 10));
+    if (isDoneStatus(o.status)) doneByMo.set(mo, o.date.toISOString().slice(0, 10));
     else doneByMo.delete(mo);
   }
   // a row born of an order's daily-log closing carries the part's own MO the
-  // clerk typed: the part MO → the order(s) it was closed against
+  // clerk typed: the part MO → the order and component it was closed against
   const ledgerIds = odoo.flatMap((o) => (o.ledgerId === null ? [] : [o.ledgerId]));
-  const closings = ledgerIds.length > 0
-    ? await prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds }, mo: { not: null } }, select: { id: true, mo: true } })
+  const ledgerRows = ledgerIds.length > 0
+    ? await prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds }, mo: { not: null } }, select: { id: true, mo: true, item: true } })
     : [];
-  const orderOfLedger = new Map(closings.map((h) => [h.id, h.mo!.trim().toUpperCase()]));
-  const ordersByPart = new Map<string, Set<string>>();
-  for (const o of odoo) {
-    if (o.status === ODOO_CANCELLED_STATUS) continue; // a cancelled closing ties nothing
-    const order = o.ledgerId === null ? undefined : orderOfLedger.get(o.ledgerId);
-    if (!order) continue;
-    const part = o.odooMo.trim().toUpperCase();
-    (ordersByPart.get(part) ?? ordersByPart.set(part, new Set()).get(part)!).add(order);
-  }
+  const ledger = new Map(ledgerRows.map((h) => [h.id, { mo: h.mo!.trim().toUpperCase(), item: h.item }]));
+  const closings = materialClosings(odoo, ledger);
 
-  const [orders, painted] = await Promise.all([ordersOf([...orderOfLedger.values()]), paintedRows]);
+  const [orders, painted] = await Promise.all([ordersOf([...new Set([...ledger.values()].map((l) => l.mo))]), paintedRows]);
   const paintedByMo = painted ? lvPaintedByMo(orders, painted) : new Map<string, number>();
   const plans = materialPlanIndex(orders.map((o) => ({ ...o, months: (o.months || o.source || "").split(",") })));
-  const links: OdooLinks = { doneByMo, ordersByPart };
+  const registry = new Set(orders.map((o) => o.mo.trim().toUpperCase()));
+  const links: OdooLinks = { doneByMo, closings, isOrder: (mo) => registry.has(mo) };
   const lines = rows.map((r) => toView(r, lv, plans, links, lv && r.mo ? (paintedByMo.get(r.mo) ?? 0) : null));
 
   return { lines, odooByMo };
