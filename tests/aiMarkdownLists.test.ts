@@ -15,34 +15,36 @@ const html = (text: string) => renderToStaticMarkup(createElement(AiMarkdown, { 
 describe("a numbered step that opens on a bold lead", () => {
   it("sets the lead apart from what follows it, with or without its colon", () => {
     const out = html("1. **Check the Daily log** for the hours\n2. **Record attendance:** every day");
-    expect(out).toContain('<span class="ai-field-label"><span dir="ltr">Check the Daily log</span></span><span class="ai-field-value"><span dir="ltr">for the hours</span></span>');
-    expect(out).toContain('<span class="ai-field-label"><span dir="ltr">Record attendance</span></span><span class="ai-field-value"><span dir="ltr">every day</span></span>');
+    expect(out).toContain('<span class="ai-lead"><span dir="ltr">Check the Daily log</span></span><span class="ai-lead-body"><span dir="ltr">for the hours</span></span>');
+    expect(out).toContain('<span class="ai-lead"><span dir="ltr">Record attendance</span></span><span class="ai-lead-body"><span dir="ltr">every day</span></span>');
   });
   it("drops the dash that tied the lead to its words, but not a figure's sign", () => {
-    expect(html("1. **Cut** — 94% done\n2. x")).toContain('<span class="ai-field-value"><span dir="ltr">94% done</span></span>');
-    expect(html("1. **Change:** -5%\n2. x")).toContain('<span class="ai-field-value"><span dir="ltr">-5%</span></span>');
+    expect(html("1. **Cut** — 94% done\n2. x")).toContain('<span class="ai-lead-body"><span dir="ltr">94% done</span></span>');
+    expect(html("1. **Change:** -5%\n2. x")).toContain('<span class="ai-lead-body"><span dir="ltr">-5%</span></span>');
   });
   it("reads an Arabic lead in its own direction", () => {
-    expect(html("1. **راجعوا الـ Daily log** للتصنيع\n2. x")).toContain('<span class="ai-field-label"><span dir="rtl">راجعوا الـ Daily log</span></span>');
+    expect(html("1. **راجعوا الـ Daily log** للتصنيع\n2. x")).toContain('<span class="ai-lead"><span dir="rtl">راجعوا الـ Daily log</span></span>');
   });
   it("leaves an item alone that is all bold, or does not open on bold", () => {
     const out = html("1. **All of it bold**\n2. Some **bold** inside\n3. **Done**.");
-    expect(out).not.toContain("ai-field-label");
+    expect(out).not.toContain("ai-lead");
   });
 });
 
 describe("a bullet that opens in bold", () => {
   it("is a lead when a colon or a dash ties it to its words", () => {
-    expect(html("- **Cut:** 94% done\n- plain")).toContain('<span class="ai-field-label"><span dir="ltr">Cut</span></span>');
-    expect(html("- **Cut** — 94% done\n- plain")).toContain('<span class="ai-field-label"><span dir="ltr">Cut</span></span>');
+    expect(html("- **Cut:** 94% done\n- plain")).toContain('<span class="ai-lead"><span dir="ltr">Cut</span></span>');
+    expect(html("- **Cut** — 94% done\n- plain")).toContain('<span class="ai-lead"><span dir="ltr">Cut</span></span>');
   });
   it("is the start of its sentence when nothing ties it", () => {
-    expect(html("- **3 MOs** are late by 2 days\n- plain")).not.toContain("ai-field-label");
+    expect(html("- **3 MOs** are late by 2 days\n- plain")).not.toContain("ai-lead");
   });
 });
 
 describe("a list of fields", () => {
-  it("is a panel of fields", () => {
-    expect(html("- **Date:** Thu 29 Oct\n- **Qty:** 18")).toContain('<ul role="list" class="ai-fields">');
+  it("is a panel of fields, a label over each value", () => {
+    const out = html("- **Date:** Thu 29 Oct\n- **Qty:** 18");
+    expect(out).toContain('<ul role="list" class="ai-fields">');
+    expect(out).toContain('<span class="ai-field-label"><span dir="ltr">Qty</span></span><span class="ai-field-value"><span dir="ltr">18</span></span>');
   });
 });

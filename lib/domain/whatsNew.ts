@@ -20,7 +20,7 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     dateISO: "2026-10-29",
     title: "Reports print Portrait or Landscape, and open on their own in the inbox",
     where: "Every Print / PDF with the company header; the inbox; the assistant's answers and reports",
-    body: "A printed report's header is now the ATC logo and the report's title alone, and the print dialog's Layout lets you choose Portrait or Landscape — its charts fit the page either way. In the inbox, a report or message opens across the whole inbox with nothing of the list under it; All items takes you back to the list. In the assistant's answers, a step that opens on a bold lead shows the lead clearly on its own line with what it means under it, and a panel of fields (Date, MO, Qty …) reads as tiles across the width, each label over its value.",
+    body: "A printed report's header is now the ATC logo and the report's title alone, and the print dialog's Layout lets you choose Portrait or Landscape — its charts fit the page either way. In the inbox, a report or message opens across the whole inbox with nothing of the list under it; Back takes you back to the list. In the assistant's answers, a step that opens on a bold lead shows the lead clearly on its own line with what it means under it, and a panel of fields (Date, MO, Qty …) reads as tiles across the width, each label over its value.",
   },
   {
     id: "2026-10-29-print-company-frame",

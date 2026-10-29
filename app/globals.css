@@ -1763,14 +1763,14 @@ main .composer textarea:focus, .composer textarea:focus { outline: none; box-sha
 /* a list of "**Label:** value" read as a panel of fields */
 /* a panel of fields: a tile per field across the width, its label over its
    value, both read at a glance (the label in the brand ink, never faded) */
-.ai-md .ai-fields { list-style: none; margin: 10px 0; padding: var(--sp-2); display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-2); border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.ai-md .ai-fields { list-style: none; margin: var(--sp-2) 0; padding: var(--sp-2); display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-2); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
 .ai-md .ai-fields > li { display: flex; flex-direction: column; gap: calc(var(--sp-1) / 2); min-width: 0; padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); background: var(--surface); }
 .ai-md .ai-field-label { color: var(--brand-ink); font-size: var(--fs-sm); font-weight: 650; overflow-wrap: anywhere; }
 .ai-md .ai-field-value { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 /* a list item that opens on a bold lead: the lead its own clear line, what it
-   means under it in the body's weight */
-.ai-md .ai-ul > li > .ai-field-label, .ai-md .ai-ol > li > .ai-field-label { display: block; color: var(--foreground); font-size: inherit; font-weight: 700; }
-.ai-md .ai-ul > li > .ai-field-value, .ai-md .ai-ol > li > .ai-field-value { display: block; margin-top: calc(var(--sp-1) / 2); font-weight: 400; }
+   means under it in the body's weight (components/AiMarkdown.tsx ListItem) */
+.ai-md .ai-lead { display: block; font-weight: 700; }
+.ai-md .ai-lead-body { display: block; margin-top: calc(var(--sp-1) / 2); }
 .ai-md hr + ul, .ai-md ul + hr { margin-top: 0.75rem; }
 /* the tables read row by row */
 .ai-md .md-table tbody tr:nth-child(even) td { background: var(--zebra); }

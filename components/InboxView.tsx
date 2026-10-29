@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { ArrowLeft, BellOff, BellRing, CheckCheck, ChevronDown, Inbox, Trash2 } from "lucide-react";
+import { ArrowLeft, BellOff, BellRing, CheckCheck, ChevronRight, Inbox, Trash2 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiPrintButton } from "@/components/AiPrint";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
@@ -105,54 +105,69 @@ export function DevicePush({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function Item({ item, actions, open, onToggle, onDelete, onAction }: {
-  item: InboxItemView;
-  actions: AiActionView[];
-  open: boolean;
-  onToggle: () => void;
-  onDelete: () => void;
-  onAction: (v: AiActionView) => void;
-}) {
-  const proposed = actions.filter((a) => a.status === "proposed");
+/** A line of the list: what it is, its title and when, and the start of it. */
+function ItemRow({ item, toApprove, onOpen }: { item: InboxItemView; toApprove: number; onOpen: () => void }) {
   const k = INBOX_KIND_LOOK[item.kind] ?? INBOX_KIND_LOOK.message;
   const unread = !item.readAt;
   return (
     <article id={`item-${item.id}`} className={`inbox-item ${unread ? "inbox-item-unread" : ""}`}>
-      <button type="button" onClick={onToggle} className="w-full text-start flex items-start gap-2.5 px-3 py-2.5" aria-expanded={open}>
+      <button type="button" onClick={onOpen} className="w-full text-start flex items-start gap-2.5 px-3 py-2.5">
         <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${k.tile}`} title={INBOX_KIND_LABEL[item.kind]}>
           <k.icon size={16} aria-hidden />
         </span>
         <span className="flex-1 min-w-0">
           {/* the title keeps the line; on a narrow screen the rest wraps under it */}
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className={`min-w-0 flex-[1_1_10rem] ${open ? "text-base" : "truncate text-sm"} ${unread ? "font-bold" : "font-semibold"}`} dir="auto">
+            <span className={`min-w-0 flex-[1_1_10rem] truncate text-sm ${unread ? "font-bold" : "font-semibold"}`} dir="auto">
               {item.title}
               {unread && <span className="sr-only"> (not read)</span>}
             </span>
-            {proposed.length > 0 && <span className="pill pill-info shrink-0">{proposed.length} to approve</span>}
+            {toApprove > 0 && <span className="pill pill-info shrink-0">{toApprove} to approve</span>}
             <span className="ms-auto text-xs text-muted tabnum shrink-0 whitespace-nowrap">{formatDateTime(item.createdAt)}</span>
           </span>
-          {!open && (
-            <span className="block text-[13px] text-muted truncate" dir="auto">
-              {item.fromName && <span className="font-medium text-foreground/80">{item.fromName} · </span>}
-              {inboxPreview(item.body, 160)}
-            </span>
-          )}
+          <span className="block text-[13px] text-muted truncate" dir="auto">
+            {item.fromName && <span className="font-medium text-foreground/80">{item.fromName} · </span>}
+            {inboxPreview(item.body, 160)}
+          </span>
         </span>
-        <ChevronDown size={15} className={`text-muted shrink-0 mt-2 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
+        <ChevronRight size={15} className="text-muted shrink-0 mt-2 rtl:rotate-180" aria-hidden />
       </button>
-      {open && (
-        <div className="px-3 pb-3 border-t pt-2.5">
-          {item.fromName && <p className="text-xs text-muted mb-2" dir="auto">{item.fromName}</p>}
-          <AiMarkdown text={item.body} shared className="ai-answer !text-[14px]" />
-          {proposed.length > 1 && <ApproveAll views={proposed} onChange={onAction} />}
-          {actions.map((a) => <AiActionCard key={a.id} view={a} onChange={onAction} />)}
-          <div className="flex justify-end gap-1 mt-3">
-            <AiPrintButton title={item.title} text={item.body} />
-            <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={onDelete}><Trash2 size={14} aria-hidden /> Remove</button>
-          </div>
+    </article>
+  );
+}
+
+/** One item read on its own, the whole width of the inbox: its Markdown
+ *  (charts included), the changes it proposes as cards to approve, and its
+ *  Print / PDF and Remove. */
+function ItemReader({ item, actions, onDelete, onAction }: {
+  item: InboxItemView;
+  actions: AiActionView[];
+  onDelete: () => void;
+  onAction: (v: AiActionView) => void;
+}) {
+  const proposed = actions.filter((a) => a.status === "proposed");
+  const k = INBOX_KIND_LOOK[item.kind] ?? INBOX_KIND_LOOK.message;
+  return (
+    <article className="inbox-item">
+      <header className="flex items-start gap-2.5 px-3 py-2.5 border-b">
+        <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${k.tile}`} title={INBOX_KIND_LABEL[item.kind]}>
+          <k.icon size={16} aria-hidden />
+        </span>
+        <span className="flex-1 min-w-0 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <h2 className="min-w-0 flex-[1_1_10rem] text-base font-bold" dir="auto">{item.title}</h2>
+          <span className="ms-auto text-xs text-muted tabnum shrink-0 whitespace-nowrap">{formatDateTime(item.createdAt)}</span>
+          {item.fromName && <span className="basis-full text-xs text-muted" dir="auto">{item.fromName}</span>}
+        </span>
+      </header>
+      <div className="px-3 pb-3 pt-2.5">
+        <AiMarkdown text={item.body} shared className="ai-answer !text-[14px]" />
+        {proposed.length > 1 && <ApproveAll views={proposed} onChange={onAction} />}
+        {actions.map((a) => <AiActionCard key={a.id} view={a} onChange={onAction} />)}
+        <div className="flex justify-end gap-1 mt-3">
+          <AiPrintButton title={item.title} text={item.body} />
+          <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={onDelete}><Trash2 size={14} aria-hidden /> Remove</button>
         </div>
-      )}
+      </div>
     </article>
   );
 }
@@ -218,12 +233,12 @@ export function InboxView({
 
   const remove = (it: InboxItemView) => {
     if (!confirm(`Remove "${it.title}" from your inbox?`)) return;
-    if (openItem === it.id) setOpenItem(null);
     setItems((xs) => xs.filter((x) => x.id !== it.id));
     deleteInboxItems([it.id]).then((r) => (r.ok ? changed() : setErr(r.error ?? "Could not remove it."))).catch(() => setErr("Could not remove it."));
   };
 
   const onAction = (v: AiActionView) => setActions((m) => new Map(m).set(v.id, v));
+  const actionsOf = (it: InboxItemView) => it.actionIds.map((id) => actions.get(id)).filter((a): a is AiActionView => !!a);
 
   const chips: { id: Filter; label: string }[] = [
     { id: "all", label: "All" },
@@ -232,72 +247,55 @@ export function InboxView({
     ...(kinds.length > 1 ? kinds.map((k) => ({ id: k, label: KIND_CHIP[k] })) : []),
   ];
 
+  // the item read on its own; the list stays mounted under it, hidden
   const reading = openItem === null ? undefined : items.find((it) => it.id === openItem);
-  if (reading) {
-    return (
-      <div id="inbox-list" className="space-y-2.5">
-        <div className="flex items-center gap-2">
-          <button type="button" className="btn btn-sm btn-ghost" onClick={back}><ArrowLeft size={14} aria-hidden /> All items</button>
-        </div>
-        {err && <p className="text-sm font-semibold text-bad-fg">{err}</p>}
-        <Item
-          item={reading}
-          actions={reading.actionIds.map((id) => actions.get(id)).filter((a): a is AiActionView => !!a)}
-          open
-          onToggle={back}
-          onDelete={() => remove(reading)}
-          onAction={onAction}
-        />
-      </div>
-    );
-  }
 
   return (
     <div id="inbox-list" className="space-y-2.5">
-      {/* one row: the filters scroll sideways on a narrow window, the buttons keep their place */}
-      <div className="flex items-center gap-2">
-        <div className="no-scrollbar flex flex-1 items-center gap-1.5 min-w-0">
-          {items.length > 0 && chips.map((c) => {
-            const n = counts[c.id] ?? 0;
-            if (c.id !== "all" && n === 0) return null;
-            return (
-              <button key={c.id} type="button" onClick={() => setFilter(c.id)} className={`chip ${filter === c.id ? "chip-on" : ""}`} aria-pressed={filter === c.id}>
-                {c.label}{c.id !== "all" && <span className="chip-count">{n}</span>}
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {device && <DevicePush />}
-          {unread > 0 && (
-            <button type="button" className="btn btn-sm btn-ghost whitespace-nowrap" onClick={() => readNow(items.filter((i) => !i.readAt).map((i) => i.id))}><CheckCheck size={14} aria-hidden /> Mark all read</button>
-          )}
-        </div>
-      </div>
-      {err && <p className="text-sm font-semibold text-bad-fg">{err}</p>}
-      {shown.length === 0 ? (
-        <div className="rounded-xl border border-dashed">
-          <EmptyState
-            icon={Inbox}
-            title={items.length === 0 ? "Nothing here yet" : filter === "unread" ? "All read" : "Nothing of that kind"}
-            hint={items.length === 0 ? emptyHint : undefined}
-          />
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          {shown.map((it) => (
-            <Item
-              key={it.id}
-              item={it}
-              actions={it.actionIds.map((id) => actions.get(id)).filter((a): a is AiActionView => !!a)}
-              open={false}
-              onToggle={() => openOne(it)}
-              onDelete={() => remove(it)}
-              onAction={onAction}
-            />
-          ))}
-        </div>
+      {reading && (
+        <>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={back}><ArrowLeft size={15} aria-hidden /> Back</button>
+          <ItemReader item={reading} actions={actionsOf(reading)} onDelete={() => remove(reading)} onAction={onAction} />
+        </>
       )}
+      {err && <p className="text-sm font-semibold text-bad-fg">{err}</p>}
+      <div className="space-y-2.5" hidden={!!reading}>
+        {/* one row: the filters scroll sideways on a narrow window, the buttons keep their place */}
+        <div className="flex items-center gap-2">
+          <div className="no-scrollbar flex flex-1 items-center gap-1.5 min-w-0">
+            {items.length > 0 && chips.map((c) => {
+              const n = counts[c.id] ?? 0;
+              if (c.id !== "all" && n === 0) return null;
+              return (
+                <button key={c.id} type="button" onClick={() => setFilter(c.id)} className={`chip ${filter === c.id ? "chip-on" : ""}`} aria-pressed={filter === c.id}>
+                  {c.label}{c.id !== "all" && <span className="chip-count">{n}</span>}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {device && <DevicePush />}
+            {unread > 0 && (
+              <button type="button" className="btn btn-sm btn-ghost whitespace-nowrap" onClick={() => readNow(items.filter((i) => !i.readAt).map((i) => i.id))}><CheckCheck size={14} aria-hidden /> Mark all read</button>
+            )}
+          </div>
+        </div>
+        {shown.length === 0 ? (
+          <div className="rounded-xl border border-dashed">
+            <EmptyState
+              icon={Inbox}
+              title={items.length === 0 ? "Nothing here yet" : filter === "unread" ? "All read" : "Nothing of that kind"}
+              hint={items.length === 0 ? emptyHint : undefined}
+            />
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {shown.map((it) => (
+              <ItemRow key={it.id} item={it} toApprove={actionsOf(it).filter((a) => a.status === "proposed").length} onOpen={() => openOne(it)} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
