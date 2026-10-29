@@ -16,6 +16,20 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-29-ai-splash",
+    dateISO: "2026-10-29",
+    title: "The app opens with a wink from the assistant",
+    where: "Opening the app",
+    body: "When you open the app, the assistant's robot fills the screen for a moment, winks and smiles, then gives way to the page — the app runs on AI. It plays once when you open the app (not on every page you move to), a click or any key skips it, and it never shows if your device is set to reduce motion.",
+  },
+  {
+    id: "2026-10-29-app-backdrop",
+    dateISO: "2026-10-29",
+    title: "A cleaner backdrop across the app",
+    where: "Every page, the Floor's worklists included; the assistant's chat; the inbox's Alerts, Reports and Tasks",
+    body: "The pages, the assistant's chat and the inbox now sit on a soft wash of the company green fading down from the top, over a faint dot grid, in the light and the dark theme alike. Cards, tables, tiles and messages stay on their own solid white (or dark) surfaces, so every number reads as before; printouts stay plain.",
+  },
+  {
     id: "2026-10-29-printed-headings-with-their-text",
     dateISO: "2026-10-29",
     title: "A printed heading stays with what it heads",

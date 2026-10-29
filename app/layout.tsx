@@ -27,7 +27,8 @@ import { inboxState } from "@/lib/server/inbox";
 import { NO_INBOX_HEAD } from "@/lib/domain/inbox";
 import { countOdooAlerts } from "@/lib/server/odooAlerts";
 import { ODOO_ALERTS_PERM, ODOO_NEED_MO_PERM } from "@/lib/domain/odooAlerts";
-import { THEME_INIT_SCRIPT } from "@/components/themeInit";
+import { SPLASH_INIT_SCRIPT, THEME_INIT_SCRIPT } from "@/components/themeInit";
+import { AiSplash } from "@/components/AiSplash";
 
 const inter = Inter({
   variable: "--font-sans-latin",
@@ -80,9 +81,11 @@ export default async function RootLayout({
             dark industrial theme is the default; light stays one click away on
             the toggle, and a choice made there is remembered. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        {user && <script dangerouslySetInnerHTML={{ __html: SPLASH_INIT_SCRIPT }} />}
       </head>
       <body className="min-h-full flex flex-col antialiased">
         <TouchLongPress />
+        {user && <AiSplash />}
         <LineProvider line={line}>
         <TabAccessProvider hidden={[...parseHiddenTabs(user?.hiddenTabs)]}>
         <AiPanelProvider config={{ ai, automations: perms.has("ai.automations"), isOwner: !!user?.isOwner }}>

@@ -1732,6 +1732,63 @@ html.ai-modal { overflow: hidden; }
 .ai-panel { animation: aipanel-in 0.18s ease-out; }
 @media (prefers-reduced-motion: reduce) { .ai-panel { animation: none; } }
 
+/* the app's backdrop: a soft wash of the brand's green and the info blue
+   from the top, over a faint dot grid that fades out further down. The page
+   wears it behind everything (pinned to the screen, so it stays put while a
+   long table scrolls); .app-backdrop gives a panel its own, over its surface —
+   the assistant's chat, the inbox. Cards, tables, tiles, bubbles and the
+   composer keep their solid surfaces over it, so the data reads as before. */
+.app-backdrop, body::before {
+  --backdrop-base: var(--surface);
+  --backdrop-glow: 16%;
+  background-color: var(--backdrop-base);
+  background-image:
+    radial-gradient(60% 42% at 50% -6%, color-mix(in srgb, var(--brand) var(--backdrop-glow), transparent), transparent 72%),
+    radial-gradient(38% 34% at 100% 0%, color-mix(in srgb, var(--viz-2) 9%, transparent), transparent 70%),
+    radial-gradient(34% 30% at 0% 100%, color-mix(in srgb, var(--brand) 6%, transparent), transparent 70%),
+    linear-gradient(to bottom, transparent 35%, var(--backdrop-base) 92%),
+    radial-gradient(circle, color-mix(in srgb, var(--border-strong) 70%, transparent) 1px, transparent 1.5px);
+  background-size: auto, auto, auto, auto, 22px 22px;
+}
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; --backdrop-base: var(--background); --backdrop-glow: 12%; }
+@media print { .app-backdrop { background: none; } body::before { display: none; } }
+
+/* the opening splash (components/AiSplash): the assistant's robot fills the
+   screen in its own colours, its antenna lights, it winks and smiles, then the
+   whole of it lifts away to the page — 2.4s, a click or a key skips it */
+.ai-splash {
+  position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
+  color: #fff; background: var(--ai-face); cursor: pointer;
+  animation: ai-splash-out 0.5s ease-in 1.9s forwards;
+}
+html[data-splash="off"] .ai-splash { display: none; }
+.ai-splash-stage { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); }
+.ai-splash-bot {
+  width: min(68vmin, 520px); height: auto; overflow: visible;
+  filter: drop-shadow(0 12px 40px rgb(0 0 0 / 0.3));
+  animation: ai-splash-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) backwards, ai-splash-nod 0.5s ease-in-out 0.95s, ai-splash-lift 0.5s ease-in 1.9s forwards;
+}
+.ai-splash-bot path, .ai-splash-bot circle { transform-box: fill-box; transform-origin: center; }
+.ai-splash-light { animation: ai-splash-blink 0.6s ease-in-out 0.45s 2 backwards; }
+.ai-splash-eye-open { animation: ai-splash-eye-open 0.5s ease-in-out 0.95s; }
+.ai-splash-eye-shut { opacity: 0; animation: ai-splash-eye-shut 0.5s ease-in-out 0.95s; }
+.ai-splash-smile { opacity: 0; animation: ai-splash-smile 0.9s ease-out 0.9s forwards; }
+.ai-splash-tag {
+  margin: 0; font-size: var(--fs-title); font-weight: 700; letter-spacing: 0.32em; text-transform: uppercase;
+  text-shadow: 0 2px 12px rgb(0 0 0 / 0.3);
+  animation: ai-splash-tag 0.5s ease-out 0.5s backwards;
+}
+@keyframes ai-splash-in { from { opacity: 0; transform: scale(0.35) rotate(-8deg); } }
+@keyframes ai-splash-nod { 50% { transform: rotate(-6deg) scale(1.03); } }
+@keyframes ai-splash-lift { to { opacity: 0; transform: scale(1.25); } }
+@keyframes ai-splash-out { to { opacity: 0; visibility: hidden; } }
+@keyframes ai-splash-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+@keyframes ai-splash-eye-open { 15%, 75% { opacity: 0; transform: scaleY(0.2); } }
+@keyframes ai-splash-eye-shut { 15%, 75% { opacity: 1; } }
+@keyframes ai-splash-smile { from { opacity: 0; transform: scaleX(0.4); } to { opacity: 1; transform: none; } }
+@keyframes ai-splash-tag { from { opacity: 0; transform: translateY(10px); } }
+@media (prefers-reduced-motion: reduce) { .ai-splash { display: none; } }
+
 /* the composer: one rounded box holding the question, its files and its buttons,
    in a frame of the app's colours turning slowly round it */
 @property --composer-turn { syntax: "<angle>"; inherits: false; initial-value: 0deg; }

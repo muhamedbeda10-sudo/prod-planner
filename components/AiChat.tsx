@@ -578,7 +578,7 @@ export function AiChat({
       )}
 
       {/* the open conversation */}
-      <section className="flex-1 min-w-0 flex flex-col bg-surface overflow-hidden">
+      <section className="app-backdrop flex-1 min-w-0 flex flex-col overflow-hidden">
         <div ref={scroller} onScroll={() => {
           const el = scroller.current;
           if (!el) return;
