@@ -116,6 +116,9 @@
   - `components/Modal.tsx`، `components/Badge.tsx`، `components/Tooltip.tsx`،
     `components/ViewTabs.tsx`
   - رأس الصفحة: `PageHead` (الاسم بيتقري لقارئ الشاشة بس، مش ظاهر — شوف تحت)
+  - **اللوجو:** `components/BrandLogo.tsx` بس، في الشاشات والطباعة والتقارير وأي
+    حاجة جديدة. دايمًا اللوجو الأفقي (ATC وجنبه اسم الشركة)، عمر ما الاسم يبقى تحت
+    الشعار. `white` على الخلفيات الغامقة زي الشريط الأخضر.
 - **الألوان والمسافات من الـ tokens اللي في `app/globals.css` بس:** `--sp-*`،
   `--fs-*`، `--r-*`، `--brand*`، `--surface*`، `--ok/warn/bad-*`، `--prod-*`،
   `--viz-*`. ممنوع hex مكتوب مباشرة في الـ components، وممنوع `style={{}}` لحاجة

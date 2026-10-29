@@ -1001,12 +1001,14 @@ div.overflow-x-auto > table thead {
 @media print {
   .print-only.report-head { display: flex !important; align-items: center; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-4); padding-bottom: 3mm; border-bottom: 2px solid var(--brand); break-inside: avoid; }
   .report-title { min-width: 0; text-align: right; font-size: var(--fs-title); font-weight: 800; line-height: 1.2; color: var(--foreground); }
-  .report-logo { flex-shrink: 0; width: 34mm; height: auto; }
-  /* a chart is drawn at the screen's width; on a narrower page (a portrait
-     report) it scales down to the page instead of running off it */
-  .recharts-wrapper { max-width: 100% !important; height: auto !important; }
-  .recharts-wrapper > .recharts-surface { max-width: 100%; height: auto; }
-  .recharts-legend-wrapper { max-width: 100% !important; }
+  .report-logo { flex-shrink: 0; height: 9mm; width: auto; }
+  /* a chart drawn at the screen's width keeps inside a narrower page (a
+     portrait report): its box stops at the page's edge and the drawing
+     scales into it (the SVG fills its box, its viewBox keeps the shape).
+     Recharts holds the chart in a 0 x 0 box that lets it overflow — on paper
+     that box takes the container's size, so the cap has a width to cap at */
+  .recharts-responsive-container > div { width: 100% !important; height: 100% !important; }
+  .recharts-wrapper, .recharts-legend-wrapper { max-width: 100% !important; }
 
   /* a report the assistant wrote, in the company's colours: its headings in
      green over a green rule, its tables under a green heading band */

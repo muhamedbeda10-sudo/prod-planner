@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import { BrandLogo } from "@/components/BrandLogo";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import {
@@ -523,14 +523,7 @@ export function AppNav({
 
           {/* brand — the OFFICIAL horizontal logo (white version for the green bar) */}
           <Link href="/" className="flex items-center shrink-0 group min-w-0">
-            <Image
-              src="/brand/atc-logo-horizontal-white.svg"
-              alt="ATC — Arabian Transformers Co."
-              width={266}
-              height={32}
-              priority
-              className="h-5 w-auto max-[400px]:h-4 md:h-6 transition-opacity duration-150 group-hover:opacity-85"
-            />
+            <BrandLogo white eager className="h-5 w-auto max-[400px]:h-4 md:h-6 transition-opacity duration-150 group-hover:opacity-85" />
           </Link>
 
           {/* desktop: centered tabs */}
@@ -645,13 +638,7 @@ export function AppNav({
           <div ref={drawerRef} className="absolute left-0 top-0 h-full w-[300px] max-w-[85vw] bg-surface text-foreground shadow-2xl flex flex-col animate-[drawerslide_0.22s_ease-out]">
             {/* drawer head */}
             <div className="bg-[var(--nav-bg)] text-white px-4 py-3 flex items-center justify-between">
-              <Image
-                src="/brand/atc-logo-horizontal-white.svg"
-                alt="ATC"
-                width={266}
-                height={32}
-                className="h-6 w-auto"
-              />
+              <BrandLogo white alt="ATC" className="h-6 w-auto" />
               <button
                 ref={drawerCloseRef}
                 type="button"

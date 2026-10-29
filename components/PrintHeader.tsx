@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { BrandLogo } from "@/components/BrandLogo";
 import { PrintTitle } from "@/components/PrintTitle";
 
 /** Paper header for every report the app prints — invisible on screen,
@@ -12,7 +13,7 @@ export function PrintHeader({ title }: { title: string }) {
     <div className="print-only report-head">
       {/* eager: the header is display-none on screen, so a lazy image would
           never load and the print would come out blank */}
-      <Image src="/brand/atc-logo-stacked.svg" alt="Arabian Transformers Co." width={2060} height={1091} loading="eager" className="report-logo" />
+      <BrandLogo eager alt="Arabian Transformers Co." className="report-logo" />
       <div className="report-title">{title}</div>
       <Image src="/brand/report-banner.svg" alt="" width={1600} height={120} loading="eager" className="hidden" />
       <PrintTitle title={title} />
