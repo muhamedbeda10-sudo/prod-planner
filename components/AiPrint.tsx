@@ -6,14 +6,14 @@ import { Printer } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { useAsk } from "@/components/DataTable";
 import { PrintHeader } from "@/components/PrintHeader";
-import { reportTitleOf } from "@/lib/domain/aiAnswer";
+import { AI_REPORT_TITLE_MAX, reportTitleOf } from "@/lib/domain/aiAnswer";
+import { oneLine } from "@/lib/domain/aiExplain";
 import { formatDateTime } from "@/lib/domain/format";
 
 // One AI report or answer on paper — or a PDF through the print dialog —
 // alone, under the company's header, its charts drawn as they are on screen.
 // The person names the report before it prints: the title offered is the
 // heading the answer opens on, else the question — theirs to keep or change.
-// The name is the PDF's file name too (the dialog reads it off the page's title).
 // The sheet is laid out off screen first (a chart needs a width to draw at),
 // then it is the only thing printed (globals.css: html.ai-printing), and it
 // goes away when the dialog closes.
@@ -39,7 +39,7 @@ export function AiPrintButton({ title, subtitle, date, text, className = "" }: {
       confirmLabel: "Print",
     });
     if (!v) return;
-    const named = v.title || offered;
+    const named = oneLine(v.title, AI_REPORT_TITLE_MAX) || offered;
     // the answer's own heading is not printed again under a header that carries it
     setPrinting({ title: named, date: date ?? formatDateTime(new Date()), text: own.title === named ? own.body : text });
   };
@@ -75,15 +75,6 @@ function PrintSheet({ title, subtitle, date, text, onDone }: { title: string; su
   useEffect(() => {
     done.current = onDone;
   }, [onDone]);
-
-  // Save as PDF names the file after the page's title
-  useEffect(() => {
-    const pageTitle = document.title;
-    document.title = title;
-    return () => {
-      document.title = pageTitle;
-    };
-  }, [title]);
 
   useEffect(() => {
     const html = document.documentElement;

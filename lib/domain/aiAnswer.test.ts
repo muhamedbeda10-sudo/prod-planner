@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AI_CHATS_BULK_MAX, AI_DEFAULT_SUGGESTIONS, chatIdsOf, chatTextOf, depthPlan, followupsOf, reportTitleOf, hasPageSuggestions, scopeLineOf, safeHref, suggestionsFor, withoutFollowups } from "./aiAnswer";
+import { AI_CHATS_BULK_MAX, AI_REPORT_TITLE_MAX, AI_DEFAULT_SUGGESTIONS, chatIdsOf, chatTextOf, depthPlan, followupsOf, reportTitleOf, hasPageSuggestions, scopeLineOf, safeHref, suggestionsFor, withoutFollowups } from "./aiAnswer";
 
 describe("follow-up questions in an answer", () => {
   it("reads the JSON list of the last followups block, at most three, no duplicates", () => {
@@ -92,8 +92,9 @@ describe("an answer's own name, for its printout", () => {
   it("is the heading the answer opens on, taken off the body", () => {
     expect(reportTitleOf("# Weekly Cut KPIs\n\nThe cut ran 94%.")).toEqual({ title: "Weekly Cut KPIs", body: "The cut ran 94%." });
   });
-  it("drops the heading's Markdown marks and closing hashes", () => {
+  it("drops the heading's Markdown marks, leading emoji and closing hashes", () => {
     expect(reportTitleOf("## **Scrap** review `Oct` ##\ntext").title).toBe("Scrap review Oct");
+    expect(reportTitleOf("# 📊 [Cut](/plan) *KPIs*\ntext").title).toBe("Cut KPIs");
   });
   it("reads an Arabic heading as it is", () => {
     expect(reportTitleOf("# ملخص الإنتاج — أكتوبر\nنص").title).toBe("ملخص الإنتاج — أكتوبر");
@@ -107,6 +108,6 @@ describe("an answer's own name, for its printout", () => {
     expect(reportTitleOf("#   \ntext").title).toBeNull();
   });
   it("keeps a long name to the printout's length", () => {
-    expect(reportTitleOf(`# ${"x".repeat(300)}`).title).toHaveLength(120);
+    expect(reportTitleOf(`# ${"x".repeat(300)}`).title).toHaveLength(AI_REPORT_TITLE_MAX);
   });
 });

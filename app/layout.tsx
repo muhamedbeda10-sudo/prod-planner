@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import Image from "next/image";
 import { Inter } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -113,10 +112,6 @@ export default async function RootLayout({
         </main>
         </InboxPanelProvider>
         </AiPanelProvider>
-        {/* the company art the foot of every printed page carries (globals.css
-            @page), fetched up front: a print dialog that opens before it
-            loads would draw the first pages without it */}
-        <Image src="/brand/report-banner.svg" alt="" width={1600} height={120} loading="eager" className="hidden" aria-hidden />
         <SpeedInsights />
         </TabAccessProvider>
         </LineProvider>
