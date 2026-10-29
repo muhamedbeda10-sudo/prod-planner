@@ -2,8 +2,9 @@
 
 import {
   type PieLabelRenderProps,
-  Area, Bar, CartesianGrid, Cell, ComposedChart, LabelList, Line, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, Bar, CartesianGrid, Cell, ComposedChart, LabelList, Line, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ReferenceLine, Tooltip, XAxis, YAxis,
 } from "recharts";
+import { ResponsiveContainer } from "@/components/charts/zoom";
 import { INK_ON_OTHER, OTHER, Sparkline, catColor, catInk, compact, fmt, pct } from "@/components/charts/kit";
 import { Meter } from "@/components/Meter";
 import {

@@ -1,6 +1,7 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, LabelList, Tooltip, XAxis, YAxis } from "recharts";
+import { ResponsiveContainer } from "@/components/charts/zoom";
 import { CAT, INK_ON_OTHER, Legend, OTHER, TipBox, catInk, fmt, pct } from "@/components/charts/kit";
 import { LABEL_HEADROOM, segmentLabel, segmentValue, stackTotalValue, TotalLabel } from "@/components/charts/labels";
 import { formatDate } from "@/lib/domain/format";

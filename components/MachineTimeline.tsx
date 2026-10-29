@@ -6,6 +6,7 @@ import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import { DeptLoadCurve } from "@/components/DeptLoadCurve";
 import { ChartAbout } from "@/components/ChartAbout";
+import { ChartZoom } from "@/components/charts/zoom";
 
 // 📊 The board's Timeline view: every machine a track, every queued line a
 // block as long as that machine needs for it, laid on the working days ahead.
@@ -16,6 +17,29 @@ import { ChartAbout } from "@/components/ChartAbout";
 const ZOOMS = [5, 10, 20] as const;
 
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+
+type TimelineRow = ReturnType<typeof buildTimeline>["rows"][number];
+
+/** One column of the board: a head as tall as the days', then a cell per
+ *  machine — drawn in one place, so the three columns' rows line up. */
+function Column({ rows, cell, cellClass, cellTitle, head, headClass = "", className = "" }: {
+  rows: TimelineRow[];
+  cell: (r: TimelineRow) => React.ReactNode;
+  cellClass: string;
+  cellTitle?: (r: TimelineRow) => string;
+  head?: React.ReactNode;
+  headClass?: string;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <div className={`h-4 ${headClass}`}>{head}</div>
+      <div className="space-y-1 mt-1">
+        {rows.map((r) => <div key={r.machineId} className={`h-7 ${cellClass}`} title={cellTitle?.(r)}>{cell(r)}</div>)}
+      </div>
+    </div>
+  );
+}
 
 function Block({ b, horizon, word }: { b: TimelineBlock; horizon: number; word: string }) {
   // an unpriced line has no length — draw it as a sliver so it is not invisible
@@ -81,51 +105,66 @@ export function MachineTimeline({ board }: { board: MachineBoardData }) {
       </div>
 
       {view === "load" ? <DeptLoadCurve board={board} horizon={horizon} /> : (<>
-      {/* the days across the top */}
-      <div className="flex text-[10px] text-muted">
-        <span className="w-28 shrink-0" />
-        <span className="flex-1 flex">
-          {days.map((d, i) => (
-            <span key={d} className={`flex-1 text-center tabnum border-s ${i === 0 ? "font-bold text-foreground" : ""}`} title={d}>
-              {ddmm(d)}
-            </span>
-          ))}
-        </span>
-      </div>
-
-      <div className="space-y-1 mt-1">
-        {t.rows.map((r) => (
-          <div key={r.machineId} className="flex items-stretch text-xs">
-            <span className="w-28 shrink-0 pe-2 truncate" title={`${r.code} · ${r.name} — ${CENTER_LABEL[r.center] ?? r.center}${r.availableH !== null ? `, ${r.availableH} h a day` : ", hours a day not set"}`}>
+      {/* the machines and their totals stay put; only the days between them zoom */}
+      <div className="flex items-start">
+        <Column
+          className="w-28 shrink-0 pe-2 text-xs"
+          rows={t.rows}
+          cellClass="flex items-center min-w-0"
+          cellTitle={(r) => `${r.code} · ${r.name} — ${CENTER_LABEL[r.center] ?? r.center}${r.availableH !== null ? `, ${r.availableH} h a day` : ", hours a day not set"}`}
+          cell={(r) => (
+            <span className="truncate">
               <b className="ltr tabnum">{r.code}</b>
               {r.beyond > 0 && <span className="text-[10px] text-muted ms-1" title={`${r.beyond} more line(s) start past the picture`}>+{r.beyond}</span>}
             </span>
-            <span className="relative flex-1 h-7 rounded-md bg-surface-2 overflow-hidden">
-              {/* one cell per working day */}
-              {days.map((d, i) => (
-                <span key={d} className="absolute top-0 bottom-0 border-s border-border" style={{ left: `${(i / horizon) * 100}%` }} />
-              ))}
-              {r.blocks.map((b) => <Block key={b.key} b={b} horizon={horizon} word={word} />)}
-              {/* the day each block is owed, so a miss is visible against it */}
-              {r.blocks.filter((b) => b.dueDay !== null && b.dueDay < horizon).map((b) => (
-                <span
-                  key={`due-${b.key}`}
-                  className={`absolute top-0 bottom-0 w-px ${b.late ? "bg-bad-fg" : "bg-ok-fg/60"}`}
-                  style={{ left: `${(((b.dueDay as number) + 1) / horizon) * 100}%` }}
-                  title={`${b.bom} ${b.item} is owed by the end of ${ddmm(days[b.dueDay as number])}`}
-                />
-              ))}
-              {r.blocks.length === 0 && (
-                <span className="absolute inset-0 grid place-items-center text-[10px] text-muted">
-                  {r.availableH === null ? "no hours a day set" : "idle"}
+          )}
+        />
+
+        <div className="flex-1 min-w-0">
+          <ChartZoom>
+            <Column
+              rows={t.rows}
+              headClass="flex text-[10px] leading-4 text-muted"
+              head={days.map((d, i) => (
+                <span key={d} className={`flex-1 text-center tabnum border-s ${i === 0 ? "font-bold text-foreground" : ""}`} title={d}>
+                  {ddmm(d)}
                 </span>
+              ))}
+              cellClass="relative rounded-md bg-surface-2 overflow-hidden text-xs"
+              cell={(r) => (
+                <>
+                  {/* one cell per working day */}
+                  {days.map((d, i) => (
+                    <span key={d} className="absolute top-0 bottom-0 border-s border-border" style={{ left: `${(i / horizon) * 100}%` }} />
+                  ))}
+                  {r.blocks.map((b) => <Block key={b.key} b={b} horizon={horizon} word={word} />)}
+                  {/* the day each block is owed, so a miss is visible against it */}
+                  {r.blocks.filter((b) => b.dueDay !== null && b.dueDay < horizon).map((b) => (
+                    <span
+                      key={`due-${b.key}`}
+                      className={`absolute top-0 bottom-0 w-px ${b.late ? "bg-bad-fg" : "bg-ok-fg/60"}`}
+                      style={{ left: `${(((b.dueDay as number) + 1) / horizon) * 100}%` }}
+                      title={`${b.bom} ${b.item} is owed by the end of ${ddmm(days[b.dueDay as number])}`}
+                    />
+                  ))}
+                  {r.blocks.length === 0 && (
+                    <span className="absolute inset-0 grid place-items-center text-[10px] text-muted">
+                      {r.availableH === null ? "no hours a day set" : "idle"}
+                    </span>
+                  )}
+                </>
               )}
-            </span>
-            <span className="w-16 shrink-0 ps-2 text-end tabnum text-[11px] text-muted self-center" title="Working days of work queued on it">
-              {r.totalDays > 0 ? `${r.totalDays} d` : "—"}
-            </span>
-          </div>
-        ))}
+            />
+          </ChartZoom>
+        </div>
+
+        <Column
+          className="w-16 shrink-0 ps-2"
+          rows={t.rows}
+          cellClass="flex items-center justify-end tabnum text-[11px] text-muted"
+          cellTitle={() => "Working days of work queued on it"}
+          cell={(r) => (r.totalDays > 0 ? `${r.totalDays} d` : "—")}
+        />
       </div>
 
       </>)}

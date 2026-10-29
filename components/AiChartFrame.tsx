@@ -7,6 +7,7 @@ import { PlotText, textWidth } from "@/components/charts/labels";
 
 export { PlotText, textWidth };
 import { ExportButton } from "@/components/ExportButton";
+import { ChartZoom } from "@/components/charts/zoom";
 import type { AiTone } from "@/lib/domain/aiChart";
 
 // The frame every chart in an AI answer sits in — the dashboards' card, its
@@ -45,7 +46,7 @@ export function ChartFrame({
   if (frameless) {
     return (
       <>
-        {children}
+        <ChartZoom>{children}</ChartZoom>
         {legend && legend.length > 1 && <div className="mt-2"><Legend items={legend} /></div>}
       </>
     );
@@ -55,7 +56,7 @@ export function ChartFrame({
       title={title || "Chart"} sub={sub ? <span dir="auto">{sub}</span> : undefined} className="my-3 not-prose ai-chart" data={rows}
       right={<ExportButton rows={rows} filename={fileOf(title)} sheetName="Data" label="Export" />}
     >
-      {children}
+      <ChartZoom>{children}</ChartZoom>
       {legend && legend.length > 1 && (
         <div className="mt-2">
           <Legend items={legend} />

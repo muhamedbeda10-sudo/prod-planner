@@ -1,8 +1,9 @@
 "use client";
 
 import {
-  Bar, CartesianGrid, ComposedChart, LabelList, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, CartesianGrid, ComposedChart, LabelList, Line, ReferenceLine, Tooltip, XAxis, YAxis,
 } from "recharts";
+import { ResponsiveContainer } from "@/components/charts/zoom";
 import { CAT, Legend, TONE_COLOR, TRACK, TipBox, catInk, fmt, pct } from "@/components/charts/kit";
 import { LABEL_HEADROOM, PlotText, fitsColumn, onColumn, segmentLabel, segmentValue, stackTotalValue, TotalLabel, type LabelBox } from "@/components/charts/labels";
 import { formatDate } from "@/lib/domain/format";
