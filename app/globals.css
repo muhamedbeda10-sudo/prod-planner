@@ -746,6 +746,20 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   size: A4 landscape;
   margin: 0;
 }
+/* A report — any printout that carries the company header (PrintHeader's
+   .report-head, the assistant's printouts included) — prints on the company
+   page: the company art, green waves over the Kingdom's skyline, runs the
+   width of the foot of every page in the page's own bottom margin box (the
+   art is 1600 x 120, so A4 landscape's 297mm lands it about 22mm tall). A
+   page that fills its margin boxes prints none of the browser's strips. */
+@page report {
+  margin: 6mm 0 23mm;
+  @bottom-center {
+    content: "";
+    width: 100%;
+    background: url("/brand/report-banner.svg") center bottom / 100% auto no-repeat;
+  }
+}
 
 @media print {
   /* Paper is always LIGHT. Without this a dark-theme user prints white text on
@@ -820,6 +834,10 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   .print-break { break-before: page; } /* the plan table starts on a fresh page */
   /* our own inner margin (the @page margin is 0 to kill browser header/footer) */
   main { padding: 7mm 9mm !important; }
+  /* a report takes the company page (@page report): its top and bottom are
+     the page's, its sides ours, so the art runs the width of the sheet */
+  body:has(.report-head) { page: report; }
+  body:has(.report-head) main { padding: 0 9mm !important; }
   /* the app frame never belongs on paper */
   header.no-print, .no-print { display: none !important; }
   /* worklists print as clean read-only sheets: no inputs, no action buttons —
@@ -913,8 +931,8 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   /* the department-output summary has only a few rows and the whole landscape
      page to breathe — print it big and clear */
 
-  /* section headings read as report subtitles on paper */
-  main h2 { font-size: 15px !important; color: var(--foreground) !important; margin-bottom: 8px !important; }
+  /* section headings read as report subtitles on paper, in the company green */
+  main h2 { font-size: 15px !important; color: var(--brand-dark) !important; margin-bottom: 8px !important; }
 
   /* rows stay whole and the column headers repeat at the top of every page,
      but long tables MUST be allowed to flow across pages — forcing a whole
@@ -969,8 +987,26 @@ div.overflow-x-auto > table thead {
 .ai-print-sheet { position: fixed; left: -12000px; top: 0; width: 1000px; background: #fff; }
 @media print {
   html.ai-printing body > *:not(.ai-print-sheet) { display: none !important; }
-  html.ai-printing .ai-print-sheet { position: static; width: auto; padding: 7mm 9mm; }
+  html.ai-printing .ai-print-sheet { position: static; width: auto; padding: 0 9mm; }
   html.ai-printing .ai-print-sheet .ai-chart { break-inside: avoid; }
+}
+
+/* ---- the company header on paper (components/PrintHeader.tsx): the ATC
+   logo on the left, the report's title on the right, over a green rule
+   (the art at the foot of its pages: @page report) ---- */
+@media print {
+  .print-only.report-head { display: flex !important; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-4); padding-bottom: 3mm; border-bottom: 2px solid var(--brand); break-inside: avoid; }
+  .report-head-text { min-width: 0; text-align: right; }
+  .report-title { font-size: var(--fs-title); font-weight: 800; line-height: 1.2; color: var(--foreground); }
+  .report-subtitle { margin-top: 2px; font-size: var(--fs-body); font-weight: 700; color: var(--brand-dark); }
+  .report-date { margin-top: 2px; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+  .report-logo { flex-shrink: 0; width: 34mm; height: auto; }
+
+  /* a report the assistant wrote, in the company's colours: its headings in
+     green over a green rule, its tables under a green heading band */
+  .ai-md .ai-h.ai-h-major { color: var(--brand-dark); border-bottom: 2px solid var(--brand); }
+  .ai-md .ai-h.ai-h-minor { color: var(--brand-dark); }
+  .ai-md .md-table th, .report-table thead th { background: var(--brand-fill) !important; color: #fff !important; }
 }
 
 /* ---- Odoo dashboard: segmented view switch + recharts chrome ---- */

@@ -84,7 +84,7 @@ function SheetTable({ name, header, body, foot }: { name: string; header: string
   const cell = (c: number) => `px-2 py-1 ${numeric[c] ? "text-right tabnum" : ""}`;
   return (
     // a wide sheet takes the tracker's tighter paper steps
-    <TableFrame className={`print-flow print-fit ${header.length > 12 ? "print-tight" : ""}`}>
+    <TableFrame className={`report-table print-flow print-fit ${header.length > 12 ? "print-tight" : ""}`}>
       <table className="w-full text-sm">
         <caption className="sr-only">{name}</caption>
         <thead>

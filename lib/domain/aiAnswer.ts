@@ -13,7 +13,9 @@
 //               (Quick / Standard / Deep) — the chat itself is on Auto.
 
 import { AI_CALLS_RANGE, aiModel, type AiEffort } from "./ai";
+import { oneLine } from "./aiExplain";
 import { BY_STRENGTH } from "./aiLearn";
+import { withoutLeadingEmoji } from "./aiTable";
 
 export const AI_FOLLOWUPS_MAX = 3;
 const FOLLOWUP_MAX_CHARS = 160;
@@ -106,6 +108,21 @@ export function chatTextOf(markdown: string): string {
     .replace(/\*\*([^*]+)\*\*/g, "$1").replace(/(^|\s)\*([^*\n]+)\*(?=\s|$)/g, "$1$2").replace(/`([^`]+)`/g, "$1")
     .replace(/^>\s?/gm, "")
     .replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** The longest report title a printout offers. */
+export const AI_REPORT_TITLE_MAX = 120;
+
+/** An answer's own name — the heading it opens on (`# Weekly Cut KPIs`),
+ *  read as the chat shows it (no Markdown marks, no leading emoji, one
+ *  line) — and the answer without that heading, so a printout that carries
+ *  the name in its header does not print it twice. No name when the answer
+ *  opens on anything else. */
+export function reportTitleOf(markdown: string): { title: string | null; body: string } {
+  const m = /^\s*#{1,3}[ \t]+([^\n]+?)[ \t#]*(?:\n|$)/.exec(markdown);
+  const title = m && oneLine(withoutLeadingEmoji(chatTextOf(m[1])), AI_REPORT_TITLE_MAX);
+  if (!m || !title) return { title: null, body: markdown };
+  return { title, body: markdown.slice(m[0].length).replace(/^\s*\n/, "") };
 }
 
 // ------------------------------------------------------------------ depth
