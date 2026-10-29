@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-29-printed-headings-with-their-text",
+    dateISO: "2026-10-29",
+    title: "A printed heading stays with what it heads",
+    where: "Print / PDF of the assistant's answers and reports, and of every page with headings",
+    body: "A heading or a numbered step's title at the foot of a page printed there with its text on the next page. A heading now moves on with what follows it, a step, a panel of fields or a note prints whole on one page, and a paragraph never leaves a single line behind.",
+  },
+  {
     id: "2026-10-29-printed-charts-whole",
     dateISO: "2026-10-29",
     title: "A printed chart stays on one page",
