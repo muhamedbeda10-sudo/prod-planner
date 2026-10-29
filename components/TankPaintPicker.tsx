@@ -101,7 +101,7 @@ export function TankPaintPicker({
     <div className="bg-surface border rounded-xl p-3 space-y-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-extrabold">🛢 Tanks ready to paint — {label}</span>
-        <button type="button" onClick={toggleAll} className="btn btn-sm" disabled={pending}>
+        <button type="button" onClick={toggleAll} className="btn btn-secondary btn-sm" disabled={pending}>
           {allPicked ? "Clear selection" : `Select all (${tanks.length})`}
         </button>
       </div>
@@ -148,7 +148,7 @@ export function TankPaintPicker({
                   className="flex-1 border rounded-md px-2 py-1 text-xs bg-surface"
                   disabled={pending}
                 />
-                <button type="submit" className="btn btn-sm text-bad-fg" disabled={pending}>
+                <button type="submit" className="btn btn-secondary btn-sm text-bad-fg" disabled={pending}>
                   Send back
                 </button>
               </form>
@@ -170,7 +170,7 @@ export function TankPaintPicker({
           type="button"
           onClick={submit}
           disabled={pending || painters.length === 0}
-          className="rounded-md px-3 py-1.5 text-xs font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50"
+          className="btn btn-primary btn-sm"
         >
           {pending ? "Saving…" : picked.size ? `Record ${picked.size} painted` : "Record painted"}
         </button>

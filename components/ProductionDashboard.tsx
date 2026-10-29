@@ -519,7 +519,7 @@ function FocusModal({ view, focus, day, range, onClose }: { view: ProductionView
           </table>
         </TableFrame>
       )}
-      <p className="text-xs text-muted mt-2">Earned counts only where hours were booked; ⚠ marks output on a day with no attendance, left out of the efficiency.</p>
+      <p className="explain text-xs text-muted mt-2">Earned counts only where hours were booked; ⚠ marks output on a day with no attendance, left out of the efficiency.</p>
     </Modal>
   );
 }

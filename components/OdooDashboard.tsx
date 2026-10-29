@@ -62,7 +62,7 @@ function TopLabel(p: LabelBox) {
   const v = Number(p.value ?? 0);
   if (!v) return null;
   return (
-    <text x={Number(p.x) + Number(p.width ?? 0) / 2} y={Number(p.y)} dy={-4} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--foreground)" pointerEvents="none">
+    <text x={Number(p.x) + Number(p.width ?? 0) / 2} y={Number(p.y)} dy={-4} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--foreground)" pointerEvents="none">
       {fmt(v)}
     </text>
   );
@@ -323,7 +323,7 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
         {d.products.length > 0 && <ProductCards d={d} pal={pal} />}
         <p className="text-sm text-muted bg-surface border rounded-xl p-4 flex flex-wrap items-center gap-2">
           <span>Nothing {word} {narrowed ? `${narrowed} ` : ""}in this period.{other} {other ? "" : `Pick a wider one${wider.length ? ` or ${wider.join(" or ")}` : ""}.`}</span>
-          {d.product && <button type="button" className="btn btn-sm" onClick={() => setProduct(null)}>Show every product</button>}
+          {d.product && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setProduct(null)}>Show every product</button>}
         </p>
       </div>
     );

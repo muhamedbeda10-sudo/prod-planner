@@ -33,7 +33,7 @@ export function LineMaterialChips({ m, pcs, sheets, sheet = "", size = "sm" }: {
   const cls = size === "print" ? "text-xs" : "text-[11px]";
   return (
     <span className={`inline-flex flex-wrap items-baseline gap-x-2 gap-y-0.5 ${cls}`}>
-      {sheet && <span className="pill pill-muted text-[10px]" title={ONE_SHEET}>1 of {m.specs.length} sheets</span>}
+      {sheet && <span className="pill pill-muted text-[11px]" title={ONE_SHEET}>1 of {m.specs.length} sheets</span>}
       {specs.map((s) => {
         const n = sheetsFor(s, pcs);
         return (

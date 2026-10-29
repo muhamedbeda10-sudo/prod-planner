@@ -56,7 +56,7 @@ export function PlanCapacityCard({ check }: { check: PlanCapacityCheck | null })
                   <span className="inline-block w-2 h-2 rounded-sm shrink-0" style={{ background: STAGE_COLOR[s.dept === "ShotBlast" ? "Painting" : s.dept] }} aria-hidden />
                   <span className="font-bold truncate">{deptLabel(s.dept)}</span>
                   <span className="tabnum text-muted whitespace-nowrap"><b className="text-foreground">{fmt(s.required)}</b> / {s.available === null ? "—" : fmt(s.available)} h</span>
-                  <span className="ms-auto pill tabnum !h-[18px] text-[10px]" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span>
+                  <span className="ms-auto pill tabnum !h-[18px] text-[11px]" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span>
                 </div>
                 <Meter value={f} color={tone.fg} size="sm" className="mt-1" />
               </div>

@@ -105,7 +105,7 @@ export function ShiftHistory({ history, dayISO, filter, today, editableDepts, on
         </div>
       </div>
       <TableFrame className="rounded-xl border">
-        <table className="w-full text-sm border-collapse" aria-label="Recorded shift days table">
+        <table className="table-cards w-full text-sm border-collapse" aria-label="Recorded shift days table">
           <thead><tr><th scope="col" className="px-3 w-10 no-print"><input type="checkbox" aria-label="Select all days on this page" checked={!!pageRows.length && selectedOnPage === pageRows.length} ref={(el) => { if (el) el.indeterminate = selectedOnPage > 0 && selectedOnPage < pageRows.length; }} disabled={pending || !canDelete || !pageRows.length} onChange={togglePage} /></th><Th label="Date" /><Th label="Day" num hint="Present on the day shift." /><Th label="Night" num hint="Present on the night shift." /><Th label="Absent" num /><Th label="Man-hours" num /><Th label="Stops" num hint="Machine stop records in this scope." /><Th label="Actions" className="no-print" /></tr></thead>
           <tbody>
             {!rows.length ? <tr><td colSpan={8}><TableEmpty title="No shift data for these dates" hint="Clear the date filters, choose another scope, or record attendance for a day." /></td></tr> : pageRows.map((h) => (

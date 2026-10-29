@@ -37,7 +37,7 @@ export function ShiftProductivity({ data, dayISO, filterLabel, isAdmin }: { data
     <section>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-2">
         <h2 className="!mb-0">📈 Productivity — {filterLabel}</h2>
-        <span className="text-[11px] text-muted">
+        <span className="explain text-[11px] text-muted">
           man-hours from this log against the pieces the daily log recorded on the same days · efficiency = std-hours the output is worth ÷ man-hours worked
         </span>
         {isAdmin && <Link href="/admin/standard-times" className="ms-auto text-xs text-brand-ink font-semibold hover:underline">Calibrate the standard times →</Link>}
@@ -78,7 +78,7 @@ export function ShiftProductivity({ data, dayISO, filterLabel, isAdmin }: { data
           </table>
         </div>
       )}
-      <p className="text-[11px] text-muted mt-1">
+      <p className="explain text-[11px] text-muted mt-1">
         A single day swings when output is logged a day late — read the last {Math.max(n, 1)} days. Shot blast counts every painted piece as well as the cores it finishes, and the LV panels it blasts. Panels are priced by the timings sheet&apos;s LV tab; a panel with no row there earns nothing.
       </p>
     </section>

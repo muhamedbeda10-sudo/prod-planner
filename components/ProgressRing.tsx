@@ -98,7 +98,7 @@ export function RingCard({
             </span>
           </div>
           <Meter value={f} color={complete ? "var(--ok-fg)" : `var(--kpi-progress, ${ringColor(pct)})`} size="sm" className="mt-1.5" />
-          <div className="kpi-detail mt-1 flex items-baseline gap-2 text-[10.5px] tabnum whitespace-nowrap min-w-0">
+          <div className="kpi-detail mt-1 flex items-baseline gap-2 text-[11px] tabnum whitespace-nowrap min-w-0">
             <span className="text-muted truncate min-w-0"><b className="text-foreground font-semibold">{done.toLocaleString("en-US")}</b> / {need.toLocaleString("en-US")} {note}</span>
             <span className="ms-auto shrink-0 font-semibold" style={{ color: leftColor }}>{leftText}</span>
           </div>
@@ -114,7 +114,7 @@ export function RingCard({
         <div className="kpi-head">
           <span className="kpi-code">{label}</span>
           {name && <span className="kpi-name">{name}</span>}
-          <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-muted whitespace-nowrap">{note}</span>
+          <span className="ml-auto text-[11px] font-semibold uppercase tracking-wide text-muted whitespace-nowrap">{note}</span>
         </div>
         <div className="mt-1 flex items-baseline justify-between gap-2">
           <span className="kpi-value" style={{ color: complete ? "var(--ok-fg)" : pct === null ? "var(--muted)" : "var(--foreground)" }}>
@@ -125,7 +125,7 @@ export function RingCard({
           </span>
         </div>
         <Meter value={f} color={ringColor(pct)} size="sm" className="mt-1.5" />
-        <div className="mt-1 text-[10.5px] font-semibold tabnum" style={{ color: leftColor }}>{leftText}</div>
+        <div className="mt-1 text-[11px] font-semibold tabnum" style={{ color: leftColor }}>{leftText}</div>
       </div>
       </>
     );
@@ -141,7 +141,7 @@ export function RingCard({
           {done}
           <span className="text-muted font-bold text-xs"> / {need}</span>
         </div>
-        <div className="text-[10px] tabnum truncate" style={{ color: leftColor }} title={note}>
+        <div className="text-[11px] tabnum truncate" style={{ color: leftColor }} title={note}>
           {leftText}
         </div>
       </div>

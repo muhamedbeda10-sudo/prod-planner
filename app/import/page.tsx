@@ -17,11 +17,11 @@ export default async function ImportPage() {
   return (
     <ReadingColumn width="3xl" className="space-y-5">
       <PageHead title="Weekly plan import" sub="Transformers · the delivery schedule" />
-      <p className="text-sm text-muted">
+      <p className="explain text-sm text-muted">
         <b>Delivery schedule only.</b> Dates per MO come from here; order quantities live in the monthly registry
         beside it, and progress in the daily logs.
       </p>
-      <p className="text-sm text-muted">
+      <p className="explain text-sm text-muted">
         Grid: A=BOM (merged, carried down) · B=SOI · C=MO · D=Description · E=Required · F..AC = 6 days × 4 components · AD=Remarks.
         Plan dates are oven dates. Remarks are stored for reference but never interpreted — no balance parsing.
       </p>

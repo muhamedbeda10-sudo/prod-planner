@@ -80,8 +80,8 @@ export function TankWorkerPicker({
         placeholder={label}
         aria-label={label}
         title={label}
-        className={`w-24 border rounded-md px-1.5 py-1 text-center font-bold tabnum ltr ${
-          match ? "border-[var(--ok-fg)]" : unknown ? "border-[var(--bad-fg)]" : ""
+        className={`ctl w-28 text-center font-bold tabnum ltr ${
+          match ? "!border-[var(--ok-fg)]" : unknown ? "!border-[var(--bad-fg)]" : ""
         }`}
       />
       {/* typing a digit or two narrows the list — browsing stays possible

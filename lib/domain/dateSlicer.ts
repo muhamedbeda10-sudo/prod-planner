@@ -90,6 +90,38 @@ export function slicerTicks(min: string, max: string): { iso: string; label: str
   return out;
 }
 
+/** The strip's labels that fit side by side on a strip `width` px wide: a
+ *  label is dropped when it would touch the one before it or run past an end
+ *  of the strip (a phone's strip has room for about one month in two over a
+ *  year). A label that names its year ("Jan 2026") wins over a plain month
+ *  in its way, so the strip never loses the year. Widths are estimated from
+ *  the 11px label font. */
+export function fitSlicerTicks<T extends { label: string; pos: number }>(ticks: readonly T[], width: number): T[] {
+  if (!(width > 0)) return [...ticks];
+  const GAP = 8;
+  const EDGE = 12; // the room the strip has past its ends (its card's padding)
+  const span = (t: T) => {
+    const w = t.label.length * 6.4;
+    const left = t.pos * width - w / 2;
+    return { left, right: left + w };
+  };
+  const hasYear = (t: T) => / \d{4}$/.test(t.label);
+  const out: T[] = [];
+  for (const t of ticks) {
+    const { left, right } = span(t);
+    if (left < -EDGE || right > width + EDGE) continue;
+    const last = out[out.length - 1];
+    if (!last || left >= span(last).right + GAP) { out.push(t); continue; }
+    // in the way of the one before: a year beats a plain month
+    if (hasYear(t) && !hasYear(last)) {
+      out.pop();
+      const prev = out[out.length - 1];
+      if (!prev || left >= span(prev).right + GAP) out.push(t);
+    }
+  }
+  return out;
+}
+
 /** "Sun 21 Sep" — how one day reads on the slicer. */
 export function slicerDayLabel(iso: string): string {
   const d = new Date(ms(iso));

@@ -170,7 +170,7 @@ function WorkerCard({ worker, onClose }: { worker: WorkerDTO; onClose: () => voi
 /** One section's column: its people, active first, the retired dimmed at the end. */
 function DeptColumn({ title, count, workers, selectedId, onPick, tone }: { title: string; count: number; workers: WorkerDTO[]; selectedId: number | null; onPick: (id: number) => void; tone?: "warn" }) {
   return (
-    <div className="col-card min-w-[11rem]">
+    <div className="col-card min-w-0">
       <div className={`col-head ${tone === "warn" ? "col-head-warn" : ""}`}>
         <span className="truncate">{title}</span>
         <span className="ms-auto pill pill-muted tabnum">{count}</span>
@@ -188,7 +188,7 @@ function DeptColumn({ title, count, workers, selectedId, onPick, tone }: { title
                 title={w.active ? "Open" : "Deactivated — open to edit or reactivate"}
               >
                 <span className="block font-semibold text-sm leading-tight">{w.name}</span>
-                <span className="block text-[11px] text-muted ltr tabnum">{w.empId}{w.jobTitle ? ` · ${w.jobTitle}` : ""}{w.stamp ? ` · ${w.stamp}` : ""}</span>
+                <span className="block text-xs text-muted ltr tabnum">{w.empId}{w.jobTitle ? ` · ${w.jobTitle}` : ""}{w.stamp ? ` · ${w.stamp}` : ""}</span>
                 {w.onVacation && <span className="pill pill-warn mt-0.5">until {formatDate(parseISODate(w.vacationUntil!)!)}</span>}
               </button>
             </li>
@@ -303,7 +303,7 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
                 {g.label}
                 <span className="text-xs font-normal normal-case tracking-normal text-muted tabnum">{activeCount(g.people)} people</span>
               </h2>
-              <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(min(11rem,100%),1fr))]">
+              <div className="grid gap-3 items-start grid-cols-[repeat(auto-fill,minmax(min(15rem,100%),1fr))]">
                 {g.sections.map((sec) => (
                   <DeptColumn key={sec.code} title={sec.label} count={activeCount(sec.list)} workers={sec.list} selectedId={selectedId} onPick={setSelectedId} />
                 ))}
@@ -315,7 +315,7 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
               Away
               <span className="text-xs font-normal normal-case tracking-normal text-muted tabnum">{away.length} on vacation</span>
             </h2>
-            <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(min(11rem,100%),1fr))]">
+            <div className="grid gap-3 items-start grid-cols-[repeat(auto-fill,minmax(min(15rem,100%),1fr))]">
               <DeptColumn title="On vacation" count={away.length} workers={away} selectedId={selectedId} onPick={setSelectedId} tone="warn" />
               {unassigned.length > 0 && (
                 <DeptColumn title="No section" count={activeCount(unassigned)} workers={unassigned} selectedId={selectedId} onPick={setSelectedId} />

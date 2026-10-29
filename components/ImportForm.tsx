@@ -26,7 +26,7 @@ export function ImportForm({ defaultDate }: { defaultDate: string }) {
     <div className="space-y-4">
       <form onSubmit={submit} className="bg-surface border rounded-xl p-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         <label className="block md:col-span-2">
-          <span className="block text-xs font-semibold text-muted mb-1">Plan file (Excel) — data starts on row 6</span>
+          <span className="block text-xs font-semibold text-muted mb-1">Plan file (Excel)</span>
           <input name="file" type="file" accept=".xlsx,.xlsm,.xls" required className="w-full border rounded-md px-2 py-2 bg-surface" />
         </label>
         <label className="block">
@@ -34,12 +34,12 @@ export function ImportForm({ defaultDate }: { defaultDate: string }) {
           <input name="planNo" type="number" min={1} required className="w-full border rounded-md px-2 py-2 font-bold" />
         </label>
         <label className="block">
-          <span className="block text-xs font-semibold text-muted mb-1">Real week start date (never taken from the file)</span>
+          <span className="block text-xs font-semibold text-muted mb-1">Real week start date</span>
           <input name="startDate" type="date" defaultValue={defaultDate} required className="w-full border rounded-md px-2 py-2 font-bold" />
         </label>
         <label className="block md:col-span-2">
           <span className="block text-xs font-semibold text-muted mb-1">
-            Sheet name <span className="font-normal">(optional — auto-picks the sheet named “week-&lt;plan number&gt;”, e.g. week-28)</span>
+            Sheet name <span className="font-normal">(optional)</span>
           </span>
           <input name="sheet" type="text" placeholder="auto" className="w-full border rounded-md px-2 py-2" />
         </label>
@@ -47,7 +47,7 @@ export function ImportForm({ defaultDate }: { defaultDate: string }) {
           <button type="submit" disabled={pending} className="bg-brand-fill text-white font-extrabold rounded-md px-6 py-2.5 disabled:opacity-50">
             {pending ? "Importing…" : "Import plan"}
           </button>
-          <span className="text-xs text-muted ml-3">Re-importing the same number replaces that plan&apos;s rows (idempotent).</span>
+          <span className="explain text-xs text-muted ml-3">Re-importing the same number replaces that plan&apos;s rows (idempotent).</span>
         </div>
       </form>
 

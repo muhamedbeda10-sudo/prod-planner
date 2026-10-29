@@ -91,7 +91,7 @@ export function OdooInsightsSection({ ins, colorOf }: { ins: Insights; colorOf: 
                 return r ? <TipBox title={r.label} rows={[{ label: "Rows closed", value: fmt(r.rows), color: "var(--viz-2)" }, { label: "Share", value: lt.rows ? pct(r.rows / lt.rows) : "—" }]} /> : null;
               }} />
               <Bar dataKey="rows" fill="var(--viz-2)" maxBarSize={40} radius={[4, 4, 0, 0]} isAnimationActive={false}>
-                <LabelList dataKey="rows" position="top" fontSize={10} fontWeight={700} fill="var(--foreground)" formatter={(v: unknown) => (Number(v) ? fmt(Number(v)) : "")} />
+                <LabelList dataKey="rows" position="top" fontSize={11} fontWeight={700} fill="var(--foreground)" formatter={(v: unknown) => (Number(v) ? fmt(Number(v)) : "")} />
               </Bar>
             </BarChart>
           </Box>

@@ -130,7 +130,7 @@ export function LvStdTimesManager({ rates, orders }: { rates: LvRate[]; orders: 
                 <td className="ps-4 md:ps-5">
                   <div className="font-bold ltr text-xs">{r.fg}</div>
                   {r.description && <div className="text-[11px] text-muted truncate max-w-[18rem]" title={r.description}>{r.description}</div>}
-                  {usedBy.has(r.fg) && <span className="pill pill-ok text-[10px]">{usedBy.get(r.fg)} units open</span>}
+                  {usedBy.has(r.fg) && <span className="pill pill-ok text-[11px]">{usedBy.get(r.fg)} units open</span>}
                 </td>
                 <td className="text-center text-xs">{KIND_LABEL[r.kind] ?? r.kind}</td>
                 {FIELDS.map(([f]) => <td key={f} className="text-end tabnum">{fmt(r[f])}</td>)}

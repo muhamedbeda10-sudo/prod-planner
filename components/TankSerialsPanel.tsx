@@ -68,7 +68,7 @@ export function TankSerialsPanel({
           <div key={s} className="flex items-center gap-2 border rounded-lg px-2 py-1.5 bg-brand-light/20">
             <code className="ltr font-extrabold tabnum text-sm tracking-wide">{s}</code>
             <span className="ml-auto flex items-center gap-1.5">
-              {changed[s] && <span className="pill pill-ok text-[10px]">{changed[s]}</span>}
+              {changed[s] && <span className="pill pill-ok text-[11px]">{changed[s]}</span>}
               <TankWorkerPicker
                 workers={welders}
                 value={picks[s] ?? NO_WORKER}

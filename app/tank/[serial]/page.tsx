@@ -53,7 +53,7 @@ export default async function TankPage({ params }: { params: Promise<{ serial: s
   return (
     <div className="max-w-4xl mx-auto">
       <PageHeader label={`🛢 ${tank.serial}`}>
-        <Link href="/barcode" className="btn btn-sm">
+        <Link href="/barcode" className="btn btn-secondary btn-sm">
           ← Barcode
         </Link>
       </PageHeader>

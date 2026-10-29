@@ -109,7 +109,7 @@ export function CalibrationPanel({ rows, stages, windowDays }: { rows: DayRow[];
             </tbody>
           </table>
         </div>
-        <p className="px-4 md:px-5 py-3 border-t text-xs text-muted">
+        <p className="explain px-4 md:px-5 py-3 border-t text-xs text-muted">
           Efficiency 80% means the crews worked 100 hours for every 80 standard hours earned — the standards are tighter than this plant&apos;s pace. Applying the factor makes future earned hours track the real effort; after applying, the reading here converges to 100%.
         </p>
       </SectionCard>

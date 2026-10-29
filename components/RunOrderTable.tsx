@@ -16,7 +16,7 @@ export function RunOrderTable({ rows, deptWord }: { rows: RunOrderLineDTO[]; dep
         <span className="pill pill-muted ml-2 normal-case tabnum">set {`${applied.slice(8, 10)}/${applied.slice(5, 7)}`}</span>
       </h2>
       <div className="border-2 rounded-xl overflow-x-auto bg-surface" style={{ borderColor: "color-mix(in srgb, var(--brand) 45%, transparent)" }}>
-        <table className="w-full text-sm border-collapse">
+        <table className="table-cards w-full text-sm border-collapse">
           <thead>
             <tr className="bg-brand-fill text-white text-left">
               <th className="p-2 w-12 text-center">#</th>
@@ -47,7 +47,7 @@ export function RunOrderTable({ rows, deptWord }: { rows: RunOrderLineDTO[]; dep
           </tbody>
         </table>
       </div>
-      <p className="text-[11px] text-muted mt-1">
+      <p className="explain text-[11px] text-muted mt-1">
         Set as the run order through the assistant. Record output on the tables below — a line leaves this list the moment this department&apos;s work on it is done.
       </p>
     </section>

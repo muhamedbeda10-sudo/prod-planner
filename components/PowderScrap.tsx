@@ -112,7 +112,7 @@ function ScrapRow({ e, isAdmin, today, earliest, showActions }: { e: ScrapEntryV
         </td>
         {showActions && (
           <td className="p-2 whitespace-nowrap no-print">
-            {e.canEdit && <button type="button" className="btn btn-sm" onClick={() => setEditing(true)} disabled={act.pending}>Edit</button>}
+            {e.canEdit && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(true)} disabled={act.pending}>Edit</button>}
             {isAdmin && (
               <button
                 type="button" className="btn btn-sm btn-danger ml-1" disabled={act.pending}
@@ -190,11 +190,11 @@ export function PowderScrap({ r, canRecord, isAdmin, today, earliest }: { r: Pow
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 no-print">
-        {older ? <Link href={hrefOf(older)} className="btn btn-sm" aria-label="Previous month">◀</Link> : <span className="btn btn-sm opacity-40">◀</span>}
+        {older ? <Link href={hrefOf(older)} className="btn btn-secondary btn-sm" aria-label="Previous month">◀</Link> : <span className="btn btn-secondary btn-sm opacity-40">◀</span>}
         <select value={r.month} onChange={(e) => router.push(hrefOf(e.target.value))} aria-label="Month" className="px-2 py-1.5 text-sm font-bold">
           {r.months.map((m) => <option key={m} value={m}>{monthLong(m)}</option>)}
         </select>
-        {newer ? <Link href={hrefOf(newer)} className="btn btn-sm" aria-label="Next month">▶</Link> : <span className="btn btn-sm opacity-40">▶</span>}
+        {newer ? <Link href={hrefOf(newer)} className="btn btn-secondary btn-sm" aria-label="Next month">▶</Link> : <span className="btn btn-secondary btn-sm opacity-40">▶</span>}
         {canRecord && <button type="button" className="btn btn-primary" onClick={() => { setSaved(false); setRecording(true); }}>➕ Record scrap</button>}
         {saved && <span className="text-sm font-semibold text-ok-fg" role="status">✓ Saved.</span>}
       </div>

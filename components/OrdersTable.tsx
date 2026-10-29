@@ -184,7 +184,7 @@ export function OrdersTable({ rows, line = "TR", lineSwitch }: {
       )}
 
       <div className="bg-surface border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
+        <table className="table-cards w-full text-sm border-collapse">
           <thead>
             <tr className="bg-brand-fill text-white text-left">
               <th className="p-2 w-8 text-center">
@@ -225,9 +225,9 @@ export function OrdersTable({ rows, line = "TR", lineSwitch }: {
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={lv ? 15 : 13} className="p-4 text-center text-muted">
+              <tr><td colSpan={lv ? 15 : 13} className="p-4 text-center text-muted"><div className="dt-note">
                 {rows.length === 0 ? `No ${LINE_LABEL[line]} orders yet — import their monthly plan above.` : "No rows match the filters."}
-              </td></tr>
+              </div></td></tr>
             )}
             {filtered.map((r) => (editing === r.mo ? (
               <EditRow key={r.id} r={r} lv={lv} pending={pending} err={editErr} onSave={(form) => saveRow(form, r.mo)} onCancel={() => { setEditing(null); setEditErr(""); }} />

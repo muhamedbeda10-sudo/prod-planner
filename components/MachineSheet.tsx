@@ -58,8 +58,8 @@ function Rows({ lines, from = 1, required, material, dept, jobs, runsOnly }: { l
                 <td className="px-2 py-1.5"><LineMaterialChips m={material[q.key]} pcs={q.remaining} sheets={false} size="print" /></td>
                 <td className="px-2 py-1.5 text-center whitespace-nowrap">
                   <span className="font-extrabold tabnum text-lg">{q.remaining}</span><span className="text-xs font-semibold"> sh</span>
-                  {job.doneQty > 0 && <span className="block text-[10px] font-semibold text-muted">{job.doneQty} of {job.qty} cut</span>}
-                  {q.split && <span className="block text-[10px] font-semibold text-muted">of {q.lineRemaining} left</span>}
+                  {job.doneQty > 0 && <span className="block text-[11px] font-semibold text-muted">{job.doneQty} of {job.qty} cut</span>}
+                  {q.split && <span className="block text-[11px] font-semibold text-muted">of {q.lineRemaining} left</span>}
                 </td>
                 <td className="border-l" rowSpan={job.parts.length + 1}></td>
               </tr>
@@ -89,7 +89,7 @@ function Rows({ lines, from = 1, required, material, dept, jobs, runsOnly }: { l
               <td className="px-2 py-1.5 text-right tabnum">{manual ? "" : required[q.bom] ?? "—"}</td>
               {/* the sheet it is cut from: thickness first — what the machine is set for */}
               <td className="px-2 py-1.5">{material[q.key] || q.sheet ? <LineMaterialChips m={material[q.key]} pcs={q.remaining} sheets={dept === "Cut" && q.stepNo === 1} sheet={q.sheet} size="print" /> : <span className="text-muted text-xs">—</span>}</td>
-              <td className="px-2 py-1.5 text-center font-extrabold tabnum text-lg whitespace-nowrap">{q.remaining}{q.split && <span className="block text-[10px] font-semibold text-muted">of {q.lineRemaining}</span>}</td>
+              <td className="px-2 py-1.5 text-center font-extrabold tabnum text-lg whitespace-nowrap">{q.remaining}{q.split && <span className="block text-[11px] font-semibold text-muted">of {q.lineRemaining}</span>}</td>
               <td className="border-l"></td>
             </tr>
           </tbody>

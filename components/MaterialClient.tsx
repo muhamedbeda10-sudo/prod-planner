@@ -303,7 +303,7 @@ const LV_COLS: ColDef<LvCol>[] = [
     cell: (l) => (
       <span title={l.producedQty === null && l.producedAuto !== null ? "Panels painted on the tracker" : undefined}>
         <Units v={l.producedUsed} />
-        {l.producedQty === null && l.producedAuto !== null && <span className="block text-[10px] text-muted">tracker</span>}
+        {l.producedQty === null && l.producedAuto !== null && <span className="block text-[11px] text-muted">tracker</span>}
       </span>
     ) },
   { key: "consumed", name: "Consumed", th: { label: "Consumed", unit: "sheets", full: "Actually Consumed", hint: "Sheets the produced panels consumed — per unit × produced", group: "computed", num: true }, td: "p-2 text-center font-extrabold bg-brand-light/30",

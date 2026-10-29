@@ -81,7 +81,7 @@ export function ConsumablesTrend({ d, periodLabel, prevLabel }: { d: Consumables
               }} />
               <Bar dataKey="issues" fill={CAT[0]} maxBarSize={26} radius={[4, 4, 0, 0]} isAnimationActive={false} cursor="pointer"
                 onClick={(_, i) => { const b = t.buckets[i]; if (b) open(b); }}>
-                {t.buckets.length <= 31 && <LabelList dataKey="issues" position="top" fontSize={10} fontWeight={700} fill="var(--foreground)" formatter={(v: unknown) => (Number(v) ? fmt(Number(v)) : "")} />}
+                {t.buckets.length <= 31 && <LabelList dataKey="issues" position="top" fontSize={11} fontWeight={700} fill="var(--foreground)" formatter={(v: unknown) => (Number(v) ? fmt(Number(v)) : "")} />}
               </Bar>
               {compared && <Line dataKey="prev" stroke={PREV} strokeWidth={2} strokeDasharray="5 4" dot={false} isAnimationActive={false} />}
             </ComposedChart>

@@ -61,7 +61,7 @@ function Block({ b, horizon, word }: { b: TimelineBlock; horizon: number; word: 
   ].join(" · ");
   return (
     <span
-      className={`absolute top-1 bottom-1 rounded-[3px] border overflow-hidden text-[10px] leading-none flex items-center px-1 ${tone}`}
+      className={`absolute top-1 bottom-1 rounded-[3px] border overflow-hidden text-[11px] leading-none flex items-center px-1 ${tone}`}
       style={{ left: `${left}%`, width: `${Math.min(width, 100 - left)}%` }}
       title={title}
     >
@@ -115,7 +115,7 @@ export function MachineTimeline({ board }: { board: MachineBoardData }) {
           cell={(r) => (
             <span className="truncate">
               <b className="ltr tabnum">{r.code}</b>
-              {r.beyond > 0 && <span className="text-[10px] text-muted ms-1" title={`${r.beyond} more line(s) start past the picture`}>+{r.beyond}</span>}
+              {r.beyond > 0 && <span className="text-[11px] text-muted ms-1" title={`${r.beyond} more line(s) start past the picture`}>+{r.beyond}</span>}
             </span>
           )}
         />
@@ -124,7 +124,7 @@ export function MachineTimeline({ board }: { board: MachineBoardData }) {
           <ChartZoom>
             <Column
               rows={t.rows}
-              headClass="flex text-[10px] leading-4 text-muted"
+              headClass="flex text-[11px] leading-4 text-muted"
               head={days.map((d, i) => (
                 <span key={d} className={`flex-1 text-center tabnum border-s ${i === 0 ? "font-bold text-foreground" : ""}`} title={d}>
                   {ddmm(d)}
@@ -148,7 +148,7 @@ export function MachineTimeline({ board }: { board: MachineBoardData }) {
                     />
                   ))}
                   {r.blocks.length === 0 && (
-                    <span className="absolute inset-0 grid place-items-center text-[10px] text-muted">
+                    <span className="absolute inset-0 grid place-items-center text-[11px] text-muted">
                       {r.availableH === null ? "no hours a day set" : "idle"}
                     </span>
                   )}

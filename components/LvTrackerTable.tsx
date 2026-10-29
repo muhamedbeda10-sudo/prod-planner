@@ -263,11 +263,11 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
               <button type="button" onClick={() => setEditKey(null)} disabled={pending} className="text-muted px-0.5" title="Cancel">✕</button>
             </span>
             {added !== 0 && !cellErr && (
-              <span className={`text-[10px] font-bold whitespace-nowrap ${added > 0 ? "text-ok-fg" : "text-bad-fg"}`}>
+              <span className={`text-[11px] font-bold whitespace-nowrap ${added > 0 ? "text-ok-fg" : "text-bad-fg"}`}>
                 {(preview && preview(added)) || (added > 0 ? `+${added} today` : `−${-added} correction`)}
               </span>
             )}
-            {cellErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight font-normal">{cellErr}</span>}
+            {cellErr && <span className="text-[11px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight font-normal">{cellErr}</span>}
             <span className="print-only tabnum">{value}</span>
           </span>
         ) : editable ? (
@@ -509,9 +509,9 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={tableCols} className="p-4 text-center text-muted">
+              <tr><td colSpan={tableCols} className="p-4 text-center text-muted"><div className="dt-note">
                 {closedLoading ? "Loading closed orders…" : rows.length === 0 && closedTotal === 0 ? "No LV panel orders yet — import their monthly plan from Tools → Orders Registry." : "No rows match the filters."}
-              </td></tr>
+              </div></td></tr>
             )}
             {groups.map(([bom, members]) => {
               if (members.length === 1) return moRow(members[0], false);

@@ -81,7 +81,7 @@ export function LvTraceView({ t, material }: {
             </tr>
           </thead>
           <tbody>
-            {t.members.length === 0 && <tr><td colSpan={13} className="p-4 text-center text-muted">No panel order carries this code — only ledger rows.</td></tr>}
+            {t.members.length === 0 && <tr><td colSpan={13} className="p-4 text-center text-muted"><div className="dt-note">No panel order carries this code — only ledger rows.</div></td></tr>}
             {t.members.map((m) => (
               <tr key={m.mo} className={`border-t ${m.status === "closed" ? "opacity-60" : ""}`}>
                 <td className="p-2 font-bold whitespace-nowrap text-xs">

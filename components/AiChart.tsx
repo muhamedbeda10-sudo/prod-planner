@@ -404,7 +404,7 @@ function RadarFigure({ spec }: { spec: AiRadarSpec }) {
             <PolarGrid stroke="var(--border)" />
             <PolarAngleAxis dataKey="name" tick={TICK} />
             {/* the scale between the first two spokes, clear of their names */}
-            <PolarRadiusAxis tick={{ fontSize: 10, fill: "var(--muted)" }} axisLine={false} tickFormatter={(v: number) => compact(v)} angle={90 - 180 / spec.data.length} />
+            <PolarRadiusAxis tick={{ fontSize: 11, fill: "var(--muted)" }} axisLine={false} tickFormatter={(v: number) => compact(v)} angle={90 - 180 / spec.data.length} />
             <Tooltip content={({ active, payload, label }: TipProps) => (active && payload?.length ? <Tip title={String(label ?? "")} rows={payload.map((p) => ({ label: String(p.name ?? ""), value: valueText(Number(p.value ?? 0), spec.unit), color: p.color, line: true }))} /> : null)} />
             {spec.series.map((s, i) => (
               <Radar key={s} dataKey={s} name={s} stroke={catColor(i)} strokeWidth={2} fill={catColor(i)} fillOpacity={0.1} isAnimationActive={false}

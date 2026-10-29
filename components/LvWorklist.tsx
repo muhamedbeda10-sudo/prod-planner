@@ -69,7 +69,7 @@ export function LvWorklist({ data, canEdit, todayISO }: { data: LvWorklistData; 
       </FilterBar>
 
       <div className="bg-surface border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
+        <table className="table-cards w-full text-sm border-collapse">
           <thead>
             <tr className="bg-brand-fill text-white text-left">
               <th className="p-2">MO</th>
@@ -88,11 +88,11 @@ export function LvWorklist({ data, canEdit, todayISO }: { data: LvWorklistData; 
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={canEdit ? 10 : 9} className="p-4 text-center text-muted">
+              <tr><td colSpan={canEdit ? 10 : 9} className="p-4 text-center text-muted"><div className="dt-note">
                 {data.rows.length === 0
                   ? `Nothing waiting for ${data.stage.toLowerCase()}${prev && data.upstream.length > 0 ? ` — ${data.upstream.length} order(s) are still at ${prev.toLowerCase()} or before` : ""}${data.unplanned.length > 0 ? ` — ${data.unplanned.length} order(s) have no quantity planned` : ""}.`
                   : "No rows match the search."}
-              </td></tr>
+              </div></td></tr>
             )}
             {filtered.map((r) => (
               <tr key={r.mo} className="border-t">

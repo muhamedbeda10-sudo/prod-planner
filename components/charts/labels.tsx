@@ -68,7 +68,7 @@ export function segmentLabel(ink: string, fill?: string) {
         {two ? (
           <>
             <tspan x={x} y={mid - 1.5}>{fig}</tspan>
-            <tspan x={x} y={mid + 10} fontSize={10} fontWeight={600}>{share}</tspan>
+            <tspan x={x} y={mid + 10} fontSize={11} fontWeight={600}>{share}</tspan>
           </>
         ) : <tspan x={x} y={mid + 4}>{fig}</tspan>}
       </text>

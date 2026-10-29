@@ -145,7 +145,7 @@ export function CentreTimesManager({ classes, typed, estimates, pace }: CentreTi
         </table>
       </TableFrame>
       <div className="flex flex-wrap items-center gap-2 px-4 py-3 md:px-5 border-t">
-        <span className="text-xs text-muted">Hours for one piece · grey = the estimate · empty a cell to go back to it</span>
+        <span className="explain text-xs text-muted">Hours for one piece · grey = the estimate · empty a cell to go back to it</span>
         <Note msg={msg} />
         {dirty && <button type="button" className="btn btn-ghost btn-sm ms-auto" disabled={pending} onClick={() => { setDraft({}); setMsg(null); }}>Undo changes</button>}
         <button type="button" className={`btn btn-primary btn-sm ${dirty ? "" : "ms-auto"}`} disabled={pending || !dirty} onClick={save}>

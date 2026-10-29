@@ -27,16 +27,16 @@ function Sticker({ tank, baseUrl }: { tank: TankDTO; baseUrl: string }) {
       <QrSvg value={tankQrPayload(baseUrl, tank.serial)} size={78} title={tank.serial} />
       <div className="min-w-0 leading-tight ltr text-left">
         <div className="font-extrabold text-[13px] tabnum tracking-wide">{tank.serial}</div>
-        <div className="text-[10px] font-semibold truncate">MO {tank.mo}</div>
-        {tank.so && <div className="text-[10px] truncate">SO {tank.so}</div>}
-        <div className="text-[10px] truncate">
+        <div className="text-[11px] font-semibold truncate">MO {tank.mo}</div>
+        {tank.so && <div className="text-[11px] truncate">SO {tank.so}</div>}
+        <div className="text-[11px] truncate">
           BOM {tank.bom}
           {tank.kva ? ` · ${tank.kva}` : ""}
         </div>
         {/* the welder's stamp is punched into this tank — printing it lets
             anyone check the label against the steel without a phone */}
-        {tank.weldedStamp && <div className="text-[10px] font-semibold truncate">Stamp {tank.weldedStamp}</div>}
-        <div className="text-[9px] mt-0.5">ATC — Arabian Transformers</div>
+        {tank.weldedStamp && <div className="text-[11px] font-semibold truncate">Stamp {tank.weldedStamp}</div>}
+        <div className="text-[11px] mt-0.5">ATC — Arabian Transformers</div>
       </div>
     </div>
   );
@@ -153,7 +153,7 @@ export function BarcodeSheet({
             { value: "failed", label: "Not OK" },
           ]}
         />
-        <button type="button" onClick={toggleAll} className="btn btn-sm" disabled={filtered.length === 0}>
+        <button type="button" onClick={toggleAll} className="btn btn-secondary btn-sm" disabled={filtered.length === 0}>
           {allPicked ? "Clear selection" : `Select all (${filtered.length})`}
         </button>
         <button
@@ -169,7 +169,7 @@ export function BarcodeSheet({
             type="button"
             onClick={() => remove([...picked], `${picked.size} tank(s)`)}
             disabled={pending || picked.size === 0}
-            className="btn btn-sm text-bad-fg"
+            className="btn btn-secondary btn-sm text-bad-fg"
             title="Remove the selected tanks and take their quantity back off the daily log"
           >
             🗑 Remove ({picked.size})
@@ -180,7 +180,7 @@ export function BarcodeSheet({
 
       {/* ---- the screen list ---- */}
       <div className="no-print bg-surface border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
+        <table className="table-cards w-full text-sm border-collapse">
           <thead>
             <tr className="bg-brand-fill text-white text-left">
               <th className="p-2 w-8" />
@@ -198,11 +198,11 @@ export function BarcodeSheet({
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={isAdmin ? 10 : 9} className="p-4 text-center text-muted">
+                <td colSpan={isAdmin ? 10 : 9} className="p-4 text-center text-muted"><div className="dt-note">
                   {tanks.length === 0
                     ? "No tank has finished every stage yet — a tank arrives here after painting."
                     : "No tanks match the filters."}
-                </td>
+                </div></td>
               </tr>
             )}
             {filtered.map((t, i) => (
@@ -237,7 +237,7 @@ export function BarcodeSheet({
                   )}
                 </td>
                 <td className="p-2 text-center">
-                  <button type="button" onClick={() => print(t.serial)} className="btn btn-sm">
+                  <button type="button" onClick={() => print(t.serial)} className="btn btn-secondary btn-sm">
                     🖨 Sticker
                   </button>
                 </td>
@@ -247,7 +247,7 @@ export function BarcodeSheet({
                       type="button"
                       onClick={() => remove([t.serial], t.serial)}
                       disabled={pending}
-                      className="btn btn-sm text-bad-fg"
+                      className="btn btn-secondary btn-sm text-bad-fg"
                       title="Remove this tank and take its quantity back off the daily log"
                     >
                       🗑

@@ -757,7 +757,7 @@ export function MasterTrackerTable({
           ]}
         />
         {/* multi-pick dept toggle: show only the ticked stages' columns */}
-        <div className="col-span-2 flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
+        <div className="col-span-full flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
           <span className="filter-label">Dept</span>
           <div className="flex flex-wrap gap-1">
             {STAGE_OPTS.map((o) => {
@@ -866,9 +866,9 @@ export function MasterTrackerTable({
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={tableCols} className="p-4 text-center text-muted">
+              <tr><td colSpan={tableCols} className="p-4 text-center text-muted"><div className="dt-note">
                 {closedLoading ? "Loading closed orders…" : rows.length === 0 && closedTotal === 0 ? "No orders yet — import a monthly plan." : "No rows match the filters."}
-              </td></tr>
+              </div></td></tr>
             )}
             {groups.map(([gBom, members]) => {
               if (members.length === 1) return renderRow(members[0]);
@@ -1121,11 +1121,11 @@ export function MasterTrackerTable({
             {/* which MOs the number lands on, before it is saved — the same
                 rule the server writes with */}
             {added !== 0 && !cellErr && (
-              <span className={`text-[10px] font-bold whitespace-nowrap ${added > 0 ? "text-ok-fg" : "text-bad-fg"}`}>
+              <span className={`text-[11px] font-bold whitespace-nowrap ${added > 0 ? "text-ok-fg" : "text-bad-fg"}`}>
                 {spreadWords(spreadOverGroup(group.members, added)) || (added > 0 ? `+${added}` : `−${-added}`)}
               </span>
             )}
-            {cellErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight font-normal">{cellErr}</span>}
+            {cellErr && <span className="text-[11px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight font-normal">{cellErr}</span>}
           </span>
         ) : editable ? (
           <button
@@ -1202,9 +1202,9 @@ export function MasterTrackerTable({
               onCommit={commit}
               onCancel={() => closeCell(k)}
             />
-            {added > 0 && <span className="text-[10px] font-bold text-ok-fg whitespace-nowrap">+{added} today</span>}
+            {added > 0 && <span className="text-[11px] font-bold text-ok-fg whitespace-nowrap">+{added} today</span>}
             {added < 0 && (
-              <span className="text-[10px] font-bold text-bad-fg whitespace-nowrap" title="Recorded as a negative correction entry in today's Daily Log">
+              <span className="text-[11px] font-bold text-bad-fg whitespace-nowrap" title="Recorded as a negative correction entry in today's Daily Log">
                 −{-added} correction
               </span>
             )}
@@ -1227,7 +1227,7 @@ export function MasterTrackerTable({
             >
               {value > 0 ? value : <span className="print-only">0</span>}
             </button>
-            {err && <span className="no-print absolute top-full start-1/2 -translate-x-1/2 mt-0.5 z-20 whitespace-nowrap rounded-md bg-surface border border-bad-fg px-1.5 py-0.5 text-[10px] font-semibold text-bad-fg shadow-md">{err}</span>}
+            {err && <span className="no-print absolute top-full start-1/2 -translate-x-1/2 mt-0.5 z-20 whitespace-nowrap rounded-md bg-surface border border-bad-fg px-1.5 py-0.5 text-[11px] font-semibold text-bad-fg shadow-md">{err}</span>}
           </span>
         ) : (
           value > 0 ? value : ""
@@ -1342,7 +1342,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                 same function the server records with; the server still decides
                 and refuses anything that does not fit. */}
             {added !== 0 && (
-              <span className={`text-[10px] font-bold whitespace-nowrap ${added > 0 ? "text-ok-fg" : "text-bad-fg"}`} title={added > 0 ? "Each MO is filled to its own limit before the next is touched" : "Taken back off the LAST MOs first — recorded as negative corrections in today's Daily Log"}>
+              <span className={`text-[11px] font-bold whitespace-nowrap ${added > 0 ? "text-ok-fg" : "text-bad-fg"}`} title={added > 0 ? "Each MO is filled to its own limit before the next is touched" : "Taken back off the LAST MOs first — recorded as negative corrections in today's Daily Log"}>
                 {spreadPreview(members, it, dept, added) || (added > 0 ? `+${added}` : `−${-added} correction`)}
               </span>
             )}
@@ -1361,7 +1361,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
             >
               {value > 0 ? value : <span className="print-only">0</span>}
             </button>
-            {err && <span className="no-print absolute top-full start-1/2 -translate-x-1/2 mt-0.5 z-20 whitespace-nowrap rounded-md bg-surface border border-bad-fg px-1.5 py-0.5 text-[10px] font-semibold text-bad-fg shadow-md">{err}</span>}
+            {err && <span className="no-print absolute top-full start-1/2 -translate-x-1/2 mt-0.5 z-20 whitespace-nowrap rounded-md bg-surface border border-bad-fg px-1.5 py-0.5 text-[11px] font-semibold text-bad-fg shadow-md">{err}</span>}
           </span>
         ) : (
           value > 0 ? value : ""
@@ -1540,7 +1540,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                           ✕
                         </button>
                       </span>
-                      {qtyErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 leading-tight">{qtyErr}</span>}
+                      {qtyErr && <span className="text-[11px] text-bad-fg whitespace-normal max-w-48 leading-tight">{qtyErr}</span>}
                       <span className="print-only tabnum"><Num v={r.required} /></span>
                     </span>
                   ) : can("tracker.qty") ? (
@@ -1663,7 +1663,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                         </span>
                       ))}
                       <button type="button" onClick={() => setOpenMonths(null)} className="text-muted text-xs hover:underline">Close</button>
-                      <span className="text-[11px] text-muted w-full">
+                      <span className="explain text-[11px] text-muted w-full">
                         A month is tagged automatically when the MO appears as a row in that month&apos;s imported sheet. Remove a wrong tag here — re-importing that month&apos;s file would tag it again only if the MO is still in the file.
                       </span>
                     </div>
@@ -1707,7 +1707,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                               disabled={pending || max === 0}
                               title={max === 0 ? `${it}: nothing left for ${deptLabel(pushDept)}` : `${it}: up to ${max} pcs still open`}
                             />
-                            <span className="text-[10px] text-muted tabnum">/{max}</span>
+                            <span className="text-[11px] text-muted tabnum">/{max}</span>
                           </label>
                         );
                       })}
@@ -1716,7 +1716,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                       </button>
                       <button type="button" onClick={() => setOpenPush(null)} className="text-muted text-xs hover:underline">Cancel</button>
                       {pushErr && <span className="text-xs text-bad-fg font-semibold w-full">{pushErr}</span>}
-                      <span className="text-[11px] text-muted w-full">
+                      <span className="explain text-[11px] text-muted w-full">
                         Quantities are capped at what the department still owes on this order. The line lands date-less on the chosen worklist — schedule it there (📅✎). Sending again replaces the previous push; all-zero clears it.
                       </span>
                     </form>
@@ -1742,7 +1742,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                         Save
                       </button>
                       <button type="button" onClick={() => setOpenConfig(null)} className="text-muted text-xs hover:underline">Cancel</button>
-                      <span className="text-[11px] text-muted w-full">Ticked components are what this project is made of — all six are yours to switch, whatever the KVA/rating rule says. Unticked ones leave the worklists and stop gating completion &amp; OTD.</span>
+                      <span className="explain text-[11px] text-muted w-full">Ticked components are what this project is made of — all six are yours to switch, whatever the KVA/rating rule says. Unticked ones leave the worklists and stop gating completion &amp; OTD.</span>
                     </form>
                 </Modal>
               )}

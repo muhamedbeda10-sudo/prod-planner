@@ -126,7 +126,7 @@ function RuleForm({ machine, onClose }: { machine: MachineDTO; onClose: () => vo
           {checked.ok ? `“${ruleSentence(machine.code, { id: 0, machineId: machine.id, ...checked.rule })}”` : checked.error}
         </p>
         {checked.ok && (checked.rule.minThicknessMm !== null || checked.rule.maxThicknessMm !== null || checked.rule.material) && (
-          <p className="text-xs text-muted">Thickness and material come from the line&apos;s nesting on the MATERIAL tab — a line not nested yet cannot be shown to match them.</p>
+          <p className="explain text-xs text-muted">Thickness and material come from the line&apos;s nesting on the MATERIAL tab — a line not nested yet cannot be shown to match them.</p>
         )}
         <div className="flex items-center justify-end gap-2 pt-3 border-t">
           <Msg msg={add.msg} />

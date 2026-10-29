@@ -414,7 +414,7 @@ function ChatModelCard() {
           <span className="pill pill-muted whitespace-nowrap">{AI_EFFORT_LABEL[AI_DEPTH_EFFORT[d]]} effort</span>
         </SettingRow>
       ))}
-      <p className="text-xs text-muted mt-3">Each question takes its own model: a chat moves up for a hard question and back down for the next look-up. Every answer says which model wrote it.</p>
+      <p className="explain text-xs text-muted mt-3">Each question takes its own model: a chat moves up for a hard question and back down for the next look-up. Every answer says which model wrote it.</p>
     </SectionCard>
   );
 }
@@ -702,8 +702,8 @@ function PersonRow({ u }: { u: AiAdminUser }) {
         <td className="ps-4 md:ps-5">
           <div className="font-semibold flex items-center gap-1.5">
             <span className="truncate">{u.name}</span>
-            {u.isOwner && <span className="pill pill-ok text-[10px]">owner</span>}
-            {!u.active && <span className="pill pill-muted text-[10px]">inactive</span>}
+            {u.isOwner && <span className="pill pill-ok text-[11px]">owner</span>}
+            {!u.active && <span className="pill pill-muted text-[11px]">inactive</span>}
           </div>
           <div className="text-xs text-muted ltr truncate max-w-[16rem]">{u.email}</div>
           <Note msg={r.msg} />
@@ -861,10 +861,10 @@ function ChangesCard({ data }: { data: AiAdminData }) {
             <li key={c.id} className="px-4 md:px-5 py-2.5">
               <div className="text-sm font-semibold flex flex-wrap items-center gap-1.5" dir="auto">
                 <span className="truncate">{c.title}</span>
-                <span className={`pill ${CHANGE_TONE[c.status] ?? "pill-muted"} text-[10px]`}>{c.status}</span>
-                {c.risk === "destructive" && <span className="pill pill-bad text-[10px]">deletion</span>}
-                {c.auto && <span className="pill pill-muted text-[10px]">auto</span>}
-                {c.automationId && <span className="pill pill-muted text-[10px]">automation #{c.automationId}</span>}
+                <span className={`pill ${CHANGE_TONE[c.status] ?? "pill-muted"} text-[11px]`}>{c.status}</span>
+                {c.risk === "destructive" && <span className="pill pill-bad text-[11px]">deletion</span>}
+                {c.auto && <span className="pill pill-muted text-[11px]">auto</span>}
+                {c.automationId && <span className="pill pill-muted text-[11px]">automation #{c.automationId}</span>}
               </div>
               <div className="text-xs text-muted truncate" dir="auto" title={c.summary}>{c.summary}</div>
               <div className="text-[11px] text-muted tabnum">

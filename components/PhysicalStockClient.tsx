@@ -106,7 +106,7 @@ export function PhysicalStockClient({ items, canEdit, need, needFailed = false }
           <TableEmpty filtered title="No item matches these filters" hint={`${items.length} items are hidden by the filters above.`} action={<button type="button" className="btn btn-sm btn-secondary" onClick={reset}>Reset filters</button>} />
         ) : (
           <TableFrame>
-            <table className="erp-table grid-lines w-full border-collapse">
+            <table className="table-cards erp-table grid-lines w-full border-collapse">
               <thead className="sticky top-0 z-10">
                 <tr>
                   <Th label="Code" full="Odoo product code" />
@@ -193,7 +193,7 @@ function SummaryCards({ summary, onPick, picked, need }: {
     >
       <div className="text-[11px] font-bold uppercase tracking-wide text-muted">{label}</div>
       <div className={`kpi-value ${tone}`}>{n}</div>
-      <div className="text-[11px] text-muted truncate">{note}</div>
+      <div className="explain text-xs text-muted line-clamp-2">{note}</div>
     </button>
   );
   return (
@@ -207,7 +207,7 @@ function SummaryCards({ summary, onPick, picked, need }: {
           className={`kpi text-start transition-colors hover:border-brand/60 ${need.picked ? "border-brand ring-2 ring-brand/30" : ""}`}>
           <div className="text-[11px] font-bold uppercase tracking-wide text-muted">Short for open orders</div>
           <div className={`kpi-value ${need.short > 0 ? "text-bad-fg" : "text-ok-fg"}`}>{need.short}</div>
-          <div className="text-[11px] text-muted truncate">{need.missing > 0 ? `${need.missing} needed code${need.missing === 1 ? "" : "s"} not on the table` : "need more than Odoo or the store holds"}</div>
+          <div className="explain text-xs text-muted line-clamp-2">{need.missing > 0 ? `${need.missing} needed code${need.missing === 1 ? "" : "s"} not on the table` : "need more than Odoo or the store holds"}</div>
         </button>
       )}
       {summary.byUom.map((u) => (
@@ -311,7 +311,7 @@ function StockRow({ i, canEdit, need }: { i: PhysicalStockItem; canEdit: boolean
           ) : <span className="text-xs text-muted">{i.note ?? ""}</span>}
           {canEdit && <span className="no-print">{row.button}</span>}
         </span>
-        {err && <span className="block text-[10px] text-bad-fg">{err}</span>}
+        {err && <span className="block text-[11px] text-bad-fg">{err}</span>}
         {row.menu}{confirmDialog}
       </td>
     </tr>

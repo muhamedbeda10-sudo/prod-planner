@@ -422,7 +422,9 @@ export function WeldingQueueTable({
                 🛢 Pick tanks ({(paintableTanks[r.mo] ?? []).length})
               </button>
             ) : (
-              <div className="flex items-center gap-1.5 flex-wrap justify-center">
+              // one line for the qty, Save and ↩ (a row of the right height);
+              // a tank's welder ID and its name pill may take a second
+              <div className={`flex items-center gap-1.5 justify-center ${mintsTanks(r) ? "flex-wrap" : ""}`}>
                 <input
                   type="number"
                   min={1}
@@ -432,7 +434,7 @@ export function WeldingQueueTable({
                   value={qty[k] ?? ""}
                   onChange={(e) => setQty((s) => ({ ...s, [k]: e.target.value }))}
                   onKeyDown={(e) => e.key === "Enter" && save(r)}
-                  className="w-16 border rounded-md px-1.5 py-1 text-center font-bold tabnum"
+                  className="ctl w-16 text-center font-bold tabnum"
                   disabled={pending}
                 />
                 {mintsTanks(r) && (
@@ -689,7 +691,7 @@ export function WeldingQueueTable({
       <FilterBar count={filtered.length} total={rows.length} showCount={false} onReset={() => { setQ(""); setItem(""); setPlace(""); }} hasActive={!!q || !!item || !!place}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM…" />
         {/* per-component workload — tap a card to filter the queue to it */}
-        <div className="col-span-2 flex flex-wrap items-center gap-1.5">
+        <div className="col-span-full flex flex-wrap items-center gap-1.5">
           {perItem.map(({ it, avail, maxAge }) => (
             <button
               key={it}
@@ -725,7 +727,7 @@ export function WeldingQueueTable({
       {/* overflow-x only below md — on desktop the wrapper must stay visible so
           the sticky header pins against the outer scroll box */}
       <div className="bg-surface border rounded-xl overflow-x-auto md:overflow-x-visible">
-        <table className="w-full text-sm border-collapse">
+        <table className="table-cards w-full text-sm border-collapse">
           <thead className="md:sticky md:top-0 md:z-10">
             <tr className="bg-brand-fill text-white text-left">
               <th className="p-2">Deliver on</th>
@@ -745,9 +747,9 @@ export function WeldingQueueTable({
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={cols} className="p-4 text-center text-muted">
+              <tr><td colSpan={cols} className="p-4 text-center text-muted"><div className="dt-note">
                 {rows.length === 0 ? "Nothing fabricated is waiting for welding — the queue is clear." : "No lines match the search."}
-              </td></tr>
+              </div></td></tr>
             )}
             {groups.map(([gk, members]) => {
               if (members.length === 1) return renderRow(members[0]);

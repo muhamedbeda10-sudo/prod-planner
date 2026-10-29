@@ -402,7 +402,7 @@ export function ManualJobsList({ dept, jobs, machines, canEdit, boms = [] }: { d
                     return (
                       <tr key={j.id} className={`align-top ${done ? "opacity-70" : ""}`}>
                         <td className="px-2">
-                          <div className="font-bold">{name} <span className="text-[10px] font-normal text-muted tabnum">#{j.id}</span></div>
+                          <div className="font-bold">{name} <span className="text-[11px] font-normal text-muted tabnum">#{j.id}</span></div>
                           {j.bySheet && <SheetJobParts parts={j.parts} className="mt-0.5" />}
                           {details ? <div className="text-xs text-muted mt-0.5">{details}</div> : !(j.bySheet && j.parts.length > 0) && <div className="text-xs text-muted">—</div>}
                           {oldPieces(j) && <div className="text-[11px] text-muted">typed in pieces, before jobs were counted in sheets</div>}
