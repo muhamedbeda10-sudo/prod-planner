@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-29-ai-splash",
+    dateISO: "2026-10-29",
+    title: "The app opens with a wink from the assistant",
+    where: "Opening the app",
+    body: "When you open the app, the assistant's robot fills the screen for a moment, winks and smiles, then gives way to the page — the app runs on AI. It plays once when you open the app (not on every page you move to), a click or any key skips it, and it never shows if your device is set to reduce motion.",
+  },
+  {
     id: "2026-10-29-app-backdrop",
     dateISO: "2026-10-29",
     title: "A cleaner backdrop across the app",
