@@ -109,10 +109,10 @@ function ItemRow({ r, open, toggle, prevComplete }: { r: ItemMonthRow; open: boo
             ? r.overlapping
               ? <span className="text-xs text-muted" title="Two of its limits cover the same department — both hold, so they are not added into one number. Open it for each limit.">both apply · see each</span>
               : <span className="text-xs text-muted" title={multi.length ? "Only limits of several months — see each one" : undefined}>{multi.length ? "over months" : "—"}</span>
-            : <>{fmt(r.allowance)} <span className="text-[10px] text-muted">{r.uom}</span></>}
+            : <>{fmt(r.allowance)} <span className="text-[11px] text-muted">{r.uom}</span></>}
         </td>
         <td className="p-2 text-right tabnum whitespace-nowrap">
-          <b>{fmt(r.used)}</b> <span className="text-[10px] text-muted">{r.uom}</span>
+          <b>{fmt(r.used)}</b> <span className="text-[11px] text-muted">{r.uom}</span>
           {r.outside > 0 && <div className="text-[11px] text-muted" title="Handed out to departments none of its limits cover — not held against a limit">{fmt(r.outside)} outside the limits</div>}
           {multi.length > 0 && r.allowance !== null && <div className="text-[11px] text-muted">monthly limits: {fmt(r.covered)}</div>}
         </td>
@@ -153,11 +153,11 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 no-print">
-        {older ? <Link href={hrefOf(older)} className="btn btn-sm" aria-label="Previous month">◀</Link> : <span className="btn btn-sm opacity-40">◀</span>}
+        {older ? <Link href={hrefOf(older)} className="btn btn-secondary btn-sm" aria-label="Previous month">◀</Link> : <span className="btn btn-secondary btn-sm opacity-40">◀</span>}
         <select value={r.month} onChange={(e) => router.push(hrefOf(e.target.value))} aria-label="Month" className="px-2 py-1.5 text-sm font-bold">
           {r.months.map((m) => <option key={m} value={m}>{monthLong(m)}</option>)}
         </select>
-        {newer ? <Link href={hrefOf(newer)} className="btn btn-sm" aria-label="Next month">▶</Link> : <span className="btn btn-sm opacity-40">▶</span>}
+        {newer ? <Link href={hrefOf(newer)} className="btn btn-secondary btn-sm" aria-label="Next month">▶</Link> : <span className="btn btn-secondary btn-sm opacity-40">▶</span>}
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -181,7 +181,7 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
         <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search item, code…" aria-label="Search" className="px-2 py-1.5 text-sm font-semibold w-full sm:w-64" />
         {filter !== "all" && <button type="button" className="pill pill-muted cursor-pointer" onClick={() => setFilter("all")}>{MONTH_STATUS_LABEL[filter]} ✕</button>}
         <span className="text-sm text-muted">{shown.length} of {r.rows.length} items</span>
-        <button type="button" className="btn btn-sm ms-auto" onClick={() => setOpen(allOpen ? new Set() : new Set(shown.map((row) => row.itemId)))}>{allOpen ? "Collapse all" : "Open all"}</button>
+        <button type="button" className="btn btn-secondary btn-sm ms-auto" onClick={() => setOpen(allOpen ? new Set() : new Set(shown.map((row) => row.itemId)))}>{allOpen ? "Collapse all" : "Open all"}</button>
       </div>
 
       <section className="bg-surface border rounded-xl overflow-hidden" data-ai-title={`Items against their limits — ${monthLong(r.month)}`} data-ai-about="Each item against its monthly limit. Each-department and per-worker limits are counted department by department, the way the record form and the alarms count them; a per-worker number is times the department's workers that month (kept month by month; before the record began, the list as it stands). Two limits covering the same department both hold: a hand-out must fit each, and they are not added into one monthly number. Hand-outs to departments none of an item's limits cover show apart and count against no limit.">

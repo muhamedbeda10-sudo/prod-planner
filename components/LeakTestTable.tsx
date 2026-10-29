@@ -97,8 +97,8 @@ export function LeakTestTable({
       >
         <SearchBox value={q} onChange={setQ} placeholder="Search serial / MO…" />
         {canEdit && (
-          <div className="col-span-2 flex flex-wrap items-center gap-1.5">
-            <button type="button" onClick={toggleAll} className="btn btn-sm" disabled={pending || filtered.length === 0}>
+          <div className="col-span-full flex flex-wrap items-center gap-1.5">
+            <button type="button" onClick={toggleAll} className="btn btn-secondary btn-sm" disabled={pending || filtered.length === 0}>
               {allPicked ? "Clear selection" : `Select all (${filtered.length})`}
             </button>
             <TankWorkerPicker
@@ -113,12 +113,12 @@ export function LeakTestTable({
               type="button"
               onClick={() => run([...picked], "pass", "")}
               disabled={pending || picked.size === 0 || testers.length === 0}
-              className="rounded-md px-3 py-1.5 text-xs font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50"
+              className="btn btn-primary btn-sm"
               title="The picked tanks passed and move on to painting"
             >
               ✓ Passed ({picked.size})
             </button>
-            {msg && <span className="text-[11px] text-bad-fg whitespace-normal">{msg}</span>}
+            {msg && <span className="text-xs text-bad-fg whitespace-normal">{msg}</span>}
           </div>
         )}
         <PrintButton />
@@ -126,7 +126,7 @@ export function LeakTestTable({
 
       <div className="md:flex-1 md:min-h-0 md:overflow-auto">
         <div className="bg-surface border rounded-xl overflow-x-auto md:overflow-x-visible">
-          <table className="w-full text-sm border-collapse">
+          <table className="table-cards w-full text-sm border-collapse">
             <thead className="md:sticky md:top-0 md:z-10">
               <tr className="bg-brand-fill text-white text-left">
                 {canEdit && <th className="p-2 w-8" />}
@@ -145,11 +145,11 @@ export function LeakTestTable({
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={canEdit ? 11 : 9} className="p-4 text-center text-muted">
+                  <td colSpan={canEdit ? 11 : 9} className="p-4 text-center text-muted"><div className="dt-note">
                     {tanks.length === 0
                       ? "No tank is waiting for the leak test — the queue is clear."
                       : "No tanks match the search."}
-                  </td>
+                  </div></td>
                 </tr>
               )}
               {filtered.map((t, i) => (
@@ -221,7 +221,7 @@ export function LeakTestTable({
                             className="flex-1 border rounded-md px-2 py-1 text-xs bg-surface"
                             disabled={pending}
                           />
-                          <button type="submit" className="btn btn-sm text-bad-fg" disabled={pending}>
+                          <button type="submit" className="btn btn-secondary btn-sm text-bad-fg" disabled={pending}>
                             Send back
                           </button>
                         </form>

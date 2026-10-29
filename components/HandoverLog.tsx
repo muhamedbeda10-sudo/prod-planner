@@ -263,7 +263,7 @@ export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }
       )}
 
       <div className="bg-surface border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
+        <table className="table-cards w-full text-sm border-collapse">
           <thead>
             <tr className="bg-brand-fill text-white text-left">
               <th className="p-2 no-print w-8 text-center">
@@ -291,9 +291,9 @@ export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={11} className="p-4 text-center text-muted">
+              <tr><td colSpan={11} className="p-4 text-center text-muted"><div className="dt-note">
                 {rows.length === 0 ? "No records." : "No rows match the filters."}
-              </td></tr>
+              </div></td></tr>
             )}
             {filtered.map((r, i) => (
               <tr key={r.id} className={`${i % 2 ? "bg-zebra" : ""} ${selected.has(r.id) ? "!bg-brand-light/50" : ""}`}>

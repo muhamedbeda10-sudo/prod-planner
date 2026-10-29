@@ -162,7 +162,7 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
         {current?.others ? <span className="pill pill-muted tabnum" title={`Split — ${state}`}>+{current.others}</span> : null}
         {rest}
       </span>
-      {a.err && <span className="text-[10px] text-bad-fg">{a.err}</span>}
+      {a.err && <span className="text-[11px] text-bad-fg">{a.err}</span>}
     </span>
   );
 }
@@ -206,7 +206,7 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
   if (bySheet) return (
     <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 no-print">
       <span className="inline-flex items-center rounded-md border border-brand/50 bg-surface overflow-hidden" title={`Sheets of this job cut on this ${machineWord(board.dept)} — blank = all ${q.remaining} left here.`}>
-        <span className="ps-1.5 pe-1 text-[10px] font-bold uppercase text-muted">Sheets</span>
+        <span className="ps-1.5 pe-1 text-[11px] font-bold uppercase text-muted">Sheets</span>
         <input
           type="number" min={0.01} max={q.remaining} step={0.01} inputMode="decimal" placeholder={String(q.remaining)}
           value={val} disabled={pending} aria-label="Sheets cut"
@@ -214,7 +214,7 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
           className="w-12 border-x px-1 py-0.5 bg-surface text-xs tabnum ltr text-center outline-none"
         />
-        <span className="px-1 text-[10px] text-muted tabnum whitespace-nowrap">/ {q.remaining} left{q.split ? " here" : ""}</span>
+        <span className="px-1 text-[11px] text-muted tabnum whitespace-nowrap">/ {q.remaining} left{q.split ? " here" : ""}</span>
         <button type="button" className="bg-brand-fill text-white px-1.5 py-0.5 text-xs font-bold disabled:opacity-50" disabled={pending} onClick={save} title="Record the sheets cut">✓</button>
       </span>
       {jobTotal}
@@ -331,11 +331,11 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
           <Meter value={pct / 100} color={tone ? `var(--${tone}-fg)` : "var(--muted)"} />
         </span>
       )}
-      {!bySheets && roundSheets(c.unpricedPcs - counts.sheets) > 0 && <div className="text-[10px] text-warn-fg">{roundSheets(c.unpricedPcs - counts.sheets)} pcs with no standard time — hours undercounted</div>}
+      {!bySheets && roundSheets(c.unpricedPcs - counts.sheets) > 0 && <div className="text-[11px] text-warn-fg">{roundSheets(c.unpricedPcs - counts.sheets)} pcs with no standard time — hours undercounted</div>}
 
       {c.running.length > 0 ? (
         <div className="rounded-lg border border-brand/40 bg-brand-light/30 px-2.5 py-2 space-y-1">
-          <div className="text-[10px] font-bold uppercase tracking-wide text-brand-ink">▶ Now{c.running.length > 1 ? ` · ${c.running.length} together` : ""}</div>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-brand-ink">▶ Now{c.running.length > 1 ? ` · ${c.running.length} together` : ""}</div>
           {c.running.map((q) => (
             <div key={`${q.key}#${q.sheet}`} className="flex items-baseline gap-2 flex-wrap">
               {what(q, true)}
@@ -461,7 +461,7 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
         <span className="font-semibold shrink-0">{u.item}</span></>}
         <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
         {multi && <span className="pill pill-muted shrink-0" title={`${CENTER_LABEL[u.center] ?? u.center} — step ${u.stepNo} of ${u.stepCount} on this line's route`}>{u.center}</span>}
-        {u.partial && <span className="text-[10px] text-muted tabnum shrink-0" title="The rest of a split line — the other pieces are on a machine already">✂ rest of {u.lineRemaining}</span>}
+        {u.partial && <span className="text-[11px] text-muted tabnum shrink-0" title="The rest of a split line — the other pieces are on a machine already">✂ rest of {u.lineRemaining}</span>}
         {u.hours !== null && <span className="text-muted tabnum shrink-0">{u.hours} h</span>}
         {u.deliveryISO ? <span className="text-muted tabnum shrink-0">📅 {ddmm(u.deliveryISO)}</span> : <span className="text-muted shrink-0">no date</span>}</>}
         <span className="ms-auto shrink-0">

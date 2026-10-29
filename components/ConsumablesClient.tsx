@@ -437,7 +437,7 @@ function IssueRow({ e, data, isAdmin, showActions, colSpan }: { e: ConsumableIss
           )}
           {e.overLimit?.reason && <div className="text-xs text-bad-fg font-normal">“{e.overLimit.reason}”</div>}
         </td>
-        <td className="p-2 text-right ltr tabnum font-extrabold whitespace-nowrap">{e.qty}{e.uom && <span className="text-[10px] text-muted font-semibold ms-0.5">{e.uom}</span>}</td>
+        <td className="p-2 text-right ltr tabnum font-extrabold whitespace-nowrap">{e.qty}{e.uom && <span className="text-[11px] text-muted font-semibold ms-0.5">{e.uom}</span>}</td>
         <td className="p-2">{e.departmentLabel}</td>
         <td className="p-2">
           {e.worker ? (
@@ -637,7 +637,7 @@ export function ConsumablesClient({
         ) : (
           // the log takes the rest of the screen (components/TableFill) and scrolls inside it, header pinned
           <TableFrame className="min-h-[16rem]">
-            <table className="w-full text-sm border-collapse">
+            <table className="table-cards w-full text-sm border-collapse">
               <thead>
                 <tr className="text-left">
                   <Th label="Date & time" />

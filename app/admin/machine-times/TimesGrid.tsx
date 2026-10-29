@@ -116,14 +116,14 @@ export function TimesGrid({ machines, times, estimates, measured = {}, canEdit }
                           onChange={(e) => setDraft((d) => ({ ...d, [key(m.id, item)]: e.target.value }))}
                           className={`px-1 py-1 text-sm tabnum w-20 text-center ltr ${v ? "font-bold" : "text-muted"}`}
                         />
-                        {v && Number(v) > 0 && <div className="text-[10px] text-muted tabnum">{minutes(Number(v))} min</div>}
+                        {v && Number(v) > 0 && <div className="text-[11px] text-muted tabnum">{minutes(Number(v))} min</div>}
                         {mm && (
                           <button
                             type="button"
                             disabled={!canEdit || pending || same}
                             onClick={() => setDraft((d) => ({ ...d, [key(m.id, item)]: String(mm.hoursPerPc) }))}
                             title={`Measured: ${mm.pieces} pcs over ${mm.hours} man-hours on ${mm.days} day(s) — ${minutes(mm.hoursPerPc)} min a piece. Click to take it as the figure.`}
-                            className={`block w-full text-[10px] tabnum ${same ? "text-ok-fg" : "text-brand-ink hover:underline cursor-pointer"}`}
+                            className={`block w-full text-[11px] tabnum ${same ? "text-ok-fg" : "text-brand-ink hover:underline cursor-pointer"}`}
                           >
                             {same ? "✓ " : "≈ "}{mm.hoursPerPc} <span className="text-muted">({mm.pieces} pcs)</span>
                           </button>

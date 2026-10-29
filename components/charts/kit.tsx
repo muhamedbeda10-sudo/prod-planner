@@ -86,9 +86,9 @@ export function ChartCard({
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <div className="min-w-0">
           <h2 className="font-bold leading-tight"><ChartAbout title={title} about={about} /></h2>
-          {sub && <p className="text-xs text-muted mt-0.5">{sub}</p>}
+          {sub && <p className="chart-sub text-xs text-muted mt-0.5">{sub}</p>}
         </div>
-        {right && <div className="flex items-center gap-2 no-print">{right}</div>}
+        {right && <div className="flex flex-wrap items-center gap-2 no-print min-w-0 max-w-full">{right}</div>}
       </div>
       {children}
       {table && data && data.length > 0 && <ChartTable title={title} rows={data} />}
@@ -192,12 +192,14 @@ export function StatTile({
         {spark && <Sparkline values={spark} />}
       </div>
       {meter !== undefined && <Meter value={meter} />}
-      {sub && <div className="text-xs text-muted truncate" title={typeof sub === "string" ? sub : undefined}>{sub}</div>}
+      {sub && <div className="tile-sub text-xs text-muted truncate">{sub}</div>}
     </>
   );
+  // the line under the figure stays off the screen; a hover still reads it
+  const hover = typeof sub === "string" ? sub : undefined;
   return href
-    ? <Link ref={ref} href={href} onClick={onClick} scroll={false} className={`${cls} text-foreground hover:border-brand transition-colors`}>{body}</Link>
-    : <div ref={ref} className={cls}>{body}</div>;
+    ? <Link ref={ref} href={href} onClick={onClick} scroll={false} title={hover} className={`${cls} text-foreground hover:border-brand transition-colors`}>{body}</Link>
+    : <div ref={ref} title={hover} className={cls}>{body}</div>;
 }
 
 /** A change against an earlier reading, as a share of it ("▲ 12%") — "N/A"
@@ -308,7 +310,7 @@ export function Heatmap({
   const rowMax = values.map((r) => Math.max(0, ...r));
   const rowSum = values.map((r) => r.reduce((a, b) => a + b, 0));
   const colSum = cols.map((_, j) => values.reduce((a, r) => a + (r[j] ?? 0), 0));
-  const cellCls = compactCells ? "h-8 min-w-[1.6rem] text-[10px]" : "px-2 py-1.5 text-sm";
+  const cellCls = compactCells ? "h-8 min-w-[1.6rem] text-[11px]" : "px-2 py-1.5 text-sm";
   return (
     <div className="overflow-x-auto">
       <ChartZoom>

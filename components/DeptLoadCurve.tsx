@@ -103,7 +103,7 @@ export function DeptLoadCurve({ board, horizon }: { board: MachineBoardData; hor
                   />
                 )}
                 {d.over && (
-                  <span className="absolute inset-x-0 text-[10px] font-bold text-center tabnum" style={{ bottom: `calc(${Math.max(barH, 1.5)}% + 2px)`, color: "var(--viz-7)" }}>
+                  <span className="absolute inset-x-0 text-[11px] font-bold text-center tabnum" style={{ bottom: `calc(${Math.max(barH, 1.5)}% + 2px)`, color: "var(--viz-7)" }}>
                     {d.owedH}
                   </span>
                 )}
@@ -116,7 +116,7 @@ export function DeptLoadCurve({ board, horizon }: { board: MachineBoardData; hor
       {/* the days, under their own column */}
       <div className="flex gap-[2px] mt-1">
         {load.days.map((d, i) => (
-          <span key={d.dateISO} className={`flex-1 text-center text-[10px] tabnum ${i === 0 ? "font-bold" : "text-muted"}`}>
+          <span key={d.dateISO} className={`flex-1 text-center text-[11px] tabnum ${i === 0 ? "font-bold" : "text-muted"}`}>
             {ddmm(d.dateISO)}
           </span>
         ))}

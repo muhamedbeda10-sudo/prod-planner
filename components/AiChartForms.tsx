@@ -302,7 +302,7 @@ export function GanttFigure({ spec }: { spec: AiGanttSpec }) {
             {spec.rows.map((r, i) => <div key={r} className="absolute inset-x-0 border-b border-[var(--border)]" style={{ top: (i + 1) * ROW - 1 }} />)}
             {showNow && (
               <div className="absolute top-0 bottom-0 border-l-2 border-[var(--foreground)] z-10" style={{ left: `${at(now)}%` }} title="Now">
-                <span className="absolute -top-5 -translate-x-1/2 text-[10px] font-bold">now</span>
+                <span className="absolute -top-5 -translate-x-1/2 text-[11px] font-bold">now</span>
               </div>
             )}
             {spec.tasks.map((t, k) => {

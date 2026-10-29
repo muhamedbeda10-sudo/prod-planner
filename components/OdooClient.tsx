@@ -175,7 +175,7 @@ function BomValue({ bom, line }: { bom: OdooEntryView["bom"]; line: string }) {
           <Link href={traceHref({ bom: b, line: resolveLine(line) })} onClick={(ev) => ev.stopPropagation()} className="text-brand-ink hover:underline" title="Open the order's details">{b}</Link>
         </Fragment>
       ))}
-      {bom.boms.length > 1 && <span className="pill pill-warn text-[10px]" title="The SOI has several BOMs — the row does not say which">{bom.boms.length} BOMs</span>}
+      {bom.boms.length > 1 && <span className="pill pill-warn text-[11px]" title="The SOI has several BOMs — the row does not say which">{bom.boms.length} BOMs</span>}
     </span>
   );
 }
@@ -206,7 +206,7 @@ function InlineValue({ ids, name, value, placeholder, action, warn, hint, list }
         placeholder={placeholder} title={hint} ariaLabel={name === "odooMo" ? "MO#" : "FG-CODE"}
         className={`ltr font-bold ${name === "fgCode" ? "!w-48" : "!w-40"}`}
       />
-      {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
+      {a.msg?.ok === false && <span className="text-[11px] text-bad-fg">{a.msg.text}</span>}
     </span>
   );
 }
@@ -214,7 +214,7 @@ function InlineValue({ ids, name, value, placeholder, action, warn, hint, list }
 function DoneStamp({ e }: { e: OdooEntryView }) {
   if (!e.done || !e.doneAtISO) return null;
   return (
-    <span className="text-[10px] text-muted tabnum ltr" title="When the status was moved to Done — the day the dashboard counts the close on" suppressHydrationWarning>
+    <span className="text-[11px] text-muted tabnum ltr" title="When the status was moved to Done — the day the dashboard counts the close on" suppressHydrationWarning>
       closed {stamp(e.doneAtISO)}
     </span>
   );
@@ -296,8 +296,8 @@ function StatusCell({ e, canEdit, ids }: { e: OdooEntryView; canEdit: boolean; i
         </button>
       </span>
       <DoneStamp e={e} />
-      {needNote && locked && <span className="text-[10px] text-bad-fg whitespace-normal max-w-[12rem]" role="alert">{CANCEL_NEEDS_NOTE}</span>}
-      {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
+      {needNote && locked && <span className="text-[11px] text-bad-fg whitespace-normal max-w-[12rem]" role="alert">{CANCEL_NEEDS_NOTE}</span>}
+      {a.msg?.ok === false && <span className="text-[11px] text-bad-fg">{a.msg.text}</span>}
       {confirmDialog}
     </span>
   );
@@ -322,7 +322,7 @@ function Note({ n, canEdit }: { n: OdooNoteView; canEdit: boolean }) {
           <span className="tabnum ltr" suppressHydrationWarning>{stamp(n.atISO)}</span>
           {n.by && <span> · {n.by}</span>}
         </div>
-        {del.msg?.ok === false && <span className="text-[10px] text-bad-fg">{del.msg.text}</span>}
+        {del.msg?.ok === false && <span className="text-[11px] text-bad-fg">{del.msg.text}</span>}
       </div>
       {canEdit && (
         <button
@@ -417,7 +417,7 @@ function NotesCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
           className="px-2 py-1 text-xs w-full no-print"
         />
       )}
-      {add.msg?.ok === false && <span className="text-[10px] text-bad-fg">{add.msg.text}</span>}
+      {add.msg?.ok === false && <span className="text-[11px] text-bad-fg">{add.msg.text}</span>}
     </div>
   );
 }
@@ -525,7 +525,7 @@ function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: 
           {e.odooMo ? e.odooMo : canEdit ? (
             <InlineValue ids={[e.id]} name="odooMo" value="" placeholder="SF01/MO/… (Enter)" action={setOdooMo} warn={false} hint="Type Odoo's MO number for this closing — Enter saves" />
           ) : (
-            <span className="pill pill-warn text-[10px]">needs MO</span>
+            <span className="pill pill-warn text-[11px]">needs MO</span>
           )}
         </td>
         <td className="p-2 text-center tabnum font-extrabold cursor-pointer" onClick={open} title={rowTitle}>{e.qty}</td>
@@ -688,7 +688,7 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
               hint={`Type Odoo's MO once — it is written to all ${g.rows.length} closings on this line`}
             />
           ) : (
-            <span className="pill pill-warn text-[10px]">needs MO</span>
+            <span className="pill pill-warn text-[11px]">needs MO</span>
           )}
         </td>
         <td className="p-2 text-center tabnum font-extrabold cursor-pointer" onClick={details} title={`${parts} — the closings on this line. Click for the material behind all ${g.qty}`}>{g.qty}</td>
@@ -708,7 +708,7 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
             >
               🧱{need ? <span className="tabnum ms-1">{need.totalBook}</span> : null}
             </button>
-            <button type="button" className="btn btn-sm" onClick={toggle}>{open ? "Close" : `${g.rows.length} rows`}</button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={toggle}>{open ? "Close" : `${g.rows.length} rows`}</button>
             {canEdit && <>{row.button}{row.menu}{confirmDialog}</>}
           </span>
         </td>
@@ -1030,7 +1030,7 @@ export function OdooClient({
           />
         ) : (
           <TableFrame>
-            <table className="w-full text-sm border-collapse">
+            <table className="table-cards w-full text-sm border-collapse">
               <thead>
                 <tr className="text-left">
                   <Th label="Date" />

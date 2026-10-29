@@ -194,7 +194,7 @@ export function CascadeTable({
       )}
 
       <div className="bg-surface border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
+        <table className="table-cards w-full text-sm border-collapse">
           <thead>
             <tr className="bg-accent-gray/90 text-white text-left">
               <th className="p-2">Deliver on</th>
@@ -211,9 +211,9 @@ export function CascadeTable({
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={cols} className="p-4 text-center text-muted">
+              <tr><td colSpan={cols} className="p-4 text-center text-muted"><div className="dt-note">
                 {rows.length === 0 ? "Nothing here — every open order is scheduled or remarked." : "No lines match the search."}
-              </td></tr>
+              </div></td></tr>
             )}
             {groups.map(([gk, members]) => {
               if (members.length === 1) return renderRow(members[0]);
@@ -343,7 +343,7 @@ export function CascadeTable({
                           disabled={pending}
                           title={`How many pieces get this date (up to ${r.available}) — the rest stays here`}
                         />
-                        <span className="text-[10px] text-muted tabnum">/{r.available}</span>
+                        <span className="text-[11px] text-muted tabnum">/{r.available}</span>
                         <button type="button" onClick={() => saveDate(r)} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title="Save — that quantity moves to the dated tables, the rest stays here">✓</button>
                         <button type="button" onClick={() => setDateEdit(null)} disabled={pending} className="text-muted px-0.5" title="Cancel">✕</button>
                       </span>

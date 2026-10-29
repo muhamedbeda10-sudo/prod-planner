@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { decidePlanQty, importMonthlyAction } from "@/app/orders/actions";
 import type { MonthlyImportResult, QtyProposal } from "@/lib/server/importMonthly";
@@ -19,6 +19,12 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
   // "add and update only" by default — taking the month's other orders out
   // has to be chosen on purpose, every time
   const [keep, setKeep] = useState(true);
+  // a phone opens on the orders, not on a monthly form a screen tall: the
+  // import starts folded there, a tap on its line opens it
+  const box = useRef<HTMLDetailsElement>(null);
+  useLayoutEffect(() => {
+    if (box.current && window.matchMedia("(max-width: 639px)").matches) box.current.open = false;
+  }, []);
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -38,9 +44,9 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
   }
 
   return (
-    <details className="bg-surface border rounded-xl p-4" open>
+    <details ref={box} className="bg-surface border rounded-xl p-4" open>
       <summary className="font-bold cursor-pointer select-none">
-        📥 Import monthly plan — <span className="text-brand-ink">{LINE_LABEL[line]}</span> <span className="text-xs text-muted font-normal">(add and update only: new MOs are added, existing MOs get the revision&apos;s changes, nothing is removed{line === "TR" ? " — progress quantities are never read" : ""})</span>
+        📥 Import monthly plan — <span className="text-brand-ink">{LINE_LABEL[line]}</span> <span className="explain text-xs text-muted font-normal">(add and update only: new MOs are added, existing MOs get the revision&apos;s changes, nothing is removed{line === "TR" ? " — progress quantities are never read" : ""})</span>
       </summary>
       <form onSubmit={submit} className="mt-3 flex flex-wrap items-center gap-3">
         {/* the line this form shows — the action refuses a sheet sent under another */}
@@ -74,7 +80,7 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
           <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
           Keep orders not in the sheet
           {keep ? (
-            <span className="text-xs text-muted font-normal">(nothing is ever removed)</span>
+            <span className="explain text-xs text-muted font-normal">(nothing is ever removed)</span>
           ) : (
             <span className="text-xs text-bad-fg font-semibold">(the month&apos;s open orders missing from the sheet will be deleted, or closed when work was recorded)</span>
           )}
@@ -84,12 +90,12 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
         <label className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer">
           <input type="checkbox" name="preview" defaultChecked />
           Preview only
-          <span className="text-xs text-muted font-normal">(review first — untick to actually apply)</span>
+          <span className="explain text-xs text-muted font-normal">(review first — untick to actually apply)</span>
         </label>
         <button type="submit" disabled={pending} className="bg-brand-fill hover:bg-brand-dark text-white font-bold rounded-md px-5 py-2 disabled:opacity-50 transition-colors">
           {pending ? "Importing…" : `Import ${LINE_LABEL[line]} orders`}
         </button>
-        <span className="text-xs text-muted">
+        <span className="explain text-xs text-muted">
           The sheet is filed under <b>{LINE_LABEL[line]}</b> — switch the line on the orders&apos; bar below first if it is the other product&apos;s plan.
           New MOs are added; re-importing the SAME month applies the revision: raised quantities, urgency, BOMs… are updated and every change is listed below. Orders of the month that the sheet does not list are left exactly as they are. A quantity that differs from the registry&apos;s is never changed by the import — it is flagged with the old and the new figure, and you choose which one stays. Columns are read by header name — any sheet layout month to month.{line === "LV" ? " The meter boxes' sheet has no BOM column: its FG Code stands in, and its OSP column is the quantity bought outside." : ""}
         </span>
@@ -239,7 +245,7 @@ function QtyDecisions({ proposals, preview }: { proposals: QtyProposal[]; previe
                 <tr key={p.mo} className={d ? "opacity-60" : ""}>
                   <td className="p-1.5 font-semibold whitespace-nowrap">
                     {p.mo}
-                    {p.carried && <span className="pill pill-warn ms-1 text-[10px]" title="In an earlier month's plan too — carried over">🔁 carried</span>}
+                    {p.carried && <span className="pill pill-warn ms-1 text-[11px]" title="In an earlier month's plan too — carried over">🔁 carried</span>}
                   </td>
                   <td className="p-1.5 whitespace-nowrap">{p.bom}</td>
                   <td className="p-1.5 text-center tabnum font-bold">{p.from}</td>
@@ -266,7 +272,7 @@ function QtyDecisions({ proposals, preview }: { proposals: QtyProposal[]; previe
         </table>
       </div>
       {err && <p className="text-xs font-semibold text-bad-fg mt-1">{err}</p>}
-      <div className="text-[11px] text-muted mt-1">
+      <div className="explain text-[11px] text-muted mt-1">
         The import never changes a quantity on its own. Until you choose, the order keeps its old quantity and shows ⚠ on the Plan Tracker, where you can decide too.
       </div>
     </div>

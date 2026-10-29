@@ -16,7 +16,7 @@ export function WhatsNewList({ seen, onNavigate }: { seen: string | null; onNavi
         <li key={e.id} className={`rounded-lg border px-3 py-2.5 ${i < fresh ? "border-brand/50 bg-brand-light/30" : ""}`}>
           <div className="flex flex-wrap items-baseline gap-2">
             <span className="font-bold">{e.title}</span>
-            {i < fresh && <span className="pill pill-ok text-[10px]">new</span>}
+            {i < fresh && <span className="pill pill-ok text-[11px]">new</span>}
             <span className="ms-auto text-xs text-muted tabnum">{formatDate(e.dateISO)}</span>
           </div>
           <div className="text-xs text-muted mt-0.5">{e.where}</div>

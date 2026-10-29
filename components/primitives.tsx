@@ -111,14 +111,16 @@ export function SectionCard({ icon, title, description, end, children, className
 }) {
   return (
     <section className={`section-card ${className}`}>
-      <header className="section-head">
+      <header className="section-head" title={typeof description === "string" ? description : undefined}>
         {/* a tile in the card's own colour, steady across visits */}
         {icon && <span className={`section-icon tone-tile ${toneFor(typeof title === "string" ? title : "")}`}>{drawIcon(icon, 16)}</span>}
-        <div className="min-w-0 flex-1">
+        {/* the title keeps room to read; actions that do not fit beside it
+            (a phone) move under it instead of squeezing it to a word a line */}
+        <div className="min-w-0 flex-[1_1_12rem]">
           <h3 className="section-title">{title}</h3>
           {description && <p className="section-desc">{description}</p>}
         </div>
-        {end && <div className="flex items-center gap-2 shrink-0">{end}</div>}
+        {end && <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">{end}</div>}
       </header>
       <div className={padded ? "px-4 pb-4 md:px-5 md:pb-5" : ""}>{children}</div>
     </section>

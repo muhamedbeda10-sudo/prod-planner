@@ -74,7 +74,7 @@ export function ShiftHoursForm({ short, long, overtime, nightOvertime = 3, compa
   return (
     <section className="bg-surface border rounded-xl p-4">
       <h2 className="text-base font-bold">🕘 Shift hours</h2>
-      <p className="text-xs text-muted mt-0.5 mb-3">
+      <p className="explain text-xs text-muted mt-0.5 mb-3">
         Net working hours after the one-hour break, plus optional overtime: day 16:00–19:00, night 04:00–07:00. Every man-hour the app counts uses
         these: the day’s total per department, the crew on a machine, and what the standard times are calibrated against.
         Days already recorded keep the shift they were recorded under and are re-counted with the new hours.

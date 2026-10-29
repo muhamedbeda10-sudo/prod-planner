@@ -63,7 +63,7 @@ export function TraceView({ t, planNo, view = "", material }: {
       <div className="md:sticky md:top-16 z-20 -mx-4 px-4 py-3 bg-background/85 backdrop-blur border-b border-border/60">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="min-w-0">
-            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
+            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted">
               Trace · {t.scope === "mo" ? "Manufacturing order" : "Code"}
             </div>
             <div className="flex items-center gap-2.5">
@@ -135,7 +135,7 @@ export function TraceView({ t, planNo, view = "", material }: {
                 <Prop k="Planned in">
                   {t.orderPlans.length === 0 ? "—" : (
                     <span className="flex flex-wrap justify-end gap-1">
-                      {t.orderPlans.map((p) => <span key={p} className="pill pill-muted text-[10px]">{p}</span>)}
+                      {t.orderPlans.map((p) => <span key={p} className="pill pill-muted text-[11px]">{p}</span>)}
                     </span>
                   )}
                 </Prop>
@@ -298,7 +298,7 @@ function StagePipeline({ stages, totalReq, pipeline }: {
                       <b>{p.item}</b>
                       <span className="tabnum text-muted">{pc}%</span>
                     </div>
-                    <div className="tabnum font-extrabold">{v}<span className="text-[10px] text-muted font-normal">/{p.required}</span></div>
+                    <div className="tabnum font-extrabold">{v}<span className="text-[11px] text-muted font-normal">/{p.required}</span></div>
                     <TraceBar pct={pc} className="mt-1" />
                   </div>
                 );
@@ -390,14 +390,14 @@ function ComponentProgress({ pipeline }: { pipeline: TracePipelineRow[] }) {
                   <tr key={p.item} className={`border-b border-border/40 last:border-0 hover:bg-brand-light/20 transition-colors ${!p.active ? "opacity-45" : ""}`}>
                     <td className="px-4 py-2.5 font-extrabold">
                       {p.item}
-                      {p.osp > 0 && <span className="ml-1.5 text-[10px] font-semibold text-muted" title="outsourced — counts as covered">OSP {p.osp}</span>}
+                      {p.osp > 0 && <span className="ml-1.5 text-[11px] font-semibold text-muted" title="outsourced — counts as covered">OSP {p.osp}</span>}
                     </td>
                     {p.active ? (
                       <>
                         <td className="px-3 py-2.5 text-center font-bold tabnum">{p.required}</td>
                         <td className="px-3 py-2.5 text-center tabnum">{p.cut}</td>
                         <td className="px-3 py-2.5 text-center tabnum">{p.weld}</td>
-                        <td className="px-3 py-2.5 text-center tabnum">{p.finished}<span className="block text-[9px] text-muted leading-none">{p.finishLabel}</span></td>
+                        <td className="px-3 py-2.5 text-center tabnum">{p.finished}<span className="block text-[11px] text-muted leading-none">{p.finishLabel}</span></td>
                         <td className="px-3 py-2.5 text-center tabnum">{p.delivered}</td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-2">
@@ -466,7 +466,7 @@ function Records({ t }: { t: TraceResult }) {
             </thead>
             <tbody>
               {ledger.length === 0 && (
-                <tr><td colSpan={byOrder ? 7 : 6} className="p-8 text-center text-muted">No records yet.</td></tr>
+                <tr><td colSpan={byOrder ? 7 : 6} className="p-8 text-center text-muted"><div className="dt-note">No records yet.</div></td></tr>
               )}
               {ledger.map((l, i) => (
                 <tr key={l.id} className={`border-b border-border/30 last:border-0 hover:bg-brand-light/25 transition-colors ${i % 2 ? "bg-brand-light/[0.06]" : ""}`}>
@@ -509,9 +509,9 @@ function Records({ t }: { t: TraceResult }) {
             </thead>
             <tbody>
               {t.orders.length === 0 && (
-                <tr><td colSpan={9} className="p-10 text-center text-muted">
+                <tr><td colSpan={9} className="p-10 text-center text-muted"><div className="dt-note">
                   <div className="text-2xl mb-1">📄</div>Not in any imported plan.
-                </td></tr>
+                </div></td></tr>
               )}
               {t.orders.map((o, i) => (
                 <tr key={o.id} className={`border-b border-border/30 last:border-0 hover:bg-brand-light/25 transition-colors ${i % 2 ? "bg-brand-light/[0.06]" : ""}`}>
@@ -641,7 +641,7 @@ function Kpi({ icon, label, value, suffix, sub, pct, bar, tone }: {
     <div className="rounded-2xl bg-surface border border-border/60 shadow-sm px-4 py-3.5 transition-all hover:shadow-md">
       <div className="flex items-center gap-1.5 text-muted">
         <span className="grid place-items-center w-6 h-6 rounded-lg bg-brand-light/60 text-brand-ink">{icon}</span>
-        <span className="text-[10px] font-bold uppercase tracking-wide">{label}</span>
+        <span className="text-[11px] font-bold uppercase tracking-wide">{label}</span>
       </div>
       <div className="mt-2 flex items-baseline gap-1.5">
         <span className="text-[26px] font-extrabold tabnum leading-none tracking-tight" style={{ color }}>{value}{suffix}</span>
@@ -663,7 +663,7 @@ function Chip({ tone, className = "", children }: { tone: "ok" | "bad" | "warn" 
 function MiniStat({ label, value, warn = false }: { label: string; value: number; warn?: boolean }) {
   return (
     <div className="rounded-xl bg-brand-light/25 px-2 py-1.5">
-      <div className="text-[10px] font-bold uppercase tracking-wide text-muted">{label}</div>
+      <div className="text-[11px] font-bold uppercase tracking-wide text-muted">{label}</div>
       <div className="text-base font-extrabold tabnum" style={{ color: warn ? "var(--warn-fg)" : undefined }}>{value}</div>
     </div>
   );
@@ -691,7 +691,7 @@ function Ring({ pct, size = 56 }: { pct: number; size?: number }) {
 function Avatar({ name }: { name: string }) {
   const initials = name.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
   return (
-    <span className="grid place-items-center w-7 h-7 rounded-full bg-brand-fill text-white text-[10px] font-extrabold shrink-0" title={name}>
+    <span className="grid place-items-center w-7 h-7 rounded-full bg-brand-fill text-white text-[11px] font-extrabold shrink-0" title={name}>
       {initials || "?"}
     </span>
   );

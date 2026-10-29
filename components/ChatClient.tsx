@@ -125,7 +125,7 @@ function AttachmentView({ a }: { a: ChatAttachment }) {
       {docIcon(a.name)}
       <span className="min-w-0">
         <span className="block truncate text-xs font-bold max-w-[200px]">{a.name}</span>
-        <span className="block text-[10px] opacity-60">{sizeLabel(a.size)}</span>
+        <span className="block text-[11px] opacity-60">{sizeLabel(a.size)}</span>
       </span>
     </a>
   );
@@ -568,12 +568,12 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                 <span className="flex items-center gap-2">
                   <span className={`truncate text-sm ${c.unread > 0 ? "font-extrabold" : "font-semibold"}`}>{c.name}</span>
                   {c.kind === "group" && (
-                    <span className="shrink-0 text-[9px] font-bold text-muted">{c.memberCount} 👥</span>
+                    <span className="shrink-0 text-[11px] font-bold text-muted">{c.memberCount} 👥</span>
                   )}
                   {c.kind === "user" && c.isAdmin && (
-                    <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-brand-ink bg-brand-light rounded px-1 py-0.5">Admin</span>
+                    <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-brand-ink bg-brand-light rounded px-1 py-0.5">Admin</span>
                   )}
-                  {c.lastAt && <span className="ml-auto shrink-0 text-[10px] text-muted tabnum">{timeOf(c.lastAt)}</span>}
+                  {c.lastAt && <span className="ml-auto shrink-0 text-[11px] text-muted tabnum">{timeOf(c.lastAt)}</span>}
                 </span>
                 <span className={`block truncate text-xs mt-0.5 ${c.unread > 0 ? "text-foreground font-semibold" : "text-muted"}`} dir="auto">
                   {c.lastBody
@@ -611,7 +611,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
               <Avatar contact={activeContact} size={9} />
               <span className="min-w-0 flex-1">
                 <span className="block font-bold text-sm truncate">{activeContact.name}</span>
-                <span className="block text-[10px] text-muted truncate">
+                <span className="block text-[11px] text-muted truncate">
                   {activeContact.kind === "group"
                     ? groupMembers.map((m) => (m.id === me.id ? "You" : m.name)).join(", ") || `${activeContact.memberCount} members`
                     : chatRealtimeConfigured ? "live" : "updates every few seconds"}
@@ -672,7 +672,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                       >
                         <span className="font-bold shrink-0">{p.fromId === me.id ? "You" : p.fromName}:</span>
                         <span className="truncate text-muted" dir="auto">{previewLabel(p)}</span>
-                        <span className="ml-auto shrink-0 text-[10px] text-muted tabnum">{timeOf(p.createdAt)}</span>
+                        <span className="ml-auto shrink-0 text-[11px] text-muted tabnum">{timeOf(p.createdAt)}</span>
                       </button>
                     ))}
                   </div>
@@ -701,7 +701,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                   <div key={m.id} id={`chat-msg-${m.id}`}>
                     {newDay && (
                       <div className="text-center my-3">
-                        <span className="text-[10px] font-bold uppercase tracking-wide rounded-lg px-2.5 py-1 bg-surface text-muted shadow-sm">
+                        <span className="text-[11px] font-bold uppercase tracking-wide rounded-lg px-2.5 py-1 bg-surface text-muted shadow-sm">
                           {dayLabel(m.createdAt)}
                         </span>
                       </div>
@@ -745,7 +745,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                             className={`block w-full text-left mb-1 rounded-lg px-2 py-1.5 bg-black/5 dark:bg-white/5 border-l-[3px] hover:bg-black/10 dark:hover:bg-white/10 transition-colors ${avatarClass(m.replyTo.fromId)} avatar-quote`}
                             title="Go to the quoted message"
                           >
-                            <span className={`block text-[10px] font-extrabold ${avatarClass(m.replyTo.fromId)} avatar-name`}>
+                            <span className={`block text-[11px] font-extrabold ${avatarClass(m.replyTo.fromId)} avatar-name`}>
                               {m.replyTo.fromId === me.id ? "You" : m.replyTo.fromName}
                             </span>
                             <span className="block truncate text-[11px] opacity-70" dir="auto">
@@ -766,7 +766,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                             {m.body}
                           </span>
                         )}
-                        <span className="float-right ml-2 mt-1.5 inline-flex items-center gap-0.5 text-[10px] tabnum" style={{ color: "var(--chat-time)" }}>
+                        <span className="float-right ml-2 mt-1.5 inline-flex items-center gap-0.5 text-[11px] tabnum" style={{ color: "var(--chat-time)" }}>
                           {timeOf(m.createdAt)}
                           {(() => {
                             const t = ticksFor(m);
@@ -795,7 +795,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                                 title={r.mine ? "Tap to remove your reaction" : "React the same"}
                               >
                                 {r.emoji}
-                                {r.count > 1 && <span className="tabnum font-bold text-[10px]">{r.count}</span>}
+                                {r.count > 1 && <span className="tabnum font-bold text-[11px]">{r.count}</span>}
                               </button>
                             ))}
                           </span>
@@ -820,7 +820,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                   onClick={() => jumpToMessage(replyTarget.id)}
                   className={`min-w-0 flex-1 text-left rounded-lg px-2 py-1 bg-surface-2 border-l-[3px] hover:opacity-80 transition-opacity ${avatarClass(replyTarget.fromId)} avatar-quote`}
                 >
-                  <span className={`block text-[10px] font-extrabold ${avatarClass(replyTarget.fromId)} avatar-name`}>
+                  <span className={`block text-[11px] font-extrabold ${avatarClass(replyTarget.fromId)} avatar-name`}>
                     {replyTarget.fromId === me.id ? "You" : replyTarget.fromName}
                   </span>
                   <span className="block truncate text-[11px] text-muted" dir="auto">
@@ -849,7 +849,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                   <span key={i} className="inline-flex items-center gap-1.5 rounded-lg bg-surface border px-2 py-1 text-xs font-semibold max-w-[220px]">
                     {docIcon(f.name)}
                     <span className="truncate">{f.name}</span>
-                    <span className="text-muted text-[10px] shrink-0">{sizeLabel(f.size)}</span>
+                    <span className="text-muted text-[11px] shrink-0">{sizeLabel(f.size)}</span>
                     <button
                       type="button"
                       onClick={() => setPendingFiles((cur) => cur.filter((_, j) => j !== i))}
@@ -896,7 +896,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                         <span className="font-bold">{o.mo}</span>
                         <span className="text-muted truncate">{o.bom}</span>
                         {o.status === "closed" && (
-                          <span className="ml-auto shrink-0 text-[9px] font-bold uppercase text-muted border rounded px-1">closed</span>
+                          <span className="ml-auto shrink-0 text-[11px] font-bold uppercase text-muted border rounded px-1">closed</span>
                         )}
                       </button>
                     ))}
@@ -1036,7 +1036,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                   <Trash2 size={13} className="shrink-0" />
                   {armedDelete === m.id ? "Tap again to confirm" : "Delete for me"}
                 </button>
-                <p className="px-3 pb-2 text-[10px] text-muted">
+                <p className="px-3 pb-2 text-[11px] text-muted">
                   Delete removes it from YOUR view only — everyone else keeps it.
                 </p>
               </div>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { CalendarRange, ChevronLeft, ChevronRight } from "lucide-react";
-import { addDaysISO, clampISO, daysBetweenISO, slicerTicks, type SlicerPreset } from "@/lib/domain/dateSlicer";
+import { addDaysISO, clampISO, daysBetweenISO, fitSlicerTicks, slicerTicks, type SlicerPreset } from "@/lib/domain/dateSlicer";
 import { formatDate } from "@/lib/domain/format";
 
 /** Whether the timeline strip is open — one choice for the whole app,
@@ -103,8 +103,18 @@ export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks,
     if (nb > max || na < min) return;
     onChange(na, nb);
   };
+  // the strip's width, so a phone's strip shows only the labels that fit
+  const [stripW, setStripW] = useState(0);
+  useLayoutEffect(() => {
+    const el = track.current;
+    if (!el) return;
+    setStripW(Math.round(el.getBoundingClientRect().width));
+    const ro = new ResizeObserver(([e]) => setStripW(Math.round(e.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [timelineOpen]);
   const activePreset = showAll ? null : presets.find((p) => p.from === a && p.to === b)?.key ?? null;
-  const ticks = slicerTicks(min, max);
+  const ticks = useMemo(() => fitSlicerTicks(slicerTicks(min, max), stripW), [min, max, stripW]);
   const markSet = marks ? [...new Set(marks)].filter((m) => m >= min && m <= max) : [];
 
   const rangeText = showAll ? allLabel : a === b ? formatDate(a) : `${formatDate(a)} → ${formatDate(b)} · ${daysBetweenISO(a, b) + 1} days`;
@@ -116,7 +126,7 @@ export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks,
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
         {start}
         {label && <span className="filter-label shrink-0">{label}</span>}
-        <div className="order-2 sm:order-none w-full sm:w-auto sm:flex-1 flex gap-1 overflow-x-auto min-w-0 [scrollbar-width:none]" role="group" aria-label="Quick dates">
+        <div className="order-2 sm:order-none w-full sm:w-auto sm:flex-1 flex flex-wrap gap-1 min-w-0" role="group" aria-label="Quick dates">
           {presets.map((p) => (
             <button key={p.key} type="button" onClick={() => onChange(p.from, p.to)} aria-pressed={activePreset === p.key} className="chip-toggle shrink-0 whitespace-nowrap">
               {p.label}

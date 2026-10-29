@@ -98,7 +98,7 @@ export function SearchBox({
     timer.current = setTimeout(flush, SETTLE_MS);
   };
   return (
-    <div className="relative col-span-2 sm:col-span-1 max-sm:w-full max-sm:basis-full">
+    <div className="relative col-span-full sm:col-span-1 max-sm:w-full max-sm:basis-full">
       <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
       <input
         type="search"
@@ -257,11 +257,11 @@ export function FilterBar({
     );
   }
   return (
-    // phones get a tidy 2-column grid (search spans the row, filters line up
-    // in equal halves); ≥sm it flows as the usual inline bar
-    <div className="no-print toolbar toolbar-row grid grid-cols-2 items-end sm:flex sm:items-center">
+    // phones get one column — the search, then each filter the screen's
+    // width, one under the other; ≥sm it flows as the usual inline bar
+    <div className="no-print toolbar toolbar-row grid grid-cols-1 items-end sm:flex sm:items-center">
       {children}
-      {showCount && <span className="col-span-2 sm:col-span-1 sm:mr-auto">{countText}</span>}
+      {showCount && <span className="col-span-full sm:col-span-1 sm:mr-auto">{countText}</span>}
       {hasActive && <span className={showCount ? "" : "sm:ml-auto"}>{reset}</span>}
     </div>
   );

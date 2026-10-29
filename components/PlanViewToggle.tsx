@@ -51,7 +51,7 @@ export function WeekPlanPicker({ plans, value, basePath }: { plans: number[]; va
   const sp = useSearchParams();
 
   return (
-    <label className="col-span-2 flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
+    <label className="col-span-full flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
       <span className="filter-label">Week</span>
       <select
         className="ctl min-w-0 flex-1"

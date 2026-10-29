@@ -161,7 +161,7 @@ export function ShiftDowntime({ data, editableDepts }: { data: DowntimeDay; edit
             </button>
             {editing && <button type="button" disabled={pending} className="btn btn-ghost btn-sm" onClick={() => { setEditing(null); setClosing(false); setForm(blankForm()); }}>Cancel edit</button>}
           </div>
-          <p className="px-3 pb-2 text-xs text-muted">Leave To blank while the problem is unresolved. Use Resolve later to record its actual end time and date.{editing && <span> Started {formatDate(startDate)}.</span>}{legacy && ` This older stop has duration only (${stopDurationLabel(editing.hours)}). Keep both times blank to retain it, or enter the actual start.`}{form.startTime && form.endTime && !timing && <span className="block text-bad-fg">The actual end must be after the start and no later than now. Check the end date.</span>}</p>
+          <p className="explain px-3 pb-2 text-xs text-muted">Leave To blank while the problem is unresolved. Use Resolve later to record its actual end time and date.{editing && <span> Started {formatDate(startDate)}.</span>}{legacy && ` This older stop has duration only (${stopDurationLabel(editing.hours)}). Keep both times blank to retain it, or enter the actual start.`}{form.startTime && form.endTime && !timing && <span className="block text-bad-fg">The actual end must be after the start and no later than now. Check the end date.</span>}</p>
         </div>
       )}
       <Note msg={msg} />
@@ -179,7 +179,7 @@ export function ShiftDowntime({ data, editableDepts }: { data: DowntimeDay; edit
           </div>
           <section className="bg-surface border rounded-xl overflow-hidden">
             <TableFrame>
-              <table className="w-full text-sm">
+              <table className="table-cards w-full text-sm">
                 <thead>
                   <tr>
                     <Th label="Machine" />

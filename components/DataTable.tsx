@@ -355,7 +355,7 @@ function AskDialog({ title, body, fields, confirmLabel, danger = false, onAnswer
 /** Nothing to show: say why, and what to do about it. */
 export function TableEmpty({ title, hint, action, filtered = false }: { title: ReactNode; hint?: ReactNode; action?: ReactNode; filtered?: boolean }) {
   return (
-    <div role="status">
+    <div role="status" className="dt-note">
       <EmptyState icon={filtered ? SearchX : Inbox} title={title} hint={hint} action={action && <div className="flex flex-wrap justify-center gap-2">{action}</div>} />
       {filtered && <span className="sr-only">Filters are hiding rows.</span>}
     </div>

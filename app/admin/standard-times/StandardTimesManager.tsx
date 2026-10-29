@@ -109,12 +109,12 @@ export function StandardTimesManager({
         }
       >
         <div className="overflow-x-auto border-t">
-          <table className="w-full text-sm">
+          <table className="table-cards w-full text-sm">
             <thead>
               <tr>
-                <th className="text-start ps-4 md:ps-5">KVA class</th>
-                {STAGES.map((s) => <th key={s} className="text-center">{deptLabel(s)}</th>)}
-                <th className="text-center">Total</th>
+                <th className="text-start ps-4 pe-2 md:ps-5">KVA class</th>
+                {STAGES.map((s) => <th key={s} className="text-center px-2">{deptLabel(s)}</th>)}
+                <th className="text-center px-2">Total</th>
                 <th className="text-end pe-4 md:pe-5 w-36"></th>
               </tr>
             </thead>
@@ -126,11 +126,11 @@ export function StandardTimesManager({
                   <tr key={t.kva} className="text-center">
                     <td className="text-start ps-4 md:ps-5 font-bold tabnum">{t.kva}</td>
                     {STAGES.map((s) => (
-                      <td key={s} className="tabnum">
+                      <td key={s} className="tabnum px-2">
                         {editing ? numCell(STAGE_FIELD[s]) : fmt(t[STAGE_FIELD[s]])}
                       </td>
                     ))}
-                    <td className="font-bold tabnum">{editing ? "…" : fmt(total)}</td>
+                    <td className="font-bold tabnum px-2">{editing ? "…" : fmt(total)}</td>
                     <td className="text-end pe-4 md:pe-5 whitespace-nowrap">
                       {editing ? (
                         <span className="inline-flex gap-1">
@@ -162,7 +162,7 @@ export function StandardTimesManager({
             </tbody>
           </table>
         </div>
-        <p className="px-4 md:px-5 py-3 border-t text-xs text-muted">
+        <p className="explain px-4 md:px-5 py-3 border-t text-xs text-muted">
           The split across components (CF/TC/TN/CB) follows the engineering shares automatically — edit the stage totals and every component follows. A new class borrows the nearest class&apos;s shares.
         </p>
         {adding && (
@@ -277,7 +277,7 @@ export function StandardTimesManager({
           </Modal>
         )}
         <div className="overflow-x-auto border-t">
-          <table className="w-full text-sm">
+          <table className="table-cards w-full text-sm">
             <thead>
               <tr>
                 <th className="text-start ps-4 md:ps-5">FG code</th>
@@ -287,7 +287,7 @@ export function StandardTimesManager({
             </thead>
             <tbody>
               {shownFgs.length === 0 && (
-                <tr><td colSpan={3} className="p-4 text-center text-muted">No codes match.</td></tr>
+                <tr><td colSpan={3} className="p-4 text-center text-muted"><div className="dt-note">No codes match.</div></td></tr>
               )}
               {shownFgs.map((f) => (
                 <tr key={f.fg}>

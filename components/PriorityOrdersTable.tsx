@@ -19,7 +19,7 @@ export function PriorityOrdersTable({ rows, deptWord, soi }: { rows: PriorityLin
         <span className="pill pill-bad ml-2 normal-case">top priority</span>
       </h2>
       <div className="border-2 border-bad-fg/60 rounded-xl overflow-x-auto bg-surface">
-        <table className="w-full text-sm border-collapse">
+        <table className="table-cards w-full text-sm border-collapse">
           <thead>
             <tr className="bg-bad-fg text-white text-left">
               <th className="p-2">MO</th>
@@ -48,7 +48,7 @@ export function PriorityOrdersTable({ rows, deptWord, soi }: { rows: PriorityLin
           </tbody>
         </table>
       </div>
-      <p className="text-[11px] text-muted mt-1">
+      <p className="explain text-[11px] text-muted mt-1">
         Flagged on the Plan Tracker (⭐). Record output on the tables below — a line leaves this list the moment its work is done.
       </p>
     </section>

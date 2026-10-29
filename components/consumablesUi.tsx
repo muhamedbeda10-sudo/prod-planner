@@ -85,7 +85,7 @@ export function RevisionItem({ r, version, deleted }: { r: ConsumableRevisionVie
         <span><b>{r.by}</b> {ACTION_WORD[r.action]} the row</span>
         {r.restorable && (
           <button
-            type="button" className="btn btn-sm ml-auto" disabled={act.pending}
+            type="button" className="btn btn-secondary btn-sm ml-auto" disabled={act.pending}
             title="Put the row back the way it read before this change — the restore is itself kept in the history"
             onClick={() => {
               if (!confirm(`Restore this version?\n\n${r.before}${deleted ? "\n\nThe row is deleted — it comes back onto the log." : ""}`)) return;

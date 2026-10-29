@@ -82,7 +82,7 @@ export function CutWorklistView({
       <section className="mt-2">
         <h2>
           📅 Weekly plan — fabrication{week.planNo !== null ? ` · plan ${week.planNo}` : ""}
-          <span className="ms-2 text-xs font-normal normal-case text-muted">
+          <span className="explain ms-2 text-xs font-normal normal-case text-muted">
             What each delivery day still needs cut.{canEdit ? " Click a Fab cell to add the pieces cut." : ""}
           </span>
         </h2>

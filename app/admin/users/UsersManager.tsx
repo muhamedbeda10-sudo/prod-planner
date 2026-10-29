@@ -301,7 +301,7 @@ function UserRow({ user, myId }: { user: Row; myId: number }) {
           >
             <input type="hidden" name="id" value={user.id} />
             {user.isOwner ? (
-              <p className="text-sm text-muted">The owner holds every right — only the notifications below are yours to tick.</p>
+              <p className="explain text-sm text-muted">The owner holds every right — only the notifications below are yours to tick.</p>
             ) : (
               <AdminCheck defaultChecked={user.isAdmin} label="Admin" />
             )}
@@ -382,7 +382,7 @@ export function UsersManager({ users, myId }: { users: Row[]; myId: number }) {
         padded={false}
       >
         <div className="overflow-x-auto border-t">
-          <table className="w-full min-w-[880px]">
+          <table className="table-cards w-full min-w-[880px]">
             <thead>
               <tr>
                 <th className="text-start ps-4 md:ps-5">Person</th>

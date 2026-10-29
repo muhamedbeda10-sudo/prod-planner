@@ -114,8 +114,8 @@ function PlanSearch({ f }: { f: PlanningFilters }) {
   const go = useGo(f);
   const [q, setQ] = useState(f.q);
   return (
-    <form role="search" onSubmit={(e) => { e.preventDefault(); go({ q: q.trim() }); }}>
-      <SearchBox value={q} onChange={(v) => { setQ(v); if (!v && f.q) go({ q: "" }); }} placeholder="TR plan: MO / BOM / SOI… (Enter)" />
+    <form role="search" className="max-sm:basis-full max-sm:w-full" onSubmit={(e) => { e.preventDefault(); go({ q: q.trim() }); }}>
+      <SearchBox value={q} onChange={(v) => { setQ(v); if (!v && f.q) go({ q: "" }); }} placeholder="TR plan: MO / BOM / SOI… (Enter)" wide />
     </form>
   );
 }

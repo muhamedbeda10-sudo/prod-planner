@@ -192,8 +192,8 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
         {!fabrication && <PlanViewToggle value="weekly" />}
         <WeekPlanPicker plans={data.planNos} value={data.planNo} basePath={fabrication ? "/worklist/cut" : undefined} />
         <SearchBox value={q} onChange={setQ} placeholder="Search project / SOI…" />
-        {!fabrication && <div className="col-span-2 flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
-          <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Dept</span>
+        {!fabrication && <div className="col-span-full flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
+          <span className="text-muted text-[11px] font-bold uppercase tracking-wide">Dept</span>
           <div className="flex flex-wrap gap-1">
             {WEEKLY_STAGES.map((o) => {
               const on = stage.split(",").includes(o.value);
@@ -211,12 +211,12 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
             })}
           </div>
         </div>}
-        <label className="col-span-2 flex items-center gap-1.5 text-sm sm:col-span-1">
+        <label className="col-span-full flex items-center gap-1.5 text-sm sm:col-span-1">
           <input type="checkbox" checked={hideDone === "1"} onChange={(e) => setHideDone(e.target.checked ? "1" : "")} />
           <span className="text-muted text-[11px] font-bold uppercase tracking-wide">Hide finished</span>
         </label>
         {fabrication && (
-          <div className="col-span-2 flex items-center gap-2 sm:col-span-1">
+          <div className="col-span-full flex items-center gap-2 sm:col-span-1">
             <ExportButton rows={exportRows} filename={`fabrication-weekly-plan-${data.planNo ?? "none"}.csv`} label="Export CSV" />
             <PrintButton />
           </div>
@@ -271,7 +271,7 @@ function DayBlock({ day, stages, metric, planNo, rec, odoo }: { day: WeeklyPlanD
         <th rowSpan={2} className="px-2 py-1 text-left bg-brand-fill text-white align-middle" title="Sales order item">SOI</th>
         <th rowSpan={2} className="px-2 py-1 bg-brand-fill text-white align-middle" title={`How much of this day's promise ${metricLabel.label} has covered`}>
           Done
-          <span className="block text-[9px] font-normal">{metricLabel.short}</span>
+          <span className="block text-[11px] font-normal">{metricLabel.short}</span>
         </th>
         {day.items.map((it) => (
           <th key={it} colSpan={span} className="px-2 py-1 bg-brand-fill text-white border-l border-border-strong">{it}</th>
@@ -279,7 +279,7 @@ function DayBlock({ day, stages, metric, planNo, rec, odoo }: { day: WeeklyPlanD
       </tr>
       {/* each sub-header sits over the column it labels — one <th> each, never a
           joined-up string that only looks aligned */}
-      <tr className="bg-brand-dark text-white text-[10px]">
+      <tr className="bg-brand-dark text-white text-[11px]">
         {day.items.map((it) => (
           <Fragment key={it}>
             <th className="px-1 py-0.5 font-medium border-l border-border-strong">Req</th>
@@ -341,7 +341,7 @@ function DayBlock({ day, stages, metric, planNo, rec, odoo }: { day: WeeklyPlanD
                     <td className="px-1 py-1 tabnum text-xs border-l text-muted line-through opacity-50" title={why}>
                       {c.req}
                     </td>
-                    <td colSpan={span - 1} className="px-1 py-1 text-[10px] font-bold text-muted opacity-60" title={why}>
+                    <td colSpan={span - 1} className="px-1 py-1 text-[11px] font-bold text-muted opacity-60" title={why}>
                       {repeat ? "Already promised earlier this week" : "N/A — not manufactured"}
                     </td>
                   </Fragment>
@@ -353,19 +353,19 @@ function DayBlock({ day, stages, metric, planNo, rec, odoo }: { day: WeeklyPlanD
                     {c.req}
                     {c.na > 0 && (
                       // part of the promise is N/A — the numbers run against the rest
-                      <span className="block text-[9px] font-normal text-muted" title={`${c.na} of ${c.req} pcs are marked N/A on the order — only ${owed} will be manufactured`}>
+                      <span className="block text-[11px] font-normal text-muted" title={`${c.na} of ${c.req} pcs are marked N/A on the order — only ${owed} will be manufactured`}>
                         N/A {c.na}
                       </span>
                     )}
                     {c.over > 0 && (
                       // the sheet asked for more than the order needs — the
                       // surplus repeats an earlier day and is not work
-                      <span className="block text-[9px] font-normal text-muted" title={`${c.over} of ${c.req} pcs were already promised earlier this week — the order does not need them twice, so only ${owed} count here`}>
+                      <span className="block text-[11px] font-normal text-muted" title={`${c.over} of ${c.req} pcs were already promised earlier this week — the order does not need them twice, so only ${owed} count here`}>
                         REPEAT {c.over}
                       </span>
                     )}
                     {c.osp > 0 && (
-                      <span className="block text-[9px] font-bold text-brand-ink" title={`${c.osp} pcs of this day's promise are outsourced (OSP) — made outside, not by our departments`}>
+                      <span className="block text-[11px] font-bold text-brand-ink" title={`${c.osp} pcs of this day's promise are outsourced (OSP) — made outside, not by our departments`}>
                         OSP {c.osp}
                       </span>
                     )}
@@ -415,11 +415,11 @@ function DayBlock({ day, stages, metric, planNo, rec, odoo }: { day: WeeklyPlanD
                               </button>
                             </span>
                             {add > 0 && !rec.err && (
-                              <span className="text-[10px] font-bold text-ok-fg whitespace-nowrap">
+                              <span className="text-[11px] font-bold text-ok-fg whitespace-nowrap">
                                 +{add}{c.mos.length > 1 ? ` · split over ${c.mos.length} MOs` : ""}
                               </span>
                             )}
-                            {rec.err && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight">{rec.err}</span>}
+                            {rec.err && <span className="text-[11px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight">{rec.err}</span>}
                             <span className="print-only tabnum">{c[s]}</span>
                           </span>
                         ) : editable ? (

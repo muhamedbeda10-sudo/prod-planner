@@ -6,6 +6,7 @@ import { AppNav } from "@/components/AppNav";
 import { AutomationTicker } from "@/components/AutomationTicker";
 import { AiPanel, AiPanelProvider } from "@/components/AiPanel";
 import { TableFill } from "@/components/TableFill";
+import { TableCards } from "@/components/TableCards";
 import { AskAiAnywhere } from "@/components/AskAi";
 import { TableAiExport } from "@/components/TableAiExport";
 import { InboxAlerts } from "@/components/InboxAlerts";
@@ -107,6 +108,7 @@ export default async function RootLayout({
         <main className="flex-1 w-full px-3 py-3 md:px-5 md:py-4">
           {children}
           {user && <TableFill />}
+          {user && <TableCards />}
           {user && <AiPanel isOwner={user.isOwner} />}
           {user && <AskAiAnywhere />}
           {user && <TableAiExport />}

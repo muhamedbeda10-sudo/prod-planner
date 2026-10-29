@@ -19,7 +19,7 @@ export function SheetJobLine({ job, left, size = "sm" }: {
         <span className="tabnum font-extrabold text-brand-ink whitespace-nowrap" title={`${left} sheet(s) of this job on this machine still to cut`}>{left} sh</span>
         <span className="text-[11px] text-muted tabnum whitespace-nowrap" title="Sheets of the whole job cut so far">{job.doneQty}/{job.qty} cut</span>
         {job.title.trim() && <span className="text-[11px] text-muted truncate">{job.title}</span>}
-        <span className="text-[10px] text-muted tabnum">#{job.id}</span>
+        <span className="text-[11px] text-muted tabnum">#{job.id}</span>
       </span>
       <SheetJobParts parts={job.parts} className={print ? "text-xs" : "text-[11px]"} />
       {print && job.note && <span className="text-xs text-muted">{job.note}</span>}

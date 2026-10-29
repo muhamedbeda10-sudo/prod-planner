@@ -259,15 +259,15 @@ function RowFacts({ r, isNew, flag = null, onOpen, opening }: {
       title={flag ? `${flag.text} — click for the material behind this row` : "Click for the material behind this row"}
       className={`flex flex-1 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md -mx-1.5 px-1.5 py-1 text-left hover:bg-surface-2 select-text ${opening ? "cursor-wait" : "cursor-pointer"}`}
     >
-      <span className={`pill ${r.line === "LV" ? "pill-muted" : "pill-ok"} text-[10px]`}>{r.line}</span>
+      <span className={`pill ${r.line === "LV" ? "pill-muted" : "pill-ok"} text-[11px]`}>{r.line}</span>
       <span className="tabnum text-xs text-muted ltr">{formatDate(r.dateISO)}</span>
       {r.odooMo && <CopyMo mo={r.odooMo} />}
       <span className={r.odooMo ? "text-muted" : "font-bold"}>{r.product}</span>
       {r.bom && <span className="text-xs text-muted ltr truncate max-w-[18rem]" title={`BOM ${r.bom}`}>{r.bom}</span>}
       {r.soi && <span className="text-xs text-muted ltr">{r.soi}</span>}
       <span className="tabnum font-bold">× {r.qty}</span>
-      {SOURCE_LABEL[r.source] && <span className="pill pill-muted text-[10px]">{SOURCE_LABEL[r.source]}</span>}
-      {isNew && <span className="pill pill-warn text-[10px]">new</span>}
+      {SOURCE_LABEL[r.source] && <span className="pill pill-muted text-[11px]">{SOURCE_LABEL[r.source]}</span>}
+      {isNew && <span className="pill pill-warn text-[11px]">new</span>}
       {/* the colour, in words, for a screen reader */}
       {flag && <span className="sr-only">Material: {flag.label}</span>}
       <button type="button" disabled={opening} onClick={(e) => { e.stopPropagation(); onOpen(r.id); }} className="text-xs text-brand-ink font-semibold hover:underline">

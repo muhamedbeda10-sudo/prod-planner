@@ -80,7 +80,7 @@ function TimingForm({ a, onDone, onCancel }: { a: AutomationView; onDone: () => 
               {times.length < AUTOMATION_LIMITS.times && (
                 <span className="inline-flex items-center gap-1">
                   <input type="time" value={next} onChange={(e) => setNext(e.target.value)} className="px-2 py-1 text-sm tabnum" aria-label="Add a time" />
-                  <button type="button" className="btn btn-sm" onClick={addTime} disabled={!next} aria-label="Add the time"><Plus size={14} aria-hidden /></button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={addTime} disabled={!next} aria-label="Add the time"><Plus size={14} aria-hidden /></button>
                 </span>
               )}
             </div>

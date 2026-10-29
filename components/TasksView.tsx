@@ -353,7 +353,7 @@ function TaskPane({ id, onBack, onChanged, onOpen }: { id: number; onBack?: () =
       <div className="p-4 text-sm">
         {onBack && <button type="button" className="btn btn-ghost btn-sm mb-2" onClick={onBack}><ArrowLeft size={15} aria-hidden /> Back</button>}
         <p className="font-semibold text-bad-fg">{error}</p>
-        <button type="button" className="btn btn-sm mt-2" onClick={read}>Try again</button>
+        <button type="button" className="btn btn-secondary btn-sm mt-2" onClick={read}>Try again</button>
       </div>
     );
   }
@@ -650,7 +650,7 @@ export function TasksView({
             icon={filtering ? Search : ClipboardCheck}
             title={filtering ? "No task matches" : show === "closed" ? "Nothing closed yet" : which === "mine" ? "No tasks for you" : "No open tasks you gave"}
             hint={filtering ? "Change the search or the filters, or clear them." : show === "open" && which === "sent" && data.canAssign ? "Ask the assistant to give one: “give Ahmed a task to …”." : show === "open" && which === "mine" ? "Tasks given to you land here, and on this device when notifications are on." : undefined}
-            action={filtering ? <button type="button" className="btn btn-sm" onClick={() => setFilter(NO_FILTER)}>Clear filters</button> : undefined}
+            action={filtering ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => setFilter(NO_FILTER)}>Clear filters</button> : undefined}
           />
         ) : (
           <div className="space-y-1">
@@ -669,7 +669,7 @@ export function TasksView({
   if (current !== "list") {
     const mineOf = (t: TaskSummary) => which === "mine" || t.assignees.some((a) => a.id === t.createdById);
     const body = filtering && filtered.length === 0 && current !== "team" ? (
-      <EmptyState icon={Search} title="No task matches" hint="Change the search or the filters, or clear them." action={<button type="button" className="btn btn-sm" onClick={() => setFilter(NO_FILTER)}>Clear filters</button>} />
+      <EmptyState icon={Search} title="No task matches" hint="Change the search or the filters, or clear them." action={<button type="button" className="btn btn-secondary btn-sm" onClick={() => setFilter(NO_FILTER)}>Clear filters</button>} />
     ) : current === "board" ? (
       <TaskBoard list={filtered.filter((t) => t.status !== "cancelled")} openId={openId} onOpen={onOpen} mineOf={mineOf} />
     ) : current === "calendar" ? (

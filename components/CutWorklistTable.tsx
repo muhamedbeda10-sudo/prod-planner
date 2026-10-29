@@ -51,7 +51,7 @@ export function CutWorklistTable({ rows, day }: { rows: CutRow[]; day: string })
       </FilterBar>
 
       <div className="bg-surface border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
+        <table className="table-cards w-full text-sm border-collapse">
           <thead>
             <tr className="bg-brand-fill text-white text-left">
               <th className="p-2">BOM</th>
@@ -68,9 +68,9 @@ export function CutWorklistTable({ rows, day }: { rows: CutRow[]; day: string })
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={10} className="p-4 text-center text-muted">
+              <tr><td colSpan={10} className="p-4 text-center text-muted"><div className="dt-note">
                 {rows.length === 0 ? "Nothing due on this day." : "No rows match the filters."}
-              </td></tr>
+              </div></td></tr>
             )}
             {filtered.map((r, i) => (
               <tr key={i} className={i % 2 ? "bg-zebra" : ""}>

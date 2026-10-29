@@ -52,7 +52,7 @@ export function Loading({ error, onRetry }: { error: string | null; onRetry: () 
     return (
       <div className="p-4 text-sm">
         <p className="font-semibold text-bad-fg">{error}</p>
-        <button type="button" className="btn btn-sm mt-2" onClick={onRetry}>Try again</button>
+        <button type="button" className="btn btn-secondary btn-sm mt-2" onClick={onRetry}>Try again</button>
       </div>
     );
   }

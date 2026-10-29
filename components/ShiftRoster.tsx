@@ -274,7 +274,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
       <section className="rounded-xl border bg-surface p-3 no-print" aria-label="Record attendance by department">
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
           <h2 className="!mb-0">Choose a department</h2>
-          <p className="text-xs text-muted">{availableDepts.filter(isRecorded).length} of {availableDepts.length} recorded · each department saves separately</p>
+          <p className="explain text-xs text-muted">{availableDepts.filter(isRecorded).length} of {availableDepts.length} recorded · each department saves separately</p>
         </div>
         <nav className="flex flex-wrap gap-2" aria-label="Attendance departments">
           {availableDepts.map((dept) => {
@@ -288,7 +288,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
             </button>;
           })}
         </nav>
-        {view === "record" && department && <p className="text-xs text-muted mt-2">Showing {departmentName}. Other departments can stay not set.{(needle || sectionValue || pick !== "all") && " Save includes every worker in this department, including those hidden by filters."}</p>}
+        {view === "record" && department && <p className="explain text-xs text-muted mt-2">Showing {departmentName}. Other departments can stay not set.{(needle || sectionValue || pick !== "all") && " Save includes every worker in this department, including those hidden by filters."}</p>}
       </section>
 
       {/* the day at a glance — every figure is also the list's filter */}
@@ -356,7 +356,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
             />
           ) : (
             <TableFrame>
-              <table className="w-full text-sm border-collapse">
+              <table className="table-cards w-full text-sm border-collapse">
                 <thead>
                   <tr>
                     <Th label="Worker" />
@@ -473,7 +473,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
               </span>
             )}
             {presentInView.length > 0 && (
-              <button type="button" className="btn btn-sm" disabled={busy} onClick={() => patch(new Set(presentInView.map(keyOf)), (l) => ({ overtimeH: allShownOnOt ? 0 : overtimeHoursFor(l.shift, hrs) }))}>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => patch(new Set(presentInView.map(keyOf)), (l) => ({ overtimeH: allShownOnOt ? 0 : overtimeHoursFor(l.shift, hrs) }))}>
                 <Clock3 size={14} aria-hidden />{allShownOnOt ? "Remove OT from the shown" : `Add OT for the ${presentInView.length} shown`}
               </button>
             )}

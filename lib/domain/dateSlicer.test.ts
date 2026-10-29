@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDaysISO, daysBetweenISO, presetRange, slicerPresets, slicerRangeLabel, slicerTicks, weekStartISO } from "./dateSlicer";
+import { addDaysISO, daysBetweenISO, fitSlicerTicks, presetRange, slicerPresets, slicerRangeLabel, slicerTicks, weekStartISO } from "./dateSlicer";
 
 describe("date slicer arithmetic", () => {
   const today = "2026-09-28"; // a Monday
@@ -26,6 +26,31 @@ describe("date slicer arithmetic", () => {
     const short = slicerTicks("2026-09-01", "2026-09-28");
     expect(short.map((t) => t.iso)).toEqual(["2026-09-05", "2026-09-12", "2026-09-19", "2026-09-26"]);
     expect(short[0].pos).toBeCloseTo(4 / 27, 5);
+  });
+  it("drops the labels a narrow strip cannot hold, keeping the year", () => {
+    const year = slicerTicks("2025-10-31", "2026-10-29");
+    expect(year.map((t) => t.label)).toEqual(["Nov", "Dec", "Jan 2026", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct"]);
+    // a wide strip keeps every month
+    expect(fitSlicerTicks(year, 1200)).toHaveLength(12);
+    // a phone's strip: no two labels touch, and the year survives
+    const phone = fitSlicerTicks(year, 320);
+    expect(phone.length).toBeLessThan(12);
+    phone.forEach((t, i) => {
+      if (i === 0) return;
+      const prev = phone[i - 1];
+      expect(t.pos * 320 - t.label.length * 3.2).toBeGreaterThanOrEqual(prev.pos * 320 + prev.label.length * 3.2 + 8);
+    });
+    expect(phone.some((t) => t.label.endsWith("2026"))).toBe(true);
+    // no label runs past an end of the strip
+    phone.forEach((t) => {
+      expect(t.pos * 320 - t.label.length * 3.2).toBeGreaterThanOrEqual(-12);
+      expect(t.pos * 320 + t.label.length * 3.2).toBeLessThanOrEqual(332);
+    });
+    // the year's month is the last label and has no room beside December: it wins
+    const turn = fitSlicerTicks(slicerTicks("2025-11-01", "2026-01-10"), 120);
+    expect(turn.map((t) => t.label)).toContain("Jan 2026");
+    // unmeasured: every label
+    expect(fitSlicerTicks(year, 0)).toHaveLength(12);
   });
   it("reads a range out loud", () => {
     expect(slicerRangeLabel("2026-09-22", "2026-09-28")).toBe("Tue 22 Sep → Mon 28 Sep · 7 days");

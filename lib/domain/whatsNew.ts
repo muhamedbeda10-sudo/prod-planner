@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-29-phone-tablet-polish",
+    dateISO: "2026-10-29",
+    title: "A cleaner app on phones and tablets — lists as cards, filters one under the other, no explanations in the way",
+    where: "The whole app; on a phone the Orders, Daily log, Barcodes, Leak test, worklists, shift roster, consumables, stock, ODOO and admin lists",
+    body: "On a phone the lists read as cards — each row a card, each field its name over its value — and the filters stand one under the other, each as wide as the screen. The explanations under titles, figures and forms are gone from every screen: ask the assistant what anything means. The months under the date bar no longer run into each other, its quick dates wrap instead of hiding off the edge, a table's \"nothing here\" line stays on screen, the Orders import starts folded on a phone, small grey text is a size bigger, and plain buttons look like buttons.",
+  },
+  {
     id: "2026-10-29-ai-splash",
     dateISO: "2026-10-29",
     title: "The app opens with a wink from the assistant",

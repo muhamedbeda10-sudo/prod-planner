@@ -76,7 +76,7 @@ export function ExecutionTable({
       </FilterBar>
 
       <div className="bg-surface border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
+        <table className="table-cards w-full text-sm border-collapse">
           <thead>
             <tr className="bg-brand-fill text-white text-left">
               <th className="p-2">MO</th>
@@ -93,9 +93,9 @@ export function ExecutionTable({
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={dept === "Welding" ? 10 : 9} className="p-4 text-center text-muted">
+              <tr><td colSpan={dept === "Welding" ? 10 : 9} className="p-4 text-center text-muted"><div className="dt-note">
                 {rows.length === 0 ? "Nothing due on this day." : "No lines match the search."}
-              </td></tr>
+              </div></td></tr>
             )}
             {filtered.map((r) => {
               const k = keyOf(r);
@@ -154,7 +154,7 @@ export function ExecutionTable({
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-muted mt-2">
+      <p className="explain text-xs text-muted mt-2">
         Every save writes a dated record to the daily logs — nothing else to fill in.
         {dept === "Cut" && " What Cut records lands in the welding queue immediately."}
       </p>

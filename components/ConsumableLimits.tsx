@@ -109,7 +109,7 @@ function ItemForm({ item, onDone, departments }: { item?: CatalogueItemDTO; onDo
             Its limit
           </label>
           {withLimit && <LimitFields departments={departments} all={all} setAll={setAll} busy={save.pending} />}
-          {!withLimit && <p className="text-[11px] text-muted">No limit — anything handed out of it is only logged. Limits can be added to the item later.</p>}
+          {!withLimit && <p className="explain text-[11px] text-muted">No limit — anything handed out of it is only logged. Limits can be added to the item later.</p>}
         </div>
       )}
       <button type="submit" className="btn btn-primary btn-sm" disabled={save.pending}>{item ? "Save" : "Add item"}</button>

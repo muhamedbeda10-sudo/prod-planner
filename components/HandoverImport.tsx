@@ -28,7 +28,7 @@ export function HandoverImport() {
   return (
     <details className="bg-surface border rounded-xl p-4" open>
       <summary className="font-bold cursor-pointer select-none">
-        📥 Import handover from Excel <span className="text-xs text-muted font-normal">(adds new rows only — re-uploading the same file won&apos;t duplicate)</span>
+        📥 Import handover from Excel <span className="explain text-xs text-muted font-normal">(adds new rows only — re-uploading the same file won&apos;t duplicate)</span>
       </summary>
       <form onSubmit={submit} className="mt-3 flex flex-wrap items-center gap-3">
         <input ref={inputRef} name="file" type="file" accept=".xlsx,.xlsm,.xls" required
@@ -36,7 +36,7 @@ export function HandoverImport() {
         <button type="submit" disabled={pending} className="bg-brand-fill text-white font-bold rounded-md px-5 py-2 disabled:opacity-50">
           {pending ? "Importing…" : "Import & merge"}
         </button>
-        <span className="text-xs text-muted">Columns (by header name): Date · DEPT · BOM · MO (optional) · Item · QTY · Week — data starts on row 2</span>
+        <span className="explain text-xs text-muted">Columns (by header name): Date · DEPT · BOM · MO (optional) · Item · QTY · Week — data starts on row 2</span>
       </form>
 
       {res && !res.ok && (
