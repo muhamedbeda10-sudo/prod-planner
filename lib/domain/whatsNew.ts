@@ -30,6 +30,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The pages, the assistant's chat and the inbox now sit on a soft wash of the company green fading down from the top, over a faint dot grid, in the light and the dark theme alike. Cards, tables, tiles and messages stay on their own solid white (or dark) surfaces, so every number reads as before; printouts stay plain.",
   },
   {
+    id: "2026-10-29-printed-headings-with-their-text",
+    dateISO: "2026-10-29",
+    title: "A printed heading stays with what it heads",
+    where: "Print / PDF of the assistant's answers and reports, and of every page with headings",
+    body: "A heading or a numbered step's title at the foot of a page printed there with its text on the next page. A heading now moves on with what follows it, a step, a panel of fields or a note prints whole on one page, and a paragraph never leaves a single line behind.",
+  },
+  {
     id: "2026-10-29-printed-charts-whole",
     dateISO: "2026-10-29",
     title: "A printed chart stays on one page",
