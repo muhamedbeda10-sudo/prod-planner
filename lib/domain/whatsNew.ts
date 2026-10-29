@@ -23,11 +23,18 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The pages, the assistant's chat and the inbox now sit on a soft wash of the company green fading down from the top, over a faint dot grid, in the light and the dark theme alike. Cards, tables, tiles and messages stay on their own solid white (or dark) surfaces, so every number reads as before; printouts stay plain.",
   },
   {
+    id: "2026-10-29-reports-portrait-reader",
+    dateISO: "2026-10-29",
+    title: "Reports print Portrait or Landscape, and open on their own in the inbox",
+    where: "Every Print / PDF with the company header; the inbox; the assistant's answers and reports",
+    body: "A printed report's header is now the ATC logo and the report's title alone, and the print dialog's Layout lets you choose Portrait or Landscape — its charts fit the page either way. In the inbox, a report or message opens across the whole inbox with nothing of the list under it; Back takes you back to the list. In the assistant's answers, a step that opens on a bold lead shows the lead clearly on its own line with what it means under it, and a panel of fields (Date, MO, Qty …) reads as tiles across the width, each label over its value.",
+  },
+  {
     id: "2026-10-29-print-company-frame",
     dateISO: "2026-10-29",
     title: "Printed reports carry the company's frame — and you name the assistant's reports",
     where: "Every Print / PDF: the worklists, Plan Tracker, dashboards, machine sheets, shifts, consumables and the assistant's answers and files",
-    body: "A printout now opens with the ATC logo on the left and the report's title, what it covers and its date on the right, over a green rule; the green waves over the Kingdom's skyline run along the foot of every page. Print / PDF on an assistant's answer or an inbox report first asks for the report's title — the question is offered, type any name — and its headings and table heads print in the company green. Name a file or report when you ask the assistant and it uses your name as its title.",
+    body: "A printout now opens with the ATC logo on the left and the report's title on the right, over a green rule; the green waves over the Kingdom's skyline run along the foot of every page. Print / PDF on an assistant's answer or an inbox report first asks for the report's title — the question is offered, type any name — and its headings and table heads print in the company green. Name a file or report when you ask the assistant and it uses your name as its title.",
   },
   {
     id: "2026-10-29-chart-zoom",

@@ -1,4 +1,3 @@
-import { formatDate } from "@/lib/domain/format";
 import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { getConsumableEdits, getConsumablesData, getCustomDepartments } from "@/lib/server/consumables";
@@ -89,7 +88,7 @@ export default async function ConsumablesPage({
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:views" view={view} carry={["from", "to"]} />
-        <PrintHeader title="Powder scrap" subtitle={monthLong(month)} date={formatDate(factoryDayISO(new Date()))} />
+        <PrintHeader title="Powder scrap" />
         <PageHead title="Consumables" sub={`Powder scrap · ${monthLong(month)}`} views={viewSwitch} />
         <PowderScrap r={r} canRecord={hasPerm(me, "consumables.edit")} isAdmin={me.isAdmin} today={today} earliest={addDaysISO(today, -SCRAP_LIMITS.daysBack)} />
       </div>

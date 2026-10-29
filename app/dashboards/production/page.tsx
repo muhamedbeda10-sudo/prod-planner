@@ -5,7 +5,7 @@ import { FLOOR_HISTORY_DAYS, floorDefault } from "@/lib/domain/floorKpis";
 import { productionRequest } from "@/lib/domain/productionDashboard";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { addDaysISO, slicerRangeLabel } from "@/lib/domain/dateSlicer";
-import { formatDate, formatDateTime } from "@/lib/domain/format";
+import { formatDateTime } from "@/lib/domain/format";
 import { DataCoveragePopup, ProductionDashboard, WorthALookPopup } from "@/components/ProductionDashboard";
 import { ProductionFilters } from "@/components/ProductionFilters";
 import { CockpitDecisions, PrintDecisions } from "@/components/CockpitDecisions";
@@ -46,7 +46,7 @@ export default async function ProductionDashboardPage({ searchParams }: { search
   return (
     <div className="space-y-4">
       <RememberLastVisit storageKey="dashboards:production" />
-      <PrintHeader title="Production" subtitle={`${data?.view.scopeName ?? "Production"} · ${range}`} date={formatDate(todayISO)} />
+      <PrintHeader title="Production" />
       <PageHead title="Production" sub={`What we made, at what efficiency, over ${range}`} />
       {/* the page's one bar: the line, the department and centre, the period, then its popups — the data's coverage, what is worth a look, the interventions */}
       <UrlDateSlicer
