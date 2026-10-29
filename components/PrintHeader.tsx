@@ -1,21 +1,22 @@
 import Image from "next/image";
 
-/** Paper header for the worklists and the Plan Tracker — invisible on screen,
- *  printed on the PDF: company logo, which sheet this is, and the day it was
- *  issued. `subtitle` carries a second line (e.g. which weekly plan). */
+/** Paper header for every report the app prints — invisible on screen,
+ *  printed on the PDF: which sheet this is and the day it was issued on the
+ *  left, the ATC logo on the right, over a green rule. `subtitle` carries a
+ *  second line (e.g. which weekly plan). The company art — green waves over
+ *  the Kingdom's skyline — runs along the foot of every page (globals.css
+ *  @page). */
 export function PrintHeader({ title, subtitle, date }: { title: string; subtitle?: string; date: string }) {
   return (
-    <div className="print-only mb-4">
-      <div className="flex items-center justify-between border-b-2 border-foreground pb-3">
-        {/* priority = eager load: the header is display-none on screen, so a
-            lazy image would never load and the print would come out blank */}
-        <Image src="/brand/atc-logo-horizontal.svg" alt="Arabian Transformers Co." width={220} height={26} priority />
-        <div className="text-right">
-          <div className="text-xl font-extrabold">{title}</div>
-          {subtitle && <div className="text-sm font-bold">{subtitle}</div>}
-          <div className="text-sm tabnum">📅 {date}</div>
-        </div>
+    <div className="print-only report-head">
+      <div className="report-head-text">
+        <div className="report-title">{title}</div>
+        {subtitle && <div className="report-subtitle">{subtitle}</div>}
+        <div className="report-date tabnum">{date}</div>
       </div>
+      {/* eager: the header is display-none on screen, so a lazy image would
+          never load and the print would come out blank */}
+      <Image src="/brand/atc-logo-stacked.svg" alt="Arabian Transformers Co." width={2060} height={1091} loading="eager" className="report-logo" />
     </div>
   );
 }

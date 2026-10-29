@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AI_CHATS_BULK_MAX, AI_DEFAULT_SUGGESTIONS, chatIdsOf, chatTextOf, depthPlan, followupsOf, hasPageSuggestions, scopeLineOf, safeHref, suggestionsFor, withoutFollowups } from "./aiAnswer";
+import { AI_CHATS_BULK_MAX, AI_DEFAULT_SUGGESTIONS, chatIdsOf, chatTextOf, depthPlan, followupsOf, reportTitleOf, hasPageSuggestions, scopeLineOf, safeHref, suggestionsFor, withoutFollowups } from "./aiAnswer";
 
 describe("follow-up questions in an answer", () => {
   it("reads the JSON list of the last followups block, at most three, no duplicates", () => {
@@ -85,5 +85,28 @@ describe("chatIdsOf", () => {
   it("stops at the bulk limit", () => {
     const many = Array.from({ length: AI_CHATS_BULK_MAX + 50 }, (_, i) => i + 1);
     expect(chatIdsOf(many)).toHaveLength(AI_CHATS_BULK_MAX);
+  });
+});
+
+describe("an answer's own name, for its printout", () => {
+  it("is the heading the answer opens on, taken off the body", () => {
+    expect(reportTitleOf("# Weekly Cut KPIs\n\nThe cut ran 94%.")).toEqual({ title: "Weekly Cut KPIs", body: "The cut ran 94%." });
+  });
+  it("drops the heading's Markdown marks and closing hashes", () => {
+    expect(reportTitleOf("## **Scrap** review `Oct` ##\ntext").title).toBe("Scrap review Oct");
+  });
+  it("reads an Arabic heading as it is", () => {
+    expect(reportTitleOf("# ملخص الإنتاج — أكتوبر\nنص").title).toBe("ملخص الإنتاج — أكتوبر");
+  });
+  it("is no name when the answer opens on text", () => {
+    const text = "The cut ran 94%.\n\n# Later heading";
+    expect(reportTitleOf(text)).toEqual({ title: null, body: text });
+  });
+  it("is no name for a deeper heading or an empty one", () => {
+    expect(reportTitleOf("#### Detail\ntext").title).toBeNull();
+    expect(reportTitleOf("#   \ntext").title).toBeNull();
+  });
+  it("keeps a long name to the printout's length", () => {
+    expect(reportTitleOf(`# ${"x".repeat(300)}`).title).toHaveLength(120);
   });
 });

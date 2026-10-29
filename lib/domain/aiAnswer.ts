@@ -108,6 +108,20 @@ export function chatTextOf(markdown: string): string {
     .replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+/** The longest report title a printout offers. */
+export const AI_REPORT_TITLE_MAX = 120;
+
+/** An answer's own name — the heading it opens on (`# Weekly Cut KPIs`),
+ *  its Markdown marks off — and the answer without that heading, so a
+ *  printout that carries the name in its header does not print it twice.
+ *  No name when the answer opens on anything else. */
+export function reportTitleOf(markdown: string): { title: string | null; body: string } {
+  const m = /^\s*#{1,3}[ \t]+([^\n]+?)[ \t#]*(?:\n|$)/.exec(markdown);
+  const title = m ? m[1].replace(/\*\*([^*]+)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1").trim().slice(0, AI_REPORT_TITLE_MAX) : "";
+  if (!m || !title) return { title: null, body: markdown };
+  return { title, body: markdown.slice(m[0].length).replace(/^\s*\n/, "") };
+}
+
 // ------------------------------------------------------------------ depth
 
 export const AI_DEPTHS = ["quick", "standard", "deep"] as const;

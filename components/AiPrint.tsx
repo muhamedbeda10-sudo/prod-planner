@@ -4,11 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Printer } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
+import { useAsk } from "@/components/DataTable";
 import { PrintHeader } from "@/components/PrintHeader";
+import { reportTitleOf } from "@/lib/domain/aiAnswer";
 import { formatDateTime } from "@/lib/domain/format";
 
 // One AI report or answer on paper — or a PDF through the print dialog —
 // alone, under the company's header, its charts drawn as they are on screen.
+// The person names the report before it prints: the title offered is the
+// heading the answer opens on, else the question — theirs to keep or change.
+// The name is the PDF's file name too (the dialog reads it off the page's title).
 // The sheet is laid out off screen first (a chart needs a width to draw at),
 // then it is the only thing printed (globals.css: html.ai-printing), and it
 // goes away when the dialog closes.
@@ -21,20 +26,36 @@ export function AiPrintButton({ title, subtitle, date, text, className = "" }: {
   text: string;
   className?: string;
 }) {
-  // the date the sheet carries while it is printing, null otherwise
-  const [printing, setPrinting] = useState<string | null>(null);
+  // what the sheet carries while it is printing — its title as the person
+  // named it, its date and its text — null otherwise
+  const [printing, setPrinting] = useState<{ title: string; date: string; text: string } | null>(null);
+  const [ask, askDialog] = useAsk();
+  const start = async () => {
+    const own = reportTitleOf(text);
+    const offered = own.title ?? title;
+    const v = await ask({
+      title: "Print / PDF",
+      fields: [{ name: "title", label: "Report title", type: "text", defaultValue: offered, required: true, hint: "Printed at the top of the report, beside the ATC logo, and the PDF's file name." }],
+      confirmLabel: "Print",
+    });
+    if (!v) return;
+    const named = v.title || offered;
+    // the answer's own heading is not printed again under a header that carries it
+    setPrinting({ title: named, date: date ?? formatDateTime(new Date()), text: own.title === named ? own.body : text });
+  };
   return (
     <>
       <button
         type="button"
         className={`btn btn-sm btn-ghost no-print ${className}`}
-        onClick={() => setPrinting(date ?? formatDateTime(new Date()))}
+        onClick={start}
         disabled={printing !== null}
         title="Print it, or save it as a PDF, with the company header"
       >
         <Printer size={14} aria-hidden /> Print / PDF
       </button>
-      {printing !== null && createPortal(<PrintSheet title={title} subtitle={subtitle} date={printing} text={text} onDone={() => setPrinting(null)} />, document.body)}
+      {askDialog}
+      {printing !== null && createPortal(<PrintSheet title={printing.title} subtitle={subtitle} date={printing.date} text={printing.text} onDone={() => setPrinting(null)} />, document.body)}
     </>
   );
 }
@@ -54,6 +75,15 @@ function PrintSheet({ title, subtitle, date, text, onDone }: { title: string; su
   useEffect(() => {
     done.current = onDone;
   }, [onDone]);
+
+  // Save as PDF names the file after the page's title
+  useEffect(() => {
+    const pageTitle = document.title;
+    document.title = title;
+    return () => {
+      document.title = pageTitle;
+    };
+  }, [title]);
 
   useEffect(() => {
     const html = document.documentElement;

@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-29-print-company-frame",
+    dateISO: "2026-10-29",
+    title: "Printed reports carry the company's frame — and you name the assistant's reports",
+    where: "Every Print / PDF: the worklists, Plan Tracker, dashboards, machine sheets, shifts, consumables and the assistant's answers and files",
+    body: "A printout now opens with the report's title, what it covers and its date on the left and the ATC logo on the right, over a green rule; the green waves over the Kingdom's skyline run along the foot of every page. Print / PDF on an assistant's answer or an inbox report first asks for the report's title — the question is offered, type any name — and its headings and table heads print in the company green. Name a file or report when you ask the assistant and it uses your name as its title.",
+  },
+  {
     id: "2026-10-28-top-bar-order",
     dateISO: "2026-10-28",
     title: "The top bar's tabs have a new order",

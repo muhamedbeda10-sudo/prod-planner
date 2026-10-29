@@ -34,6 +34,7 @@
   --brand-dark: #136041;
   --brand-light: #e4f2ea;
   --brand-fill: var(--brand); /* 4.9:1 with #fff here; the dark theme needs its own */
+  --brand-fill-fg: #fff; /* text on --brand-fill, both themes */
   --brand-ink: #157045;
   --accent-gray: #717171; /* ATC secondary gray */
   --surface-3: #e9edeb; /* group rows, pressed controls */
@@ -738,13 +739,30 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
 
 .print-only { display: none; }
 
-/* A4 landscape, ZERO page margin — margin: 0 removes the browser's own
-   date / URL / page-number strips. Our own breathing room comes from the
-   main padding below. A fixed page size stops shrink-to-fit (the cause of the
-   blurry, pixelated look on zoom); everything is native text + SVG = crisp. */
+/* A4 landscape. A fixed page size stops shrink-to-fit (the cause of the
+   blurry, pixelated look on zoom); everything is native text + SVG = crisp.
+   The company art — green waves over the Kingdom's skyline — runs the width
+   of the foot of every page, drawn in the page's own bottom margin box (the
+   art is 1600 x 120, so A4 landscape's 297mm lands it at about 22mm tall).
+   A page that fills its margin boxes prints none of the browser's date / URL
+   strips. The layout fetches the art up front so the dialog finds it ready. */
 @page {
   size: A4 landscape;
+  margin: 6mm 0 23mm;
+  @bottom-center {
+    content: "";
+    width: 100%;
+    height: 23mm;
+    margin: 0;
+    padding: 0;
+    background: url("/brand/report-banner.svg") center bottom / 100% auto no-repeat;
+  }
+}
+/* the tank barcode stickers are labels to cut apart, not a report: their
+   printout keeps the whole paper and no art (body:has(.sticker-sheet) below) */
+@page stickers {
   margin: 0;
+  @bottom-center { content: none; background: none; }
 }
 
 @media print {
@@ -818,8 +836,9 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   .print-only { display: block !important; }
   body { background: #fff; }
   .print-break { break-before: page; } /* the plan table starts on a fresh page */
-  /* our own inner margin (the @page margin is 0 to kill browser header/footer) */
-  main { padding: 7mm 9mm !important; }
+  /* the side margins are ours (the @page sets only top and bottom, so the
+     footer's art can run the width of the sheet) */
+  main { padding: 0 9mm !important; }
   /* the app frame never belongs on paper */
   header.no-print, .no-print { display: none !important; }
   /* worklists print as clean read-only sheets: no inputs, no action buttons —
@@ -849,6 +868,10 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
      landscape A4 lands each sticker around 65mm wide — enough for a QR a phone
      reads at arm's length plus the serial and its order in plain text. A
      sticker is never split across pages. */
+  /* the whole printout of the stickers page takes their page (@page stickers):
+     the paper's edge to edge, the old 7mm of breathing room ours */
+  body:has(.sticker-sheet) { page: stickers; }
+  body:has(.sticker-sheet) main { padding: 7mm 9mm !important; }
   .sticker-sheet {
     display: grid !important;
     grid-template-columns: repeat(4, 1fr);
@@ -913,8 +936,8 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   /* the department-output summary has only a few rows and the whole landscape
      page to breathe — print it big and clear */
 
-  /* section headings read as report subtitles on paper */
-  main h2 { font-size: 15px !important; color: var(--foreground) !important; margin-bottom: 8px !important; }
+  /* section headings read as report subtitles on paper, in the company green */
+  main h2 { font-size: 15px !important; color: var(--brand-dark) !important; margin-bottom: 8px !important; }
 
   /* rows stay whole and the column headers repeat at the top of every page,
      but long tables MUST be allowed to flow across pages — forcing a whole
@@ -969,8 +992,26 @@ div.overflow-x-auto > table thead {
 .ai-print-sheet { position: fixed; left: -12000px; top: 0; width: 1000px; background: #fff; }
 @media print {
   html.ai-printing body > *:not(.ai-print-sheet) { display: none !important; }
-  html.ai-printing .ai-print-sheet { position: static; width: auto; padding: 7mm 9mm; }
+  html.ai-printing .ai-print-sheet { position: static; width: auto; padding: 0 9mm; }
   html.ai-printing .ai-print-sheet .ai-chart { break-inside: avoid; }
+}
+
+/* ---- the company header on paper (components/PrintHeader.tsx): the
+   report's title on the left, the ATC logo on the right, over a green rule
+   (the art runs along the foot of every page: @page above) ---- */
+@media print {
+  .print-only.report-head { display: flex !important; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-4); padding-bottom: 3mm; border-bottom: 2px solid var(--brand); break-inside: avoid; }
+  .report-head-text { min-width: 0; }
+  .report-title { font-size: 21px; font-weight: 800; line-height: 1.2; color: var(--foreground); }
+  .report-subtitle { margin-top: 2px; font-size: 13px; font-weight: 700; color: var(--brand-dark); }
+  .report-date { margin-top: 2px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .report-logo { flex-shrink: 0; width: 34mm; height: auto; }
+
+  /* a report the assistant wrote, in the company's colours: its headings in
+     green over a green rule, its tables under a green heading band */
+  .ai-md .ai-h.ai-h-major { color: var(--brand-dark); border-bottom: 2px solid var(--brand); }
+  .ai-md .ai-h.ai-h-minor { color: var(--brand-dark); }
+  .ai-md .md-table th, .report-table thead th { background: var(--brand-fill) !important; color: var(--brand-fill-fg) !important; }
 }
 
 /* ---- Odoo dashboard: segmented view switch + recharts chrome ---- */

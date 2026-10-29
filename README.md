@@ -578,7 +578,7 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
      value scale each, in the palette's slots, the values written on the marks wherever they fit, every chart with its
      numbers as a table and their export. A chart's JSON draws however its fence was labelled, and other names for a
      form (column, donut, bullet, slope, step …) draw as the form that does that job. The same blocks draw in the chat and in the
-     inbox's reports (expanded, the inbox fills the screen); **Print / PDF** on an answer or a report prints it alone under the company header, charts and all.
+     inbox's reports (expanded, the inbox fills the screen); **Print / PDF** on an answer or a report asks for the report's title, then prints it alone under the company header (title and ATC logo), charts and all, in the company green, with the company art — green waves over the skyline — along the foot of every page (`components/PrintHeader.tsx`, `@page` in `app/globals.css`).
    - **How it answers** (`lib/domain/aiAnswer.ts`, `lib/domain/aiHistory.ts`, `components/AiChat.tsx`, `components/AiMarkdown.tsx`):
      the system prompt asks for the answer first, then the detail (a table, a chart), the cause and up to three actions when
      asked why or what to do, a self-check before writing (every figure from a tool result, totals that add up, the scope
