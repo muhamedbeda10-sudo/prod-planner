@@ -30,6 +30,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The pages, the assistant's chat and the inbox now sit on a soft wash of the company green fading down from the top, over a faint dot grid, in the light and the dark theme alike. Cards, tables, tiles and messages stay on their own solid white (or dark) surfaces, so every number reads as before; printouts stay plain.",
   },
   {
+    id: "2026-10-29-printed-charts-whole",
+    dateISO: "2026-10-29",
+    title: "A printed chart stays on one page",
+    where: "Print / PDF of the assistant's answers and reports, and of the dashboards",
+    body: "A chart near the foot of a page printed its title on that page and its drawing on the next. A chart now moves to the next page whole when it does not fit.",
+  },
+  {
     id: "2026-10-29-printed-charts-drawn",
     dateISO: "2026-10-29",
     title: "Charts print again on reports, under the horizontal ATC logo",
