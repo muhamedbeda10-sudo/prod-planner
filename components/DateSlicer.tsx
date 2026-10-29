@@ -126,7 +126,24 @@ export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks,
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
         {start}
         {label && <span className="filter-label shrink-0">{label}</span>}
-        <div className="order-2 sm:order-none w-full sm:w-auto sm:flex-1 flex flex-wrap gap-1 min-w-0" role="group" aria-label="Quick dates">
+        {/* a phone: the quick dates are one pick list under the period, not
+            rows of chips */}
+        <select
+          className="ctl order-2 w-full sm:hidden"
+          aria-label="Quick dates"
+          value={showAll && allLabel ? "all" : activePreset ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "all") return onChange(null, null);
+            const p = presets.find((x) => x.key === v);
+            if (p) onChange(p.from, p.to);
+          }}
+        >
+          {!(showAll && allLabel) && !activePreset && <option value="">Custom period</option>}
+          {presets.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+          {allLabel && <option value="all">{allLabel}</option>}
+        </select>
+        <div className="max-sm:hidden sm:flex-1 flex flex-wrap gap-1 min-w-0" role="group" aria-label="Quick dates">
           {presets.map((p) => (
             <button key={p.key} type="button" onClick={() => onChange(p.from, p.to)} aria-pressed={activePreset === p.key} className="chip-toggle shrink-0 whitespace-nowrap">
               {p.label}

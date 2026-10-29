@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-29-phone-dates-counts",
+    dateISO: "2026-10-29",
+    title: "On a phone the date bar is one pick list, and the counts line up two by two",
+    where: "Every date bar on a phone; ODOO's counts (not closed, ready to close, need MO, with notes, Material) and the worklists' component counts; the cards' field names",
+    body: "On a phone the quick dates (Today, Last 7 days …) are one pick list under the period instead of rows of buttons. ODOO's counts line up two by two, each as wide as its half, with \"show all\" on its own line, and the worklists' component counts (CF, TC …) three to a line. The marks legend under the ODOO log is gone — ask the assistant what a mark means. Each card names its fields by the column's short name, and keeps two fields to a line on a phone even with bigger system text. The machine boards' buttons all look alike.",
+  },
+  {
     id: "2026-10-29-tablet-cards",
     dateISO: "2026-10-29",
     title: "On a tablet, a list too wide for the screen reads as cards",

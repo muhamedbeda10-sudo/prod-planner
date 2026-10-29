@@ -691,7 +691,7 @@ export function WeldingQueueTable({
       <FilterBar count={filtered.length} total={rows.length} showCount={false} onReset={() => { setQ(""); setItem(""); setPlace(""); }} hasActive={!!q || !!item || !!place}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM…" />
         {/* per-component workload — tap a card to filter the queue to it */}
-        <div className="col-span-full flex flex-wrap items-center gap-1.5">
+        <div className="col-span-full count-chips count-chips-items">
           {perItem.map(({ it, avail, maxAge }) => (
             <button
               key={it}

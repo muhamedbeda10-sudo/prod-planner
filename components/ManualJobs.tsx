@@ -357,7 +357,7 @@ export function ManualJobsList({ dept, jobs, machines, canEdit, boms = [] }: { d
   };
   return (
     <>
-      <button type="button" className="btn btn-sm btn-ghost ms-1 normal-case no-print" onClick={() => { setForm(null); setOpen(true); }} title={sheets ? "Every sheet job — open and finished" : "Every job typed in from outside the plan — open and finished"}>
+      <button type="button" className="btn btn-sm btn-secondary ms-1 normal-case no-print" onClick={() => { setForm(null); setOpen(true); }} title={sheets ? "Every sheet job — open and finished" : "Every job typed in from outside the plan — open and finished"}>
         📋 {sheets ? "Jobs" : "Manual jobs"}{openCount > 0 ? ` (${openCount})` : ""}
       </button>
       {open && (

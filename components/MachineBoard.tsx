@@ -511,7 +511,8 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
         {!sheetBoard && (board.days?.length ?? 0) > 0 && (
           <button
             type="button"
-            className={`btn btn-sm ms-1 normal-case no-print ${timeline ? "btn-secondary" : "btn-ghost"}`}
+            className={`btn btn-sm ms-1 normal-case no-print ${timeline ? "btn-primary" : "btn-secondary"}`}
+            aria-pressed={timeline}
             onClick={() => setTimeline((v) => !v)}
             title={`Lay every ${word}'s queue on the days ahead — when each job comes off, and which one misses its date`}
           >
@@ -521,8 +522,8 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
         <Link href={`/worklist/machines?dept=${board.dept}`} className="btn btn-sm btn-secondary ms-2 normal-case no-print" title={`One sheet per ${word}, each on its own page — hand them to the technicians`}>🖨 Print all sheets</Link>
         {canManage && (
           <>
-            {!sheetBoard && <Link href="/admin/machine-times" className="btn btn-sm btn-ghost ms-1 normal-case no-print" title={`What one piece of each item takes on each ${word}, in hours — the figure every number on this board is priced with`}>⏱ Times</Link>}
-            <Link href="/admin/machines" className="btn btn-sm btn-ghost ms-1 normal-case no-print" title={`Add or retire a ${word}, and set its hours a day`}>⚙ Machines</Link>
+            {!sheetBoard && <Link href="/admin/machine-times" className="btn btn-sm btn-secondary ms-1 normal-case no-print" title={`What one piece of each item takes on each ${word}, in hours — the figure every number on this board is priced with`}>⏱ Times</Link>}
+            <Link href="/admin/machines" className="btn btn-sm btn-secondary ms-1 normal-case no-print" title={`Add or retire a ${word}, and set its hours a day`}>⚙ Machines</Link>
           </>
         )}
       </h2>
@@ -591,7 +592,7 @@ export function PlacementChips({ value, onChange, word, on, off }: { value: Plac
       type="button"
       onClick={() => onChange(value === mode ? "" : mode)}
       title={title}
-      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all hover:border-brand hover:shadow-sm ${value === mode ? "border-brand bg-brand-light shadow-sm" : "bg-surface"}`}
+      className={`count-chip-wide flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all hover:border-brand hover:shadow-sm ${value === mode ? "border-brand bg-brand-light shadow-sm" : "bg-surface"}`}
     >
       <span className="text-muted">{label}</span>
       <b className="text-sm tabnum">{n}</b>

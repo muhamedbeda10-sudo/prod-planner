@@ -425,7 +425,7 @@ function NotesCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
 /** What the marks on a row mean — the one place they are spelled out. */
 function FlagLegend() {
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 border-t text-xs text-muted no-print" aria-label="What the marks mean">
+    <div className="explain flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 border-t text-xs text-muted no-print" aria-label="What the marks mean">
       <span className="filter-label">Marks</span>
       <span className="inline-flex items-center gap-1.5"><span className="pill pill-warn">needs MO</span>waiting for Odoo&apos;s MO number</span>
       <span className="inline-flex items-center gap-1.5"><span className="pill pill-info">from Painting</span>written by a closing on the floor</span>
@@ -950,9 +950,11 @@ export function OdooClient({
         // it. The filters stay even when nothing matches, so they can be undone.
         <div className="text-sm text-muted flex flex-wrap items-center gap-x-1.5 gap-y-1.5 no-print">
           <FilterBar entries={entries} filters={filters} onChange={setFilters} />
-          {shown.length > 0 && (<>
-          <span className="w-2" aria-hidden />
-          <span className="tabnum me-1">{shown.length} row{shown.length === 1 ? "" : "s"}</span>
+          {shown.length > 0 && (
+          // the counts, each its filter: one even group — two to a line on a
+          // phone — then the rows of other days, a link of its own
+          <div className="count-chips" role="group" aria-label="Counts — each narrows the log">
+          <span className="count-chips-total tabnum">{shown.length} row{shown.length === 1 ? "" : "s"}</span>
           {(done > 0 || filters.closed === "done") && <CountFilter
             n={done}
             label="done"
@@ -970,29 +972,24 @@ export function OdooClient({
             onClick={() => setFilters({ ...filters, closed: filters.closed === "open" ? "all" : "open" })}
           />}
           {(ready > 0 || readyOn) && (
-            <>
-              <CountFilter
-                n={ready}
-                label="ready to close"
-                tone="text-brand-ink"
-                on={readyOn}
-                title="Still open and Odoo's MO is already on the row — nothing is missing but the closing itself"
-                onClick={() => setFilters(readyOn ? { ...filters, closed: "all", mo: "all" } : { ...filters, closed: "open", mo: "has" })}
-              />
-            </>
+            <CountFilter
+              n={ready}
+              label="ready to close"
+              tone="text-brand-ink"
+              on={readyOn}
+              title="Still open and Odoo's MO is already on the row — nothing is missing but the closing itself"
+              onClick={() => setFilters(readyOn ? { ...filters, closed: "all", mo: "all" } : { ...filters, closed: "open", mo: "has" })}
+            />
           )}
-          {elsewhereLink && <span className="ms-1">{elsewhereLink}</span>}
           {(needMo > 0 || filters.mo === "missing") && (
-            <>
-              <CountFilter
-                n={needMo}
-                label="need MO"
-                tone="text-warn-fg"
-                on={filters.mo === "missing"}
-                title="Rows written by a painting / shot-blast record, waiting for Odoo's MO"
-                onClick={() => setFilters({ ...filters, mo: filters.mo === "missing" ? "all" : "missing" })}
-              />
-            </>
+            <CountFilter
+              n={needMo}
+              label="need MO"
+              tone="text-warn-fg"
+              on={filters.mo === "missing"}
+              title="Rows written by a painting / shot-blast record, waiting for Odoo's MO"
+              onClick={() => setFilters({ ...filters, mo: filters.mo === "missing" ? "all" : "missing" })}
+            />
           )}
           {(withNotes > 0 || filters.notes !== "all") && (
             <CountFilter
@@ -1004,14 +1001,11 @@ export function OdooClient({
               onClick={() => setFilters({ ...filters, notes: filters.notes === "all" ? "with" : "all" })}
             />
           )}
-          </>)}
-          {(matCounts.missing + matCounts.partial + matCounts.ok > 0 || matState) && (
-            <span className="inline-flex flex-wrap items-center gap-1.5 ms-1" role="group" aria-label="The row's MO on the Material tab">
-              <span className="filter-label">Material</span>
-              {MO_MATERIAL_STATES.map((st) => (matCounts[st] > 0 || matState === st) && (
-                <MatChip key={st} state={st} n={matCounts[st]} on={matState === st} onClick={() => setMatState(matState === st ? "" : st)} />
-              ))}
-            </span>
+          {MO_MATERIAL_STATES.map((st) => (matCounts[st] > 0 || matState === st) && (
+            <MatChip key={st} state={st} n={matCounts[st]} on={matState === st} onClick={() => setMatState(matState === st ? "" : st)} />
+          ))}
+          {elsewhereLink && <span className="count-chips-more">{elsewhereLink}</span>}
+          </div>
           )}
         </div>
       )}
