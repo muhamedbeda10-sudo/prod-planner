@@ -28,14 +28,15 @@ let lastHint = 0;
 /** Inside a zooming chart: a chart in it is magnified with it, not on its own. */
 const InZoom = createContext(false);
 
-export function ChartZoom({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+export function ChartZoom({ children }: { children: React.ReactNode }) {
   if (useContext(InZoom)) return <>{children}</>;
-  return <ZoomFrame className={className}>{children}</ZoomFrame>;
+  return <ZoomFrame>{children}</ZoomFrame>;
 }
 
-function ZoomFrame({ children, className }: { children: React.ReactNode; className: string }) {
+function ZoomFrame({ children }: { children: React.ReactNode }) {
   const frame = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<ZoomView>(ZOOM_ONE);
+  const zoomed = view.k > 1;
   const [hint, setHint] = useState(false);
   const [dragging, setDragging] = useState(false);
 
@@ -99,7 +100,7 @@ function ZoomFrame({ children, className }: { children: React.ReactNode; classNa
     if (pointers.current.size === 2) {
       pinch.current = spread().d;
       press.current = null;
-    } else if (pointers.current.size === 1 && view.k > 1) {
+    } else if (pointers.current.size === 1 && zoomed) {
       press.current = { ...local(e), moved: false };
     }
   };
@@ -108,6 +109,7 @@ function ZoomFrame({ children, className }: { children: React.ReactNode; classNa
     if (!prev) return;
     const p = local(e);
     pointers.current.set(e.pointerId, p);
+    if (!press.current && pinch.current === null) return;
     const { w, h } = size();
     if (pointers.current.size === 2 && pinch.current !== null) {
       const s = spread();
@@ -151,32 +153,22 @@ function ZoomFrame({ children, className }: { children: React.ReactNode; classNa
     const el = frame.current;
     if (el && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
   });
-  const zoomOut = () => {
-    zoomBy(1 / STEP);
-    keepFocus();
-  };
-  const zoomIn = () => zoomBy(STEP);
-  const resetKeepFocus = () => {
-    reset();
-    keepFocus();
-  };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "+" || e.key === "=") zoomBy(STEP);
     else if (e.key === "-" || e.key === "_") zoomBy(1 / STEP);
-    else if (e.key === "0" && view.k > 1) reset();
+    else if (e.key === "0" && zoomed) reset();
     else return;
     e.preventDefault();
     keepFocus();
   };
 
-  const zoomed = view.k > 1;
   return (
     <div
       ref={frame}
       tabIndex={-1}
-      className={`chart-zoom ${zoomed ? (dragging ? "is-dragging" : "is-zoomed") : ""} ${className}`}
+      className={`chart-zoom ${zoomed ? (dragging ? "is-dragging" : "is-zoomed") : ""}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
@@ -193,10 +185,10 @@ function ZoomFrame({ children, className }: { children: React.ReactNode; classNa
       </div>
       {zoomed && (
         <div className="chart-zoom-bar no-print" role="toolbar" aria-label="Chart zoom" onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-          <button type="button" className="icon-btn" onClick={zoomOut} aria-label="Zoom out" title="Zoom out (−)"><ZoomOut size={14} aria-hidden /></button>
+          <button type="button" className="icon-btn" onClick={() => { zoomBy(1 / STEP); keepFocus(); }} aria-label="Zoom out" title="Zoom out (−)"><ZoomOut size={14} aria-hidden /></button>
           <span className="text-xs font-bold tabnum min-w-[2.75rem] text-center" aria-live="polite">{Math.round(view.k * 100)}%</span>
-          <button type="button" className="icon-btn" onClick={zoomIn} disabled={view.k >= ZOOM_MAX} aria-label="Zoom in" title="Zoom in (+)"><ZoomIn size={14} aria-hidden /></button>
-          <button type="button" className="icon-btn" onClick={resetKeepFocus} aria-label="Reset zoom" title="Reset zoom (0, or double-click the chart)"><RotateCcw size={14} aria-hidden /></button>
+          <button type="button" className="icon-btn" onClick={() => zoomBy(STEP)} disabled={view.k >= ZOOM_MAX} aria-label="Zoom in" title="Zoom in (+)"><ZoomIn size={14} aria-hidden /></button>
+          <button type="button" className="icon-btn" onClick={() => { reset(); keepFocus(); }} aria-label="Reset zoom" title="Reset zoom (0, or double-click the chart)"><RotateCcw size={14} aria-hidden /></button>
         </div>
       )}
       {hint && <div className="chart-zoom-hint no-print" aria-hidden>Hold Ctrl and scroll to zoom</div>}
