@@ -1,6 +1,7 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, ComposedChart, LabelList, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, ComposedChart, LabelList, Line, Tooltip, XAxis, YAxis } from "recharts";
+import { ResponsiveContainer } from "@/components/charts/zoom";
 import { TipBox, fmt, pct } from "@/components/charts/kit";
 import { LABEL_HEADROOM, segmentLabel, segmentValue, stackTotalValue, TotalLabel } from "@/components/charts/labels";
 import { MONTH_STATUS_LABEL, monthLong, monthShort } from "@/lib/domain/consumableMonthly";

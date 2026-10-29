@@ -1,7 +1,8 @@
 "use client";
 
 import { formatDate, formatDayShort } from "@/lib/domain/format";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, LabelList } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell, LabelList } from "recharts";
+import { ResponsiveContainer } from "@/components/charts/zoom";
 import { signedTonnes, tonnes, type Breakdown, type DayPoint, type Overrun, type PartCompare } from "@/lib/domain/materialDashboard";
 import { CAT, Legend, OTHER, TipBox, catInk, fmt } from "@/components/charts/kit";
 import { LABEL_HEADROOM, segmentLabel, segmentValue, stackTotalValue, TotalLabel } from "@/components/charts/labels";

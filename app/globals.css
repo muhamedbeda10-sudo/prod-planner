@@ -991,12 +991,12 @@ div.overflow-x-auto > table thead {
   html.ai-printing .ai-print-sheet .ai-chart { break-inside: avoid; }
 }
 
-/* ---- the company header on paper (components/PrintHeader.tsx): the
-   report's title on the left, the ATC logo on the right, over a green rule
+/* ---- the company header on paper (components/PrintHeader.tsx): the ATC
+   logo on the left, the report's title on the right, over a green rule
    (the art at the foot of its pages: @page report) ---- */
 @media print {
   .print-only.report-head { display: flex !important; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-4); padding-bottom: 3mm; border-bottom: 2px solid var(--brand); break-inside: avoid; }
-  .report-head-text { min-width: 0; }
+  .report-head-text { min-width: 0; text-align: right; }
   .report-title { font-size: var(--fs-title); font-weight: 800; line-height: 1.2; color: var(--foreground); }
   .report-subtitle { margin-top: 2px; font-size: var(--fs-body); font-weight: 700; color: var(--brand-dark); }
   .report-date { margin-top: 2px; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
@@ -1021,6 +1021,37 @@ div.overflow-x-auto > table thead {
 .viz .recharts-cartesian-axis-line, .viz .recharts-cartesian-axis-tick-line { stroke: var(--border-strong); }
 .viz .recharts-text { fill: var(--muted); }
 .viz .recharts-tooltip-cursor { fill: var(--surface-2); }
+
+/* ---- chart zoom (components/charts/zoom.tsx): Ctrl + scroll or a pinch
+   magnifies a chart in its own frame; a drag moves it. The frame clips only
+   while zoomed, so a tooltip at the plain size still spills past it. Over a
+   chart two fingers zoom the chart, not the page. */
+.chart-zoom { position: relative; width: 100%; height: 100%; touch-action: pan-x pan-y; }
+/* zoomed, one finger moves the chart sideways and still scrolls the page up and down */
+.chart-zoom.is-zoomed { overflow: hidden; user-select: none; touch-action: pan-y; cursor: grab; }
+/* a drag is painted on its own layer; at rest the chart is redrawn sharp */
+.chart-zoom.is-dragging { overflow: hidden; user-select: none; touch-action: none; }
+.chart-zoom.is-dragging, .chart-zoom.is-dragging * { cursor: grabbing; }
+.chart-zoom.is-dragging .chart-zoom-pane { will-change: transform; }
+.chart-zoom-pane { position: relative; width: 100%; height: 100%; transform-origin: 0 0; }
+/* a tooltip keeps its own size however far the chart is magnified */
+.chart-zoom-pane .recharts-tooltip-wrapper > * { scale: calc(1 / var(--zoom, 1)); transform-origin: 0 0; }
+.chart-zoom-bar {
+  position: absolute; top: var(--sp-1); right: var(--sp-1); z-index: 2;
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-sm); box-shadow: var(--shadow-md);
+  cursor: default;
+}
+/* the hint wears the tooltip's colours (.tooltip) */
+.chart-zoom-hint {
+  position: absolute; left: 50%; bottom: var(--sp-2); z-index: 2; transform: translateX(-50%);
+  padding: 0.3rem 0.7rem; border-radius: 999px; white-space: nowrap; pointer-events: none;
+  background: var(--tip-bg); color: var(--tip-fg); border: 1px solid var(--tip-border); box-shadow: var(--shadow-md);
+  font-size: var(--fs-sm); font-weight: 600;
+  animation: tipfade 0.15s ease-out;
+}
+@media (prefers-reduced-motion: reduce) { .chart-zoom-hint { animation: none; } }
+@media print { .chart-zoom-pane { transform: none !important; } }
 
 /* ---- the date slicer: two range inputs laid over one strip ----
    The inputs let the thumbs take the pointer and nothing else, so both

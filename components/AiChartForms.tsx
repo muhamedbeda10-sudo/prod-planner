@@ -4,8 +4,9 @@ import { useSyncExternalStore } from "react";
 import { factoryWallClockMs } from "@/lib/domain/dates";
 import { formatDate } from "@/lib/domain/format";
 import {
-  Bar, CartesianGrid, Cell, ComposedChart, LabelList, Line, ReferenceLine, ResponsiveContainer, Sankey, Scatter, ScatterChart, Tooltip, Treemap, XAxis, YAxis, ZAxis,
+  Bar, CartesianGrid, Cell, ComposedChart, LabelList, Line, ReferenceLine, Sankey, Scatter, ScatterChart, Tooltip, Treemap, XAxis, YAxis, ZAxis,
 } from "recharts";
+import { ResponsiveContainer } from "@/components/charts/zoom";
 import { HeatScale, Heatmap, INK_ON_OTHER, OTHER, TRACK, catColor, catInk, compact, fmt, heat, pct } from "@/components/charts/kit";
 import { Meter } from "@/components/Meter";
 import {

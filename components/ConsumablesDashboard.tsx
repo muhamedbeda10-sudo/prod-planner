@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Package, Target } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, ComposedChart, LabelList, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, ComposedChart, LabelList, Line, Tooltip, XAxis, YAxis } from "recharts";
+import { ResponsiveContainer } from "@/components/charts/zoom";
 import { EmptyState } from "@/components/primitives";
 import { FilterSelect } from "@/components/FilterControls";
 import { Bullet, CAT, ChartCard, Legend, TipBox, fmt, type TableRow } from "@/components/charts/kit";

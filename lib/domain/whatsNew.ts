@@ -20,7 +20,14 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     dateISO: "2026-10-29",
     title: "Printed reports carry the company's frame — and you name the assistant's reports",
     where: "Every Print / PDF: the worklists, Plan Tracker, dashboards, machine sheets, shifts, consumables and the assistant's answers and files",
-    body: "A printout now opens with the report's title, what it covers and its date on the left and the ATC logo on the right, over a green rule; the green waves over the Kingdom's skyline run along the foot of every page. Print / PDF on an assistant's answer or an inbox report first asks for the report's title — the question is offered, type any name — and its headings and table heads print in the company green. Name a file or report when you ask the assistant and it uses your name as its title.",
+    body: "A printout now opens with the ATC logo on the left and the report's title, what it covers and its date on the right, over a green rule; the green waves over the Kingdom's skyline run along the foot of every page. Print / PDF on an assistant's answer or an inbox report first asks for the report's title — the question is offered, type any name — and its headings and table heads print in the company green. Name a file or report when you ask the assistant and it uses your name as its title.",
+  },
+  {
+    id: "2026-10-29-chart-zoom",
+    dateISO: "2026-10-29",
+    title: "Zoom into any chart",
+    where: "The dashboards' charts and heatmaps, the machine board's timeline, the assistant's charts",
+    body: "Hold Ctrl (⌘ on a Mac) and scroll over a chart to zoom in and out where the pointer is, or pinch on a trackpad or touch screen. Drag to move around a zoomed chart; double-click it, or press the reset in its corner, to see it whole again. A plain scroll still scrolls the page.",
   },
   {
     id: "2026-10-28-top-bar-order",

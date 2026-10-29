@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState, type ComponentProps } from "r
 import { useSetParam } from "@/components/useSetParam";
 import { productColor, productInk } from "@/lib/domain/productColors";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList,
+  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, LabelList,
 } from "recharts";
+import { ResponsiveContainer } from "@/components/charts/zoom";
 import { ChartCard, DeltaChip } from "@/components/charts/kit";
 import { segmentLabel, segmentValue, stackTotalValue, TotalLabel, type LabelBox } from "@/components/charts/labels";
 import { Badge } from "@/components/Badge";
