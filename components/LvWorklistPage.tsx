@@ -19,7 +19,7 @@ export async function LvWorklistPage({ stage }: { stage: LvStage }) {
   const canEdit = !!user && hasPerm(user, lvDeptPermKey(stage));
   return (
     <>
-      <PrintHeader title={`${stage} Worklist — LV Panels`} date={formatDate(today)} />
+      <PrintHeader title={`${stage} Worklist — LV Panels`} />
       {/* the department and its line are picked in the Floor tab's menu: the
           page has no row of stages and no line switch */}
       <PageHead title={`${stage} Worklist`} sub={`LV Panels · ${formatDate(today)}`} />

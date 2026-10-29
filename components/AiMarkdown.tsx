@@ -44,7 +44,7 @@ const AiChart = dynamic(() => import("@/components/AiChart").then((m) => m.AiCha
   loading: () => <div className="my-3 h-24 rounded-xl bg-surface-2/60 animate-pulse" aria-hidden />,
 });
 
-type HastNode = { type: string; tagName?: string; value?: string; properties?: { className?: unknown }; children?: HastNode[] };
+type HastNode = { type: string; tagName?: string; value?: string; properties?: { className?: unknown; step?: boolean }; children?: HastNode[] };
 
 const textOf = (n: HastNode | undefined): string => (!n ? "" : n.type === "text" ? n.value ?? "" : (n.children ?? []).map(textOf).join(""));
 
@@ -55,6 +55,38 @@ function labelOf(li: HastNode | undefined): string | null {
   if (first?.tagName !== "strong") return null;
   const t = textOf(first).trim();
   return t.endsWith(":") && t.length > 1 && t.length <= 40 ? t.slice(0, -1) : null;
+}
+
+/** What ties a bold lead to the words after it: space, a colon, a dash (a
+ *  hyphen only with a space after it, so "-5%" keeps its sign). */
+const LEAD_TIE = /^(?:[\s:：—–]|-(?=\s))+/;
+
+/** Marks the items of a numbered list: a step that opens in bold is titled
+ *  by it, where a bullet's bold may just begin its sentence. */
+const rehypeSteps = () => (tree: HastNode) => {
+  const walk = (n: HastNode) => {
+    for (const c of n.children ?? []) {
+      if (n.tagName === "ol" && c.tagName === "li") c.properties = { ...c.properties, step: true };
+      walk(c);
+    }
+  };
+  walk(tree);
+};
+
+/** A list item that opens on a bold lead and says more after it — the line
+ *  the item is read by: "**Record attendance:** …", "**Cut** — …", and a
+ *  numbered step's "**Check the Daily log** for …" with nothing to tie them.
+ *  A bullet's bold with no colon or dash after it ("**3 MOs** are late") is
+ *  the start of its sentence, not a lead. */
+function leadOf(li: HastNode | undefined): string | null {
+  const kids = li?.children ?? [];
+  const at = kids.findIndex((c) => c.type === "element" || (c.type === "text" && (c.value ?? "").trim() !== ""));
+  if (at < 0 || kids[at].tagName !== "strong" || kids.some((c) => BLOCKS.has(c.tagName ?? ""))) return null;
+  const bold = textOf(kids[at]).trim();
+  const lead = bold.replace(/[:：]$/, "").trim();
+  const after = kids.slice(at + 1).map(textOf).join("");
+  const tied = lead !== bold || /^\s*(?:[:：—–]|-\s)/.test(after) || li?.properties?.step === true;
+  return lead && lead.length <= 120 && tied && /[\p{L}\p{N}]/u.test(after) ? lead : null;
 }
 
 /** A list every item of which is "**Label:** value" — read as a panel of
@@ -241,19 +273,21 @@ function components(streaming: boolean, ownFiles: boolean): Components {
     ),
     li: ({ children, node }) => {
       const item = node as HastNode | undefined;
-      const label = labelOf(item);
+      const label = labelOf(item) ?? leadOf(item);
       if (label === null) {
         // a line of text reads in its own direction, its bullet on the list's side
         const inline = !(item?.children ?? []).some((c) => BLOCKS.has(c.tagName ?? ""));
         return <li>{inline ? <span dir={itemDirection(textOf(item))}>{children}</span> : children}</li>;
       }
-      // the bold label becomes the row's first cell; what follows it, its value
+      // the bold label becomes the item's first line (a field panel's label);
+      // what follows it, the line under it — its value, or what it means
       const items = Children.toArray(children);
       const rest = items.slice(items.findIndex((c) => isValidElement(c)) + 1);
+      const after = textOf(item).trimStart().slice(label.length).replace(LEAD_TIE, "");
       return (
         <li>
           <span className="ai-field-label"><span dir={itemDirection(label)}>{label}</span></span>
-          <span className="ai-field-value"><span dir={itemDirection(textOf(item).trimStart().slice(label.length + 1))}>{trimStart(rest)}</span></span>
+          <span className="ai-field-value"><span dir={itemDirection(after)}>{trimLead(rest)}</span></span>
         </li>
       );
     },
@@ -327,8 +361,10 @@ function components(streaming: boolean, ownFiles: boolean): Components {
 }
 
 /** The value after a label, its leading space dropped. */
-function trimStart(nodes: ReactNode[]): ReactNode[] {
-  if (nodes.length > 0 && typeof nodes[0] === "string") return [nodes[0].replace(/^\s+/, ""), ...nodes.slice(1)];
+/** What follows a list item's bold lead, without the colon or dash and the
+ *  space that tied it to the lead — it starts a line of its own. */
+function trimLead(nodes: ReactNode[]): ReactNode[] {
+  if (nodes.length > 0 && typeof nodes[0] === "string") return [nodes[0].replace(LEAD_TIE, ""), ...nodes.slice(1)];
   return nodes;
 }
 
@@ -353,7 +389,7 @@ const SHARED = components(false, false);
 export const AiMarkdown = memo(function AiMarkdown({ text, streaming = false, shared = false, className = "" }: { text: string; streaming?: boolean; shared?: boolean; className?: string }) {
   return (
     <div className={`ai-md min-w-0 ${className}`} dir={textDirection(text)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={streaming ? LIVE : shared ? SHARED : DONE}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSteps]} components={streaming ? LIVE : shared ? SHARED : DONE}>
         {text}
       </ReactMarkdown>
     </div>

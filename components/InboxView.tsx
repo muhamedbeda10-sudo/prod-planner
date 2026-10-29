@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { BellOff, BellRing, CheckCheck, ChevronDown, Inbox, Trash2 } from "lucide-react";
+import { ArrowLeft, BellOff, BellRing, CheckCheck, ChevronDown, Inbox, Trash2 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiPrintButton } from "@/components/AiPrint";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
@@ -15,10 +15,11 @@ import { formatDateTime } from "@/lib/domain/format";
 import type { AiActionView } from "@/lib/domain/aiActions";
 import type { InboxItemView } from "@/lib/server/ai/panel";
 
-// The inbox: newest first, each item opened in place — its Markdown (charts
-// included), and the changes it proposes as cards to approve. Opening an
-// item marks it read. Above the list, a filter by what it is, this device's
-// notifications switch, and Mark all read.
+// The inbox: newest first. An item opens on its own, the whole of the inbox's
+// width — its Markdown (charts included), and the changes it proposes as
+// cards to approve — with nothing else of the list under it, and Back returns
+// to the list. Opening an item marks it read. Above the list, a filter by
+// what it is, this device's notifications switch, and Mark all read.
 
 export type { InboxItemView };
 
@@ -124,7 +125,7 @@ function Item({ item, actions, open, onToggle, onDelete, onAction }: {
         <span className="flex-1 min-w-0">
           {/* the title keeps the line; on a narrow screen the rest wraps under it */}
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className={`min-w-0 flex-[1_1_10rem] truncate text-sm ${unread ? "font-bold" : "font-semibold"}`} dir="auto">
+            <span className={`min-w-0 flex-[1_1_10rem] ${open ? "text-base" : "truncate text-sm"} ${unread ? "font-bold" : "font-semibold"}`} dir="auto">
               {item.title}
               {unread && <span className="sr-only"> (not read)</span>}
             </span>
@@ -147,7 +148,7 @@ function Item({ item, actions, open, onToggle, onDelete, onAction }: {
           {proposed.length > 1 && <ApproveAll views={proposed} onChange={onAction} />}
           {actions.map((a) => <AiActionCard key={a.id} view={a} onChange={onAction} />)}
           <div className="flex justify-end gap-1 mt-3">
-            <AiPrintButton title={item.title} subtitle={item.fromName ?? INBOX_KIND_LABEL[item.kind]} date={formatDateTime(item.createdAt)} text={item.body} />
+            <AiPrintButton title={item.title} text={item.body} />
             <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={onDelete}><Trash2 size={14} aria-hidden /> Remove</button>
           </div>
         </div>
@@ -176,7 +177,8 @@ export function InboxView({
   const [all, setItems] = useState(initial);
   const items = useMemo(() => all.filter((i) => kinds.includes(i.kind)), [all, kinds]);
   const [actions, setActions] = useState(() => new Map(initialActions.map((a) => [a.id, a])));
-  const [openIds, setOpenIds] = useState<Set<number>>(() => new Set(openId ? [openId] : []));
+  // the item read on its own, null for the list
+  const [openItem, setOpenItem] = useState<number | null>(openId);
   const [filter, setFilter] = useState<Filter>("all");
   const [err, setErr] = useState<string | null>(null);
   const unread = useMemo(() => items.filter((i) => !i.readAt).length, [items]);
@@ -194,26 +196,29 @@ export function InboxView({
     markInboxRead(ids).then((r) => (r.ok ? changed() : setErr(r.error ?? "Could not mark it read."))).catch(() => setErr("Could not mark it read."));
   };
 
-  // the item a notification opened (the page marked it read): in view, and
-  // the bell told
+  // the item a notification opened (the page marked it read): the bell told
   useEffect(() => {
-    if (!openId) return;
-    document.getElementById(`item-${openId}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
-    changed();
+    if (openId) changed();
   }, [openId]);
 
-  const toggle = (it: InboxItemView) => {
-    setOpenIds((s) => {
-      const n = new Set(s);
-      if (n.has(it.id)) n.delete(it.id);
-      else n.add(it.id);
-      return n;
-    });
+  // an item opens from its own top, and the list comes back where it was read
+  const scrollTo = (id: number | null) =>
+    requestAnimationFrame(() => document.getElementById(id ? `item-${id}` : "inbox-list")?.scrollIntoView({ block: "start" }));
+
+  const openOne = (it: InboxItemView) => {
+    setOpenItem(it.id);
+    scrollTo(null);
     if (!it.readAt) readNow([it.id]);
+  };
+  const back = () => {
+    const was = openItem;
+    setOpenItem(null);
+    scrollTo(was);
   };
 
   const remove = (it: InboxItemView) => {
     if (!confirm(`Remove "${it.title}" from your inbox?`)) return;
+    if (openItem === it.id) setOpenItem(null);
     setItems((xs) => xs.filter((x) => x.id !== it.id));
     deleteInboxItems([it.id]).then((r) => (r.ok ? changed() : setErr(r.error ?? "Could not remove it."))).catch(() => setErr("Could not remove it."));
   };
@@ -227,8 +232,28 @@ export function InboxView({
     ...(kinds.length > 1 ? kinds.map((k) => ({ id: k, label: KIND_CHIP[k] })) : []),
   ];
 
+  const reading = openItem === null ? undefined : items.find((it) => it.id === openItem);
+  if (reading) {
+    return (
+      <div id="inbox-list" className="space-y-2.5">
+        <div className="flex items-center gap-2">
+          <button type="button" className="btn btn-sm btn-ghost" onClick={back}><ArrowLeft size={14} aria-hidden /> All items</button>
+        </div>
+        {err && <p className="text-sm font-semibold text-bad-fg">{err}</p>}
+        <Item
+          item={reading}
+          actions={reading.actionIds.map((id) => actions.get(id)).filter((a): a is AiActionView => !!a)}
+          open
+          onToggle={back}
+          onDelete={() => remove(reading)}
+          onAction={onAction}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-2.5">
+    <div id="inbox-list" className="space-y-2.5">
       {/* one row: the filters scroll sideways on a narrow window, the buttons keep their place */}
       <div className="flex items-center gap-2">
         <div className="no-scrollbar flex flex-1 items-center gap-1.5 min-w-0">
@@ -265,8 +290,8 @@ export function InboxView({
               key={it.id}
               item={it}
               actions={it.actionIds.map((id) => actions.get(id)).filter((a): a is AiActionView => !!a)}
-              open={openIds.has(it.id)}
-              onToggle={() => toggle(it)}
+              open={false}
+              onToggle={() => openOne(it)}
               onDelete={() => remove(it)}
               onAction={onAction}
             />

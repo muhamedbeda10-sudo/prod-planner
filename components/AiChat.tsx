@@ -944,7 +944,7 @@ function Answer({
                 {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
               </button>
             )}
-            {turn.text && <AiPrintButton title={title} subtitle="AI assistant" text={printable} className="text-xs" />}
+            {turn.text && <AiPrintButton title={title} text={printable} className="text-xs" />}
             {turn.text && !turn.error && (
               <button type="button" className="btn btn-ghost btn-sm text-xs" onClick={() => setSharing(true)} title="Send this answer to a colleague's inbox or the team chat, or keep it in your inbox">
                 <Share2 size={13} /> Share

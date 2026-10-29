@@ -8,7 +8,6 @@ import { useAsk } from "@/components/DataTable";
 import { PrintHeader } from "@/components/PrintHeader";
 import { AI_REPORT_TITLE_MAX, reportTitleOf } from "@/lib/domain/aiAnswer";
 import { oneLine } from "@/lib/domain/aiExplain";
-import { formatDateTime } from "@/lib/domain/format";
 
 // One AI report or answer on paper — or a PDF through the print dialog —
 // alone, under the company's header, its charts drawn as they are on screen.
@@ -18,17 +17,14 @@ import { formatDateTime } from "@/lib/domain/format";
 // then it is the only thing printed (globals.css: html.ai-printing), and it
 // goes away when the dialog closes.
 
-export function AiPrintButton({ title, subtitle, date, text, className = "" }: {
+export function AiPrintButton({ title, text, className = "" }: {
   title: string;
-  subtitle?: string;
-  /** The day it was issued — the moment it is printed when not given. */
-  date?: string;
   text: string;
   className?: string;
 }) {
   // what the sheet carries while it is printing — its title as the person
-  // named it, its date and its text — null otherwise
-  const [printing, setPrinting] = useState<{ title: string; date: string; text: string } | null>(null);
+  // named it and its text — null otherwise
+  const [printing, setPrinting] = useState<{ title: string; text: string } | null>(null);
   const [ask, askDialog] = useAsk();
   const start = async () => {
     const own = reportTitleOf(text);
@@ -41,7 +37,7 @@ export function AiPrintButton({ title, subtitle, date, text, className = "" }: {
     if (!v) return;
     const named = oneLine(v.title, AI_REPORT_TITLE_MAX) || offered;
     // the answer's own heading is not printed again under a header that carries it
-    setPrinting({ title: named, date: date ?? formatDateTime(new Date()), text: own.title === named ? own.body : text });
+    setPrinting({ title: named, text: own.title === named ? own.body : text });
   };
   return (
     <>
@@ -55,7 +51,7 @@ export function AiPrintButton({ title, subtitle, date, text, className = "" }: {
         <Printer size={14} aria-hidden /> Print / PDF
       </button>
       {askDialog}
-      {printing !== null && createPortal(<PrintSheet title={printing.title} subtitle={subtitle} date={printing.date} text={printing.text} onDone={() => setPrinting(null)} />, document.body)}
+      {printing !== null && createPortal(<PrintSheet title={printing.title} text={printing.text} onDone={() => setPrinting(null)} />, document.body)}
     </>
   );
 }
@@ -69,7 +65,7 @@ export async function drawn(root: ParentNode | null): Promise<void> {
   await new Promise((r) => setTimeout(r, 200));
 }
 
-function PrintSheet({ title, subtitle, date, text, onDone }: { title: string; subtitle?: string; date: string; text: string; onDone: () => void }) {
+function PrintSheet({ title, text, onDone }: { title: string; text: string; onDone: () => void }) {
   const sheet = useRef<HTMLDivElement>(null);
   const done = useRef(onDone);
   useEffect(() => {
@@ -117,7 +113,7 @@ function PrintSheet({ title, subtitle, date, text, onDone }: { title: string; su
 
   return (
     <div ref={sheet} className="ai-print-sheet" aria-hidden>
-      <PrintHeader title={title} subtitle={subtitle} date={date} />
+      <PrintHeader title={title} />
       <AiMarkdown text={text} className="ai-answer" />
     </div>
   );

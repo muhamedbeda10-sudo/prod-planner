@@ -750,9 +750,13 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
    .report-head, the assistant's printouts included) — prints on the company
    page: the company art, green waves over the Kingdom's skyline, runs the
    width of the foot of every page in the page's own bottom margin box (the
-   art is 1600 x 120, so A4 landscape's 297mm lands it about 22mm tall). A
-   page that fills its margin boxes prints none of the browser's strips. */
+   art is 1600 x 120: about 22mm tall across A4 landscape, 16mm across
+   portrait). A page that fills its margin boxes prints none of the browser's
+   strips. Its paper is the print dialog's — size: auto leaves the dialog's
+   Portrait / Landscape choice open, where the app's own A4 landscape hides it
+   (its charts scale down to a portrait page: .recharts-wrapper below). */
 @page report {
+  size: auto;
   margin: 6mm 0 23mm;
   @bottom-center {
     content: "";
@@ -995,12 +999,14 @@ div.overflow-x-auto > table thead {
    logo on the left, the report's title on the right, over a green rule
    (the art at the foot of its pages: @page report) ---- */
 @media print {
-  .print-only.report-head { display: flex !important; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-4); padding-bottom: 3mm; border-bottom: 2px solid var(--brand); break-inside: avoid; }
-  .report-head-text { min-width: 0; text-align: right; }
-  .report-title { font-size: var(--fs-title); font-weight: 800; line-height: 1.2; color: var(--foreground); }
-  .report-subtitle { margin-top: 2px; font-size: var(--fs-body); font-weight: 700; color: var(--brand-dark); }
-  .report-date { margin-top: 2px; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+  .print-only.report-head { display: flex !important; align-items: center; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-4); padding-bottom: 3mm; border-bottom: 2px solid var(--brand); break-inside: avoid; }
+  .report-title { min-width: 0; text-align: right; font-size: var(--fs-title); font-weight: 800; line-height: 1.2; color: var(--foreground); }
   .report-logo { flex-shrink: 0; width: 34mm; height: auto; }
+  /* a chart is drawn at the screen's width; on a narrower page (a portrait
+     report) it scales down to the page instead of running off it */
+  .recharts-wrapper { max-width: 100% !important; height: auto !important; }
+  .recharts-wrapper > .recharts-surface { max-width: 100%; height: auto; }
+  .recharts-legend-wrapper { max-width: 100% !important; }
 
   /* a report the assistant wrote, in the company's colours: its headings in
      green over a green rule, its tables under a green heading band */
@@ -1755,10 +1761,16 @@ main .composer textarea:focus, .composer textarea:focus { outline: none; box-sha
 .ai-md .md-table td.num { text-align: end; }
 .ai-md .md-table td.cell-wide { min-width: 16rem; }
 /* a list of "**Label:** value" read as a panel of fields */
-.ai-md .ai-fields { list-style: none; margin: 10px 0; padding: 10px 14px; display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 20px; row-gap: 7px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
-.ai-md .ai-fields > li { display: contents; }
-.ai-md .ai-field-label { color: var(--muted); font-size: var(--fs-sm); font-weight: 600; padding-top: 1px; white-space: nowrap; }
-.ai-md .ai-field-value { min-width: 0; overflow-wrap: anywhere; }
+/* a panel of fields: a tile per field across the width, its label over its
+   value, both read at a glance (the label in the brand ink, never faded) */
+.ai-md .ai-fields { list-style: none; margin: 10px 0; padding: var(--sp-2); display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-2); border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.ai-md .ai-fields > li { display: flex; flex-direction: column; gap: calc(var(--sp-1) / 2); min-width: 0; padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); background: var(--surface); }
+.ai-md .ai-field-label { color: var(--brand-ink); font-size: var(--fs-sm); font-weight: 650; overflow-wrap: anywhere; }
+.ai-md .ai-field-value { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+/* a list item that opens on a bold lead: the lead its own clear line, what it
+   means under it in the body's weight */
+.ai-md .ai-ul > li > .ai-field-label, .ai-md .ai-ol > li > .ai-field-label { display: block; color: var(--foreground); font-size: inherit; font-weight: 700; }
+.ai-md .ai-ul > li > .ai-field-value, .ai-md .ai-ol > li > .ai-field-value { display: block; margin-top: calc(var(--sp-1) / 2); font-weight: 400; }
 .ai-md hr + ul, .ai-md ul + hr { margin-top: 0.75rem; }
 /* the tables read row by row */
 .ai-md .md-table tbody tr:nth-child(even) td { background: var(--zebra); }

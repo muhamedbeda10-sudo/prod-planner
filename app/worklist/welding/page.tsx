@@ -62,7 +62,7 @@ export default async function WeldWorklistPage() {
 
   return (
     <>
-      <PrintHeader title="Welding Worklist" date={formatDate(today)} />
+      <PrintHeader title="Welding Worklist" />
       <PageHead title="Welding Worklist" sub={formatDate(today)} />
       <WeldingQueueTable
         soi={soi}

@@ -1,5 +1,4 @@
-import { ITEM_NAME, deptLabel, type Item } from "@/lib/domain/constants";
-import { machineWord } from "@/lib/domain/shifts";
+import { ITEM_NAME, type Item } from "@/lib/domain/constants";
 import type { MachineCard, MachineQueueLine } from "@/lib/domain/machineBoard";
 import { PrintHeader } from "@/components/PrintHeader";
 import { manualIdOf, type ManualJobView } from "@/lib/domain/manualJob";
@@ -100,12 +99,12 @@ function Rows({ lines, from = 1, required, material, dept, jobs, runsOnly }: { l
   );
 }
 
-export function MachineSheet({ c, dept, dateLabel, required, material, jobs, first }: { c: MachineCard; dept: string; dateLabel: string; required: Record<string, number>; material: Record<string, LineMaterial>; jobs: Record<number, ManualJobView>; first: boolean }) {
+export function MachineSheet({ c, dept, required, material, jobs, first }: { c: MachineCard; dept: string; required: Record<string, number>; material: Record<string, LineMaterial>; jobs: Record<number, ManualJobView>; first: boolean }) {
   // the fabrication machines cut sheet jobs alone — the narrow table does
   const runsOnly = c.queue.length > 0 && c.queue.every((q) => !!jobs[manualIdOf(q.mo) ?? -1]);
   return (
     <section className={`mb-8 ${first ? "" : "print-break"}`}>
-      <PrintHeader title={`${c.machine.code} · ${c.machine.name}`} subtitle={`${deptLabel(dept)} — ${machineWord(dept)} sheet`} date={dateLabel} />
+      <PrintHeader title={`${c.machine.code} · ${c.machine.name}`} />
       <div className="flex flex-wrap items-baseline gap-3 mb-2">
         <h2 className="!mb-0">{c.machine.code} <span className="font-semibold">· {c.machine.name}</span></h2>
         <span className="text-xs text-muted tabnum">

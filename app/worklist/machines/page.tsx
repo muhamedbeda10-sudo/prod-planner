@@ -1,4 +1,3 @@
-import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
@@ -41,7 +40,6 @@ export default async function MachineSheetsPage({ searchParams }: { searchParams
   const board = await getMachineBoard(dept, lines, today);
   const cards = board.cards.filter((c) => (only ? c.machine.id === only : c.queue.length > 0));
   const word = machineWord(dept);
-  const dateLabel = formatDate(today);
   // the sheet jobs, by id — a machine line that is one prints its parts
   const jobs = Object.fromEntries(board.manualJobs.filter((j) => j.bySheet).map((j) => [j.id, j]));
   const back = dept === "ShotBlast" ? "/shifts?dept=ShotBlast" : `/worklist/${dept === "Cut" ? "cut" : dept.toLowerCase()}`;
@@ -56,7 +54,7 @@ export default async function MachineSheetsPage({ searchParams }: { searchParams
       {cards.length === 0 ? (
         <p className="text-sm text-muted">Nothing is on {only ? `this ${word}` : `any ${word}`} yet — put lines on it from the worklist first.</p>
       ) : (
-        cards.map((c, i) => <MachineSheet key={c.machine.id} c={c} dept={dept} dateLabel={dateLabel} required={board.required} material={board.material} jobs={jobs} first={i === 0} />)
+        cards.map((c, i) => <MachineSheet key={c.machine.id} c={c} dept={dept} required={board.required} material={board.material} jobs={jobs} first={i === 0} />)
       )}
     </div>
   );

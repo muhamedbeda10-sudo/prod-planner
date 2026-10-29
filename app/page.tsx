@@ -65,11 +65,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   return (
     <div className="space-y-3">
       <RememberLastVisit storageKey="dashboard:last" />
-      <PrintHeader
-        title={`Planning — ${f.scope === "all" ? "whole plant" : PLANNING_SCOPE_LABEL[f.scope]}`}
-        subtitle={[tr?.week.planNo ? `Weekly plan ${tr.week.planNo}` : null, lv?.month.monthLabel].filter(Boolean).join(" · ") || undefined}
-        date={asOf}
-      />
+      <PrintHeader title={`Planning — ${f.scope === "all" ? "whole plant" : PLANNING_SCOPE_LABEL[f.scope]}`} />
       <PageHead title="Planning" sub="Will we make the plan, where is the shortfall, and what does it take" />
       <PlanningBar f={f} planNos={tr?.week.planNos ?? []} activePlan={tr?.week.planNo ?? null} asOf={asOf}
         actions={<CockpitDecisions actions={actions} />} />
