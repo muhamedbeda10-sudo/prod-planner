@@ -950,6 +950,13 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
      dashboards' and the assistant's alike) moves to the next page whole
      rather than leave its title on one page and its drawing on the next */
   .print-keep, .chart-card { break-inside: avoid !important; }
+  /* a heading never ends a page: it moves on with what it heads — a section's
+     title, a numbered step's bold lead, a table's or a card's caption — and a
+     step, a field or a callout prints whole; a paragraph leaves at least two
+     lines on each page */
+  main h1, main h2, main h3, main h4, .ai-md .ai-h, .ai-md .ai-lead { break-after: avoid; }
+  .ai-md li, .ai-md .ai-fields, .ai-callout { break-inside: avoid; }
+  p, li { orphans: 2; widows: 2; }
 
   /* scroll containers must fully expand on paper */
   div.overflow-x-auto:has(> table) { overflow: visible !important; max-height: none !important; }
