@@ -2,13 +2,28 @@
 
 import { useEffect } from "react";
 
-// On a phone a list table (`table.table-cards`) reads as cards: each row a
-// card, each cell its column's name over its value (app/globals.css). The
-// names come from the table's own header, written onto the cells as
-// `data-label` — so a table opts in with the class alone, and a row added,
-// re-sorted or filtered is labelled as it lands. Wider screens keep the table.
+// A list table (`table.table-cards`) reads as cards where a table would run
+// off the screen: each row a card, each cell its column's name over its value
+// (app/globals.css). The names come from the table's own header, written onto
+// the cells as `data-label` — so a table opts in with the class alone, and a
+// row added, re-sorted or filtered is labelled as it lands. A phone always
+// shows the cards; a tablet only for a table wider than its frame, chosen
+// again when the screen turns or resizes; a computer keeps the table.
 
 const TABLES = "main table.table-cards";
+const PHONE_MAX = 639;
+const TABLET_MAX = 1279;
+
+/** Cards or the table, for this screen — measured on the table itself. */
+function chooseLayout(table: HTMLTableElement) {
+  const w = window.innerWidth;
+  if (w > TABLET_MAX) return table.removeAttribute("data-cards");
+  if (w <= PHONE_MAX) return table.setAttribute("data-cards", "on");
+  // once cards, kept until the screen changes: as cards it always "fits"
+  if (table.hasAttribute("data-cards")) return;
+  const frame = table.parentElement;
+  if (frame && table.scrollWidth > frame.clientWidth + 2) table.setAttribute("data-cards", "on");
+}
 
 /** React has taken the element over — touching server-rendered markup before
  *  then is a hydration mismatch, so such a table waits for the next pass. */
@@ -58,8 +73,10 @@ export function TableCards() {
       frame = 0;
       let waiting = false;
       for (const t of main.querySelectorAll<HTMLTableElement>(TABLES)) {
-        if (hydrated(t)) label(t);
-        else waiting = true;
+        if (hydrated(t)) {
+          label(t);
+          chooseLayout(t);
+        } else waiting = true;
       }
       // a page hydrates after the layout, and hydrating moves no node: look again
       clearTimeout(retry);
@@ -70,7 +87,16 @@ export function TableCards() {
     // a row's own attribute writes are not watched — only rows and text coming and going
     const mo = new MutationObserver(schedule);
     mo.observe(main, { childList: true, subtree: true, characterData: true });
-    return () => { mo.disconnect(); if (frame) cancelAnimationFrame(frame); clearTimeout(retry); };
+    // the screen turned or resized: every table chooses again, from scratch
+    let lastW = window.innerWidth;
+    const resized = () => {
+      if (window.innerWidth === lastW) return;
+      lastW = window.innerWidth;
+      for (const t of main.querySelectorAll<HTMLTableElement>(TABLES)) t.removeAttribute("data-cards");
+      schedule();
+    };
+    window.addEventListener("resize", resized);
+    return () => { mo.disconnect(); window.removeEventListener("resize", resized); if (frame) cancelAnimationFrame(frame); clearTimeout(retry); };
   }, []);
   return null;
 }

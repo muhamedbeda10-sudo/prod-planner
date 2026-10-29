@@ -1342,32 +1342,35 @@ main input.cell-edit.cell-edit-warn { border-color: var(--warn-fg); background: 
 main input.cell-edit[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 main input.cell-edit[type="number"]::-webkit-inner-spin-button, main input.cell-edit[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
-/* a phone: a list table (table.table-cards, labelled by components/TableCards)
-   reads as cards — each row a card, each cell its column's name over its
-   value, two to a line; a cell spanning the row (a note, a group) takes the
-   card's width. The frame stops scrolling sideways: nothing is off the edge. */
-@media (max-width: 639px) {
-  main table.table-cards { display: block; width: 100% !important; min-width: 0 !important; }
-  main table.table-cards > thead { display: none; }
-  main table.table-cards > tbody { display: block; }
-  main table.table-cards > tbody > tr {
-    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2) var(--sp-3);
-    padding: var(--sp-3); border-bottom: 1px solid var(--border); height: auto !important;
-  }
-  main table.table-cards > tbody > tr > td {
-    display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 2px;
-    min-width: 0; height: auto !important; padding: 0 !important; border: 0 !important;
-    text-align: start !important; white-space: normal !important; overflow-wrap: anywhere;
-    position: static !important; box-shadow: none !important;
-  }
-  main table.table-cards > tbody > tr > td::before {
-    content: attr(data-label); font-size: var(--fs-label); font-weight: 650; line-height: 1.2;
-    letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
-  }
-  main table.table-cards > tbody > tr > td:is(:not([data-label]), [data-label=""])::before { content: none; }
-  main table.table-cards > tbody > tr > td:is([colspan], :not([data-label]), [data-label=""]) { grid-column: 1 / -1; }
-  main table.table-cards > tbody > tr > td:empty { display: none; }
+/* a list table (table.table-cards) as cards — each row a card, each cell
+   its column's name over its value, as many to a line as the card has room
+   for; a cell spanning the row (a note, a group) takes the card's width.
+   components/TableCards labels the cells and turns it on (data-cards): on
+   a phone always, on a tablet when the table is wider than its frame — a
+   table that fits stays a table, and a computer keeps the table. */
+main table.table-cards[data-cards="on"] { display: block; width: 100% !important; min-width: 0 !important; }
+main table.table-cards[data-cards="on"] > thead { display: none; }
+main table.table-cards[data-cards="on"] > tbody { display: block; }
+main table.table-cards[data-cards="on"] > tbody > tr {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(9.5rem, 100%), 1fr)); gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3); border-bottom: 1px solid var(--border); height: auto !important;
 }
+main table.table-cards[data-cards="on"] > tbody > tr > td {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 2px;
+  min-width: 0; height: auto !important; padding: 0 !important; border: 0 !important;
+  text-align: start !important; white-space: normal !important; overflow-wrap: anywhere;
+  position: static !important; box-shadow: none !important;
+}
+main table.table-cards[data-cards="on"] > tbody > tr > td::before {
+  content: attr(data-label); font-size: var(--fs-label); font-weight: 650; line-height: 1.2;
+  letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
+}
+main table.table-cards[data-cards="on"] > tbody > tr > td:is(:not([data-label]), [data-label=""])::before { content: none; }
+main table.table-cards[data-cards="on"] > tbody > tr > td[colspan] { grid-column: 1 / -1; }
+/* a cell with no column name holds the row's controls (its tick, edit,
+   remove): they gather at the card's foot, side by side */
+main table.table-cards[data-cards="on"] > tbody > tr > td:is(:not([data-label]), [data-label=""]):not([colspan]) { order: 99; flex-direction: row; align-items: center; }
+main table.table-cards[data-cards="on"] > tbody > tr > td:empty { display: none; }
 
 /* a table's "nothing here" row: on a table wider than the screen its line
    stays on screen, wrapped to the visible width, instead of running off it */

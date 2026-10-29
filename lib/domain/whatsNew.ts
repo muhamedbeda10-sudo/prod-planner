@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-29-tablet-cards",
+    dateISO: "2026-10-29",
+    title: "On a tablet, a list too wide for the screen reads as cards",
+    where: "The lists on a tablet: Orders, Daily log, Barcodes, Leak test, the worklists, shifts, consumables, stock, ODOO and admin",
+    body: "On a tablet a list that fits the screen stays a table, and one that would run off its edge turns into cards — each row a card, its fields several to a line. The cards choose again when the tablet turns. On every card the tick, edit and remove buttons gather at its foot.",
+  },
+  {
     id: "2026-10-29-phone-tablet-polish",
     dateISO: "2026-10-29",
     title: "A cleaner app on phones and tablets — lists as cards, filters one under the other, no explanations in the way",
