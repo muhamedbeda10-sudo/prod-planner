@@ -136,7 +136,7 @@ export function LoadMatrix({ rows }: { rows: readonly LoadMatrixRow[] }) {
         {(["short", "tight", "ok", "unmeasured"] as const).map((s) => (
           <li key={s} className="inline-flex items-center gap-1.5"><span className={`inline-block w-3 h-3 rounded-sm border ${LOAD_CELL[s]}`} aria-hidden />{LOAD_STATE_LABEL[s]}</li>
         ))}
-        <li className="text-muted">due h / can work h a day · state of the running totals</li>
+        <li className="explain text-muted">due h / can work h a day · state of the running totals</li>
       </ul>
       <TableFrame className="!max-h-[22rem]">
         <table className="w-full text-sm">

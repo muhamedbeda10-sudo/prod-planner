@@ -29,6 +29,19 @@ function chooseLayout(table: HTMLTableElement) {
  *  then is a hydration mismatch, so such a table waits for the next pass. */
 const hydrated = (el: Element) => Object.keys(el).some((k) => k.startsWith("__reactFiber$"));
 
+/** A header cell's name as it reads on screen: the shared Th's label (not
+ *  its long tooltip, nor its "?" mark), else the cell's text; a cell of a
+ *  sign alone (🧱) takes its spoken name. */
+function headerText(cell: HTMLTableCellElement): string {
+  const label = cell.querySelector(".dt-th-label");
+  const own = label
+    ? [...label.childNodes].filter((n) => !(n instanceof Element && n.classList.contains("dt-hint"))).map((n) => n.textContent ?? "").join(" ")
+    : cell.textContent ?? "";
+  const text = own.replace(/\s+/g, " ").trim();
+  if (/\p{L}/u.test(text)) return text;
+  return (cell.getAttribute("aria-label") ?? text).replace(/\s+/g, " ").trim();
+}
+
 /** Each column's name: the lowest header cell over it, its group's name in
  *  front when the group says more than the cell ("CF · Fab"). */
 function columnNames(table: HTMLTableElement): string[] {
@@ -37,7 +50,7 @@ function columnNames(table: HTMLTableElement): string[] {
   for (const row of rows) {
     let col = 0;
     for (const cell of row.cells) {
-      const text = (cell.getAttribute("aria-label") ?? cell.textContent ?? "").replace(/\s+/g, " ").trim();
+      const text = headerText(cell);
       for (let k = 0; k < cell.colSpan; k++) {
         const above = names[col + k];
         names[col + k] = above && text && above !== text && cell.colSpan === 1 && rows.length > 1 ? `${above} · ${text}` : text || above || "";

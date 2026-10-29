@@ -1279,6 +1279,21 @@ main select.ctl { padding-right: 1.6rem; }
 .filter-chip { position: relative; display: inline-flex; align-items: center; max-width: 16rem; }
 /* a select as wide as what it shows ("Status: All"), not as its longest option */
 .filter-chip > select.ctl { max-width: 100%; font-weight: 550; field-sizing: content; min-width: 6.5rem; padding-right: 1.75rem; }
+/* counts that are their own filters ("6 not closed", "4 need MO"): one even
+   group; on a phone two to a line, each chip its half, the total and a
+   "show all" line above and under them */
+.count-chips { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); min-width: 0; }
+.count-chips-total { font-size: var(--fs-body); color: var(--muted); }
+@media (max-width: 639px) {
+  .count-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .count-chips > .chip-toggle { width: 100%; min-width: 0; justify-content: flex-start; overflow: hidden; white-space: nowrap; }
+  .count-chips-total, .count-chips-more { grid-column: 1 / -1; }
+  /* a worklist's per-component counts (CF 3 ⏳3d): three to a line, the
+     on / off-a-machine pair two to a line under them */
+  .count-chips-items { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .count-chips-items > button { grid-column: span 2; width: 100%; min-width: 0; justify-content: flex-start; }
+  .count-chips-items > .count-chip-wide { grid-column: span 3; }
+}
 /* a phone: the filters stand one under the other, each the screen's width —
    a long "Department: All" keeps its whole text and every one is as easy
    to tap; so do a bar's own selects and its search */
@@ -1352,8 +1367,12 @@ main table.table-cards[data-cards="on"] { display: block; width: 100% !important
 main table.table-cards[data-cards="on"] > thead { display: none; }
 main table.table-cards[data-cards="on"] > tbody { display: block; }
 main table.table-cards[data-cards="on"] > tbody > tr {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(9.5rem, 100%), 1fr)); gap: var(--sp-2) var(--sp-3);
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr)); gap: var(--sp-2) var(--sp-3);
   padding: var(--sp-3); border-bottom: 1px solid var(--border); height: auto !important;
+}
+/* a phone: two fields to a line, whatever size its text is set to */
+@media (max-width: 639px) {
+  main table.table-cards[data-cards="on"] > tbody > tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 main table.table-cards[data-cards="on"] > tbody > tr > td {
   display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 2px;
