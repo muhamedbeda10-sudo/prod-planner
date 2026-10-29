@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-29-printed-charts-whole",
+    dateISO: "2026-10-29",
+    title: "A printed chart stays on one page",
+    where: "Print / PDF of the assistant's answers and reports, and of the dashboards",
+    body: "A chart near the foot of a page printed its title on that page and its drawing on the next. A chart now moves to the next page whole when it does not fit.",
+  },
+  {
     id: "2026-10-29-printed-charts-drawn",
     dateISO: "2026-10-29",
     title: "Charts print again on reports, under the horizontal ATC logo",

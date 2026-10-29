@@ -945,8 +945,11 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   thead { display: table-header-group !important; }
   tr { break-inside: avoid !important; }
   .bg-surface, section, div.overflow-x-auto:has(> table) { break-inside: auto !important; }
-  /* a chart must never be sliced across a page boundary — keep it whole */
-  .print-keep { break-inside: avoid !important; }
+  /* a chart must never be sliced across a page boundary — keep it whole:
+     every chart's card (components/charts/kit.tsx ChartCard — the
+     dashboards' and the assistant's alike) moves to the next page whole
+     rather than leave its title on one page and its drawing on the next */
+  .print-keep, .chart-card { break-inside: avoid !important; }
 
   /* scroll containers must fully expand on paper */
   div.overflow-x-auto:has(> table) { overflow: visible !important; max-height: none !important; }
@@ -992,7 +995,6 @@ div.overflow-x-auto > table thead {
 @media print {
   html.ai-printing body > *:not(.ai-print-sheet) { display: none !important; }
   html.ai-printing .ai-print-sheet { position: static; width: auto; padding: 0 9mm; }
-  html.ai-printing .ai-print-sheet .ai-chart { break-inside: avoid; }
 }
 
 /* ---- the company header on paper (components/PrintHeader.tsx): the ATC
