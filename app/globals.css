@@ -1715,20 +1715,26 @@ html.ai-modal { overflow: hidden; }
 .ai-panel { animation: aipanel-in 0.18s ease-out; }
 @media (prefers-reduced-motion: reduce) { .ai-panel { animation: none; } }
 
-/* the open chat's backdrop: a soft wash of the brand's green and the info blue
-   from the top, over a faint dot grid that fades out before the composer —
-   tiles, bubbles and the composer keep their own solid surface over it */
-.ai-stage {
-  background-color: var(--surface);
+/* the app's backdrop: a soft wash of the brand's green and the info blue
+   from the top, over a faint dot grid that fades out further down. The page
+   wears it behind everything (pinned to the screen, so it stays put while a
+   long table scrolls); .app-backdrop gives a panel its own, over its surface —
+   the assistant's chat, the inbox. Cards, tables, tiles, bubbles and the
+   composer keep their solid surfaces over it, so the data reads as before. */
+.app-backdrop, body::before {
+  --backdrop-base: var(--surface);
+  --backdrop-glow: 16%;
+  background-color: var(--backdrop-base);
   background-image:
-    radial-gradient(60% 42% at 50% -6%, color-mix(in srgb, var(--brand) 16%, transparent), transparent 72%),
+    radial-gradient(60% 42% at 50% -6%, color-mix(in srgb, var(--brand) var(--backdrop-glow), transparent), transparent 72%),
     radial-gradient(38% 34% at 100% 0%, color-mix(in srgb, var(--viz-2) 9%, transparent), transparent 70%),
     radial-gradient(34% 30% at 0% 100%, color-mix(in srgb, var(--brand) 6%, transparent), transparent 70%),
-    linear-gradient(to bottom, transparent 35%, var(--surface) 92%),
+    linear-gradient(to bottom, transparent 35%, var(--backdrop-base) 92%),
     radial-gradient(circle, color-mix(in srgb, var(--border-strong) 70%, transparent) 1px, transparent 1.5px);
   background-size: auto, auto, auto, auto, 22px 22px;
 }
-@media print { .ai-stage { background: none; } }
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; --backdrop-base: var(--background); --backdrop-glow: 12%; }
+@media print { .app-backdrop { background: none; } body::before { display: none; } }
 
 /* the composer: one rounded box holding the question, its files and its buttons,
    in a frame of the app's colours turning slowly round it */

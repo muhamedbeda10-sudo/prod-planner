@@ -16,11 +16,11 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
-    id: "2026-10-29-ai-chat-backdrop",
+    id: "2026-10-29-app-backdrop",
     dateISO: "2026-10-29",
-    title: "A cleaner backdrop behind the assistant's chat",
-    where: "AI assistant: the chat, in its window and on the full page",
-    body: "The chat now sits on a soft wash of the company green fading down from the top, over a faint dot grid, in the light and the dark theme alike. The tiles, your questions and the box you type in stay on their own white (or dark) cards, so everything reads as before.",
+    title: "A cleaner backdrop across the app",
+    where: "Every page, the Floor's worklists included; the assistant's chat; the inbox's Alerts, Reports and Tasks",
+    body: "The pages, the assistant's chat and the inbox now sit on a soft wash of the company green fading down from the top, over a faint dot grid, in the light and the dark theme alike. Cards, tables, tiles and messages stay on their own solid white (or dark) surfaces, so every number reads as before; printouts stay plain.",
   },
   {
     id: "2026-10-29-print-company-frame",

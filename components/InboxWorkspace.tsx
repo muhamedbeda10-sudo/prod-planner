@@ -108,7 +108,7 @@ export function InboxWorkspace({
         value={tab}
         onChange={(id) => onTab(id as InboxTab)}
       />
-      <div className="flex-1 min-h-0 relative">
+      <div className="app-backdrop flex-1 min-h-0 relative">
         {tab === "tasks" ? (
           tasks.data ? (
             <TasksView key={tasks.version} data={tasks.data} onChanged={refreshTasks} split={wide} openId={taskId} onOpen={onTask} />
