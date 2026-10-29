@@ -1,4 +1,3 @@
-import { formatDate } from "@/lib/domain/format";
 import { getTrackerSheet } from "@/lib/server/masterTracker";
 import { getWeeklyPlanTracker } from "@/lib/server/weeklyPlanTracker";
 import { MasterTrackerTable } from "@/components/MasterTrackerTable";
@@ -9,7 +8,6 @@ import { getPlanCapacity } from "@/lib/server/planCapacity";
 import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants";
 import { trackerPermKey } from "@/lib/domain/permissions";
-import { factoryDayISO } from "@/lib/domain/dates";
 import { LineSwitch } from "@/components/LineSwitch";
 import { PageHead } from "@/components/ui";
 import { LvTrackerTable } from "@/components/LvTrackerTable";
@@ -38,10 +36,6 @@ export default async function TrackerPage({
 }) {
   await guardTab("/tracker");
   const sp = await searchParams;
-  // the paper header is rendered here (a server component) so the issue date is
-  // fixed at render time — a `new Date()` inside the client tables would put a
-  // different day in the client HTML than the server's and trip hydration
-  const issued = formatDate(factoryDayISO(new Date()));
 
   // The LV panels' side: one panel per row, its four stages and delivery,
   // recorded the way the transformer cells are — each stage behind the
@@ -51,7 +45,7 @@ export default async function TrackerPage({
     const [sheet, lvPrefs] = await Promise.all([getLvTrackerWithOdoo(), getUserPrefs(user?.id, LV_TRACKER_PREF_KEYS)]);
     return (
       <>
-        <PrintHeader title="Plan Tracker — LV Panels" date={issued} />
+        <PrintHeader title="Plan Tracker — LV Panels" />
         <LvTrackerTable
           {...openFirst(sheet, sp.closed === "1")}
           editableStages={user ? LV_CHAIN.filter((s) => hasPerm(user, lvPermKey(s))) : []}
@@ -71,11 +65,7 @@ export default async function TrackerPage({
     const capacity = await getPlanCapacity(data.planNo);
     return (
       <>
-        <PrintHeader
-          title="Plan Tracker — Weekly"
-          subtitle={data.planNo === null ? undefined : `Weekly plan ${data.planNo}`}
-          date={issued}
-        />
+        <PrintHeader title="Plan Tracker — Weekly" />
         <PageHead title="Plan Tracker" sub={`Weekly plan${data.planNo === null ? "" : ` ${data.planNo}`}, day by day`} />
         <WeeklyPlanTrackerTable
           data={data}
@@ -94,7 +84,7 @@ export default async function TrackerPage({
   const [sheet, prefs] = await Promise.all([getTrackerSheet(), getUserPrefs(user?.id, TRACKER_PREF_KEYS)]);
   return (
     <>
-      <PrintHeader title="Plan Tracker — Monthly" date={issued} />
+      <PrintHeader title="Plan Tracker — Monthly" />
       <MasterTrackerTable
         {...openFirst(sheet, sp.closed === "1")}
         prefs={prefs}

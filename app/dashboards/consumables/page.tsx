@@ -4,7 +4,7 @@ import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { getConsumablesDecisions } from "@/lib/server/consumables";
 import { getMonthlyReport } from "@/lib/server/consumableMonthly";
 import { loadOrNull } from "@/lib/server/dashboards";
-import { monthLong, monthShort, pastMonthOf } from "@/lib/domain/consumableMonthly";
+import { monthShort, pastMonthOf } from "@/lib/domain/consumableMonthly";
 import { consumablesPeriod } from "@/lib/domain/consumables";
 import { consumablesActions, filterParams, firstParam, hasFilters, headcountText, readDecisionFilters } from "@/lib/domain/consumablesDecisions";
 import { previousPeriod } from "@/lib/domain/consumablesStats";
@@ -87,7 +87,7 @@ export default async function ConsumablesDashboardPage({ searchParams }: { searc
   return (
     <div className="space-y-4">
       <RememberLastVisit storageKey="dashboards:consumables" />
-      <PrintHeader title="Consumables — dashboard" subtitle={`${periodLabel} · monthly review ${monthLong(month)}`} date={formatDate(today)} />
+      <PrintHeader title="Consumables — dashboard" />
       <PageHead title="Consumables" sub={`Dashboard · what went out, to which department, against the limits · ${periodLabel}`} />
       {/* the page's one bar: the period, then its filters */}
       <UrlDateSlicer

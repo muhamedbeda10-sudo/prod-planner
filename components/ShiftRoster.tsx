@@ -268,7 +268,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
   return (
     <div className="space-y-3">
       {confirmDialog}
-      <PrintHeader title="Shift attendance" subtitle={filterLabel} date={formatDate(data.dateISO)} />
+      <PrintHeader title="Shift attendance" />
       <PrintScope parts={[needle && `Search: “${q.trim()}”`, `☀ Day ${printed.day.people} · 🌙 Night ${printed.night.people} · ✕ Absent ${printed.absent}${printed.unset ? ` · not set ${printed.unset}` : ""} · ${printed.hours} man-hours`, (view === "record" ? departmentDirty : dirty) && "UNSAVED — not recorded yet"]} />
 
       <section className="rounded-xl border bg-surface p-3 no-print" aria-label="Record attendance by department">

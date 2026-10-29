@@ -47,7 +47,7 @@ export default async function CutWorklistPage({ searchParams }: { searchParams: 
 
   return (
     <>
-      <PrintHeader title="Fabrication Worklist" subtitle={week.planNo === null ? undefined : `Weekly plan ${week.planNo}`} date={formatDate(dayISO)} />
+      <PrintHeader title="Fabrication Worklist" />
       <PageHead title="Fabrication Worklist" sub={`Transformers · ${formatDate(dayISO)}`} />
       <CutWorklistView
         board={board}

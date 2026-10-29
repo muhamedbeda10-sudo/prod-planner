@@ -48,14 +48,37 @@ type HastNode = { type: string; tagName?: string; value?: string; properties?: {
 
 const textOf = (n: HastNode | undefined): string => (!n ? "" : n.type === "text" ? n.value ?? "" : (n.children ?? []).map(textOf).join(""));
 
-/** A list item that opens with its label in bold — "**Status:** Pending":
- *  the label, and the rest. */
-function labelOf(li: HastNode | undefined): string | null {
-  const first = li?.children?.find((c) => c.type === "element" || (c.type === "text" && (c.value ?? "").trim() !== ""));
-  if (first?.tagName !== "strong") return null;
-  const t = textOf(first).trim();
-  return t.endsWith(":") && t.length > 1 && t.length <= 40 ? t.slice(0, -1) : null;
+/** What ties a bold lead to the words after it: space, a colon, a dash (a
+ *  hyphen only with a space after it, so "-5%" keeps its sign). */
+const LEAD_TIE = /^(?:[\s:：—–]|-(?=\s))+/;
+
+/** A list item's opening in bold — "**Status:** Pending", "**Cut** — 94%":
+ *  the bold words without their colon, whether a colon or a dash ties them
+ *  to what follows, and that text. Null when the item does not open in bold
+ *  or holds more than a line (a nested list, a paragraph). */
+function boldLead(li: HastNode | undefined): { lead: string; colon: boolean; tied: boolean; after: string } | null {
+  const kids = li?.children ?? [];
+  const at = kids.findIndex((c) => c.type === "element" || (c.type === "text" && (c.value ?? "").trim() !== ""));
+  if (at < 0 || kids[at].tagName !== "strong" || kids.some((c) => BLOCKS.has(c.tagName ?? ""))) return null;
+  const bold = textOf(kids[at]).trim();
+  const lead = bold.replace(/[:：]$/, "").trim();
+  const rest = kids.slice(at + 1).map(textOf).join("");
+  const tie = LEAD_TIE.exec(rest)?.[0] ?? "";
+  const colon = lead !== bold;
+  return lead ? { lead, colon, tied: colon || /[:：—–-]/.test(tie), after: rest.slice(tie.length) } : null;
 }
+
+/** A list item that opens with its label in bold — "**Status:** Pending":
+ *  the label. */
+function labelOf(li: HastNode | undefined): string | null {
+  const b = boldLead(li);
+  return b?.colon && b.lead.length <= 40 ? b.lead : null;
+}
+
+/** The kind of list an item sits in: a numbered step that opens in bold is
+ *  titled by it, where a bullet's bold may just begin its sentence; a panel
+ *  of fields lays its items out as tiles. */
+const ListKind = createContext<"ul" | "ol" | "fields">("ul");
 
 /** A list every item of which is "**Label:** value" — read as a panel of
  *  fields, the labels in a column, rather than as bullets. */
@@ -230,33 +253,18 @@ function components(streaming: boolean, ownFiles: boolean): Components {
     },
     ul: ({ children, node }) =>
       isFieldList(node as HastNode | undefined) ? (
-        <ul role="list" className="ai-fields">{children}</ul>
+        <ListKind.Provider value="fields"><ul role="list" className="ai-fields">{children}</ul></ListKind.Provider>
       ) : (
-        <ul role="list" className="ai-ul">{children}</ul>
+        <ListKind.Provider value="ul"><ul role="list" className="ai-ul">{children}</ul></ListKind.Provider>
       ),
     // numbered steps wear a numbered badge; a list that starts past 1 counts
     // on from there (the badge by its counter, a screen reader by its start)
     ol: ({ children, start }) => (
-      <ol role="list" start={start} className="ai-ol" style={start && start > 1 ? { counterReset: `ai-ol ${start - 1}` } : undefined}>{children}</ol>
+      <ListKind.Provider value="ol">
+        <ol role="list" start={start} className="ai-ol" style={start && start > 1 ? { counterReset: `ai-ol ${start - 1}` } : undefined}>{children}</ol>
+      </ListKind.Provider>
     ),
-    li: ({ children, node }) => {
-      const item = node as HastNode | undefined;
-      const label = labelOf(item);
-      if (label === null) {
-        // a line of text reads in its own direction, its bullet on the list's side
-        const inline = !(item?.children ?? []).some((c) => BLOCKS.has(c.tagName ?? ""));
-        return <li>{inline ? <span dir={itemDirection(textOf(item))}>{children}</span> : children}</li>;
-      }
-      // the bold label becomes the row's first cell; what follows it, its value
-      const items = Children.toArray(children);
-      const rest = items.slice(items.findIndex((c) => isValidElement(c)) + 1);
-      return (
-        <li>
-          <span className="ai-field-label"><span dir={itemDirection(label)}>{label}</span></span>
-          <span className="ai-field-value"><span dir={itemDirection(textOf(item).trimStart().slice(label.length + 1))}>{trimStart(rest)}</span></span>
-        </li>
-      );
-    },
+    li: ListItem,
     h1: heading("major"),
     h2: heading("major"),
     h3: heading("minor"),
@@ -326,9 +334,36 @@ function components(streaming: boolean, ownFiles: boolean): Components {
   };
 }
 
-/** The value after a label, its leading space dropped. */
-function trimStart(nodes: ReactNode[]): ReactNode[] {
-  if (nodes.length > 0 && typeof nodes[0] === "string") return [nodes[0].replace(/^\s+/, ""), ...nodes.slice(1)];
+/** A list item: a field panel's tile (its label over its value), an item
+ *  that opens on a bold lead (the lead its own line, what it means under
+ *  it), or a line of text. A lead is a bold opening tied by a colon or a
+ *  dash, or any numbered step's — "**3 MOs** are late" in a bullet is the
+ *  start of its sentence. */
+function ListItem({ children, node }: { children?: ReactNode; node?: unknown }) {
+  const kind = useContext(ListKind);
+  const item = node as HastNode | undefined;
+  const b = boldLead(item);
+  const lead = !b ? null : kind === "fields" ? (b.colon ? "field" : null) : b.lead.length <= 120 && (b.tied || kind === "ol") && /[\p{L}\p{N}]/u.test(b.after) ? "lead" : null;
+  if (!b || !lead) {
+    // a line of text reads in its own direction, its bullet on the list's side
+    const inline = !(item?.children ?? []).some((c) => BLOCKS.has(c.tagName ?? ""));
+    return <li>{inline ? <span dir={itemDirection(textOf(item))}>{children}</span> : children}</li>;
+  }
+  const items = Children.toArray(children);
+  const rest = trimLead(items.slice(items.findIndex((c) => isValidElement(c)) + 1));
+  const [head, body] = lead === "field" ? ["ai-field-label", "ai-field-value"] : ["ai-lead", "ai-lead-body"];
+  return (
+    <li>
+      <span className={head}><span dir={itemDirection(b.lead)}>{b.lead}</span></span>
+      <span className={body}><span dir={itemDirection(b.after)}>{rest}</span></span>
+    </li>
+  );
+}
+
+/** What follows a list item's bold lead, without the colon or dash and the
+ *  space that tied it to the lead — it starts a line of its own. */
+function trimLead(nodes: ReactNode[]): ReactNode[] {
+  if (nodes.length > 0 && typeof nodes[0] === "string") return [nodes[0].replace(LEAD_TIE, ""), ...nodes.slice(1)];
   return nodes;
 }
 

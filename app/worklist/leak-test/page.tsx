@@ -47,7 +47,7 @@ export default async function LeakTestPage() {
 
   return (
     <>
-      <PrintHeader title="Leak Test Worklist" date={formatDate(today)} />
+      <PrintHeader title="Leak Test Worklist" />
       <PageHead title="Leak Test Worklist" sub={`Transformers · ${formatDate(today)}`} />
       <LeakTestTable tanks={tanks} testers={testers} day={dayISO} canEdit={canEdit} />
     </>

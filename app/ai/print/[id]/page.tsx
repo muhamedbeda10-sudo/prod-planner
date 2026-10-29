@@ -41,12 +41,11 @@ export default async function AiPrintPage({ params }: { params: Promise<{ id: st
   const total = formatNumber(all);
   const many = f.sheets.length > 1;
   const rowsText = `${many ? `${f.sheets.length} sheets · ` : ""}${total} rows`;
-  const subtitle = [f.title[1], many ? null : f.sheets[0].sheet, rowsText].filter(Boolean).join(" · ");
 
   return (
     <div className="space-y-3">
       <AutoPrint />
-      <PrintHeader title={title} subtitle={subtitle} date={formatDateTime(f.createdAt)} />
+      <PrintHeader title={title} />
       <PageHead
         title={title}
         sub={`${total} rows`}
