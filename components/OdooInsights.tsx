@@ -2,8 +2,9 @@
 
 import {
   Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart,
-  PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  PolarAngleAxis, RadialBar, RadialBarChart, Tooltip, XAxis, YAxis,
 } from "recharts";
+import { ResponsiveContainer } from "@/components/charts/zoom";
 import { ChartCard, Legend, TipBox, fmt, pct, type TableRow } from "@/components/charts/kit";
 import type { OdooInsights as Insights } from "@/lib/domain/odooInsights";
 

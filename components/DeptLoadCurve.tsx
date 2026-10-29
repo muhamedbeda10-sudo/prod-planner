@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { ChartZoom } from "@/components/charts/zoom";
 import { buildDeptLoad, type LoadInput } from "@/lib/domain/deptLoad";
 import { deptLabel } from "@/lib/domain/constants";
 import { machineWord } from "@/lib/domain/shifts";
@@ -72,6 +73,7 @@ export function DeptLoadCurve({ board, horizon }: { board: MachineBoardData; hor
       </p>
 
       {/* the plot: one column a day */}
+      <ChartZoom>
       <div className="relative" style={{ height: 168 }}>
         <div className="absolute inset-0 flex gap-[2px]">
           {load.days.map((d) => {
@@ -119,6 +121,7 @@ export function DeptLoadCurve({ board, horizon }: { board: MachineBoardData; hor
           </span>
         ))}
       </div>
+      </ChartZoom>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px] text-muted">
         <span className="inline-flex items-center gap-1">

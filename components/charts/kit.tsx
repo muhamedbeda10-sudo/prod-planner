@@ -6,6 +6,7 @@ import { ChartAbout } from "@/components/ChartAbout";
 import { TableFrame, Th } from "@/components/DataTable";
 import { aiTargetRef } from "@/lib/aiTarget";
 import { Meter } from "@/components/Meter";
+import { ChartZoom } from "@/components/charts/zoom";
 import { formatFigure, formatShare } from "@/lib/domain/format";
 
 // The dashboards' shared parts, so every dashboard reads the same way:
@@ -310,6 +311,7 @@ export function Heatmap({
   const cellCls = compactCells ? "h-8 min-w-[1.6rem] text-[10px]" : "px-2 py-1.5 text-sm";
   return (
     <div className="overflow-x-auto">
+      <ChartZoom>
       <table className={`border-separate ${compactCells ? "w-full" : ""}`} style={{ borderSpacing: 2 }}>
         <thead>
           <tr>
@@ -344,6 +346,7 @@ export function Heatmap({
           )}
         </tbody>
       </table>
+      </ChartZoom>
     </div>
   );
 }

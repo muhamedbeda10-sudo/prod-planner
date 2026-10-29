@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-29-chart-zoom",
+    dateISO: "2026-10-29",
+    title: "Zoom into any chart",
+    where: "The dashboards' charts and heatmaps, the machine board's timeline, the assistant's charts",
+    body: "Hold Ctrl (⌘ on a Mac) and scroll over a chart to zoom in and out where the pointer is, or pinch on a trackpad or touch screen. Drag to move around a zoomed chart; double-click it, or press the reset in its corner, to see it whole again. A plain scroll still scrolls the page.",
+  },
+  {
     id: "2026-10-28-top-bar-order",
     dateISO: "2026-10-28",
     title: "The top bar's tabs have a new order",
