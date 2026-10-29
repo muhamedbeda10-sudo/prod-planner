@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { BrandLogo } from "@/components/BrandLogo";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/server/auth";
 import { LoginForm } from "./LoginForm";
@@ -30,7 +30,7 @@ export default async function LoginPage() {
       />
       <div className="login-card">
         <div className="flex justify-center mb-6">
-          <Image src="/brand/atc-logo-horizontal.svg" alt="ATC — Arabian Transformers Co." width={220} height={48} priority />
+          <BrandLogo eager className="w-[220px] h-auto" />
         </div>
         <h1 className="text-lg font-bold text-center leading-tight">Steel Fabrication</h1>
         <p className="text-sm text-muted text-center mt-1 mb-6">ERP System · sign in with your account</p>

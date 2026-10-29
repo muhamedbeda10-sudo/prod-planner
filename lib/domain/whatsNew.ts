@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-29-printed-charts-drawn",
+    dateISO: "2026-10-29",
+    title: "Charts print again on reports, under the horizontal ATC logo",
+    where: "Print / PDF of the assistant's answers and reports, the dashboards and every report with the company header",
+    body: "A chart on a printed report came out as an empty frame with only its legend. It now prints drawn, fitted to the page in Portrait or Landscape. The report's header carries the ATC logo as the top bar does — the mark with the company's name beside it, not under it.",
+  },
+  {
     id: "2026-10-29-reports-portrait-reader",
     dateISO: "2026-10-29",
     title: "Reports print Portrait or Landscape, and open on their own in the inbox",
