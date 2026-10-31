@@ -48,6 +48,8 @@ describe("physical stock", () => {
     expect(stockView({ code: "b", name: "", uom: "PC", physical: 20, odoo: 1.92 })).toMatchObject({ status: "over", diff: 18.08 });
     expect(stockView({ code: "c", name: "", uom: "KG", physical: 3696, odoo: 3696.59 })).toMatchObject({ status: "match", diff: 0 });
     expect(stockView({ code: "d", name: "", uom: "PC", physical: 0, odoo: 0 })).toMatchObject({ status: "empty", diffPct: null });
+    // a count of 0 against Odoo's stock is a code not counted, not a bare shelf
+    expect(stockView({ code: "e", name: "", uom: "KG", physical: 0, odoo: 39567 })).toMatchObject({ status: "uncounted" });
   });
 
   it("sums per unit of measure, never mixing pieces and kilos", () => {
@@ -58,5 +60,14 @@ describe("physical stock", () => {
     ]);
     expect(s.byUom).toEqual([{ uom: "PC", physical: 15, odoo: 17, diff: -2 }, { uom: "KG", physical: 100, odoo: 90, diff: 10 }]);
     expect([s.short, s.over, s.match]).toEqual([1, 1, 1]);
+  });
+
+  it("leaves a code the store did not count out of the gap, and counts it apart", () => {
+    const s = summarizeStock([
+      stockView({ code: "a", name: "", uom: "KG", physical: 100, odoo: 90 }),
+      stockView({ code: "b", name: "", uom: "KG", physical: 0, odoo: 39567 }),
+    ]);
+    expect(s.byUom).toEqual([{ uom: "KG", physical: 100, odoo: 90, diff: 10 }]);
+    expect([s.short, s.uncounted]).toEqual([0, 1]);
   });
 });

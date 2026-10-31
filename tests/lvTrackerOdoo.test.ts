@@ -33,3 +33,15 @@ it("leaves the Odoo log alone for the screens that never show it (the Floor, the
   expect(rows[0].odooClosed).toBeUndefined();
   expect(h.odoo).not.toHaveBeenCalled();
 });
+
+it("takes the enclosures bought in (OSP Encloser) off what the panels' stages owe", async () => {
+  h.orders.mockResolvedValue([
+    { ...order("SF01/MO/1", "October 2026"), planQty: 8, ospEncloser: 7 },
+    { ...order("SF01/MO/2", "October 2026"), planQty: 8320, ospEncloser: 8320 },
+  ]);
+  h.sums.mockResolvedValue([{ mo: "SF01/MO/1", dept: "Painting", _sum: { qty: 1 } }]);
+  const [one, bought] = await getLvTracker();
+  expect([one.state.required, one.complete, one.remaining, one.achievement]).toEqual([1, 1, 0, 1]);
+  // wholly bought in: nothing left for our stages
+  expect([bought.state.required, bought.remaining, bought.achievement]).toEqual([0, 0, 1]);
+});

@@ -97,7 +97,9 @@ export function guardLedger(entries: GuardEntry[]): Map<number, GuardFlag[]> {
     const createdDay = Number.isNaN(created.getTime()) ? Number.NaN : Math.floor(Date.parse(`${factoryDayISO(created)}T00:00:00Z`) / 86400000);
     if (Number.isNaN(workDay) || Number.isNaN(createdDay)) continue;
     const lag = createdDay - workDay;
-    if (lag > LATE_DAYS) {
+    // a correction is dated back on the work it takes back, so its lag is by
+    // design, not a backfill
+    if (lag > LATE_DAYS && e.qty > 0) {
       add(e.id, { type: "late", detail: `recorded ${lag} days after the work date — backfilled from memory?` });
     } else if (lag < 0) {
       add(e.id, { type: "future", detail: "work date is AFTER the day this was recorded — output claimed in advance?" });

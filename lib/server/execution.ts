@@ -285,6 +285,11 @@ async function loadQueueInputs() {
       lineOrderQty.set(`${m.bom}|${m.mo}|${it}`, Math.max(0, m.planQty - osp));
     }
   }
+  // pieces logged on an order the registry no longer holds (deleted from it)
+  // are no one's work in progress: they leave the queues and the boards
+  // rather than wait there for ever
+  const registered = new Set(masters.map((m) => m.mo.trim().toUpperCase()));
+  for (const e of entries) if (e.mo && !registered.has(e.mo.trim().toUpperCase())) excludeMos.add(e.mo);
   return {
     schedules: schedules.map((s) => ({ planNo: s.planNo, bom: s.bom, mo: s.mo, description: s.description, item: s.item, ovenDate: s.ovenDate, qty: s.qty })),
     entries: entries.map((e) => ({ planNo: e.planNo, dept: e.dept, bom: e.bom, mo: e.mo, item: e.item, qty: e.qty, date: e.date })),

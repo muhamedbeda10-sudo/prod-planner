@@ -82,10 +82,15 @@ beforeEach(() => {
   h.unmintTankSerials.mockResolvedValue({ removed: 0, short: 0 });
   // run the transaction body against a tx whose create() we can inspect
   txWrites.length = 0;
+  txOutput = [];
   openReturns.clear();
   h.prisma.$transaction.mockImplementation((body: (tx: unknown) => Promise<unknown>) => {
     const p = body({
-      handoverEntry: { create: async ({ data }: { data: Record<string, unknown> }) => { txWrites.push(data); return { id: 1 }; } },
+      handoverEntry: {
+        create: async ({ data }: { data: Record<string, unknown> }) => { txWrites.push(data); return { id: 1 }; },
+        // the output a correction splits over (correctionRows)
+        findMany: async () => txOutput,
+      },
       returnEntry: {
         create: async () => ({ id: 1 }),
         // closing a return is conditional on it still being open
@@ -96,6 +101,9 @@ beforeEach(() => {
     return p;
   });
 });
+
+/** The ledger rows a correction reads inside the transaction — none unless a test sets them. */
+let txOutput: { date: Date; qty: number }[] = [];
 
 /** Every ledger row written inside the last $transaction. */
 const txWrites: Record<string, unknown>[] = [];
@@ -280,6 +288,16 @@ describe("recordTrackerTotal — delta accounting", () => {
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/now 14, not the 10 on your screen/);
     expect(txWrites).toHaveLength(0);
+  });
+
+  it("dates a correction on the days of the work it takes back, the latest first", async () => {
+    h.prisma.handoverEntry.aggregate.mockResolvedValue({ _sum: { qty: 15 } });
+    h.prisma.masterOrder.findUnique.mockResolvedValue({ planQty: 20 });
+    txOutput = [{ date: new Date("2026-10-14T00:00:00Z"), qty: 10 }, { date: new Date("2026-10-15T00:00:00Z"), qty: 5 }];
+    const res = await recordTrackerTotal(form({ dept: "Cut", bom: "B", mo: "MO-1", item: "CF", total: "8", base: "15" }));
+    expect(res.ok).toBe(true);
+    expect(txWrites.map((w) => [(w.date as Date).toISOString().slice(0, 10), w.qty])).toEqual([["2026-10-15", -5], ["2026-10-14", -2]]);
+    expect(txWrites[0]).toMatchObject({ note: "tracker correction: total 15 → 8", source: "tracker" });
   });
 
   it("compares the base with the figure the cell shows — capped at the order's quantity", async () => {

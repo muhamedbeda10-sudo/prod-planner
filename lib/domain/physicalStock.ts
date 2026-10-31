@@ -29,7 +29,7 @@ export function stockGroupOf(name: string): StockGroup {
   return "Other";
 }
 
-export type StockStatus = "match" | "short" | "over" | "empty";
+export type StockStatus = "match" | "short" | "over" | "empty" | "uncounted";
 
 /** A gap smaller than this is counting noise, not a difference: a hundredth
  *  of a piece, or a kilo on a coil. */
@@ -51,8 +51,13 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 export function stockView(r: StockRow): StockView {
   const diff = r2(r.physical - r.odoo);
   const tol = stockTolerance(r.uom);
+  // a count of 0 against stock in Odoo is a code the store did not count
+  // (a table imported with Odoo's figures only), not a shelf found bare —
+  // as the material coverage reads it
   const status: StockStatus =
-    Math.abs(r.physical) < tol && Math.abs(r.odoo) < tol ? "empty" : Math.abs(diff) < tol ? "match" : diff < 0 ? "short" : "over";
+    Math.abs(r.physical) < tol && Math.abs(r.odoo) < tol ? "empty"
+    : Math.abs(r.physical) < tol ? "uncounted"
+    : Math.abs(diff) < tol ? "match" : diff < 0 ? "short" : "over";
   return { ...r, group: stockGroupOf(r.name), diff: Math.abs(diff) < tol ? 0 : diff, diffPct: r.odoo > 0 ? Math.round((diff / r.odoo) * 100) : null, status };
 }
 
@@ -61,6 +66,7 @@ export const STATUS_LABEL: Record<StockStatus, string> = {
   short: "Store short",
   over: "Store over",
   empty: "None held",
+  uncounted: "Not counted",
 };
 
 export interface StockSummary {
@@ -69,13 +75,16 @@ export interface StockSummary {
   short: number;
   over: number;
   empty: number;
-  /** Per unit of measure: the two totals and the net gap. */
+  uncounted: number;
+  /** Per unit of measure: the two totals and the net gap — over the codes
+   *  the store counted (one it did not count has no gap to add). */
   byUom: { uom: string; physical: number; odoo: number; diff: number }[];
 }
 
 export function summarizeStock(rows: readonly StockView[]): StockSummary {
   const byUom = new Map<string, { uom: string; physical: number; odoo: number; diff: number }>();
   for (const r of rows) {
+    if (r.status === "uncounted") continue;
     const k = r.uom.trim().toUpperCase() || "—";
     const u = byUom.get(k) ?? { uom: k, physical: 0, odoo: 0, diff: 0 };
     u.physical = r2(u.physical + r.physical);
@@ -84,7 +93,7 @@ export function summarizeStock(rows: readonly StockView[]): StockSummary {
     byUom.set(k, u);
   }
   const count = (s: StockStatus) => rows.filter((r) => r.status === s).length;
-  return { items: rows.length, match: count("match"), short: count("short"), over: count("over"), empty: count("empty"), byUom: [...byUom.values()] };
+  return { items: rows.length, match: count("match"), short: count("short"), over: count("over"), empty: count("empty"), uncounted: count("uncounted"), byUom: [...byUom.values()] };
 }
 
 // ---- the sheet: Product Code · Product Name · Physically Stock Internal Store · UOM · SF01 Stock In Odoo ----

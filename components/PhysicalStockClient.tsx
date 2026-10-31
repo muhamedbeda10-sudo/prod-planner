@@ -21,7 +21,7 @@ import type { PhysicalStockItem } from "@/lib/server/physicalStock";
 // still need (the MATERIAL tab's nesting × the pieces Fabrication owes) and
 // what Odoo holds after them.
 
-const STATUS_PILL: Record<StockStatus, string> = { match: "pill-ok", short: "pill-bad", over: "pill-warn", empty: "pill-muted" };
+const STATUS_PILL: Record<StockStatus, string> = { match: "pill-ok", short: "pill-bad", over: "pill-warn", empty: "pill-muted", uncounted: "pill-muted" };
 
 /** Pieces read whole when they are whole, kilos to the kilo; a fraction keeps two places. */
 const qty = (n: number) => formatNumber(n, Number.isInteger(n) ? 0 : 2);
@@ -198,7 +198,7 @@ function SummaryCards({ summary, onPick, picked, need }: {
   );
   return (
     <div className="grid gap-2 grid-cols-2 sm:grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))]">
-      {card("all", "Items", summary.items, "", `${summary.empty} held nowhere`)}
+      {card("all", "Items", summary.items, "", `${summary.empty} held nowhere${summary.uncounted ? ` · ${summary.uncounted} not counted` : ""}`)}
       {card("match", "Matches Odoo", summary.match, "text-ok-fg", "store = SF01")}
       {card("short", "Store short", summary.short, "text-bad-fg", "less on the shelf than in Odoo")}
       {card("over", "Store over", summary.over, "text-warn-fg", "more on the shelf than in Odoo")}

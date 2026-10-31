@@ -399,7 +399,7 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
         )}
         {show("product") && <td className="p-2 text-center"><span className="pill pill-muted">{r.product ?? "—"}</span></td>}
         {show("sec") && <td className="p-2 text-xs whitespace-nowrap tabnum text-muted">{r.secItem ?? "—"}</td>}
-        {show("required") && <td className="p-2 text-center font-bold tabnum stick stick-end req-col" style={idLayout.req}>{r.state.required}</td>}
+        {show("required") && <td className="p-2 text-center font-bold tabnum stick stick-end req-col" style={idLayout.req} title={r.ospEncloser > 0 ? `What our stages make: the order less ${r.ospEncloser} enclosure(s) bought in (OSP)` : undefined}>{r.state.required}</td>}
         {stages.map((stage) =>
           cell(`${r.mo}|${stage}`, lvStageOf(r.state, stage), r.state.required, { held, urgent: r.urgent, bottleneck: bn === stage }, stage, (total) => {
             const fd = new FormData();

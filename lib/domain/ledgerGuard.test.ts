@@ -71,6 +71,11 @@ describe("guardLedger — recording drift", () => {
     expect(guardLedger([e]).get(700)?.[0].type).toBe("late");
   });
 
+  it("does not call a correction dated back on the work it takes back late", () => {
+    const e = entry({ id: 701, qty: -4, dateISO: "2026-07-01", createdISO: `2026-07-${String(2 + LATE_DAYS).padStart(2, "0")}T09:00:00Z` });
+    expect(guardLedger([e]).get(701)).toBeUndefined();
+  });
+
   it("allows the normal next-morning recording", () => {
     const e = entry({ id: 700, dateISO: "2026-07-01", createdISO: "2026-07-02T07:30:00Z" });
     expect(guardLedger([e]).get(700)).toBeUndefined();

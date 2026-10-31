@@ -17,6 +17,7 @@ import { TANK_ITEM } from "@/lib/domain/tanks";
 import { mintTankSerials, unmintTankSerials } from "@/lib/server/tanks";
 import { resolveWorker } from "@/lib/server/workers";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
+import { correctionRows } from "@/lib/server/corrections";
 import { loadGroupMembers, groupTotal, groupShownTotal, spreadGroupChange, memberAt } from "@/lib/server/groupRecord";
 import { readBase, shownStageTotal, staleTotalError } from "@/lib/domain/trackerEdit";
 import { LV_ITEM, LV_STAGES, lvStageAt } from "@/lib/domain/lv";
@@ -258,23 +259,32 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
     // the ledger can never disagree about how many tanks exist
     const syncsTanks = tankTracking && item === TANK_ITEM && dept === "Welding";
     const failure = await prisma.$transaction(async (tx) => {
-      const ledger = await tx.handoverEntry.create({
-        data: {
-          date: today, dept, bom, mo, item, qty: delta, planNo, source: "tracker",
-          // negative corrections say exactly what happened for the audit trail
-          note: delta < 0 ? `tracker correction: total ${current} → ${newTotal}` : null,
-          createdBy: guard.user?.name ?? null,
-        },
-      });
-      // a higher Paint / SHB total is a closing (a correction is not: qty ≤ 0 is skipped)
-      await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
-      if (!syncsTanks) return null;
-      if (delta > 0) {
-        // the cell has no room to name a welder — the tank page and the
-        // welding worklist can fill it in afterwards
-        await mintTankSerials(tx, { bom, mo, planNo, count: delta, date: today, ledgerId: ledger.id, byUser: guard.user?.name ?? null });
+      if (delta < 0) {
+        // a correction is dated on the days of the work it takes back, not today
+        for (const part of await correctionRows(tx, { dept, mo, item }, -delta, today, planNo)) {
+          await tx.handoverEntry.create({
+            data: {
+              date: part.date, dept, bom, mo, item, qty: part.qty, planNo: part.planNo, source: "tracker",
+              // negative corrections say exactly what happened for the audit trail
+              note: `tracker correction: total ${current} → ${newTotal}`,
+              createdBy: guard.user?.name ?? null,
+            },
+          });
+        }
+      } else {
+        const ledger = await tx.handoverEntry.create({
+          data: { date: today, dept, bom, mo, item, qty: delta, planNo, source: "tracker", note: null, createdBy: guard.user?.name ?? null },
+        });
+        // a higher Paint / SHB total is a closing
+        await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
+        if (syncsTanks) {
+          // the cell has no room to name a welder — the tank page and the
+          // welding worklist can fill it in afterwards
+          await mintTankSerials(tx, { bom, mo, planNo, count: delta, date: today, ledgerId: ledger.id, byUser: guard.user?.name ?? null });
+        }
         return null;
       }
+      if (!syncsTanks) return null;
       const { short } = await unmintTankSerials(tx, { bom, mo, count: -delta });
       if (short > 0) {
         throw new TankSyncError(
@@ -420,13 +430,34 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     const outcome = await prisma.$transaction(async (tx) => {
       const minted: string[] = [];
       for (const [mo, q] of alloc) {
+        if (q < 0) {
+          // a correction is dated on the days of the work it takes back, not today
+          for (const part of await correctionRows(tx, { dept, mo, item }, -q, today, planNo)) {
+            await tx.handoverEntry.create({
+              data: {
+                date: part.date, dept, bom, mo, item, qty: part.qty, planNo: part.planNo,
+                source: source === "tracker" ? "tracker" : source === "weekly" ? "weekly" : "worklist",
+                note: `group correction: ${bom} ${item} total ${current} → ${newTotal}`,
+                createdBy: by,
+              },
+            });
+          }
+          if (syncsTanks) {
+            const { short } = await unmintTankSerials(tx, { bom, mo, count: -q });
+            if (short > 0) {
+              throw new TankSyncError(
+                `The total cannot go that low: ${short} tanks on ${mo} have already been tested or painted. Undo the later stage first.`
+              );
+            }
+          }
+          continue;
+        }
         const ledger = await tx.handoverEntry.create({
           data: {
             date: today, dept, bom, mo, item, qty: q, planNo,
             source: source === "tracker" ? "tracker" : source === "weekly" ? "weekly" : "worklist",
             note:
-              q < 0 ? `group correction: ${bom} ${item} total ${current} → ${newTotal}`
-              : fromWeekly
+              fromWeekly
                 ? `recorded on the weekly plan${planLabel ? ` ${planLabel}` : ""}${dayISO ? ` · ${dayISO} delivery` : ""}${alloc.size > 1 ? ` · split over ${alloc.size} MOs` : ""}`
                 : alloc.size > 1 ? `group record on ${bom}` : null,
             createdBy: by,
@@ -443,13 +474,6 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
             byUser: by,
           });
           minted.push(...batch.map((m) => m.serial));
-        } else if (q < 0) {
-          const { short } = await unmintTankSerials(tx, { bom, mo, count: -q });
-          if (short > 0) {
-            throw new TankSyncError(
-              `The total cannot go that low: ${short} tanks on ${mo} have already been tested or painted. Undo the later stage first.`
-            );
-          }
         }
       }
       return minted;

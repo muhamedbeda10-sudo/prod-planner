@@ -10,6 +10,7 @@ import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
 import { spreadOverGroup } from "@/lib/domain/groupSpread";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
+import { correctionRows } from "@/lib/server/corrections";
 import { readBase, shownStageTotal, staleTotalError } from "@/lib/domain/trackerEdit";
 import { LV_ITEM, LV_STAGES, isLvChainStage, lvChainError, lvDeptPermKey, lvGroupMembers, lvPermKey, lvStageOf, type LvChainStage, type LvStage, type LvState } from "@/lib/domain/lv";
 import { UserError, userMessage } from "@/lib/server/errors";
@@ -57,13 +58,23 @@ async function todaysPlan(): Promise<{ today: Date; planNo: number }> {
   return { today, planNo };
 }
 
-function writeDelta(tx: Tx, a: { mo: string; bom: string; stage: LvChainStage; delta: number; from: number; today: Date; planNo: number; by: string | null }) {
+/** A stage's change on one order: output today, or — a total lowered — a
+ *  correction dated on the days of the work it takes back (correctionRows).
+ *  The row written for output, for its ODOO closing; null for a correction. */
+async function writeDelta(tx: Tx, a: { mo: string; bom: string; stage: LvChainStage; delta: number; from: number; today: Date; planNo: number; by: string | null }) {
+  if (a.delta < 0) {
+    for (const part of await correctionRows(tx, { dept: a.stage, mo: a.mo, item: LV_ITEM }, -a.delta, a.today, a.planNo)) {
+      await tx.handoverEntry.create({
+        data: {
+          date: part.date, dept: a.stage, bom: a.bom, mo: a.mo, item: LV_ITEM, qty: part.qty, planNo: part.planNo, source: "tracker",
+          note: `tracker correction: total ${a.from} → ${a.from + a.delta}`, createdBy: a.by,
+        },
+      });
+    }
+    return null;
+  }
   return tx.handoverEntry.create({
-    data: {
-      date: a.today, dept: a.stage, bom: a.bom, mo: a.mo, item: LV_ITEM, qty: a.delta, planNo: a.planNo, source: "tracker",
-      note: a.delta < 0 ? `tracker correction: total ${a.from} → ${a.from + a.delta}` : null,
-      createdBy: a.by,
-    },
+    data: { date: a.today, dept: a.stage, bom: a.bom, mo: a.mo, item: LV_ITEM, qty: a.delta, planNo: a.planNo, source: "tracker", note: null, createdBy: a.by },
   });
 }
 
@@ -93,7 +104,7 @@ export async function recordLvTotal(formData: FormData): Promise<Result> {
       if (chain) throw new LvRefused(chain);
 
       const ledger = await writeDelta(tx, { mo, bom: cur.bom, stage, delta, from, today, planNo, by: guard.user?.name ?? null });
-      await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
+      if (ledger) await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
     });
     for (const p of PATHS) revalidatePath(p);
     return { ok: true };
@@ -144,7 +155,7 @@ export async function recordLvGroupTotal(formData: FormData): Promise<Result> {
       for (const a of spread.alloc) {
         const r = rows.find((x) => x.mo === a.mo)!;
         const ledger = await writeDelta(tx, { mo: a.mo, bom, stage, delta: a.qty, from: lvStageOf(r.state, stage), today, planNo, by: guard.user?.name ?? null });
-        await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
+        if (ledger) await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
       }
     }, { timeout: 30_000 }); // a merged row locks and reads every member first
     for (const p of PATHS) revalidatePath(p);

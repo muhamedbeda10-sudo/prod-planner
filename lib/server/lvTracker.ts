@@ -57,8 +57,12 @@ export const getLvTracker = cache(async (): Promise<LvTrackerRow[]> => {
 
   return orders.map((o) => {
     const cap = (v: number) => shownStageTotal(v, o.planQty);
+    // the enclosures bought in (OSP Encloser) are not our stages' to make —
+    // what the panels' stages owe is the order less them, as a transformer's
+    // OSP parts come off its targets
+    const inHouse = Math.max(0, o.planQty - Math.max(0, o.ospEncloser));
     const state: LvState = {
-      required: o.planQty,
+      required: inHouse,
       punch: cap(g(o.mo, "Punching")),
       bend: cap(g(o.mo, "Bending")),
       weld: cap(g(o.mo, "Welding")),
@@ -70,8 +74,9 @@ export const getLvTracker = cache(async (): Promise<LvTrackerRow[]> => {
       mo: o.mo, bom: o.bom, soi: o.soi, urgent: o.urgent, customer: o.customer, product: o.product, family: o.family, fgCode: o.fgCode,
       secItem: o.secItem, ospEncloser: o.ospEncloser, remarks: o.remarks, materialsRemarks: o.materialsRemarks,
       state, complete,
-      remaining: Math.max(0, o.planQty - complete),
-      achievement: o.planQty > 0 ? complete / o.planQty : null,
+      remaining: Math.max(0, inHouse - complete),
+      // wholly bought in: nothing is left for our stages, so it is covered
+      achievement: inHouse > 0 ? Math.min(1, complete / inHouse) : o.planQty > 0 ? 1 : null,
       status: o.status, hold: holdView(o), priority: o.priority,
       months: (o.months || o.source || "").split(",").map((s) => s.trim()).filter(Boolean),
     };
