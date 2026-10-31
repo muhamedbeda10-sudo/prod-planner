@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { consumablesStats, hourLabel, hourSpan, pctChange, previousPeriod, spanDays, type StatsRow } from "./consumablesStats";
 
-const row = (over: Partial<StatsRow>): StatsRow => ({ item: "Gloves", qty: 1, department: "WeldingTX", ...over });
+const row = (over: Partial<StatsRow>): StatsRow => ({ item: "Gloves", qty: 1, department: "WeldingTX", catalogued: true, ...over });
 
 describe("consumables by item", () => {
   it("counts one item however it was typed, named the way it was typed most", () => {
@@ -11,8 +11,19 @@ describe("consumables by item", () => {
       row({ item: "Welding wire", qty: 0.5 }),
       row({ item: "Gloves", qty: 3 }),
     ]);
-    expect(items[0]).toEqual({ item: "Welding wire", issues: 3, qty: 4, workers: 2 });
-    expect(items[1]).toEqual({ item: "Gloves", issues: 1, qty: 3, workers: 1 });
+    expect(items[0]).toEqual({ item: "Welding wire", catalogued: true, issues: 3, qty: 4, departments: 2 });
+    expect(items[1]).toEqual({ item: "Gloves", catalogued: true, issues: 1, qty: 3, departments: 1 });
+  });
+
+  it("keeps a catalogue item apart from the same name typed by hand, as the dashboard does", () => {
+    const items = consumablesStats([
+      row({ item: "Powder RAL-7035", qty: 700 }),
+      row({ item: "powder ral-7035", qty: 260, catalogued: false }),
+    ]);
+    expect(items).toEqual([
+      { item: "Powder RAL-7035", catalogued: true, issues: 1, qty: 700, departments: 1 },
+      { item: "powder ral-7035", catalogued: false, issues: 1, qty: 260, departments: 1 },
+    ]);
   });
 
   it("compares with the period of the same length just before", () => {

@@ -109,7 +109,8 @@ describe("getWeeklyPlanTracker — outsourced (OSP) pieces", () => {
     const t = await getWeeklyPlanTracker(34);
     const cell = t.days[0].rows[0].items.CB!;
 
-    expect(cell).toMatchObject({ req: 5, na: 0, osp: 5, weld: 5, finish: 5, cut: 0 });
+    // a part bought in is never cut here: fabrication counts it too
+    expect(cell).toMatchObject({ req: 5, na: 0, osp: 5, weld: 5, finish: 5, cut: 5 });
     expect(t.days[0].covered).toBe(5); // arrives without our departments working
   });
 

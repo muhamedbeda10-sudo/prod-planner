@@ -309,7 +309,9 @@ export function buildMachineBoard(
       crew: today.crew?.[m.id] ?? [],
       availableH,
       load: availableH === null ? null : availableH > 0 ? Math.round((hours / availableH) * 100) / 100 : hours > 0 ? Infinity : 0,
-      days: availableH === null ? null : availableH > 0 ? round1(hours / availableH) : null,
+      // rounded UP to the tenth: rounding to nearest made 22.9 h on a 22 h
+      // machine read 1.0 days, and its "clears" date a day early
+      days: availableH === null ? null : availableH > 0 ? Math.ceil((hours / availableH) * 10 - 1e-9) / 10 : null,
     };
   });
 

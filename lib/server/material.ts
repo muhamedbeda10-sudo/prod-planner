@@ -4,10 +4,11 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { getActiveLine } from "./line";
 import {
-  actualPerUnit, adoptedPartLine, lineClosings, materialClosings, materialPlanIndex, materialPlanMonths, traceMaterialMatch, type MaterialClosings, type OdooClosingRow, nestingSpecKey, parseNestingTracker, sheetsDifference, sheetsForJob, sheetsForProduced,
+  actualPerUnit, adoptedPartLine, lineClosings, materialClosings, withBackorders, materialPlanIndex, materialPlanMonths, traceMaterialMatch, type MaterialClosings, type OdooClosingRow, nestingSpecKey, parseNestingTracker, sheetsDifference, sheetsForJob, sheetsForProduced,
   type MaterialLineView, type MaterialPlanIndex,
 } from "@/lib/domain/material";
 import { lvActualRate, lvRemainingUnits, parseLvConsumption } from "@/lib/domain/lvMaterial";
+import { moParent } from "@/lib/domain/odooMaterial";
 import { LV_ITEM } from "@/lib/domain/lv";
 import { ODOO_CANCELLED_STATUS, isDoneStatus } from "@/lib/domain/odoo";
 import type { ProductLine } from "@/lib/domain/lines";
@@ -152,12 +153,22 @@ async function narrowSource(line: ProductLine, where: Prisma.MaterialUsageWhereI
     ? prisma.handoverEntry.groupBy({ by: ["mo"], where: { ...PAINTING, mo: { in: mos, mode: "insensitive" } }, _sum: { qty: true } })
     : Promise.resolve(null);
   painted.catch(() => undefined);
-  // the ODOO rows of the lines' MOs: on a part's MO, or born of an order's
-  // closings where the sheet files the order's MO
+  // the ODOO rows of the lines' MOs: on a part's MO or one of its job's
+  // backorders (the job's MO and every "-00N" of it — withBackorders sorts out
+  // which line each books on), or born of an order's closings where the sheet
+  // files the order's MO
   const ownClosings = mos.length > 0 ? await prisma.handoverEntry.findMany({ where: { mo: { in: mos, mode: "insensitive" } }, select: { id: true } }) : [];
+  const jobs = keysOf(mos.map(moParent));
   const odoo = mos.length > 0
     ? await prisma.odooEntry.findMany({
-        where: { line, odooMo: { not: "" }, OR: [{ odooMo: { in: mos, mode: "insensitive" } }, { ledgerId: { in: ownClosings.map((c) => c.id) } }] },
+        where: {
+          line, odooMo: { not: "" },
+          OR: [
+            { odooMo: { in: mos, mode: "insensitive" } },
+            { ledgerId: { in: ownClosings.map((c) => c.id) } },
+            ...jobs.flatMap((j) => [{ odooMo: { equals: j, mode: "insensitive" as const } }, { odooMo: { startsWith: `${j}-`, mode: "insensitive" as const } }]),
+          ],
+        },
         select: ODOO_SELECT, orderBy: ODOO_ORDER,
       })
     : [];
@@ -206,7 +217,10 @@ async function loadMaterial(line: ProductLine, where: Prisma.MaterialUsageWhereI
     if (isDoneStatus(o.status)) doneByMo.set(mo, o.date.toISOString().slice(0, 10));
     else doneByMo.delete(mo);
   }
-  const { closings, orderMos } = await closingsOf(odoo);
+  const read = await closingsOf(odoo);
+  const orderMos = read.orderMos;
+  // a backorder's closings count on the line its job is filed under
+  const closings = withBackorders(read.closings, rows.map((r) => r.mo));
 
   const [orders, painted] = await Promise.all([ordersOf(orderMos), paintedRows]);
   const paintedByMo = painted ? lvPaintedByMo(orders, painted) : new Map<string, number>();

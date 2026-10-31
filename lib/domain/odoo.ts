@@ -43,6 +43,15 @@ export function isDoneStatus(status: string | null | undefined): boolean {
   return statusTone(status) === "ok";
 }
 
+/** A void row: cancelled, however the status spells it ("Cancelled",
+ *  "Cancel - duplicate" …) — its daily-log record deleted or corrected to
+ *  nothing, or called off by hand. It is neither closed nor open, and counts
+ *  as nothing logged: the log's open counts and item cards, the alerts and the
+ *  dashboard all leave it out. */
+export function isVoidStatus(status: string | null | undefined): boolean {
+  return /cancel/i.test(status ?? "");
+}
+
 export function isCancelledStatus(status: string | null | undefined): boolean {
   return (CANCELLED_WORDS as readonly string[]).includes(normStatus(status));
 }
@@ -396,10 +405,10 @@ export function filterOdooEntries(entries: OdooEntryView[], f: OdooFilters): Odo
     if (f.status && e.status !== f.status) return false;
     if (f.notes === "with" && e.notes.length === 0) return false;
     if (f.notes === "without" && e.notes.length > 0) return false;
-    if (f.mo === "missing" && e.odooMo.trim() !== "") return false;
+    if (f.mo === "missing" && (e.odooMo.trim() !== "" || isVoidStatus(e.status))) return false;
     if (f.mo === "has" && e.odooMo.trim() === "") return false;
     if (f.mo === "guessed" && !e.fgGuessed) return false;
-    if (f.closed === "open" && e.done) return false;
+    if (f.closed === "open" && (e.done || isVoidStatus(e.status))) return false;
     if (f.closed === "done" && !e.done) return false;
     if (q) {
       const hay = [e.soi ?? "", e.fgCode, ...e.bom.boms, e.odooMo, e.product, e.status, ...e.notes.map((n) => n.text)].join(" ").toLowerCase();
@@ -457,9 +466,10 @@ export interface OdooItemTotal {
 
 /** Quantity per product over the rows given, in `order` first (the line's
  *  own names), then any other product the rows carry by size. */
-export function odooItemTotals(entries: readonly Pick<OdooEntryView, "product" | "qty" | "done">[], order: readonly string[] = []): OdooItemTotal[] {
+export function odooItemTotals(entries: readonly Pick<OdooEntryView, "product" | "qty" | "done" | "status">[], order: readonly string[] = []): OdooItemTotal[] {
   const by = new Map<string, OdooItemTotal>();
   for (const e of entries) {
+    if (isVoidStatus(e.status)) continue; // a void row is nothing logged
     const product = e.product.trim() || "—";
     const t = by.get(product) ?? { product, qty: 0, rows: 0, doneQty: 0, openQty: 0 };
     t.qty += e.qty;

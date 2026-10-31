@@ -57,6 +57,11 @@ export interface LogFilters {
 }
 
 /** The rows the log shows under its filters. */
+/** How far back the Daily log reads, in days: a little past its date
+ *  picker's 60, so last month is whole whatever day of this one it is. The
+ *  data guard reads the same history on the screen and in its Excel. */
+export const DAILY_LOG_DAYS = 62;
+
 export function filterLogRows<T extends LogRow>(rows: readonly T[], f: LogFilters): T[] {
   const needle = (f.q ?? "").trim().toUpperCase();
   return rows.filter((r) => {

@@ -26,7 +26,7 @@ vi.mock("@/lib/server/line", () => ({
   withLine: (line: string, f: () => unknown) => { h.lines.push(line); return f(); },
   ledgerItemWhere: (line: string) => (line === "LV" ? { item: "LV" } : { item: { not: "LV" } }),
 }));
-vi.mock("@/lib/server/handover", () => ({ getRecentHandover: h.recent }));
+vi.mock("@/lib/server/handover", () => ({ getHandoverSince: h.recent }));
 vi.mock("@/lib/server/masterTracker", () => ({ getMasterTracker: h.master }));
 vi.mock("@/lib/server/lvTracker", () => ({ getLvTracker: h.lv }));
 vi.mock("@/lib/server/weeklyPlanTracker", () => ({ getWeeklyPlanTracker: h.weekly }));
@@ -143,9 +143,10 @@ describe("make_excel", () => {
       { id: 2, date: at("2026-10-25"), dept: "Cut", bom: "B2", bomRaw: null, mo: null, item: "TN", qty: 1, source: "worklist", createdBy: "Ali", createdAt: new Date("2026-10-25T08:00:00Z") },
     ]);
     const r = await makeSheetTool.run({ sheet: "daily_log", line: "LV", dept: "Welding" }, ctxOf());
-    expect(h.prisma.handoverEntry.findMany.mock.calls[0][0].where).toEqual({ item: "LV", date: { gte: at("2026-10-24"), lte: at("2026-10-26") } });
+    // the whole of the last day: up to the next day's start
+    expect(h.prisma.handoverEntry.findMany.mock.calls[0][0].where).toEqual({ item: "LV", date: { gte: at("2026-10-24"), lt: at("2026-10-27") } });
     // the data guard reads the history the screen loads, on the same line
-    expect(h.recent).toHaveBeenCalledWith(2000);
+    expect(h.recent).toHaveBeenCalledWith("2026-08-25");
     expect(h.lines).toEqual(["LV"]);
     expect(JSON.parse(r.text)).toMatchObject({ file: "daily-log-lv-2026-10-24_to_2026-10-26.xlsx", rows: 1 });
     expect(keptSheet().rows[0]).toMatchObject({ BOM: "B1", SOI: "S-1", QTY: 2 });

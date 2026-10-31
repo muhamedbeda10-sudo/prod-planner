@@ -1,7 +1,9 @@
 import { getSoiLookup } from "@/lib/server/soi";
-import { getRecentHandover } from "@/lib/server/handover";
+import { getHandoverSince } from "@/lib/server/handover";
+import { addDaysISO } from "@/lib/domain/dateSlicer";
+import { factoryDayISO } from "@/lib/domain/dates";
 import { HandoverLog } from "@/components/HandoverLog";
-import { logRowsOf } from "@/lib/domain/dailyLogView";
+import { DAILY_LOG_DAYS, logRowsOf } from "@/lib/domain/dailyLogView";
 import { getCurrentUser, canEditDept, hasPerm, guardTab } from "@/lib/server/auth";
 import { DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE } from "@/lib/domain/constants";
 import { ledgerPermKey, trackerPermKey } from "@/lib/domain/permissions";
@@ -14,7 +16,9 @@ export const dynamic = "force-dynamic";
 
 export default async function HandoverPage() {
   await guardTab("/handover");
-  const [recent, user, soi, line] = await Promise.all([getRecentHandover(2000), getCurrentUser(), getSoiLookup(), getActiveLine()]);
+  // every row of the last two months — the date picker reaches back 60 days
+  // and "Last month" is one of its picks, so each day it offers is whole
+  const [recent, user, soi, line] = await Promise.all([getHandoverSince(addDaysISO(factoryDayISO(new Date()), -DAILY_LOG_DAYS)), getCurrentUser(), getSoiLookup(), getActiveLine()]);
   // production depts follow the worklist permissions; the tracker-only stages
   // (Shot Blast / Delivered) follow their own tracker permissions. A panel's
   // stages follow the LV keys — the same rule the actions check.

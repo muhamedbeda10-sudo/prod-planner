@@ -13,7 +13,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition, Fragment } from "react";
 import {
   ODOO_PRODUCTS, ODOO_STATUSES, ODOO_OPEN_STATUS, ODOO_DONE_STATUS, ODOO_CANCELLED_STATUS, CANCEL_NEEDS_NOTE,
-  cancelLocked, isCancelledStatus, isDoneStatus, isOpenStatus, EMPTY_ODOO_FILTERS, filterOdooEntries, groupOdooEntries,
+  cancelLocked, isCancelledStatus, isDoneStatus, isOpenStatus, isVoidStatus, EMPTY_ODOO_FILTERS, filterOdooEntries, groupOdooEntries,
   odooItemTotals, odooScopeLabel, singleDayOf, type OdooItemTotal,
   type OdooEntryView, type OdooGroup, type OdooNoteView, type OdooTone, type OdooFilters,
 } from "@/lib/domain/odoo";
@@ -900,9 +900,10 @@ export function OdooClient({
   // cannot be clicked back off.
   const byClosing = useMemo(() => pick({ ...filters, closed: "all" }), [pick, filters]);
   const done = byClosing.filter((e) => e.done).length;
-  const open = byClosing.length - done;
+  // a void (cancelled) row is neither closed nor open
+  const open = byClosing.filter((e) => !e.done && !isVoidStatus(e.status)).length;
   const needMo = useMemo(
-    () => pick({ ...filters, mo: "all" }).filter((e) => !e.odooMo).length,
+    () => pick({ ...filters, mo: "all" }).filter((e) => !e.odooMo && !isVoidStatus(e.status)).length,
     [pick, filters]
   );
   // The office's own queue: still open AND Odoo's MO already on the row, so

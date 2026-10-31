@@ -4,7 +4,7 @@
 
 import { PRODUCT_ORDER } from "@/lib/domain/productColors";
 import { parseISODate, toISODate } from "./dates";
-import { isDoneStatus, ODOO_PRODUCTS } from "./odoo";
+import { isDoneStatus, isVoidStatus, ODOO_PRODUCTS } from "./odoo";
 
 /** A series is a product name. The sheet's six come first, in the fixed order
  *  the charts colour them; any other product logged is its own series after
@@ -353,7 +353,7 @@ const inWindow = (iso: string, w: { fromISO: string | null; toISO: string }) => 
  *  never logged work: counted as logged it kept the logged figure ahead of
  *  the closed one even when every real row was closed. The dashboard's
  *  figures and its insights (odooInsights) leave it out alike. */
-export const isVoidRow = (r: { status: string }) => /cancel/i.test(r.status);
+export const isVoidRow = (r: { status: string }) => isVoidStatus(r.status);
 
 /** The day a row counts on for a basis; null when it does not count at all:
  *  not Done, on the closed basis — and void (isVoidRow), on either. */

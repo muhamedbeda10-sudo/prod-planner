@@ -138,7 +138,7 @@ export default async function ConsumablesDashboardPage({ searchParams }: { searc
               <StatTile label="Departments served" value={fmt(k.departments)} sub={periodLabel} about="Departments the period's hand-outs were recorded to." />
             </Link>
             <Link href="/consumables?view=limits" className="flex rounded-xl">
-              <StatTile label="Over a limit now" value={fmt(d.limits.overNow.length)} delta={<NowBadge />} sub="in the filters' scope"
+              <StatTile label="Limits over now" value={fmt(d.limits.overNow.length)} delta={<NowBadge />} sub="department limits · in the filters' scope"
                 about="Limits past their number in their current window (this month, or a limit of several months over its months so far), for the department and item filtered. Today's reading, whatever the period." />
             </Link>
             <Link href={href({ status: "none" }, "detail")} className="flex rounded-xl">

@@ -432,8 +432,8 @@ export async function getCockpit(now = new Date(), o: { planNo?: number | null }
         const owed = Math.max(0, c.req - c.na - c.over);
         if (owed <= 0) continue;
         const tier = tierOf(c.mos[0], row.bom);
-        // pieces made outside need no cutting here (welding's and finishing's counts carry them already)
-        const done = { cut: Math.min(owed, c.cut + c.osp), weld: c.weld, finish: c.finish };
+        // pieces made outside need no cutting here — every stage's count carries them already
+        const done = { cut: c.cut, weld: c.weld, finish: c.finish };
         const per = perPiece(tier, item);
         const dues = per ? lineDueHours({ dayISO: d.iso, item, owed, done }, per, leads) : [];
         const leftH: PlanLine["leftH"] = per ? {} : null;

@@ -79,10 +79,11 @@ export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }
   );
 
   // the flag count ignores the flagged-only toggle itself (else clicking it
-  // could change its own label) but respects every other filter
+  // could change its own label) but respects every other filter — the days
+  // and the search too, so the badge counts the rows a click on it shows
   const flaggedCount = useMemo(
-    () => rows.filter((r) => r.flags?.length && (!dept || r.dept === dept) && (!item || r.item === item)).length,
-    [rows, dept, item]
+    () => filterLogRows(rows, { q, dept, item, flaggedOnly: true, from: range.from, to: range.to }).length,
+    [rows, q, dept, item, range]
   );
 
   const hasActive = !!(q || dept || item || from || to || period !== "3" || flaggedOnly);

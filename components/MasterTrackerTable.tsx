@@ -469,6 +469,9 @@ export function MasterTrackerTable({
   if (q) activeFilters.push({ key: "q", label: "Search", value: q, onClear: () => setQ("") });
   if (month) activeFilters.push({ key: "month", label: "Plan month", value: month === "—" ? "No month" : month, onClear: () => setMonth("") });
   if (status && status !== "open") activeFilters.push({ key: "status", label: "Status", value: status === "hold" ? "On hold" : status === "closed" ? "Closed" : "All", onClear: () => setStatus("") });
+  // a month's figures default to its OPEN orders — say so, or its totals read
+  // as the whole month's (the chip's ✕ shows every order of the month)
+  else if (month) activeFilters.push({ key: "status", label: "Status", value: "Open orders only", onClear: () => setStatus("all") });
   if (progress) activeFilters.push({ key: "progress", label: "Progress", value: progress === "complete" ? "Complete" : progress === "inprogress" ? "In progress" : "Not started", onClear: () => setProgress("") });
   if (urgent) activeFilters.push({ key: "urgent", label: "Urgent", value: "Urgent only", onClear: () => setUrgent("") });
   for (const s of STAGE_OPTS.filter((o) => stages.includes(o.value))) activeFilters.push({ key: s.value, label: "Dept", value: s.label, onClear: () => toggleStage(s.value) });

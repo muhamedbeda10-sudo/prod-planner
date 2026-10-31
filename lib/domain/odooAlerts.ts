@@ -7,7 +7,7 @@
 // Each is told the same way: a count on the ODOO log and a popup when a row
 // they have not seen yet appears, workable from the popup. Pure, tested.
 
-import { statusTone } from "./odoo";
+import { isVoidStatus, statusTone } from "./odoo";
 
 /** Subscribes a person to "ready to close". Not an access right, so an admin
  *  does not get it automatically — it is ticked. */
@@ -43,7 +43,7 @@ export const FINISHED_STATUSES = ["Done", "Closed", "Blocked", "Cancelled", "Can
 /** Has Odoo's MO and still waits to be closed — Done, Blocked and Cancelled
  *  rows are not ready for anyone. */
 export function isReadyToClose(e: { odooMo: string; status: string }): boolean {
-  if (e.odooMo.trim() === "") return false;
+  if (e.odooMo.trim() === "" || isVoidStatus(e.status)) return false;
   const tone = statusTone(e.status);
   return tone === "muted" || tone === "warn";
 }
@@ -51,7 +51,7 @@ export function isReadyToClose(e: { odooMo: string; status: string }): boolean {
 /** No MO yet and still to be closed — Done, Blocked and Cancelled rows are
  *  not waiting on anyone's MO. */
 export function needsMo(e: { odooMo: string; status: string }): boolean {
-  if (e.odooMo.trim() !== "") return false;
+  if (e.odooMo.trim() !== "" || isVoidStatus(e.status)) return false;
   const tone = statusTone(e.status);
   return tone === "muted" || tone === "warn";
 }

@@ -20,6 +20,7 @@
 import { monthInputFromLabel, monthLabelSortKey } from "./dates";
 import { ITEM_PRODUCT } from "./odooMirror";
 import { isCancelledStatus, isDoneStatus } from "./odoo";
+import { moParent } from "./odooMaterial";
 
 /** Sheet counts are fractions of a sheet (0.429 of a sheet per unit). Excel
  *  left 0.564 × 3 as 1.6919999999999997; the nesting sheet quotes its figures
@@ -508,6 +509,33 @@ export function materialClosings(rows: readonly OdooClosingRow[], ledger: Readon
 }
 
 /**
+ * The closings booked on the MOs the sheet files: Odoo closes the remainder
+ * of a job as a backorder ("SF01/MO/15337-002" of "SF01/MO/15337"), and the
+ * sheet files the job once, under the MO the nesting was made for. A part MO
+ * the sheet carries keeps its own; one it does not is booked on its parent's
+ * line, else a sibling backorder's — the same rule as the Material dashboard
+ * and the ODOO log's material popup, so the three agree.
+ */
+export function withBackorders(c: MaterialClosings, sheetMos: Iterable<string>): MaterialClosings {
+  const keys = new Set([...sheetMos].map(planKey).filter(Boolean));
+  const children = new Map<string, string[]>();
+  for (const k of keys) {
+    const parent = moParent(k);
+    if (parent !== k) (children.get(parent) ?? children.set(parent, []).get(parent)!).push(k);
+  }
+  for (const list of children.values()) list.sort();
+  const to = (k: string) => (keys.has(k) ? k : keys.has(moParent(k)) ? moParent(k) : children.get(moParent(k))?.[0] ?? k);
+  const doneByPart = new Map<string, number>();
+  for (const [k, n] of c.doneByPart) doneByPart.set(to(k), (doneByPart.get(to(k)) ?? 0) + n);
+  const ordersByPart = new Map<string, Set<string>>();
+  for (const [k, orders] of c.ordersByPart) {
+    const s = ordersByPart.get(to(k)) ?? ordersByPart.set(to(k), new Set()).get(to(k))!;
+    for (const o of orders) s.add(o);
+  }
+  return { ...c, doneByPart, ordersByPart };
+}
+
+/**
  * A line's place on the ODOO log. The sheet files either the ORDER's MO
  * (`isOrder` says so — the registry has it) or the PART's:
  * - the order's: its part MOs are those typed on the rows born of the
@@ -756,6 +784,21 @@ export function sheetsConsumed(l: Pick<MaterialLineView, "forProduced" | "produc
   return l.producedUsed === null ? null : round4(l.sheetsPerUnit * l.producedUsed);
 }
 
+/** A job's units are its own once, however many lines nest it: a panel
+ *  order has a line per thickness, each carrying the order's whole count.
+ *  One figure per month × BOM × MO × part — the largest its lines carry (a
+ *  line with no MO is its own job). */
+function perJob(lines: readonly MaterialLineView[], value: (l: MaterialLineView) => number | null): (number | null)[] {
+  const by = new Map<string, number | null>();
+  for (const l of lines) {
+    const k = l.mo.trim() ? [l.month, l.bom, l.mo, l.partCode].map((x) => String(x).trim().toUpperCase()).join("|") : `#${l.id}`;
+    const v = value(l);
+    const cur = by.get(k);
+    by.set(k, cur === undefined ? v : v === null ? cur : cur === null ? v : Math.max(cur, v));
+  }
+  return [...by.values()];
+}
+
 export function materialSummary(lines: readonly MaterialLineView[]): MaterialSummary {
   const orders = new Set(lines.map((l) => l.soi.trim() || l.mo.trim() || l.bom.trim()).filter(Boolean));
   return {
@@ -766,9 +809,9 @@ export function materialSummary(lines: readonly MaterialLineView[]): MaterialSum
     actualWeightKg: sumOf(lines.map((l) => l.actualWeightKg)),
     difference: sumOf(lines.map((l) => l.difference)),
     overLines: lines.filter((l) => l.difference !== null && l.difference < 0).length,
-    units: round4(lines.reduce((a, l) => a + l.units, 0)),
+    units: round4(perJob(lines, (l) => l.units).reduce<number>((a, n) => a + (n ?? 0), 0)),
     forProduced: sumOf(lines.map(sheetsConsumed)),
-    remainingUnits: sumOf(lines.map((l) => l.remainingUnits)),
+    remainingUnits: sumOf(perJob(lines, (l) => l.remainingUnits)),
   };
 }
 

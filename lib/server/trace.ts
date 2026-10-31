@@ -242,13 +242,14 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
   }
   events.sort((a, b) => b.ts - a.ts || 0);
 
-  // ---- contributors (positive output per person) — supports productivity work ----
+  // ---- contributors (output per person, net of the corrections they typed —
+  // a piece recorded and taken back is not output) — supports productivity work ----
   const byPerson = new Map<string, number>();
   for (const h of handover) {
-    if (h.qty <= 0 || !h.createdBy) continue;
+    if (!h.createdBy) continue;
     byPerson.set(h.createdBy, (byPerson.get(h.createdBy) ?? 0) + h.qty);
   }
-  const contributors = [...byPerson.entries()].map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty);
+  const contributors = [...byPerson.entries()].filter(([, qty]) => qty > 0).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty);
 
   // ---- family siblings (bom mode) ----
   const fam = !isMo && resolvedBom ? groupKey(resolvedBom.toUpperCase()) : "";

@@ -10,7 +10,7 @@ import { getCatalogue, getCurrentStandings } from "@/lib/server/consumableLimits
 import { getMonthlyReport } from "@/lib/server/consumableMonthly";
 import { getConsumableEdits, getConsumablesDashboard, getConsumablesData, getConsumablesDecisions } from "@/lib/server/consumables";
 import { getDowntimeDay } from "@/lib/server/downtime";
-import { getRecentHandover } from "@/lib/server/handover";
+import { getHandoverSince } from "@/lib/server/handover";
 import { ledgerItemWhere, withLine } from "@/lib/server/line";
 import { getLvTrace } from "@/lib/server/lvTrace";
 import { getLvTrackerWithOdoo } from "@/lib/server/lvTracker";
@@ -37,7 +37,7 @@ import { AI_FILE_LIMITS } from "@/lib/domain/aiFiles";
 import { pastMonthOf } from "@/lib/domain/consumableMonthly";
 import { consumablesPeriod } from "@/lib/domain/consumables";
 import { readDecisionFilters } from "@/lib/domain/consumablesDecisions";
-import { filterLogRows, logRowsOf } from "@/lib/domain/dailyLogView";
+import { DAILY_LOG_DAYS, filterLogRows, logRowsOf } from "@/lib/domain/dailyLogView";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { factoryToday } from "@/lib/domain/dates";
 import type { ProductLine } from "@/lib/domain/lines";
@@ -74,7 +74,6 @@ const MAX_SHEET_CELLS = 600_000;
 
 /** The daily log's own history the data guard judges an entry against, as
  *  the screen loads it (app/handover/page.tsx). */
-const GUARD_HISTORY = 2000;
 
 const STAGE_VALUES = WEEKLY_STAGES.map((o) => o.value);
 
@@ -98,7 +97,7 @@ const SHEETS = {
   consumables_log: { tab: "consumables", params: ["from", "to"], about: "the consumables hand-out log — from/to (default today)" },
   consumables_limits: { tab: "consumables", params: [], about: "the consumables catalogue, its limits and where each stands now" },
   consumables_edits: { tab: "consumables", admin: true, params: ["from", "to"], about: "every change made to a recorded hand-out (admins) — from/to" },
-  consumables_summary: { tab: "consumables", params: ["from", "to"], about: "what went out over a period, item by item — from/to" },
+  consumables_summary: { tab: "consumables", params: ["from", "to"], about: "what went out over a period, item by item — a catalogue item apart from the same name typed by hand, with the departments it went to — from/to" },
   consumables_dashboard: { tab: "consumables", params: ["address"], about: "the Consumables dashboard's detail table: a row per item and department against its limit at the period's end — address, the dashboard's address query as on the screen (from, to, dept, item, link, status)" },
   consumables_monthly: { tab: "consumables", params: ["month"], about: "the consumables monthly review: a row per item and per limit, with the trend — month" },
   powder_scrap: { tab: "consumables", params: ["month"], about: "a month of powder scrap: the sections' totals, then each weighing — month" },
@@ -362,11 +361,12 @@ async function rowsOf(i: Input, ctx: ToolCtx): Promise<Made> {
       const from = i.from ?? addDaysISO(to, -2);
       const [entries, recent, soi] = await Promise.all([
         prisma.handoverEntry.findMany({
-          where: { ...ledgerItemWhere(line), date: { gte: new Date(`${from}T00:00:00.000Z`), lte: new Date(`${to}T00:00:00.000Z`) } },
+          // the whole of the last day: a row stamped later that day is that day's
+          where: { ...ledgerItemWhere(line), date: { gte: new Date(`${from}T00:00:00.000Z`), lt: new Date(`${addDaysISO(to, 1)}T00:00:00.000Z`) } },
           orderBy: [{ date: "desc" }, { id: "desc" }],
           take: MAX_SHEET_ROWS + 1,
         }),
-        withLine(line, () => getRecentHandover(GUARD_HISTORY)),
+        withLine(line, () => getHandoverSince(addDaysISO(today, -DAILY_LOG_DAYS))),
         getSoiLookup(),
       ]);
       // the whole period or nothing: the filters below need every entry of it,

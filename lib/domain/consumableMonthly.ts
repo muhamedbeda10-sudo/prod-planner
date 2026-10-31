@@ -164,6 +164,10 @@ export interface MonthlyReportOptions {
    *  times this; each month graded is held to its own. None: no one. */
   headcountOf?: HeadcountOf;
   trendCount?: number;
+  /** The month ("2026-10") the log's first hand-out fell in. A month before
+   *  it has no record, not a month of nothing issued: the trend counts no
+   *  item in it. None: every month is on record. */
+  logStartMonth?: string | null;
 }
 
 export interface MonthlyReport {
@@ -244,8 +248,11 @@ function itemMonth(item: ItemInput, allUses: readonly LimitUse[], month: string,
     status = "nolimit";
     ratio = null;
   } else {
-    // the item takes the worst of its limits
+    // the item takes the worst of its limits — but one handed out only to
+    // departments none of them covers was issued: it reads "No limit", as the
+    // dashboard's detail table reads those rows, never "Not issued"
     status = limits.reduce<MonthStatus>((w, l) => (SEVERITY[l.status] > SEVERITY[w] ? l.status : w), "unused");
+    if (status === "unused" && outside > 0) status = "nolimit";
     ratio = allowance !== null && allowance > 0 ? covered / allowance : Math.max(...limits.map((l) => l.ratio));
   }
 
@@ -282,6 +289,8 @@ export function buildMonthlyReport(items: readonly ItemInput[], uses: readonly L
 
   const countsByMonth = trendMonths.map((m) => {
     const c = { month: m, over: 0, near: 0, under: 0, unused: 0 };
+    // before the log began there is nothing on record to grade
+    if (opts.logStartMonth && m < opts.logStartMonth) return c;
     for (const i of items) {
       if (!i.active || i.rules.length === 0) continue;
       const st = itemMonth(i, uses, m, shiftMonth(m, -1), [], headcountOf(m)).status;

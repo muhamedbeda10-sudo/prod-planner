@@ -32,7 +32,7 @@ export async function getMonthlyReport(month: string): Promise<MonthlyReportView
     items.map((i) => ({ id: i.id, code: i.code, name: i.name, uom: i.uom, active: i.active, rules: i.limits.map(toRule) })),
     uses,
     month,
-    { headcountOf },
+    { headcountOf, logStartMonth: first ? factoryDayISO(first.issuedAt).slice(0, 7) : null },
   );
 
   const thisMonth = factoryDayISO(new Date()).slice(0, 7);

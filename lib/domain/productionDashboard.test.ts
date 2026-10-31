@@ -299,6 +299,22 @@ describe("volumeOf", () => {
     expect(v.stages.map((s) => [s.label, s.total])).toEqual([["Fabrication", 10], ["Welding", 10]]);
     expect(v.days.filter((d) => d.stage === "TR:Welding").map((d) => d.dateISO)).toEqual(["2026-10-20", "2026-10-21"]);
   });
+  it("counts output net of its corrections, as the department table does", () => {
+    const v = volumeOf([
+      // a cancel-and-redo on one day is 30 pieces, not 60
+      vol({ dateISO: "2026-10-15", stage: "Cut", depts: ["Fabrication"], component: "Cable Box", qty: 30 }),
+      vol({ dateISO: "2026-10-15", stage: "Cut", depts: ["Fabrication"], component: "Cable Box", qty: -30 }),
+      vol({ dateISO: "2026-10-15", stage: "Cut", depts: ["Fabrication"], component: "Cable Box", qty: 30 }),
+      // recorded and taken back the same day: nothing
+      vol({ dateISO: "2026-10-01", stage: "Cut", depts: ["Fabrication"], component: "Core Frame", qty: 36 }),
+      vol({ dateISO: "2026-10-01", stage: "Cut", depts: ["Fabrication"], component: "Core Frame", qty: -36 }),
+      // taken back on a later day: the stage's total, not that day's bar
+      vol({ dateISO: "2026-10-20", stage: "Cut", depts: ["Fabrication"], component: "Tank", qty: 9 }),
+      vol({ dateISO: "2026-10-24", stage: "Cut", depts: ["Fabrication"], component: "Tank", qty: -4 }),
+    ]);
+    expect(v.stages.map((s) => [s.label, s.total])).toEqual([["Fabrication", 35]]);
+    expect(v.days.map((d) => [d.dateISO, d.total])).toEqual([["2026-10-15", 30], ["2026-10-20", 9]]);
+  });
 });
 
 describe("attendanceRows", () => {

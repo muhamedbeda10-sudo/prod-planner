@@ -80,6 +80,14 @@ describe("the month's powder report", () => {
     expect(r.total.rate).toBeCloseTo(0.12);
   });
 
+  it("gives no rate — not 0% — when nothing was weighed", () => {
+    const r = buildPowderReport("2026-09", [w({}), w({ department: "PaintingLV", qty: 50 })], [s({ department: "PaintingLV", kg: 10 })]);
+    expect(r.departments[0]).toMatchObject({ withdrawn: 100, scrap: 0, rate: null });
+    expect(r.departments[1].rate).toBeCloseTo(0.2);
+    expect(r.total.rate).toBeCloseTo(10 / 150); // a section weighed: the plant has a rate
+    expect(buildPowderReport("2026-09", [w({})], []).total.rate).toBeNull();
+  });
+
   it("gives no rate when nothing was drawn, and a negative net when more was scrapped", () => {
     const r = buildPowderReport("2026-09", [], [s({})]);
     expect(r.departments[0]).toMatchObject({ withdrawn: 0, scrap: 8, net: -8, rate: null });

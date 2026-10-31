@@ -16,11 +16,15 @@ export interface StatsRow {
   item: string;
   qty: number;
   department: string;
+  /** Handed out of the catalogue; false for a name typed by hand. */
+  catalogued: boolean;
 }
 
-/** `workers`: the departments it went to — a hand-out is its department's,
- *  so a group of a department counts once, not once per man. */
-export interface ItemStat { item: string; issues: number; qty: number; workers: number }
+/** `departments`: the departments it went to — a hand-out is its
+ *  department's, so a group of a department counts once, not once per man.
+ *  `catalogued`: a catalogue item, or a name typed by hand — never merged,
+ *  as the dashboard keeps them apart. */
+export interface ItemStat { item: string; catalogued: boolean; issues: number; qty: number; departments: number }
 
 const fold = (s: string) => cleanText(s).toLowerCase();
 
@@ -59,11 +63,12 @@ export const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
 
 /** The period's hand-outs item by item, the most handed out first. */
 export function consumablesStats(rows: readonly StatsRow[]): ItemStat[] {
-  // grouped by the folded name, shown in the commonest spelling
-  const agg = new Map<string, { names: string[]; issues: number; qty: number; departments: Set<string> }>();
+  // grouped by the folded name — a catalogue item apart from the same name
+  // typed by hand — shown in the commonest spelling
+  const agg = new Map<string, { names: string[]; catalogued: boolean; issues: number; qty: number; departments: Set<string> }>();
   for (const r of rows) {
-    const k = fold(r.item);
-    const a = agg.get(k) ?? { names: [], issues: 0, qty: 0, departments: new Set<string>() };
+    const k = `${r.catalogued ? "c" : "t"}|${fold(r.item)}`;
+    const a = agg.get(k) ?? { names: [], catalogued: r.catalogued, issues: 0, qty: 0, departments: new Set<string>() };
     a.names.push(r.item);
     a.issues += 1;
     a.qty += r.qty;
@@ -71,6 +76,6 @@ export function consumablesStats(rows: readonly StatsRow[]): ItemStat[] {
     agg.set(k, a);
   }
   return [...agg.values()]
-    .map((a) => ({ item: commonestSpelling(a.names), issues: a.issues, qty: round3(a.qty), workers: a.departments.size }))
+    .map((a) => ({ item: commonestSpelling(a.names), catalogued: a.catalogued, issues: a.issues, qty: round3(a.qty), departments: a.departments.size }))
     .sort((a, b) => b.issues - a.issues || b.qty - a.qty || a.item.localeCompare(b.item));
 }

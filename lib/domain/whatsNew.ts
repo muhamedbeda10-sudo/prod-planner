@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-31-numbers-audit",
+    dateISO: "2026-10-31",
+    title: "Figures checked against the data, and the wrong ones corrected",
+    where: "Material, the ODOO log, Consumables (monthly review, powder scrap), the Production dashboard, the weekly plan, the Daily log, the trace, the machine cards",
+    body: "Every screen's figures were recomputed from the live data. Corrected: the Material sheet now counts an Odoo backorder's closings (SF01/MO/15337-002) on its job's line, like the Material dashboard; the panels' Planned and Remaining units count each order once, not once per thickness. The ODOO log's open counts, Need MO and item cards leave cancelled rows out. On the Consumables monthly review, an item handed out only to departments its limits do not cover reads No limit, not Not issued, and the trend starts with the log; a powder month with nothing weighed shows no scrap rate instead of 0%; the dashboard's tile reads Limits over now (it counts department limits); the assistant's item sheet keeps a catalogue item apart from the same name typed by hand. The Production dashboard's output chart counts output net of its corrections, as its department table does. The weekly plan counts outsourced pieces as fabricated. The Daily log shows every row of the last two months, so each day its picker offers is whole, and its ⚠ to check count follows the days and search shown. A trace's Recorded by is net of corrections; a machine card's clears date is never a day early; a month on the Plan Tracker says it shows open orders only.",
+  },
+  {
     id: "2026-10-31-odoo-cancelled-not-logged",
     dateISO: "2026-10-31",
     title: "ODOO dashboard: a cancelled row no longer counts as logged",

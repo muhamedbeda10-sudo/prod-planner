@@ -284,9 +284,9 @@ export async function getConsumablesDashboard(fromISO: string, toISO: string): P
   const { gte, lt } = periodBounds(fromISO, toISO);
   const rows = await prisma.consumableIssue.findMany({
     where: { deletedAt: null, issuedAt: { gte, lt } },
-    select: { item: true, qty: true, department: true },
+    select: { item: true, qty: true, department: true, itemId: true },
   });
-  return consumablesStats(rows.map((r) => ({ item: r.item, qty: r.qty.toNumber(), department: r.department })));
+  return consumablesStats(rows.map((r) => ({ item: r.item, qty: r.qty.toNumber(), department: r.department, catalogued: r.itemId !== null })));
 }
 
 /** What the dashboard's browser parts read — the rows, cards and charts;

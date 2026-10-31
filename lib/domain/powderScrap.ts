@@ -144,7 +144,8 @@ export interface PowderFigures {
   /** withdrawn − scrap; negative when more was scrapped than handed out
    *  (powder from an earlier month's stock). */
   net: number;
-  /** scrap ÷ withdrawn; null when nothing was handed out. */
+  /** scrap ÷ withdrawn; null when nothing was handed out, or no scrap was
+   *  weighed — no weighing is not a 0% scrap rate. */
   rate: number | null;
 }
 
@@ -174,10 +175,10 @@ export interface PowderReport {
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
-export function figures(withdrawn: number, scrap: number): PowderFigures {
+export function figures(withdrawn: number, scrap: number, weighed = true): PowderFigures {
   const w = r3(withdrawn);
   const s = r3(scrap);
-  return { withdrawn: w, scrap: s, net: r3(w - s), rate: w > 0 ? s / w : null };
+  return { withdrawn: w, scrap: s, net: r3(w - s), rate: w > 0 && weighed ? s / w : null };
 }
 
 /** The days the report reads: the trend's first month to the month's end. */
@@ -233,10 +234,12 @@ export function buildPowderReport(month: string, withdrawals: readonly PowderWit
   }
   for (const x of scraps) if (isPowderDepartment(x.department)) add(s, key(monthOf(x.dayISO), x.department), x.kg);
 
-  const at = (m: string, d: string) => figures(w.get(key(m, d)) ?? 0, s.get(key(m, d)) ?? 0);
+  // a section-month with no weighing has no rate (s holds a key per weighing)
+  const at = (m: string, d: string) => figures(w.get(key(m, d)) ?? 0, s.get(key(m, d)) ?? 0, s.has(key(m, d)));
   const both = (m: string) => figures(
     POWDER_DEPARTMENTS.reduce((n, d) => n + (w.get(key(m, d)) ?? 0), 0),
     POWDER_DEPARTMENTS.reduce((n, d) => n + (s.get(key(m, d)) ?? 0), 0),
+    POWDER_DEPARTMENTS.some((d) => s.has(key(m, d))),
   );
 
   return {

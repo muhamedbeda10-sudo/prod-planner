@@ -20,6 +20,10 @@ describe("the ODOO alerts", () => {
     expect(needsMo({ odooMo: "", status: "Cancelled" })).toBe(false);
     expect(needsMo({ odooMo: "", status: "Blocked" })).toBe(false);
   });
+  it("never alerts on a void row, however its cancel is spelled", () => {
+    expect(needsMo({ odooMo: "", status: "Cancel - duplicate" })).toBe(false);
+    expect(isReadyToClose({ odooMo: "SF01/MO/1", status: "Cancel - duplicate" })).toBe(false);
+  });
   it("pops up for keys not seen yet, per kind, and forgets keys no longer live", () => {
     const keys = [alertKey("close", 1), alertKey("close", 2), alertKey("mo", 3)];
     expect(unseenKeys(keys, new Set(["close:1", "mo:3"]))).toEqual(["close:2"]);

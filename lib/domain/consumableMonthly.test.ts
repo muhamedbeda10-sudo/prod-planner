@@ -102,6 +102,18 @@ describe("the monthly report", () => {
     expect(r.rows[0].ratio).toBeCloseTo(4 / 60);
   });
 
+  it("reads an item handed out only outside its limits' departments as No limit, never Not issued", () => {
+    const r = buildMonthlyReport([item({})], [use({ qty: 20, department: "LeakTest" })], "2026-09");
+    expect(r.rows[0]).toMatchObject({ used: 20, outside: 20, status: "nolimit" });
+    expect(r.counts).toMatchObject({ unused: 0, nolimit: 1 });
+  });
+
+  it("counts no item in a trend month before the log began", () => {
+    const r = buildMonthlyReport([item({})], [use({ qty: 10, dayISO: "2026-09-10" })], "2026-09", { logStartMonth: "2026-09" });
+    expect(r.countsByMonth.find((c) => c.month === "2026-08")).toEqual({ month: "2026-08", over: 0, near: 0, under: 0, unused: 0 });
+    expect(r.countsByMonth.find((c) => c.month === "2026-09")).toMatchObject({ under: 1 });
+  });
+
   it("lists every active item, the unused ones too, and items with no limit only when handed out", () => {
     const items = [item({ id: 10 }), item({ id: 11, name: "Unused", rules: [rule({ id: 5, itemId: 11 })] }), item({ id: 12, name: "No limit", rules: [] }), item({ id: 13, name: "Retired", active: false, rules: [rule({ id: 6, itemId: 13 })] })];
     const r = buildMonthlyReport(items, [use({ qty: 61 }), use({ itemId: 12, qty: 1 })], "2026-09");

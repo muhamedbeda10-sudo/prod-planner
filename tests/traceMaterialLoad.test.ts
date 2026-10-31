@@ -38,11 +38,16 @@ beforeEach(() => {
 it("reads only the log and registry rows that touch the order's lines, never the whole line", async () => {
   const m = await getTraceMaterial("TR", { scope: "mo", mos: ["PF01/MO/1"], sois: ["S1"], bom: "B-1" });
   expect(m.lines.map((l) => [l.mo, l.orderMos, l.planMonths, l.producedUsed])).toEqual([["SF01/MO/9", ["PF01/MO/1"], ["October 2026"], 4]]);
-  // the line's ODOO rows by its part MO, not every row of the line
+  // the line's ODOO rows by its part MO and its job's backorders, not every row of the line
   const odooForLines = h.odoo.mock.calls.map((c) => c[0]).find((a) => a.select.status);
   expect(odooForLines.where).toEqual({
     line: "TR", odooMo: { not: "" },
-    OR: [{ odooMo: { in: ["SF01/MO/9"], mode: "insensitive" } }, { ledgerId: { in: [77] } }],
+    OR: [
+      { odooMo: { in: ["SF01/MO/9"], mode: "insensitive" } },
+      { ledgerId: { in: [77] } },
+      { odooMo: { equals: "SF01/MO/9", mode: "insensitive" } },
+      { odooMo: { startsWith: "SF01/MO/9-", mode: "insensitive" } },
+    ],
   });
   // the registry by the lines' keys, not every order of the line
   const registry = h.orders.mock.calls.map((c) => c[0]).find((a) => a.select.months);

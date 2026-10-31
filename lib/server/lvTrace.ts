@@ -71,8 +71,9 @@ export async function getLvTrace(scopeIn: { mo?: string; bom?: string }): Promis
   }));
 
   const byPerson = new Map<string, number>();
+  // net of the corrections each typed: a piece recorded and taken back is not output
   for (const h of handover) {
-    if (h.qty <= 0 || !h.createdBy) continue;
+    if (!h.createdBy) continue;
     byPerson.set(h.createdBy, (byPerson.get(h.createdBy) ?? 0) + h.qty);
   }
 
@@ -85,7 +86,7 @@ export async function getLvTrace(scopeIn: { mo?: string; bom?: string }): Promis
     pipeline,
     requiredPanels: pipeline[0]?.required ?? 0,
     timeline,
-    contributors: [...byPerson.entries()].map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty),
+    contributors: [...byPerson.entries()].filter(([, qty]) => qty > 0).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty),
     ledgerCount: handover.length,
   };
 }

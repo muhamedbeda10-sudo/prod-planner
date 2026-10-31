@@ -3,7 +3,7 @@ import {
   normalizeMaterialType, normalizeSheetSize, parseSheetNumber, sheetNumberOr, sheetsForJob, sheetsDifference,
   actualPerUnit, sheetsForProduced, parseNestingTracker, materialKey, round3, partNameFor,
   filterMaterialLines, EMPTY_MATERIAL_FILTERS, groupMaterialBySoi,
-  materialPlanIndex, materialPlanMonths, materialClosings, lineClosings, itemOfPartCode, adoptedPartLine, materialPlanMonthOptions, materialSummary, sheetsConsumed, resolvePlanMonth, traceMaterialMatch, NO_PLAN_MONTH,
+  materialPlanIndex, materialPlanMonths, materialClosings, lineClosings, withBackorders, itemOfPartCode, adoptedPartLine, materialPlanMonthOptions, materialSummary, sheetsConsumed, resolvePlanMonth, traceMaterialMatch, NO_PLAN_MONTH,
   type MaterialLineView,
 } from "./material";
 import { monthLabelFromInput, monthInputFromLabel, monthLabelSortKey } from "./dates";
@@ -507,6 +507,16 @@ describe("materialSummary", () => {
       line({ forProduced: null, producedUsed: null }),
     ]).forProduced).toBe(10.35);
   });
+  it("counts a job's units once, though a panel order has a line per thickness", () => {
+    const s = materialSummary([
+      line({ id: 1, mo: "SF01/MO/1", bom: "B1", thicknessMm: 1.5, units: 45, remainingUnits: 1 }),
+      line({ id: 2, mo: "SF01/MO/1", bom: "B1", thicknessMm: 2, units: 45, remainingUnits: 1 }),
+      line({ id: 3, mo: "SF01/MO/1", bom: "B1", thicknessMm: 3, units: 45, remainingUnits: 1 }),
+      line({ id: 4, mo: "SF01/MO/2", bom: "B2", units: 12, remainingUnits: 0 }),
+      line({ id: 5, mo: "", bom: "B3", units: 19, remainingUnits: null }),
+    ]);
+    expect(s).toMatchObject({ units: 76, remainingUnits: 1 });
+  });
     it("leaves a figure no line carries empty, not zero", () => {
     expect(materialSummary([line({ sheetsUsed: null, actualWeightKg: null, difference: null, forProduced: null, remainingUnits: null })]))
       .toMatchObject({ sheetsUsed: null, actualWeightKg: null, difference: null, forProduced: null, remainingUnits: null, overLines: 0 });
@@ -616,6 +626,25 @@ describe("materialClosings / lineClosings", () => {
   it("a cancelled row ties and counts nothing", () => {
     expect(c.ordersByPart.has("SF01/MO/7")).toBe(false);
     expect(c.doneByPart.has("SF01/MO/7")).toBe(false);
+  });
+  it("counts a backorder's closings on the line its job is filed under, its own line first", () => {
+    const b = materialClosings([
+      { odooMo: "SF01/MO/15337", status: "Done", qty: 6, ledgerId: null },
+      { odooMo: "SF01/MO/15337-002", status: "Done", qty: 20, ledgerId: 10 },
+      { odooMo: "SF01/MO/15337-003", status: "Done", qty: 10, ledgerId: null },
+      { odooMo: "SF01/MO/20000-001", status: "Done", qty: 4, ledgerId: null },
+      { odooMo: "SF01/MO/20000-002", status: "Done", qty: 5, ledgerId: null },
+      { odooMo: "SF01/MO/30000-002", status: "Done", qty: 7, ledgerId: null },
+    ], ledger);
+    // the sheet files 15337 (its backorders have no line), 20000-001 (and its
+    // sibling's closings come to it), and 30000-002 on its own
+    const r = withBackorders(b, ["SF01/MO/15337", "sf01/mo/20000-001", "SF01/MO/30000-002", "SF01/MO/30000-003"]);
+    const closed = (mo: string) => lineClosings({ mo, partCode: "FB-022", units: 100 }, () => false, r).closed;
+    expect(closed("SF01/MO/15337")).toBe(36);
+    expect(closed("SF01/MO/20000-001")).toBe(9);
+    expect(closed("SF01/MO/30000-002")).toBe(7);
+    expect(closed("SF01/MO/30000-003")).toBe(0);
+    expect(r.ordersByPart.get("SF01/MO/15337")).toEqual(new Set(["PF01/MO/1"]));
   });
 });
 

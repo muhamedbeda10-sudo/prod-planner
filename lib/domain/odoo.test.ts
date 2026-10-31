@@ -135,6 +135,12 @@ describe("filterOdooEntries", () => {
     expect(ids({ mo: "missing" })).toEqual([4]);
     expect(ids({ mo: "guessed" })).toEqual([4]);
   });
+  it("leaves a void (cancelled) row out of the open rows and out of the rows needing an MO", () => {
+    const withVoid = [...rows, row({ id: 5, odooMo: "", status: "Cancelled", tone: "bad" })];
+    const pick = (f: Partial<typeof EMPTY_ODOO_FILTERS>) => filterOdooEntries(withVoid, { ...EMPTY_ODOO_FILTERS, ...f }).map((r) => r.id);
+    expect(pick({ closed: "open" })).toEqual([1, 2, 3, 4]); // row 2 is not marked done in this fixture
+    expect(pick({ mo: "missing" })).toEqual([4]);
+  });
   it("searches SOI, FG-CODE, MO, product and the notes, any case", () => {
     expect(ids({ q: "s01194" })).toEqual([2]);
     expect(ids({ q: "15890" })).toEqual([3]);
@@ -318,11 +324,12 @@ describe("the log's period", () => {
 describe("odooItemTotals", () => {
   it("adds the quantity per product, closed and open apart, the line's own order first", () => {
     const rows = [
-      { product: "Top Cover", qty: 5, done: true },
-      { product: "Tank", qty: 3, done: false },
-      { product: "Tank", qty: 7, done: true },
-      { product: "Bracket", qty: 2, done: false },
-      { product: "Mystery", qty: 9, done: false },
+      { product: "Top Cover", qty: 5, done: true, status: "Done" },
+      { product: "Tank", qty: 3, done: false, status: "MO to be close" },
+      { product: "Tank", qty: 7, done: true, status: "Done" },
+      { product: "Tank", qty: 40, done: false, status: "Cancelled" }, // void: nothing logged
+      { product: "Bracket", qty: 2, done: false, status: "MO to be close" },
+      { product: "Mystery", qty: 9, done: false, status: "Pending" },
     ];
     expect(odooItemTotals(rows, ["Tank", "Top Cover"])).toEqual([
       { product: "Tank", qty: 10, rows: 2, doneQty: 7, openQty: 3 },

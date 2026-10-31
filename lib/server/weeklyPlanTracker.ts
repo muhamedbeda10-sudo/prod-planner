@@ -166,9 +166,12 @@ export async function getWeeklyPlanTracker(planNo?: number | null, { odoo = fals
     lines.sort((a, b) => a.d - b.d);
     const [mo, item] = k.split("|");
     const o = orderOf.get(mo);
-    const osp = o ? ospOf(o, item as Item) : 0; // outsourced pieces count as made
+    // outsourced pieces count as made — through fabrication too: a part bought
+    // in is never cut here, so without them a fully outsourced line read 0/1
+    // on Fab forever (the Plan Tracker's month sheet hatches that cell)
+    const osp = o ? ospOf(o, item as Item) : 0;
     const pool: Slice = {
-      cut: g(mo, "Cut", item),
+      cut: g(mo, "Cut", item) + osp,
       weld: g(mo, "Welding", item) + osp,
       // the core's finishing IS its shot blast — it is never painted
       fin: (isPaintExempt(item as Item) ? g(mo, "ShotBlast", item) : g(mo, "Painting", item)) + osp,

@@ -215,7 +215,7 @@ export function consumablesLogRows(entries: ConsumablesPageData["entries"]): She
 
 /** What went out over a period, item by item. */
 export function consumablesSummaryRows(items: readonly ItemStat[]): SheetRow[] {
-  return items.map((i) => ({ Item: i.item, "Hand-outs": i.issues, Qty: i.qty, Workers: i.workers }));
+  return items.map((i) => ({ Item: i.item, Source: i.catalogued ? "Catalogue" : "Typed", "Hand-outs": i.issues, Qty: i.qty, Departments: i.departments }));
 }
 
 /** The Consumables dashboard's detail table: a row per item and department,

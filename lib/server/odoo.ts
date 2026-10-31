@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import { getActiveLine } from "./line";
 import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
-import { blockedItem, isDoneStatus, odooRowBom, odooRowBomLabel, parseOdooSheet, statusTone, type OdooEntryView, type OdooRowBom, type OdooScope } from "@/lib/domain/odoo";
+import { blockedItem, isDoneStatus, isVoidStatus, odooRowBom, odooRowBomLabel, parseOdooSheet, statusTone, type OdooEntryView, type OdooRowBom, type OdooScope } from "@/lib/domain/odoo";
 import { buildOdooDashboard, comparePeriod, type OdooBasis, type OdooCompare, type OdooDashboardData, type OdooPeriod, type OdooSeries } from "@/lib/domain/odooStats";
 import { buildOdooInsights, type OdooInsightRow, type OdooInsights } from "@/lib/domain/odooInsights";
 import { candidateBoms, candidateMos, moKey, moParent, nestingKey, rowMaterialState, type MoMaterialState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
@@ -97,7 +97,7 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
     soiMos,
     lv: false,
     totalRows,
-    openRows: byStatus.reduce((n, g) => n + (isDoneStatus(g.status) ? 0 : g._count._all), 0),
+    openRows: byStatus.reduce((n, g) => n + (isDoneStatus(g.status) || isVoidStatus(g.status) ? 0 : g._count._all), 0),
   };
 }
 

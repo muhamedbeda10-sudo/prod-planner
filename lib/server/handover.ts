@@ -16,6 +16,18 @@ export async function getDefaultPlanForDate(day: Date): Promise<number | null> {
   return findPlanForDate(await getPlanWindows(), day, settings.leadCut);
 }
 
+/** The line's rows dated `fromISO` or later — every one of them, so a day the
+ *  Daily log's date picker offers is a whole day, never the tail of a row
+ *  limit (a hard cap guards the page against a runaway import). */
+export async function getHandoverSince(fromISO: string) {
+  const line = await getActiveLine();
+  return prisma.handoverEntry.findMany({
+    where: { ...ledgerItemWhere(line), date: { gte: new Date(`${fromISO}T00:00:00.000Z`) } },
+    orderBy: [{ date: "desc" }, { id: "desc" }],
+    take: 20_000,
+  });
+}
+
 export async function getRecentHandover(limit = 60, planNo?: number) {
   // the line on screen's rows only — a panel's log and a tank's never mix
   const line = await getActiveLine();

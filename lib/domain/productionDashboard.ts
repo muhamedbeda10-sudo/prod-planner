@@ -498,13 +498,17 @@ export interface VolumeView {
 const stageOrder = rankIn([...tag("TR", SHIFT_DEPTS), ...tag("LV", LV_STAGES)]);
 
 /** What the Daily log recorded, stage by stage in its own unit, component by
- *  component — every day it recorded, whether or not anyone booked hours. */
+ *  component — every day it recorded, whether or not anyone booked hours.
+ *  Net of its corrections, as the department table counts: a piece recorded
+ *  and taken back is not output (a cancel-and-redo on one day counts once).
+ *  A day's bar nets that day's rows and never reads below nothing — a
+ *  correction typed on a later day lowers the stage's total, not a bar. */
 export function volumeOf(records: readonly VolumeRecord[]): VolumeView {
   const stages = new Map<string, VolumeStage>();
   const days = new Map<string, { stage: string; dateISO: string; byComponent: Record<string, number>; total: number }>();
   const comps = new Map<string, Map<string, number>>();
   for (const r of records) {
-    if (!(r.qty > 0)) continue;
+    if (!r.qty) continue;
     const key = stageKey(r);
     const s = stages.get(key) ?? { key, line: r.line, stage: r.stage, label: stageLabel(r.line, r.stage), unit: STAGE_UNIT[r.line], total: 0 };
     s.total += r.qty;
@@ -518,9 +522,14 @@ export function volumeOf(records: readonly VolumeRecord[]): VolumeView {
     c.set(r.component, (c.get(r.component) ?? 0) + r.qty);
     comps.set(key, c);
   }
+  for (const s of stages.values()) s.total = Math.max(0, s.total);
+  for (const d of days.values()) {
+    for (const [c, n] of Object.entries(d.byComponent)) if (n <= 0) delete d.byComponent[c];
+    d.total = Object.values(d.byComponent).reduce((a, n) => a + n, 0);
+  }
   return {
-    stages: [...stages.values()].sort((a, b) => stageOrder(a.key) - stageOrder(b.key)),
-    days: [...days.values()].sort((a, b) => a.dateISO.localeCompare(b.dateISO)),
+    stages: [...stages.values()].filter((s) => s.total > 0).sort((a, b) => stageOrder(a.key) - stageOrder(b.key)),
+    days: [...days.values()].filter((d) => d.total > 0).sort((a, b) => a.dateISO.localeCompare(b.dateISO)),
     // each stage's components, the most first
     components: Object.fromEntries([...comps].map(([k, m]) => [k, [...m].sort((a, b) => b[1] - a[1]).map(([c]) => c)])),
   };
