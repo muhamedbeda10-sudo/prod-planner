@@ -27,6 +27,20 @@ describe("the ODOO close-out insights", () => {
     expect(s.statusMix.at(-1)).toMatchObject({ status: "Other (2)", rows: 2, tone: "muted" });
   });
 
+  it("leaves a cancelled row out of what was logged — it is a void line — but shows it in the status mix", () => {
+    const s = buildOdooInsights([
+      row({ status: "Done", doneISO: "2026-09-02" }),
+      row({ status: "Cancelled", qty: 9 }),
+      row({ status: "Cancel - duplicate", qty: 4 }),
+    ], period);
+    expect(s.funnel).toEqual({ logged: 1, withMo: 0, done: 1 });
+    expect(s.closeRate).toBe(1);
+    expect(s.aging.openRows).toBe(0);
+    expect(s.burnUp.at(-1)).toMatchObject({ logged: 1, closed: 1, open: 0 });
+    expect(s.bomMix.rows[0].qty).toBe(1);
+    expect(s.statusMix.map((m) => m.status).sort()).toEqual(["Cancel - duplicate", "Cancelled", "Done"]);
+  });
+
   it("measures lead time for rows closed in the period, logged whenever", () => {
     const s = buildOdooInsights([
       row({ status: "Done", dateISO: "2026-09-02", doneISO: "2026-09-02" }),

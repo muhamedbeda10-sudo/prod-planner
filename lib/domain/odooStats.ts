@@ -348,10 +348,17 @@ const FILL_GAPS_UP_TO = 120;
 
 const inWindow = (iso: string, w: { fromISO: string | null; toISO: string }) => (w.fromISO === null || iso >= w.fromISO) && iso <= w.toISO;
 
-/** The day a row counts on for a basis; null when it does not count at all
- *  (not Done, on the closed basis). */
+/** A void line: a row cancelled — its daily-log record deleted or corrected
+ *  to nothing, or called off by hand, however the status spells it. It was
+ *  never logged work: counted as logged it kept the logged figure ahead of
+ *  the closed one even when every real row was closed. The dashboard's
+ *  figures and its insights (odooInsights) leave it out alike. */
+export const isVoidRow = (r: { status: string }) => /cancel/i.test(r.status);
+
+/** The day a row counts on for a basis; null when it does not count at all:
+ *  not Done, on the closed basis — and void (isVoidRow), on either. */
 function basisDay(r: OdooStatRow, basis: OdooBasis): string | null {
-  if (basis === "logged") return r.dateISO;
+  if (basis === "logged") return isVoidRow(r) ? null : r.dateISO;
   return r.doneISO && isDoneStatus(r.status) ? r.doneISO : null;
 }
 

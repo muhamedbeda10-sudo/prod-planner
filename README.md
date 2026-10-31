@@ -264,7 +264,9 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    counted, by a **Closed day · Logged day** switch, on the day each row's status went to Done
    (the default: a row logged in August and closed in September is one of September's closings,
    under its product) or on the day it was logged — over today, yesterday, 7/30/90 days, this
-   month, all time or a custom from/to (the assistant makes its Excel of the numbers).
+   month, all time or a custom from/to (the assistant makes its Excel of the numbers). A Cancelled
+   row is a void line and counts on neither side (the status mix still shows it), so logged and
+   closed agree once every real row is closed.
 8. **Shift log** (`/shifts`) — the supervisors' page, one day at a time: every worker registered in a
    section (Tools → Production Workers), narrowed to a line, a section or a search. Each worker gets ONE
    choice that says whether he came and on which shift — ☀ **Day** (07:00–16:00), 🌙 **Night** (19:00–04:00)
