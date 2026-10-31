@@ -314,11 +314,13 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
     const wider = [bomLabel ? "another BOM" : "", d.product ? "another product" : ""].filter(Boolean);
     return (
       <div className="space-y-3">
-        <p className="text-sm text-muted">
-          {title}
-          {bomLabel && <> · <b className="text-foreground">{bomLabel}</b></>}
-          {d.product && <> · <b className="text-foreground">{d.product}</b></>}
-        </p>
+        {(bomLabel || d.product) && (
+          <p className="text-sm text-muted">
+            {title}
+            {bomLabel && <> · <b className="text-foreground">{bomLabel}</b></>}
+            {d.product && <> · <b className="text-foreground">{d.product}</b></>}
+          </p>
+        )}
         {/* the cards stay: they are the way to another product, or to all of them */}
         {d.products.length > 0 && <ProductCards d={d} pal={pal} />}
         <p className="text-sm text-muted bg-surface border rounded-xl p-4 flex flex-wrap items-center gap-2">
@@ -331,6 +333,9 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
 
   return (
     <div className="space-y-5">
+      {/* the period is on the date bar; the line says only how the figures
+          are narrowed (a BOM, a product) — and, hidden, what they compare with */}
+      {(bomLabel || d.product) && (
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm flex flex-wrap items-center gap-x-1 gap-y-1">
           <span className="font-bold">{title}</span>
@@ -342,14 +347,15 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
               </button>
             </span>
           )}
-          {prevTitle && <span className="text-muted"> · compared with {prevTitle}{d.compare !== "prev" ? ` (${ODOO_COMPARE_LABEL[d.compare].toLowerCase()})` : ""}</span>}
+          {prevTitle && <span className="explain text-muted"> · compared with {prevTitle}{d.compare !== "prev" ? ` (${ODOO_COMPARE_LABEL[d.compare].toLowerCase()})` : ""}</span>}
         </div>
       </div>
+      )}
 
       {/* the products first, centred across the page, then the day by day */}
       <section>
-        <h2 className="font-bold mb-2 text-center">
-          Per product <span className="text-muted font-normal text-sm">· {word} · {d.product ? "click the chosen card to show every product" : "click a card to show that product only"}</span>
+        <h2>
+          Per product · {word}<span className="explain"> · {d.product ? "click the chosen card to show every product" : "click a card to show that product only"}</span>
         </h2>
         <ProductCards d={d} pal={pal} />
       </section>

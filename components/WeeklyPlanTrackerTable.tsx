@@ -193,8 +193,8 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
         <WeekPlanPicker plans={data.planNos} value={data.planNo} basePath={fabrication ? "/worklist/cut" : undefined} />
         <SearchBox value={q} onChange={setQ} placeholder="Search project / SOI…" />
         {!fabrication && <div className="col-span-full flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
-          <span className="text-muted text-[11px] font-bold uppercase tracking-wide">Dept</span>
-          <div className="flex flex-wrap gap-1">
+          <span className="filter-label max-sm:hidden">Dept</span>
+          <div className="chip-row sm:flex sm:flex-wrap sm:gap-1">
             {WEEKLY_STAGES.map((o) => {
               const on = stage.split(",").includes(o.value);
               return (
@@ -202,7 +202,8 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
                   key={o.value}
                   type="button"
                   onClick={() => toggleStage(o.value)}
-                  className={`rounded-md border px-2 py-1 text-xs font-bold transition-colors ${on ? "bg-brand-fill text-white border-brand-fill" : "bg-surface text-muted hover:text-foreground hover:border-brand/60"}`}
+                  aria-pressed={on}
+                  className="chip-toggle"
                   title={`${o.label} — pick one or more departments to narrow the columns`}
                 >
                   {o.short}

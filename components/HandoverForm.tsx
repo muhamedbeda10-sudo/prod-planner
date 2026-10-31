@@ -63,7 +63,7 @@ export function HandoverForm({
   return (
     <form onSubmit={submit} className="bg-surface border rounded-xl p-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
       <Field label="Date">
-        <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full border rounded-md px-2 py-2" />
+        <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="ctl w-full" />
       </Field>
 
       <Field label="Department">
@@ -78,7 +78,7 @@ export function HandoverForm({
       </Field>
 
       <Field label="Plan">
-        <select value={planNo} onChange={(e) => setPlanNo(e.target.value)} className="w-full border rounded-md px-2 py-2 font-bold">
+        <select value={planNo} onChange={(e) => setPlanNo(e.target.value)} className="ctl w-full font-bold">
           {plans.map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
       </Field>

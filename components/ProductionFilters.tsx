@@ -31,13 +31,13 @@ export function ProductionFilters({ scope, dept, centre }: { scope: ProductionSc
           </Link>
         ))}
       </nav>
-      <select aria-label="Department" className="py-1 text-sm" value={dept}
+      <select aria-label="Department" className="ctl" value={dept}
         onChange={(e) => {
           const v = e.target.value;
           const o = options.find((x) => x.value === v);
           go({ dept: v || null, lvDept: null, centre: null, scope: o ? o.line : scope === "all" ? null : scope });
         }}>
-        <option value="">Every department</option>
+        <option value="">Department: All</option>
         {scope === "all" ? (
           (["TR", "LV"] as const).map((l) => (
             <optgroup key={l} label={LINE_LABEL[l]}>
@@ -47,8 +47,8 @@ export function ProductionFilters({ scope, dept, centre }: { scope: ProductionSc
         ) : options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
       {centres && (
-        <select aria-label="Work centre" className="py-1 text-sm" value={centre} onChange={(e) => go({ centre: e.target.value || null })}>
-          <option value="">Every centre</option>
+        <select aria-label="Work centre" className="ctl" value={centre} onChange={(e) => go({ centre: e.target.value || null })}>
+          <option value="">Centre: All</option>
           {centres.map((c) => <option key={c} value={c}>{WORK_CENTRE_LABEL[c]}</option>)}
         </select>
       )}

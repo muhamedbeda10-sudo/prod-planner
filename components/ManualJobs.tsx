@@ -38,7 +38,7 @@ function useRun() {
   return { pending, err, run };
 }
 
-const FIELD = "border rounded-md px-2 py-1.5 bg-surface text-sm w-full";
+const FIELD = "ctl w-full";
 const LABEL = "block text-xs font-semibold text-muted mb-0.5";
 
 /** The job's own fields, as typed — the same form adds a job, changes one

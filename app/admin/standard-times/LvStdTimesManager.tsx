@@ -70,7 +70,7 @@ export function LvStdTimesManager({ rates, orders }: { rates: LvRate[]; orders: 
         <input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Description" className="px-1.5 py-1 w-44 mt-1 block text-xs" aria-label="Description" />
       </td>
       <td className="py-1.5">
-        <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className="px-1 py-1 text-xs" aria-label="Kind">
+        <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className="ctl" aria-label="Kind">
           <option value="USS">USS</option><option value="MB">Meter box</option><option value="FP">Feeder pillar</option>
         </select>
       </td>
@@ -166,7 +166,7 @@ export function LvStdTimesManager({ rates, orders }: { rates: LvRate[]; orders: 
               </label>
               <label className="block">
                 <span className="field-label">Kind</span>
-                <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className="px-1 py-1">
+                <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className="ctl w-full">
                   <option value="USS">USS</option><option value="MB">Meter box</option><option value="FP">Feeder pillar</option>
                 </select>
               </label>

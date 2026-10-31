@@ -31,17 +31,17 @@ export function ImportForm({ defaultDate }: { defaultDate: string }) {
         </label>
         <label className="block">
           <span className="block text-xs font-semibold text-muted mb-1">Plan number</span>
-          <input name="planNo" type="number" min={1} required className="w-full border rounded-md px-2 py-2 font-bold" />
+          <input name="planNo" type="number" min={1} required className="ctl w-full font-bold" />
         </label>
         <label className="block">
           <span className="block text-xs font-semibold text-muted mb-1">Real week start date</span>
-          <input name="startDate" type="date" defaultValue={defaultDate} required className="w-full border rounded-md px-2 py-2 font-bold" />
+          <input name="startDate" type="date" defaultValue={defaultDate} required className="ctl w-full font-bold" />
         </label>
         <label className="block md:col-span-2">
           <span className="block text-xs font-semibold text-muted mb-1">
             Sheet name <span className="font-normal">(optional)</span>
           </span>
-          <input name="sheet" type="text" placeholder="auto" className="w-full border rounded-md px-2 py-2" />
+          <input name="sheet" type="text" placeholder="auto" className="ctl w-full" />
         </label>
         <div className="md:col-span-2">
           <button type="submit" disabled={pending} className="bg-brand-fill text-white font-extrabold rounded-md px-6 py-2.5 disabled:opacity-50">

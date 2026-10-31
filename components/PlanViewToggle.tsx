@@ -51,10 +51,10 @@ export function WeekPlanPicker({ plans, value, basePath }: { plans: number[]; va
   const sp = useSearchParams();
 
   return (
-    <label className="col-span-full flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
-      <span className="filter-label">Week</span>
+    <span className="filter-chip">
       <select
-        className="ctl min-w-0 flex-1"
+        aria-label="Week"
+        className="ctl"
         value={value ?? ""}
         onChange={(e) => {
           const next = new URLSearchParams(sp.toString());
@@ -67,13 +67,12 @@ export function WeekPlanPicker({ plans, value, basePath }: { plans: number[]; va
           router.push(`/tracker?${next.toString()}`);
         }}
       >
-        {plans.length === 0 && <option value="">No weekly plans</option>}
+        {plans.length === 0 && <option value="">Week: No weekly plans</option>}
         {plans.map((p, i) => (
-          <option key={p} value={p}>
-            Plan {p}{i === 0 ? " (latest)" : ""}
+          <option key={p} value={p}>Week: Plan {p}{i === 0 ? " (latest)" : ""}
           </option>
         ))}
       </select>
-    </label>
+    </span>
   );
 }

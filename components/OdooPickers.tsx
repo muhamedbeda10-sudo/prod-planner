@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ODOO_BASES, ODOO_BASIS_LABEL, ODOO_COMPARES, ODOO_COMPARE_LABEL, type OdooBasis, type OdooBomOption, type OdooCompare } from "@/lib/domain/odooStats";
+import { FilterSelect } from "@/components/FilterControls";
 
 // The dashboard's period and basis pickers. They live apart from the charts
 // so the log view, which shows the pickers' neighbours but no chart, never
@@ -50,22 +51,17 @@ export function OdooBomPicker({ bom, boms }: { bom: string | null; boms: OdooBom
   };
   const total = boms.reduce((s, b) => s + b.rows, 0);
   return (
-    <label className="inline-flex items-center gap-1.5 text-sm" title="Count only one BOM's rows — the BOM of the closing, else the SOI's order, else the FG code's suffix (as the log shows it)">
-      <span className="text-xs font-bold text-muted uppercase tracking-wide">BOM</span>
-      <select
-        value={bom === null ? "all" : bom === "" ? "none" : bom}
-        onChange={(e) => go(e.target.value)}
-        aria-label="BOM"
-        className="border rounded-md px-2 py-1.5 bg-surface font-bold text-sm ltr max-w-[13rem]"
-      >
-        <option value="all">All BOMs{total > 0 ? ` (${total})` : ""}</option>
-        {boms.map((b) => (
-          <option key={b.bom || "none"} value={b.bom || "none"}>
-            {b.bom || "No known BOM"} ({b.rows})
-          </option>
-        ))}
-      </select>
-    </label>
+    <FilterSelect
+      label="BOM"
+      value={bom === null ? "all" : bom === "" ? "none" : bom}
+      emptyValue="all"
+      onChange={go}
+      title="Count only one BOM's rows — the BOM of the closing, else the SOI's order, else the FG code's suffix (as the log shows it)"
+      options={[
+        { value: "all", label: `All${total > 0 ? ` (${total})` : ""}` },
+        ...boms.map((b) => ({ value: b.bom || "none", label: `${b.bom || "No known BOM"} (${b.rows})` })),
+      ]}
+    />
   );
 }
 
@@ -81,13 +77,13 @@ export function OdooComparePicker({ compare }: { compare: OdooCompare }) {
     router.push(`${pathname}?${p}`);
   };
   return (
-    <label className="inline-flex items-center gap-1.5 text-sm" title="What the ▲▼ changes compare the period with">
-      <span className="text-xs font-bold text-muted uppercase tracking-wide">Compare with</span>
-      <select value={compare} onChange={(e) => go(e.target.value)} aria-label="Compare with" className="border rounded-md px-2 py-1.5 bg-surface font-bold text-sm">
-        {ODOO_COMPARES.map((c) => (
-          <option key={c} value={c}>{ODOO_COMPARE_LABEL[c]}</option>
-        ))}
-      </select>
-    </label>
+    <FilterSelect
+      label="Compare with"
+      value={compare}
+      emptyValue="prev"
+      onChange={go}
+      title="What the ▲▼ changes compare the period with"
+      options={ODOO_COMPARES.map((c) => ({ value: c, label: ODOO_COMPARE_LABEL[c] }))}
+    />
   );
 }

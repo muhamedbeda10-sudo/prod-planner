@@ -77,7 +77,7 @@ export function ShiftHistory({ history, dayISO, filter, today, editableDepts, on
     <section aria-label="Recorded shift days" className="space-y-3">
       {dialog}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h2 className="!mb-1">Recorded days <span className="text-muted font-normal">· {available.length.toLocaleString("en")}</span></h2><p className="text-xs text-muted">{scope} · all recorded dates · select days to delete together, or edit attendance and machine stops.</p></div>
+        <div><h2 className="!mb-1">Recorded days <span className="text-muted font-normal">· {available.length.toLocaleString("en")}</span></h2><p className="explain text-xs text-muted">{scope} · all recorded dates · select days to delete together, or edit attendance and machine stops.</p></div>
         <div className="flex flex-wrap items-end gap-2 no-print">
           <label className="text-xs font-semibold text-muted">Scope<select aria-label="History scope" value={filter} disabled={pending} className="block mt-1 ctl" onChange={(e) => { const p = new URLSearchParams(params.toString()); if (e.target.value) p.set("sec", e.target.value); else p.delete("sec"); p.set("view", "history"); router.push(`${pathname}?${p}`); }}><option value="">Everyone</option><option value="line:TR">Transformers</option><option value="line:LV">LV panels</option>{filter && !filter.startsWith("line:") && <option value={filter}>{scope}</option>}</select></label>
           <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); const day = String(new FormData(e.currentTarget).get("historyDate")); setFrom(day); setTo(day); setPage(0); setSelection(new Set()); router.push(href(day, "history")); }}>

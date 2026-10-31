@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-31-one-look-for-every-filter",
+    dateISO: "2026-10-31",
+    title: "Every filter looks the same, with its name inside",
+    where: "Every bar of the app: the ODOO dashboard's BOM and Compare with, the Production dashboard's department, the weekly plan's week, the tasks' filters, the month pickers, the import and record forms",
+    body: "A filter reads as one control with its name inside it (\"BOM: All\", \"Week: Plan 44\"), the same height and look everywhere. On a phone the date bar stands in one column — the period, the quick dates, then the page's own switches and filters, each the screen's width, buttons sharing a line — and a tablet's quick dates take a line of their own when the bar is tight. The ODOO dashboard no longer repeats the period under its bar nor explains what a card does; the Dept chips of the Plan Tracker and the weekly plan share the line equally.",
+  },
+  {
     id: "2026-10-29-phone-dates-counts",
     dateISO: "2026-10-29",
     title: "On a phone the date bar is one pick list, and the counts line up two by two",

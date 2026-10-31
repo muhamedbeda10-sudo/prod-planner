@@ -847,8 +847,8 @@ function ChangesCard({ data }: { data: AiAdminData }) {
       description="Everything it prepared or made, newest first — in a chat or by an automation."
       padded={false}
       end={
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="px-2 py-1 text-sm" aria-label="Filter by status">
-          <option value="">All</option>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} className="ctl" aria-label="Filter by status">
+          <option value="">Status: All</option>
           {Object.keys(CHANGE_TONE).map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       }

@@ -30,7 +30,7 @@ export function ShiftHoursForm({ short, long, overtime, nightOvertime = 3, compa
           value={v[k]}
           disabled={pending}
           onChange={(e) => setV((x) => ({ ...x, [k]: e.target.value }))}
-          className="border rounded-md px-2 py-1.5 bg-surface text-sm font-bold tabnum w-24 ltr"
+          className="ctl font-bold tabnum w-24 ltr"
         />
         <span className="text-xs text-muted">hours</span>
       </span>
