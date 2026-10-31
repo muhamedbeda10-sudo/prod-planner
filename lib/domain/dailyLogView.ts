@@ -1,5 +1,6 @@
 import { toISODate } from "@/lib/domain/dates";
 import { guardLedger } from "@/lib/domain/ledgerGuard";
+import { isCorrectionNote } from "@/lib/domain/corrections";
 
 // The Daily log as its screen reads it — each entry with the data guard's
 // warnings, and the screen's filters — shared with the assistant's sheet of
@@ -32,13 +33,14 @@ export interface LedgerEntry {
   source: string;
   createdBy: string | null;
   createdAt: Date;
+  note?: string | null;
 }
 
 /** The entries as the log lists them. The data guard runs over every entry
  *  given (not just what the filters show), so an outlier is judged against
  *  the whole history loaded. */
 export function logRowsOf(entries: readonly LedgerEntry[]): LogRow[] {
-  const flags = guardLedger(entries.map((r) => ({ id: r.id, dateISO: toISODate(r.date), dept: r.dept, bom: r.bom, mo: r.mo, item: r.item, qty: r.qty, createdISO: r.createdAt.toISOString() })));
+  const flags = guardLedger(entries.map((r) => ({ id: r.id, dateISO: toISODate(r.date), dept: r.dept, bom: r.bom, mo: r.mo, item: r.item, qty: r.qty, createdISO: r.createdAt.toISOString(), correction: isCorrectionNote(r.note) })));
   return entries.map((r) => ({
     id: r.id, date: toISODate(r.date), dept: r.dept, bom: r.bom, bomRaw: r.bomRaw, mo: r.mo, item: r.item, qty: r.qty,
     source: r.source, createdBy: r.createdBy, flags: flags.get(r.id)?.map((f) => f.detail) ?? null,
@@ -56,12 +58,12 @@ export interface LogFilters {
   to?: string;
 }
 
-/** The rows the log shows under its filters. */
 /** How far back the Daily log reads, in days: a little past its date
  *  picker's 60, so last month is whole whatever day of this one it is. The
  *  data guard reads the same history on the screen and in its Excel. */
 export const DAILY_LOG_DAYS = 62;
 
+/** The rows the log shows under its filters. */
 export function filterLogRows<T extends LogRow>(rows: readonly T[], f: LogFilters): T[] {
   const needle = (f.q ?? "").trim().toUpperCase();
   return rows.filter((r) => {

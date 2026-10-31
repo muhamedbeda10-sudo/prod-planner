@@ -29,7 +29,8 @@ import { ODOO_EXACT_FROM_LABEL } from "@/lib/domain/trackerOdoo";
 // A panel is one thing that passes four stages in order, so its row is four
 // cells — punched, bent, welded, painted — where a transformer's
 // is a grid. The cells record the way the transformer tracker's do: click,
-// type the NEW total, the difference lands in today's daily log; a merged
+// type the NEW total, a rise lands in today's daily log (a fall is dated on
+// the work it takes back); a merged
 // BOM row spreads a total over its MOs in order and shows which before it
 // is saved. Same ledger, same corrections, same guard. It reads the way the
 // transformer sheet does, too: frozen identifiers, quiet stage states, the
@@ -259,7 +260,7 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
                 onKeyDown={(e) => { if (e.key === "Enter") save(editVal); if (e.key === "Escape") setEditKey(null); }}
                 className="w-16 border rounded-md px-1 py-0.5 text-center font-bold tabnum bg-surface text-foreground"
               />
-              <button type="button" onClick={() => save(editVal)} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title="Save — the difference lands in today's Daily Log">✓</button>
+              <button type="button" onClick={() => save(editVal)} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title="Save — a higher total lands in today's Daily Log, a lower one is a correction on the days of the work it takes back">✓</button>
               <button type="button" onClick={() => setEditKey(null)} disabled={pending} className="text-muted px-0.5" title="Cancel">✕</button>
             </span>
             {added !== 0 && !cellErr && (
@@ -275,7 +276,7 @@ export function LvTrackerTable({ rows, hasClosed, closedTotal, editableStages, c
             type="button" disabled={pending}
             onClick={() => { setEditKey(key); setEditVal(String(value)); setCellErr(""); }}
             className="print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 transition-shadow cursor-text"
-            title={`${words} — type the new total; the difference is recorded in today's Daily Log`}
+            title={`${words} — type the new total; a rise is recorded today, a fall on the days of the work it takes back`}
           >
             {value > 0 ? value : <span className="print-only">0</span>}
           </button>

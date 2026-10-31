@@ -58,6 +58,8 @@ export function stockView(r: StockRow): StockView {
     Math.abs(r.physical) < tol && Math.abs(r.odoo) < tol ? "empty"
     : Math.abs(r.physical) < tol ? "uncounted"
     : Math.abs(diff) < tol ? "match" : diff < 0 ? "short" : "over";
+  // a code not counted has no gap to show — 0 and no share, not a red −100%
+  if (status === "uncounted") return { ...r, group: stockGroupOf(r.name), diff: 0, diffPct: null, status };
   return { ...r, group: stockGroupOf(r.name), diff: Math.abs(diff) < tol ? 0 : diff, diffPct: r.odoo > 0 ? Math.round((diff / r.odoo) * 100) : null, status };
 }
 

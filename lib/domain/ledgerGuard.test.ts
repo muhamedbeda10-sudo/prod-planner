@@ -72,8 +72,12 @@ describe("guardLedger — recording drift", () => {
   });
 
   it("does not call a correction dated back on the work it takes back late", () => {
-    const e = entry({ id: 701, qty: -4, dateISO: "2026-07-01", createdISO: `2026-07-${String(2 + LATE_DAYS).padStart(2, "0")}T09:00:00Z` });
+    const e = entry({ id: 701, qty: -4, correction: true, dateISO: "2026-07-01", createdISO: `2026-07-${String(2 + LATE_DAYS).padStart(2, "0")}T09:00:00Z` });
     expect(guardLedger([e]).get(701)).toBeUndefined();
+    // two corrections typed on two days can land on one work day: two, not a duplicate
+    expect(guardLedger([entry({ id: 702, qty: -1, correction: true }), entry({ id: 703, qty: -1, correction: true })]).size).toBe(0);
+    // a negative row typed by hand long after is still late
+    expect(guardLedger([{ ...e, id: 704, correction: false }]).get(704)?.[0].type).toBe("late");
   });
 
   it("allows the normal next-morning recording", () => {

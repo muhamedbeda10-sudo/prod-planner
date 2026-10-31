@@ -1153,8 +1153,9 @@ export function MasterTrackerTable({
 
   /** One stage cell on a single-MO row. For depts the user can edit, clicking
    *  the number opens an inline editor: type the NEW cumulative total, the
-   *  difference is recorded in the Daily Log dated today (and flows to the
-   *  dept's worklist). A LOWER total records a NEGATIVE correction entry —
+   *  difference is recorded in the Daily Log — a rise dated today (it flows to
+   *  the dept's worklist), a LOWER total as NEGATIVE corrections dated on the
+   *  work they take back —
    *  the chain guard (painted ≤ welded ≤ cut ≤ order) blocks contradictions. */
   function stageCell(r: MasterTrackerRow, it: Item, dept: string, value: number, bottleneck = false) {
     const k = `${r.mo}|${it}|${dept}`;
@@ -1207,7 +1208,7 @@ export function MasterTrackerTable({
             />
             {added > 0 && <span className="text-[11px] font-bold text-ok-fg whitespace-nowrap">+{added} today</span>}
             {added < 0 && (
-              <span className="text-[11px] font-bold text-bad-fg whitespace-nowrap" title="Recorded as a negative correction entry in today's Daily Log">
+              <span className="text-[11px] font-bold text-bad-fg whitespace-nowrap" title="Recorded as a negative correction, dated on the days of the work it takes back (the latest first)">
                 −{-added} correction
               </span>
             )}
@@ -1225,7 +1226,7 @@ export function MasterTrackerTable({
               // print-as-text: the figure IS the cell — print CSS blanks buttons
               // inside tables, which would empty every editable stage cell
               className={`print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 focus:ring-2 focus:ring-brand focus:outline-none transition-shadow cursor-text ${err ? "ring-2 ring-bad-fg" : ""}`}
-              title={`${deptLabel(dept)} · ${r.mo} · ${it}: ${status}${bottleneck ? " · the stage holding this order back" : ""} — type the NEW total (a lower one records a correction in today's Daily Log); arrows move, Escape drops it`}
+              title={`${deptLabel(dept)} · ${r.mo} · ${it}: ${status}${bottleneck ? " · the stage holding this order back" : ""} — type the NEW total (a lower one records a correction on the days of the work it takes back); arrows move, Escape drops it`}
               aria-label={`${deptLabel(dept)} ${it} for ${r.mo}: ${value}`}
             >
               {value > 0 ? value : <span className="print-only">0</span>}
@@ -1345,7 +1346,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                 same function the server records with; the server still decides
                 and refuses anything that does not fit. */}
             {added !== 0 && (
-              <span className={`text-[11px] font-bold whitespace-nowrap ${added > 0 ? "text-ok-fg" : "text-bad-fg"}`} title={added > 0 ? "Each MO is filled to its own limit before the next is touched" : "Taken back off the LAST MOs first — recorded as negative corrections in today's Daily Log"}>
+              <span className={`text-[11px] font-bold whitespace-nowrap ${added > 0 ? "text-ok-fg" : "text-bad-fg"}`} title={added > 0 ? "Each MO is filled to its own limit before the next is touched" : "Taken back off the LAST MOs first — recorded as negative corrections on the days of the work they take back"}>
                 {spreadPreview(members, it, dept, added) || (added > 0 ? `+${added}` : `−${-added} correction`)}
               </span>
             )}

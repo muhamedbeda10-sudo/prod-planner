@@ -49,7 +49,7 @@ describe("physical stock", () => {
     expect(stockView({ code: "c", name: "", uom: "KG", physical: 3696, odoo: 3696.59 })).toMatchObject({ status: "match", diff: 0 });
     expect(stockView({ code: "d", name: "", uom: "PC", physical: 0, odoo: 0 })).toMatchObject({ status: "empty", diffPct: null });
     // a count of 0 against Odoo's stock is a code not counted, not a bare shelf
-    expect(stockView({ code: "e", name: "", uom: "KG", physical: 0, odoo: 39567 })).toMatchObject({ status: "uncounted" });
+    expect(stockView({ code: "e", name: "", uom: "KG", physical: 0, odoo: 39567 })).toMatchObject({ status: "uncounted", diff: 0, diffPct: null });
   });
 
   it("sums per unit of measure, never mixing pieces and kilos", () => {

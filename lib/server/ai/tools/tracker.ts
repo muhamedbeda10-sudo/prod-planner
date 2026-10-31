@@ -744,7 +744,7 @@ export const recordStageTotalsTool: WriteTool<TotalsInput> = {
   name: "record_stage_totals",
   title: "Record totals on the tracker",
   description:
-    "Type the NEW cumulative total of one tracker column (a stage) for one component on one or several orders, as the tracker's cells do: the difference lands in today's Daily log (a lower total is a correction). The chain is re-checked (delivered ≤ finished ≤ welded ≤ cut ≤ order). Read get_orders first for the current totals.",
+    "Type the NEW cumulative total of one tracker column (a stage) for one component on one or several orders, as the tracker's cells do: a higher total lands in today's Daily log; a lower one is a correction, dated on the days of the work it takes back (the latest first). The chain is re-checked (delivered ≤ finished ≤ welded ≤ cut ≤ order). Read get_orders first for the current totals.",
   area: "tracker",
   risk: "high",
   schema: {
@@ -785,14 +785,14 @@ export const recordStageTotalsTool: WriteTool<TotalsInput> = {
       if (ord.line === "LV") return { error: `${t.mo} is an LV panel order — use record_lv_totals.` };
       const chain = await checkOutputChain({ dept: i.dept, bom: ord.bom, mo: t.mo, item: i.item, qty: t.total - was });
       if (chain) return { error: chain };
-      changes.push({ label: `${t.mo} ${i.item} ${i.dept}`, before: cell(was), after: `${cell(t.total)} (${t.total > was ? "+" : ""}${t.total - was} today)` });
+      changes.push({ label: `${t.mo} ${i.item} ${i.dept}`, before: cell(was), after: `${cell(t.total)} (${t.total > was ? "+" : ""}${t.total - was}${t.total > was ? " today" : ", on the work it takes back"})` });
       moving.push(t);
     }
     if (changes.length === 0) return { error: "Every total reads so already." };
     return {
       // the headline names the order that changes, not the first one listed
       title: changes.length === 1 ? `${moving[0].mo} ${i.item} ${i.dept}: ${changes[0].before} → ${moving[0].total}` : `${i.item} ${i.dept} on ${changes.length} orders`,
-      summary: `Record the ${i.dept} totals of ${i.item}: ${moving.map((t) => `${t.mo} ${cur.get(t.mo) ?? 0} → ${t.total}`).join(", ")} — the differences go into today's Daily log.`,
+      summary: `Record the ${i.dept} totals of ${i.item}: ${moving.map((t) => `${t.mo} ${cur.get(t.mo) ?? 0} → ${t.total}`).join(", ")} — a rise goes into today's Daily log, a fall is dated on the work it takes back.`,
       changes,
       snapshot: i.totals.map((t) => ({ mo: t.mo, total: cur.get(t.mo) ?? 0 })),
     };
@@ -874,10 +874,10 @@ export const recordBomTotalTool: WriteTool<BomTotalInput> = {
     if (spread.left > 0) return { error: delta > 0 ? `Only ${spread.fits} more pieces fit on these orders (the chain and the order quantities).` : `Only ${spread.fits} can be taken off (later stages already used the rest).` };
     return {
       title: `${i.bom} ${i.item} ${i.dept}: ${current} → ${i.total}`,
-      summary: `Record ${i.bom}'s ${i.item} ${i.dept} total ${current} → ${i.total}: ${spread.alloc.map((a) => `${a.mo} ${a.qty > 0 ? "+" : ""}${a.qty}`).join(", ")} in today's Daily log.`,
+      summary: `Record ${i.bom}'s ${i.item} ${i.dept} total ${current} → ${i.total}: ${spread.alloc.map((a) => `${a.mo} ${a.qty > 0 ? "+" : ""}${a.qty}`).join(", ")} in the Daily log (a rise today, a fall dated on the work it takes back).`,
       changes: spread.alloc.map((a) => {
         const was = stageOfMember(members.find((m) => m.mo === a.mo)!, i.dept);
-        return { label: `${a.mo} ${i.item} ${i.dept}`, before: cell(was), after: `${was + a.qty} (${a.qty > 0 ? "+" : ""}${a.qty} today)` };
+        return { label: `${a.mo} ${i.item} ${i.dept}`, before: cell(was), after: `${was + a.qty} (${a.qty > 0 ? "+" : ""}${a.qty}${a.qty > 0 ? " today" : ", on the work it takes back"})` };
       }),
       // everything the spread reads: the stage figures, each order's quantity,
       // its outsourced share and whether it needs the component at all
@@ -939,7 +939,7 @@ export const recordLvTotalsTool: WriteTool<LvTotalsInput> = {
   name: "record_lv_totals",
   title: "Record totals on the LV tracker",
   description:
-    "Type the NEW cumulative total of one LV tracker stage (Punching, Bending, Welding, Painting, Delivered) on one or several panel orders: the difference lands in today's Daily log. The chain is re-checked (delivered ≤ painted ≤ welded ≤ bent ≤ punched ≤ order).",
+    "Type the NEW cumulative total of one LV tracker stage (Punching, Bending, Welding, Painting, Delivered) on one or several panel orders: a higher total lands in today's Daily log; a lower one is a correction, dated on the days of the work it takes back (the latest first). The chain is re-checked (delivered ≤ painted ≤ welded ≤ bent ≤ punched ≤ order).",
   area: "tracker",
   risk: "high",
   schema: {
@@ -974,13 +974,13 @@ export const recordLvTotalsTool: WriteTool<LvTotalsInput> = {
       if (was === t.total) continue;
       const err = lvChainError(s, i.stage, t.total - was, t.mo);
       if (err) return { error: err };
-      changes.push({ label: `${t.mo} ${i.stage}`, before: cell(was), after: `${t.total} (${t.total > was ? "+" : ""}${t.total - was} today)` });
+      changes.push({ label: `${t.mo} ${i.stage}`, before: cell(was), after: `${t.total} (${t.total > was ? "+" : ""}${t.total - was}${t.total > was ? " today" : ", on the work it takes back"})` });
       moving.push(t);
     }
     if (changes.length === 0) return { error: "Every total reads so already." };
     return {
       title: changes.length === 1 ? `${changes[0].label}: ${changes[0].before} → ${moving[0].total}` : `LV ${i.stage} on ${changes.length} orders`,
-      summary: `Record the LV ${i.stage} totals: ${moving.map((t) => `${t.mo} → ${t.total}`).join(", ")} — the differences go into today's Daily log.`,
+      summary: `Record the LV ${i.stage} totals: ${moving.map((t) => `${t.mo} → ${t.total}`).join(", ")} — a rise goes into today's Daily log, a fall is dated on the work it takes back.`,
       changes,
       snapshot: i.totals.map((t) => ({ mo: t.mo, state: states.get(t.mo) })),
     };
@@ -1062,10 +1062,10 @@ export const recordLvBomTotalTool: WriteTool<LvBomTotalInput> = {
     }
     return {
       title: `${i.bom} LV ${i.stage}: ${current} → ${i.total}`,
-      summary: `Record ${i.bom}'s LV ${i.stage} total ${current} → ${i.total}: ${spread.alloc.map((a) => `${a.mo} ${a.qty > 0 ? "+" : ""}${a.qty}`).join(", ")} in today's Daily log.`,
+      summary: `Record ${i.bom}'s LV ${i.stage} total ${current} → ${i.total}: ${spread.alloc.map((a) => `${a.mo} ${a.qty > 0 ? "+" : ""}${a.qty}`).join(", ")} in the Daily log (a rise today, a fall dated on the work it takes back).`,
       changes: spread.alloc.map((a) => {
         const was = lvStageOf(g.rows.find((r) => r.mo === a.mo)!.state, i.stage);
-        return { label: `${a.mo} ${i.stage}`, before: cell(was), after: `${was + a.qty} (${a.qty > 0 ? "+" : ""}${a.qty} today)` };
+        return { label: `${a.mo} ${i.stage}`, before: cell(was), after: `${was + a.qty} (${a.qty > 0 ? "+" : ""}${a.qty}${a.qty > 0 ? " today" : ", on the work it takes back"})` };
       }),
       snapshot: g.rows,
     };

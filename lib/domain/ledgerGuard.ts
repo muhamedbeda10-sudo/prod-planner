@@ -15,6 +15,9 @@ export interface GuardEntry {
   item: string;
   qty: number;
   createdISO: string; // when it was actually recorded
+  /** A tracker correction, dated back on the work it takes back on purpose
+   *  (lib/domain/corrections) — never late, and two on one day are two. */
+  correction?: boolean;
 }
 
 export interface GuardFlag {
@@ -74,6 +77,8 @@ export function guardLedger(entries: GuardEntry[]): Map<number, GuardFlag[]> {
   // ---- exact duplicates: the same record twice on the same day ----
   const dupes = new Map<string, GuardEntry[]>();
   for (const e of entries) {
+    // corrections typed on two days can land on the same work day
+    if (e.correction) continue;
     const k = `${e.dateISO}|${e.dept}|${e.item}|${e.bom}|${e.mo ?? ""}|${e.qty}`;
     if (!dupes.has(k)) dupes.set(k, []);
     dupes.get(k)!.push(e);
@@ -97,9 +102,9 @@ export function guardLedger(entries: GuardEntry[]): Map<number, GuardFlag[]> {
     const createdDay = Number.isNaN(created.getTime()) ? Number.NaN : Math.floor(Date.parse(`${factoryDayISO(created)}T00:00:00Z`) / 86400000);
     if (Number.isNaN(workDay) || Number.isNaN(createdDay)) continue;
     const lag = createdDay - workDay;
-    // a correction is dated back on the work it takes back, so its lag is by
+    // a correction is dated back on the work it takes back: its lag is by
     // design, not a backfill
-    if (lag > LATE_DAYS && e.qty > 0) {
+    if (lag > LATE_DAYS && !e.correction) {
       add(e.id, { type: "late", detail: `recorded ${lag} days after the work date — backfilled from memory?` });
     } else if (lag < 0) {
       add(e.id, { type: "future", detail: "work date is AFTER the day this was recorded — output claimed in advance?" });

@@ -17,7 +17,7 @@ import { TANK_ITEM } from "@/lib/domain/tanks";
 import { mintTankSerials, unmintTankSerials } from "@/lib/server/tanks";
 import { resolveWorker } from "@/lib/server/workers";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
-import { correctionRows } from "@/lib/server/corrections";
+import { writeCorrection } from "@/lib/server/corrections";
 import { loadGroupMembers, groupTotal, groupShownTotal, spreadGroupChange, memberAt } from "@/lib/server/groupRecord";
 import { readBase, shownStageTotal, staleTotalError } from "@/lib/domain/trackerEdit";
 import { LV_ITEM, LV_STAGES, lvStageAt } from "@/lib/domain/lv";
@@ -189,10 +189,10 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
 }
 
 /** Plan-tracker inline edit: the user types the NEW cumulative total for one
- *  MO × item × their own dept — the DIFFERENCE is recorded as a daily-log
- *  entry dated today, so it shows up in Daily Logs and the dept's worklist
- *  immediately. A HIGHER total logs work done ahead of the plan; a LOWER
- *  total records a NEGATIVE correction entry. Either way the physical chain
+ *  MO × item × their own dept — the DIFFERENCE is recorded in the Daily log,
+ *  so it shows up there and on the dept's worklist immediately. A HIGHER
+ *  total logs work done today; a LOWER total records NEGATIVE correction
+ *  entries, dated on the days of the work they take back (writeCorrection). Either way the physical chain
  *  (painted ≤ welded ≤ cut ≤ order qty) is re-checked as a whole, so the
  *  numbers can never end up contradicting each other. */
 export async function recordTrackerTotal(formData: FormData): Promise<RecordResult> {
@@ -260,17 +260,12 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
     const syncsTanks = tankTracking && item === TANK_ITEM && dept === "Welding";
     const failure = await prisma.$transaction(async (tx) => {
       if (delta < 0) {
-        // a correction is dated on the days of the work it takes back, not today
-        for (const part of await correctionRows(tx, { dept, mo, item }, -delta, today, planNo)) {
-          await tx.handoverEntry.create({
-            data: {
-              date: part.date, dept, bom, mo, item, qty: part.qty, planNo: part.planNo, source: "tracker",
-              // negative corrections say exactly what happened for the audit trail
-              note: `tracker correction: total ${current} → ${newTotal}`,
-              createdBy: guard.user?.name ?? null,
-            },
-          });
-        }
+        // a correction is dated on the days of the work it takes back, not
+        // today; its note says exactly what happened, for the audit trail
+        await writeCorrection(tx, {
+          dept, bom, mo, item, take: -delta, today, fallbackPlan: planNo, source: "tracker",
+          note: `tracker correction: total ${current} → ${newTotal}`, by: guard.user?.name ?? null,
+        });
       } else {
         const ledger = await tx.handoverEntry.create({
           data: { date: today, dept, bom, mo, item, qty: delta, planNo, source: "tracker", note: null, createdBy: guard.user?.name ?? null },
@@ -432,16 +427,11 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
       for (const [mo, q] of alloc) {
         if (q < 0) {
           // a correction is dated on the days of the work it takes back, not today
-          for (const part of await correctionRows(tx, { dept, mo, item }, -q, today, planNo)) {
-            await tx.handoverEntry.create({
-              data: {
-                date: part.date, dept, bom, mo, item, qty: part.qty, planNo: part.planNo,
-                source: source === "tracker" ? "tracker" : source === "weekly" ? "weekly" : "worklist",
-                note: `group correction: ${bom} ${item} total ${current} → ${newTotal}`,
-                createdBy: by,
-              },
-            });
-          }
+          await writeCorrection(tx, {
+            dept, bom, mo, item, take: -q, today, fallbackPlan: planNo,
+            source: source === "tracker" ? "tracker" : source === "weekly" ? "weekly" : "worklist",
+            note: `group correction: ${bom} ${item} total ${current} → ${newTotal}`, by,
+          });
           if (syncsTanks) {
             const { short } = await unmintTankSerials(tx, { bom, mo, count: -q });
             if (short > 0) {

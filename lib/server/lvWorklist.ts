@@ -38,7 +38,12 @@ export async function getLvWorklist(stage: LvStage): Promise<LvWorklist> {
 
   const buckets = { rows: [] as LvWorklistRow[], upstream: [] as LvWorklistRow[], finished: [] as LvWorklistRow[], unplanned: [] as LvWorklistRow[] };
   const held: LvWorklistRow[] = open.filter((r) => r.hold.onHold).map(row);
-  for (const r of all) buckets[lvWorklistBucket(r.state, stage)].push(row(r));
+  for (const r of all) {
+    // wholly bought in (OSP Encloser): nothing is our stages' to make — it is
+    // finished here, not an order with no quantity planned
+    if (r.state.required === 0 && r.ospEncloser > 0) buckets.finished.push(row(r));
+    else buckets[lvWorklistBucket(r.state, stage)].push(row(r));
+  }
   const byUrgency = (a: LvWorklistRow, b: LvWorklistRow) => Number(b.urgent) - Number(a.urgent) || Number(b.priority) - Number(a.priority);
   buckets.rows.sort(byUrgency);
   return { stage, ...buckets, held };

@@ -10,7 +10,7 @@ import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
 import { spreadOverGroup } from "@/lib/domain/groupSpread";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
-import { correctionRows } from "@/lib/server/corrections";
+import { writeCorrection } from "@/lib/server/corrections";
 import { readBase, shownStageTotal, staleTotalError } from "@/lib/domain/trackerEdit";
 import { LV_ITEM, LV_STAGES, isLvChainStage, lvChainError, lvDeptPermKey, lvGroupMembers, lvPermKey, lvStageOf, type LvChainStage, type LvStage, type LvState } from "@/lib/domain/lv";
 import { UserError, userMessage } from "@/lib/server/errors";
@@ -59,18 +59,14 @@ async function todaysPlan(): Promise<{ today: Date; planNo: number }> {
 }
 
 /** A stage's change on one order: output today, or — a total lowered — a
- *  correction dated on the days of the work it takes back (correctionRows).
+ *  correction dated on the days of the work it takes back (writeCorrection).
  *  The row written for output, for its ODOO closing; null for a correction. */
 async function writeDelta(tx: Tx, a: { mo: string; bom: string; stage: LvChainStage; delta: number; from: number; today: Date; planNo: number; by: string | null }) {
   if (a.delta < 0) {
-    for (const part of await correctionRows(tx, { dept: a.stage, mo: a.mo, item: LV_ITEM }, -a.delta, a.today, a.planNo)) {
-      await tx.handoverEntry.create({
-        data: {
-          date: part.date, dept: a.stage, bom: a.bom, mo: a.mo, item: LV_ITEM, qty: part.qty, planNo: part.planNo, source: "tracker",
-          note: `tracker correction: total ${a.from} → ${a.from + a.delta}`, createdBy: a.by,
-        },
-      });
-    }
+    await writeCorrection(tx, {
+      dept: a.stage, bom: a.bom, mo: a.mo, item: LV_ITEM, take: -a.delta, today: a.today, fallbackPlan: a.planNo, source: "tracker",
+      note: `tracker correction: total ${a.from} → ${a.from + a.delta}`, by: a.by,
+    });
     return null;
   }
   return tx.handoverEntry.create({
