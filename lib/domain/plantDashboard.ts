@@ -12,22 +12,19 @@
 import type { CockpitAction } from "./kpis";
 import { isWorkCentre, type WorkCentre } from "./shifts";
 import { productionRequest, type ProductionRequest } from "./productionDashboard";
-import { planningFiltersOf, type PlanningFilters, type PlanningScope } from "./planningDashboard";
+import { planningFiltersOf, scopeOfLine, type PlanningFilters } from "./planningDashboard";
 import { one, type Search } from "./dashboardLinks";
-import type { ProductLine } from "./lines";
-
-const SCOPE_OF_REQUEST: Record<ProductionRequest["scope"], PlanningScope> = { all: "all", TR: "tr", LV: "lv" };
+import { lineParam, type ProductLine } from "./lines";
 
 /** The page's address read once for both halves. The line switch is written
  *  lower case (tr, lv) and read either way — an older Production link wrote it
  *  upper case. */
 export function plantDashboardOf(sp: Search, todayISO: string): { f: PlanningFilters; req: ProductionRequest } {
-  const raw = (one(sp, "scope") ?? "").trim().toUpperCase();
-  const req = productionRequest({ ...sp, scope: raw === "TR" || raw === "LV" ? raw : undefined }, todayISO);
+  const req = productionRequest({ ...sp, scope: lineParam(one(sp, "scope")) ?? undefined }, todayISO);
   const base = planningFiltersOf(sp);
   return {
     req,
-    f: { ...base, scope: SCOPE_OF_REQUEST[req.scope], centre: planCentreOf(req), lvDept: req.lvDept === "all" ? null : req.lvDept },
+    f: { ...base, scope: scopeOfLine(req.scope === "all" ? null : req.scope), centre: planCentreOf(req), lvDept: req.lvDept === "all" ? null : req.lvDept },
   };
 }
 

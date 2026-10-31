@@ -39,7 +39,6 @@ import { TOTAL_LABEL } from "./sheetLayout";
 
 export const PRODUCTION_SCOPES = ["all", "TR", "LV"] as const;
 export type ProductionScope = (typeof PRODUCTION_SCOPES)[number];
-export const SCOPE_LABEL: Record<ProductionScope, string> = { all: "All", TR: "TR", LV: "LV" };
 
 /** The attendance card's shift: both, or the day or the night shift only. */
 export const SHIFT_FILTERS = ["both", "day", "night"] as const;

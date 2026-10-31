@@ -48,12 +48,8 @@ export function DeptFilter({ scope, dept, lvDept, centre, onChange }: {
           options={LV_FLOOR_DEPTS.map((d) => ({ value: d, label: LV_FLOOR_DEPT_LABEL[d] }))} />
       )}
       {centres && (
-        <span className={`filter-chip ${centre ? "filter-chip-on" : ""}`}>
-          <select aria-label="Work centre" className="ctl" value={centre} onChange={(e) => onChange({ centre: e.target.value || null })}>
-            <option value="">Centre: All</option>
-            {centres.map((c) => <option key={c} value={c}>Centre: {WORK_CENTRE_LABEL[c]}</option>)}
-          </select>
-        </span>
+        <FilterSelect label="Centre" value={centre} onChange={(v) => onChange({ centre: v || null })}
+          options={centres.map((c) => ({ value: c, label: WORK_CENTRE_LABEL[c] }))} />
       )}
     </>
   );

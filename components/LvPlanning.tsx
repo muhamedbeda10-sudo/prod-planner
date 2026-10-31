@@ -120,7 +120,7 @@ export function LvPlanning({ data, view, f, floor = true }: { data: LvShown; vie
       </div>
 
       {/* 3 — the stages day by day, over the period of its own — with the floor's figures on the page, their "What was made each day?" says it */}
-      {!floor && data.days && <LvStageTable d={data.days} today={data.todayISO} />}
+      {data.days && <LvStageTable d={data.days} today={data.todayISO} />}
 
       {/* 4 — every order still short */}
       <ChartCard title="At risk — the panels' orders still short"

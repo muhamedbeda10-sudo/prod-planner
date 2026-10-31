@@ -2,8 +2,8 @@
 
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { useHrefWith, useSetParams, withParams } from "@/components/useSetParam";
+import { useSearchParams } from "next/navigation";
+import { useHrefWith, useSetParams } from "@/components/useSetParam";
 import { DeptFilter } from "@/components/DeptFilter";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { CheckCircle2, Info } from "lucide-react";
@@ -57,9 +57,12 @@ export function useDetail() {
 
 /** Go to the page with some of its parameters set (null clears one), the
  *  rest of the address kept — a popup open is closed by any other choice. */
+/** Any choice closes the rows open over the page — the plan's figure (?detail=) and the floor's (?focus=, ?day=). */
+const CLOSE_POPUPS = { detail: null, focus: null, day: null } as const;
+
 function useGo() {
   const setParams = useSetParams();
-  return (set: Record<string, string | null>) => setParams({ detail: null, focus: null, day: null, ...set });
+  return (set: Record<string, string | null>) => setParams({ ...CLOSE_POPUPS, ...set });
 }
 
 // ---------------------------------------------------------------- the bar
@@ -84,8 +87,7 @@ export function DashboardBar({ f, req, plan = true, planNos, activePlan, asOf, p
   actions?: ReactNode;
 }) {
   const go = useGo();
-  const params = useSearchParams();
-  const pathname = usePathname();
+  const hrefWith = useHrefWith();
   const dept = req.scope === "LV" ? (req.lvDept === "all" ? "" : req.lvDept) : req.trDept === "all" ? "" : req.trDept;
   const filters = (
     <>
@@ -93,7 +95,7 @@ export function DashboardBar({ f, req, plan = true, planNos, activePlan, asOf, p
         {PLANNING_SCOPES.map((s) => (
           <Link key={s} scroll={false} aria-current={f.scope === s ? "page" : undefined} className={f.scope === s ? "on" : ""}
             // a new line drops the department, which named the old one
-            href={`${pathname}${withParams(params, { scope: s === "all" ? null : s, dept: null, lvDept: null, centre: null, detail: null, focus: null, day: null })}`}>
+            href={hrefWith({ ...CLOSE_POPUPS, scope: s === "all" ? null : s, dept: null, lvDept: null, centre: null })}>
             {PLANNING_SCOPE_LABEL[s]}
           </Link>
         ))}

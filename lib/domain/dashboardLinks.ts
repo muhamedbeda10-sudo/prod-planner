@@ -48,8 +48,5 @@ export function productionHref(o: {
 /** The old Production dashboard's address on the one dashboard: the same
  *  choices, as they were written (the line switch is read either case). */
 export function productionRedirectOf(sp: Search): string {
-  const q = new URLSearchParams();
-  for (const [k, v] of Object.entries(sp)) if (typeof v === "string" && v) q.set(k, v);
-  const s = q.toString();
-  return s ? `/?${s}` : "/";
+  return href("/", Object.fromEntries(Object.keys(sp).map((k) => [k, one(sp, k)])));
 }
