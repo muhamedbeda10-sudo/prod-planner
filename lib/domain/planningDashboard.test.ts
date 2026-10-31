@@ -70,11 +70,13 @@ describe("the Planning dashboard's address", () => {
 });
 
 describe("the line a page shows", () => {
-  it("is Planning's own scope, both on a plant dashboard, and none elsewhere", () => {
+  it("is the dashboard's own scope — or the line its department names — both under All, and none elsewhere", () => {
     expect(pageLineOf({ path: "/", filters: { scope: "lv" } })).toBe("LV");
+    expect(pageLineOf({ path: "/", filters: { scope: "TR" } })).toBe("TR");
     expect(pageLineOf({ path: "/", filters: {} })).toBe("both");
+    expect(pageLineOf({ path: "/", filters: { dept: "WeldingLV" } })).toBe("LV");
+    expect(pageLineOf({ path: "/", filters: { centre: "Fins" } })).toBe("TR");
     expect(pageLineOf({ path: "/dashboards/production", filters: { scope: "TR" } })).toBe("TR");
-    expect(pageLineOf({ path: "/dashboards/production", filters: {} })).toBe("both");
     expect(pageLineOf({ path: "/tracker", filters: {} })).toBeNull();
     expect(pageLineOf(null)).toBeNull();
   });

@@ -85,12 +85,13 @@ export function pinnedLine(path: string): ProductLine | null {
   return (PINNED_LINE as Record<string, ProductLine>)[path] ?? null;
 }
 
-/** The screens that show BOTH lines on one page — the plant dashboards,
- *  Planning and Production, a section per line. They take no line of their
- *  own: proxy.ts sends an address naming one to that line's section (#tr,
- *  #lv), and no line is carried onto them or from them. */
-/** How each of them takes a line an address names: Planning opens at its
- *  section (#tr, #lv), Production sets its own line switch (?scope=). */
+/** The screens that show BOTH lines on one page — the plant's dashboard (the
+ *  plan and the floor), a section per line. They take no line of their own:
+ *  proxy.ts sends an address naming one to that line's section (#tr, #lv),
+ *  and no line is carried onto them or from them. */
+/** How each of them takes a line an address names: the dashboard opens at
+ *  its section (#tr, #lv); the old Production address sets its line switch
+ *  (?scope=) on its way to the dashboard. */
 const LINE_ON_BOTH: Record<string, "section" | "scope"> = { "/": "section", "/dashboards/production": "scope" };
 export const BOTH_LINES: ReadonlySet<string> = new Set(Object.keys(LINE_ON_BOTH));
 

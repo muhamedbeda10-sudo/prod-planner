@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-31-planning-production-one-dashboard",
+    dateISO: "2026-10-31",
+    title: "Planning and Production are one dashboard",
+    where: "Dashboards → Planning & Production (the home page) — the Production place is gone; its old links open here",
+    href: "/",
+    body: "The plan and the floor are on one page under one bar: All | Transformers | LV Panels, the department (and on Fabrication a centre) that narrows both halves, the plan's filters, the floor's period, then Data, Worth a look and one Decisions list — the plan's decisions and the floor's interventions together, a slow centre said once. Under All the plant's std-h left and people to add come first, then each line's plan, then the Production section over the period; every section folds. Gone because they were said twice: a second line switch and department filter, the plant's copy of each line's headline tiles and its people table (each line's own \"Do we have the people?\" card shows them), and the panels' \"What moved on each stage?\" table (the Production section's \"What was made each day?\" shows the same, by component).",
+  },
+  {
     id: "2026-10-31-one-look-for-every-filter",
     dateISO: "2026-10-31",
     title: "Every filter looks the same, with its name inside",

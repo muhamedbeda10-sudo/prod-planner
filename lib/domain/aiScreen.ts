@@ -1,5 +1,5 @@
 import { showsBothLines, type ProductLine } from "./lines";
-import { tabForPath } from "./tabs";
+import { canSeePath, tabForPath } from "./tabs";
 
 const LABELS: Record<string, string> = {
   q: "Search", month: "Plan month", product: "Product", family: "Plan family",
@@ -28,7 +28,7 @@ export function aiPageContext(raw: unknown, hidden: ReadonlySet<string> = new Se
   const page = raw as { path?: unknown; filters?: unknown };
   if (typeof page.path !== "string" || page.path.length > 200 || !/^\/[a-z0-9/-]*$/.test(page.path)) return null;
   const tab = tabForPath(page.path);
-  if (!tab || hidden.has(tab.id)) return null;
+  if (!tab || !canSeePath(hidden, page.path)) return null;
   const filters: Record<string, string> = {};
   if (page.filters && typeof page.filters === "object" && !Array.isArray(page.filters)) {
     for (const key of Object.keys(LABELS)) {

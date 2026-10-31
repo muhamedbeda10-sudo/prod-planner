@@ -1,4 +1,4 @@
-// The Production dashboard (/dashboards/production): what did we make, at
+// The dashboard's Production section (the home page, /): what did we make, at
 // what efficiency, and where is the gap between the effort and the output —
 // for the transformers, the LV panels or the whole plant, over one period.
 // Pure, so every figure is tested without a database; lib/server/

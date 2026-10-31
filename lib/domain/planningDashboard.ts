@@ -25,6 +25,7 @@ import { traceHref } from "./links";
 import { hrefWithLine, lineParam, showsBothLines, type ProductLine } from "./lines";
 import { href, one, type Search } from "./dashboardLinks";
 import { parseISODate } from "./dates";
+import { productionRequest } from "./productionDashboard";
 
 const arg = (sp: Search, k: string) => (one(sp, k) ?? "").trim();
 /** A real calendar day as the address writes it, or null. */
@@ -101,13 +102,16 @@ export function planningUrl(f: PlanningFilters, patch: Partial<PlanningFilters> 
   });
 }
 
-/** The line a plant dashboard shows from its address — its own line switch
- *  (?scope=, Planning's and Production's alike), both under All — and null on
- *  any other page (the app's line). One answer for the chat's context and the
- *  assistant's tools. */
+/** The line the plant's dashboard shows from its address — its line switch
+ *  (?scope=, either case) or the department, which names its line — both
+ *  under All, and null on any other page (the app's line). One answer for the
+ *  chat's context and the assistant's tools. */
 export function pageLineOf(page: { path: string; filters: Search } | null | undefined): ProductLine | "both" | null {
   if (!page || !showsBothLines(page.path)) return null;
-  return lineParam(arg(page.filters, "scope")) ?? "both";
+  const scope = lineParam(arg(page.filters, "scope"));
+  // the scope does not hang on the period: any day reads it
+  const shown = productionRequest({ ...page.filters, scope: scope ?? undefined }, "2000-01-01").scope;
+  return shown === "all" ? "both" : shown;
 }
 
 /** Whether the line is on screen under the scope. */
