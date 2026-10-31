@@ -23,6 +23,14 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "A filter reads as one control with its name inside it (\"BOM: All\", \"Week: Plan 44\"), the same height and look everywhere. On a phone the date bar stands in one column — the period, the quick dates, then the page's own switches and filters, each the screen's width, buttons sharing a line — and a tablet's quick dates take a line of their own when the bar is tight. The ODOO dashboard no longer repeats the period under its bar nor explains what a card does; the Dept chips of the Plan Tracker and the weekly plan share the line equally.",
   },
   {
+    id: "2026-10-31-odoo-cancelled-not-logged",
+    dateISO: "2026-10-31",
+    title: "ODOO dashboard: a cancelled row no longer counts as logged",
+    where: "Dashboards → ODOO — the logged figures, Logged vs closed, the close rate, the burn-up and the BOM mix (the status mix still shows the cancelled rows)",
+    href: "/dashboards/odoo",
+    body: "The logged figures counted the Cancelled rows too — lines whose daily-log record was deleted or corrected to nothing — so logged stayed ahead of closed even when every real row was closed (October: 20 such rows, 110 pcs, on Transformers). A cancelled row now counts on neither side. What can still differ is real: a row logged at the end of one month and closed in the next counts as logged in the first and closed in the second.",
+  },
+  {
     id: "2026-10-29-phone-dates-counts",
     dateISO: "2026-10-29",
     title: "On a phone the date bar is one pick list, and the counts line up two by two",

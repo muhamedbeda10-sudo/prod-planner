@@ -171,6 +171,20 @@ describe("buildOdooDashboard", () => {
     expect(d.kpi.activeDays).toBe(1);
   });
 
+  it("leaves a cancelled row out of what was logged, so logged matches closed once every real row is closed", () => {
+    const rows: OdooStatRow[] = [
+      { dateISO: "2026-09-03", product: "Tank", qty: 5, status: "Done", doneISO: "2026-09-03" },
+      { dateISO: "2026-09-04", product: "Tank", qty: 6, status: "Cancelled", doneISO: null },
+      { dateISO: "2026-09-04", product: "Top Cover", qty: 2, status: "Cancel - duplicate", doneISO: null },
+    ];
+    for (const basis of ["logged", "closed"] as const) {
+      const d = buildOdooDashboard(rows, period, null, basis);
+      expect([d.kpi.loggedQty, d.kpi.loggedRows, d.kpi.doneQty, d.kpi.doneRows]).toEqual([5, 1, 5, 1]);
+      expect(d.days.find((x) => x.dateISO === "2026-09-04")!.loggedQty).toBe(0);
+    }
+    expect(buildOdooDashboard(rows, period).series).toEqual(["Tank"]);
+  });
+
   it("on the closed basis, spreads the closings over products and days by the Done day", () => {
     const d = buildOdooDashboard([
       { dateISO: "2026-09-03", product: "Tank", qty: 5, status: "Done", doneISO: "2026-09-07" },

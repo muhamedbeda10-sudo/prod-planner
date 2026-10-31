@@ -119,7 +119,7 @@ export function OdooInsightsSection({ ins, colorOf }: { ins: Insights; colorOf: 
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <ChartCard title="Close rate" about="Of the rows logged in the period, how many are Done by now" data={tables.funnel}>
+        <ChartCard title="Close rate" about="Of the rows logged in the period (a cancelled row left out), how many are Done by now" data={tables.funnel}>
           <Gauge value={ins.closeRate} label="Close rate" sub={`${fmt(f.done)} of ${fmt(f.logged)} rows Done`} />
           <div className="mt-3 grid grid-cols-3 text-center text-xs">
             <div><div className="text-lg font-semibold">{fmt(f.logged)}</div><div className="text-muted">logged</div></div>

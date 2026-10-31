@@ -373,7 +373,7 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
         <ChartCard title="Totals per product" about={`Quantity ${word} and share of the period.`}>
           <ProductTotals d={d} />
         </ChartCard>
-        <ChartCard title="Logged vs closed, per day" about="Logged on entry · closed when Done">
+        <ChartCard title="Logged vs closed, per day" about="Logged on entry · closed when Done · a cancelled row counts on neither">
           <LoggedVsClosed d={d} />
         </ChartCard>
       </div>
