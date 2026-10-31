@@ -1,4 +1,4 @@
-// The Production dashboard (/dashboards/production): what did we make, at
+// The dashboard's Production section (the home page, /): what did we make, at
 // what efficiency, and where is the gap between the effort and the output —
 // for the transformers, the LV panels or the whole plant, over one period.
 // Pure, so every figure is tested without a database; lib/server/
@@ -39,7 +39,6 @@ import { TOTAL_LABEL } from "./sheetLayout";
 
 export const PRODUCTION_SCOPES = ["all", "TR", "LV"] as const;
 export type ProductionScope = (typeof PRODUCTION_SCOPES)[number];
-export const SCOPE_LABEL: Record<ProductionScope, string> = { all: "All", TR: "TR", LV: "LV" };
 
 /** The attendance card's shift: both, or the day or the night shift only. */
 export const SHIFT_FILTERS = ["both", "day", "night"] as const;

@@ -8,7 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList, Warehouse,
   Table2, BookOpenCheck, ListChecks, ChevronDown,
   CalendarDays, CalendarRange, Users, Timer,
-  MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus, Bot, Gauge,
+  MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus, Bot,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -66,15 +66,14 @@ const LINE_GROUPS = PRODUCT_LINES.map((line) => ({ line, label: LINE_LABEL[line]
 // panel of its places, which is the only way between them — the pages carry
 // no strip of their own. A place's own views stay behind the switch in its
 // toolbar (components/ViewTabs.tsx).
-//   Dashboards   → every dashboard, one place each: Planning (the home page),
-//                  Production, Material, Consumables, ODOO
+//   Dashboards   → every dashboard, one place each: Planning & Production (the
+//                  home page), Material, Consumables, ODOO
 //   Material     → the nesting sheets, the store's physical count, and the
 //                  consumables it hands out
 //   Plan Tracker → the tracker, the daily log, the what-if simulator and the ODOO close-out log
 // Chat is not here at all — it is the icon in the right cluster.
 const DASHBOARD_PLACES: Place[] = [
-  { href: "/", label: "Planning", icon: LayoutDashboard, title: "The plan: what needs a decision, the week, the load ahead, the month and its people" },
-  { href: "/dashboards/production", label: "Production", icon: Gauge, title: "How the floor worked: output, efficiency, where the hours went, what stopped the machines" },
+  { href: "/", label: "Planning & Production", icon: LayoutDashboard, title: "The plan and the floor on one page: what needs a decision, the week, the load ahead, the month and its people — then what was made, at what efficiency, where the hours went" },
   { href: "/dashboards/material", label: "Material", icon: ChartColumnBig, title: "BOM need, nesting, the steel ODOO closings consumed by calculation, and how much the data covers" },
   { href: "/dashboards/consumables", label: "Consumables", icon: PackageMinus, title: "What went out, to whom, against the limits — and the monthly review" },
   { href: "/dashboards/odoo", label: "ODOO", icon: Boxes, title: "Closed quantities per product and the close-out time" },
@@ -118,7 +117,6 @@ const AFTER_FLOOR: Item[] = [
 // The drawer has room for the views that ride inside a tab on desktop, so a
 // phone reaches them in one tap instead of two.
 const DRAWER_VIEWS: Item[] = [
-  { href: "/dashboards/production", label: "Production dashboard", icon: Gauge },
   { href: "/dashboards/material", label: "Material dashboard", icon: ChartColumnBig },
   { href: "/dashboards/consumables", label: "Consumables dashboard", icon: ChartColumnBig },
   { href: "/dashboards/odoo", label: "ODOO dashboard", icon: ChartColumnBig },

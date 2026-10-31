@@ -50,17 +50,14 @@ export function DecisionList({ actions, onOpen, nothing = NOTHING }: { actions: 
   );
 }
 
-/** What a list is: a decision (the Planning dashboard) or an intervention
- *  (the Production dashboard) — the button, the popup and the paper name it. */
-export type DecisionKind = "decision" | "intervention";
-const KIND = {
-  decision: { noun: "a decision", title: "Needs a decision today", button: "Decisions", nothing: NOTHING },
-  intervention: { noun: "an intervention", title: "Needs intervention in production", button: "Interventions", nothing: "Nothing pressing on the floor." },
-} as const;
+/** The list's own wording — the button, the popup and the paper name it —
+ *  unless a page brings its own (`copy`). The dashboard's one list holds the
+ *  plan's decisions and the floor's interventions together. */
+const DECISION = { noun: "a decision", title: "Needs a decision today", button: "Decisions", nothing: NOTHING } as const;
 
 /** The list as the paper carries it — the popup's content, printed. */
-export function PrintDecisions({ actions, kind = "decision", nothing, copy, notes = [] }: { actions: readonly (CockpitAction & { line?: string })[]; kind?: DecisionKind; nothing?: string; copy?: DecisionCopy; notes?: readonly string[] }) {
-  const k = copy ?? KIND[kind];
+export function PrintDecisions({ actions, nothing, copy, notes = [] }: { actions: readonly (CockpitAction & { line?: string })[]; nothing?: string; copy?: DecisionCopy; notes?: readonly string[] }) {
+  const k = copy ?? DECISION;
   return (
     <section className="print-only" aria-label={k.title}>
       <h2>{k.title}</h2>
@@ -83,16 +80,15 @@ function Notes({ notes }: { notes: readonly string[] }) {
 /** A list's own wording, where neither preset fits (a dashboard's data checks). */
 export interface DecisionCopy { noun: string; title: string; button: string; nothing: string; when?: string }
 
-export function CockpitDecisions({ actions, kind = "decision", copy, notes = [] }: {
+export function CockpitDecisions({ actions, copy, notes = [] }: {
   actions: readonly (CockpitAction & { line?: string })[];
-  kind?: DecisionKind;
   copy?: DecisionCopy;
   /** Lines under the list that need no one (not counted). */
   notes?: readonly string[];
 }) {
   const [open, setOpen] = useState(false);
   const ai = useAiPanel();
-  const k = copy ?? KIND[kind];
+  const k = copy ?? DECISION;
   const when = copy ? (copy.when ? ` ${copy.when}` : "") : " today";
   const worst = actions.some((a) => a.tone === "bad") ? "bad" : actions.some((a) => a.tone === "warn") ? "warn" : actions.length > 0 ? "info" : null;
   const Icon = worst ? ACTION_ICON[worst] : CheckCircle2;

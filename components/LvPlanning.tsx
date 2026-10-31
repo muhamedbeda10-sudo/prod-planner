@@ -23,7 +23,10 @@ import type { LvPlanningData } from "@/lib/server/lvKpis";
 // assistant reads the same loader. A tile opens the rows it is the sum of.
 
 /** What the section reads of the panels' planning — the page sends no more to the browser. */
-export type LvShown = Pick<LvPlanningData, "todayISO" | "month" | "open" | "wip" | "manpower" | "days" | "family">;
+export type LvShown = Pick<LvPlanningData, "todayISO" | "month" | "open" | "wip" | "manpower" | "family"> & {
+  /** The stages day by day — sent only when the floor's figures are not on the page. */
+  days?: LvPlanningData["days"];
+};
 
 export function LvPlanning({ data, view, f, floor = true }: { data: LvShown; view: LvView; f: PlanningFilters; floor?: boolean }) {
   const m = data.month;
@@ -116,8 +119,8 @@ export function LvPlanning({ data, view, f, floor = true }: { data: LvShown; vie
         </ChartCard>
       </div>
 
-      {/* 3 — the stages day by day, over the period of its own */}
-      <LvStageTable d={data.days} today={data.todayISO} />
+      {/* 3 — the stages day by day, over the period of its own — with the floor's figures on the page, their "What was made each day?" says it */}
+      {data.days && <LvStageTable d={data.days} today={data.todayISO} />}
 
       {/* 4 — every order still short */}
       <ChartCard title="At risk — the panels' orders still short"

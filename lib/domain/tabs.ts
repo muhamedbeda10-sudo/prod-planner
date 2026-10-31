@@ -33,13 +33,13 @@ export const TABS: TabDef[] = [
   // each dashboard of the Dashboards tab is seen with the screen it reads
   { id: "odoo", label: "ODOO log (Plan Tracker) and its dashboard", group: "Plan Tracker", paths: ["/odoo", "/dashboards/odoo"] },
   { id: "consumables", label: "Material · Consumables (and its dashboard)", group: "Production", paths: ["/consumables", "/dashboards/consumables"] },
-  // the Production dashboard is the shift log's figures
-  { id: "shifts", label: "Shifts (and the Production dashboard)", group: "Production", paths: ["/shifts", "/dashboards/production"] },
+  // the dashboard's Production section is the shift log's figures
+  { id: "shifts", label: "Shifts (and the dashboard's Production section)", group: "Production", paths: ["/shifts"] },
   { id: "barcode", label: "Tank barcodes", group: "Production", paths: ["/barcode", "/tank"] },
   { id: "chat", label: "Chat", group: "Production", paths: ["/chat"] },
 
   // the id stays "dashboard": an account the home page was switched off for keeps it off
-  { id: "dashboard", label: "Dashboards · Planning (home)", group: "Plan Tracker", paths: ["/"] },
+  { id: "dashboard", label: "Dashboards · Planning & Production (home)", group: "Plan Tracker", paths: ["/"] },
   { id: "tracker", label: "Plan Tracker", group: "Plan Tracker", paths: ["/tracker"] },
   { id: "handover", label: "Daily log", group: "Plan Tracker", paths: ["/handover"] },
   // the id stays "simulate": an account the Simulator was switched off for keeps the what-ifs off.
@@ -81,9 +81,17 @@ export function tabForPath(pathname: string): TabDef | null {
   return best?.tab ?? null;
 }
 
+/** A screen that holds another tab's figures is seen with that tab too: the
+ *  home page is the plan (its own tab) and the floor's Production section
+ *  (Shifts'), so an account that sees Shifts keeps the Production figures
+ *  with the home page off — the page then shows that section alone. */
+const ALSO_SEEN_WITH: Readonly<Record<string, string>> = { dashboard: "shifts" };
+
 export function canSeePath(hidden: ReadonlySet<string>, pathname: string): boolean {
   const t = tabForPath(pathname);
-  return !t || !hidden.has(t.id);
+  if (!t || !hidden.has(t.id)) return true;
+  const also = ALSO_SEEN_WITH[t.id];
+  return !!also && !hidden.has(also);
 }
 
 /** Where to send someone whose screen is off: the first one they see, in

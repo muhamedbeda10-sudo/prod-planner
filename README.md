@@ -31,21 +31,21 @@ Tracker · Dashboards. A tab that holds several places opens a panel of their ic
 takes the keyboard's focus) — the places' `places` in `components/AppNav.tsx`; the pages carry no strip and
 show no name of their own (the lit tab says where you are; `PageHead` gives the screen reader its `<h1>`), and
 each page puts its controls in ONE bar: the line switch first in its filter bar, its actions and views at the
-end. **Dashboards** holds every dashboard of the app, one place each: **Planning** (`/`, the home page — will we make the plan, where
-is the next shortfall, what does it take; feature 13), **Production**
-(`/dashboards/production`, what was made, at what efficiency, where the time went, what needs intervention;
-feature 13), **Material** (`/dashboards/material`, feature 5), **Consumables**
+end. **Dashboards** holds every dashboard of the app, one place each: **Planning & Production** (`/`, the home page — will we make the plan, where
+is the next shortfall, what does it take, and what was made, at what efficiency, where the time went; feature 13),
+**Material** (`/dashboards/material`, feature 5), **Consumables**
 (`/dashboards/consumables`) and **ODOO** (`/dashboards/odoo`). Each is seen with the screen it reads (its
-tab id: the Production dashboard with Shifts), and no dashboard is anywhere else; the old addresses
-(`/analytics`, `?view=dashboard`) land on them. Planning shows **both lines on one page**: the
-plant's figures first, then a section for the transformers and one for the LV panels (`components/LineSection.tsx`;
-each folds away, remembered in the browser, and a link opens it at `#tr` or `#lv`); its bar's **All | Transformers |
-LV Panels** switch (`?scope=`) shows one line's section alone. Production reads both lines
-through its own **All | TR | LV** switch (`?scope=`, first in its bar). Neither takes the app's line
-(`BOTH_LINES` in `lib/domain/lines.ts`): the proxy sends an older address naming one to that line's section on
-Planning, and to `?scope=` on Production; no line is carried onto them, and the assistant reads both lines there
-(`lib/domain/dashboardLinks.ts` builds Production's addresses, `planningUrl` in `lib/domain/planningDashboard.ts`
-Planning's). The recording screens still work one line at a time. **Material** holds the nesting sheets, Physical Material
+tab id: the home page's Production section with Shifts — the home page opens with either tab and shows each half only with its own), and no dashboard is anywhere else; the old addresses
+(`/analytics`, `?view=dashboard`, `/dashboards/production`) land on them. The home page shows **both lines and both
+halves on one page** under one bar (`lib/domain/plantDashboard.ts`): under All the plant's totals first, then a section
+for the transformers' plan and one for the LV panels', then the floor's **Production** section over the bar's period
+(`components/LineSection.tsx`; each folds away, remembered in the browser, and a link opens it at `#tr`, `#lv` or
+`#floor`); the bar's **All | Transformers | LV Panels** switch (`?scope=`) shows one line alone, and its department
+(`?dept=`, a department names its line) narrows both halves. It takes no app line
+(`BOTH_LINES` in `lib/domain/lines.ts`): the proxy sends an older address naming one to that line's section, and
+the old Production address to `?scope=`; no line is carried onto it, and the assistant reads both lines there
+(`lib/domain/dashboardLinks.ts` builds the floor's addresses, `planningUrl` in `lib/domain/planningDashboard.ts`
+the plan's). The recording screens still work one line at a time. **Material** holds the nesting sheets, Physical Material
 and Consumables; **Plan Tracker** carries the tracker, the **Daily log** it
 adds up and the
 **ODOO log** (`/odoo`, whose alerts' badge rides on the Plan Tracker tab). The rule: the tab's panel moves
@@ -701,13 +701,16 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    - **Playbook** (`/ai/playbook`): how this plant works, told to the assistant with every question; admins keep it there or
      through the assistant.
 
-13. **Planning and Production dashboards** (`/` and `/dashboards/production`, the first two places of the Dashboards
-   tab; each shows both lines on one page — the plant's figures, then the transformers' section and the LV panels').
-   **Planning** has one bar, all of it in the address (`lib/domain/planningDashboard.ts`, tested): the scope first
-   (All | Transformers | LV Panels, `?scope=`), the transformers' weekly plan (`?plan=`, the newest by default — an
-   earlier one shows its lines as they stand now), component (`?item=`), work centre (`?centre=`) and MO / BOM / SOI
-   search (`?q=`), the panels' family (`?family=panels|mb`) and department (`?lvDept=`), then when the page was read
-   and the **Decisions** button — the decisions are a popup, never a card on the page. Each section opens on what its
+13. **The Planning & Production dashboard** (`/`, the first place of the Dashboards tab; both lines and both halves on
+   one page — the plant's totals, the transformers' plan section, the LV panels', then the floor's Production section;
+   `/dashboards/production` sends its old links here). One bar, all of it in the address (`lib/domain/plantDashboard.ts`,
+   `lib/domain/planningDashboard.ts`, tested): the scope first (All | Transformers | LV Panels, `?scope=`), the
+   department (`?dept=` — it names its line; on Fabrication a work centre, `?centre=`; the plan reads the department's
+   centre, the panels' department as `?lvDept=`), the transformers' weekly plan (`?plan=`, the newest by default — an
+   earlier one shows its lines as they stand now), component (`?item=`) and MO / BOM / SOI search (`?q=`), the panels'
+   family (`?family=panels|mb`), the floor's period (`?from=&to=`), then when the page was read, the floor's **Data**
+   and **Worth a look** popups and ONE **Decisions** button — the plan's decisions and the floor's interventions in one
+   list (a plan's floor warning the floor's list repeats is said once), a popup, never a card on the page. Each section opens on what its
    figures rest on (the share of the work priced, centres with no hours to measure capacity, OSP and N/A pieces, orders
    on hold, the last recorded shift day), up to six headline tiles — each one a link to the rows it is the sum of
    (`?detail=`, a popup that keeps the filters; the totals are the tile's) and a ▲ / ▼ against a week ago where a
@@ -719,7 +722,9 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    measured pace, no overtime), or on hold — out of the queues and the load, still on the plan — with its MO, SOI, BOM,
    component, stage date, required, done, left, the stage holding it, its std-h left, why, and its trace and worklist.
    The panels' list is the month's orders and the urgent ones still short (no dates, so nothing "late"). Under All the
-   plant's tiles keep each line's headline apart and add only what adds: the month's std-h left and the people to add.
+   plant's tiles hold only what adds — the month's std-h left and the people to add — each line's headline is its
+   section's. The panels' "What moved on each stage?" table shows only to an account without Shifts (with it, the
+   Production section's "What was made each day?" shows the same).
    On the
    transformers, Planning is the **cockpit** — the planner's one page, every figure in **standard hours**
    (what the work is worth, from the hours a piece per work centre — typed, else the estimate), so Fabrication's
@@ -742,20 +747,19 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    beside every centre's status; **the month's pace** — each centre's share of the month's plan done against where an
    even pace through its working days stands today; the people as bullets (who comes against who is needed from
    today), with welding's coverage beside them. **Where did the hours go?** (`lib/domain/losses.ts`) walks a
-   choice's rostered man-hours over the Production dashboard's own period down to the standard hours earned —
+   choice's rostered man-hours over the Production section's period down to the standard hours earned —
    absence, overtime, the man-hours machine stops idled by cause (machine-hours × the centre's people's hours against
    its machines', never more than the hours not earned), and what is left: slower than the standard, or work not on the
    Daily log — as a waterfall, and says which of them moved the efficiency against the days before (the assistant's
-   `explain_efficiency`; it sits on the Production dashboard). The headline figures each read against a week ago. The
-   Production dashboard (`/dashboards/production`) answers *what did we make, at what efficiency, and where is the
-   gap between the effort and the output* for one choice in ONE bar, all in the URL: the line (`?scope=` All | TR | LV),
-   a department (`?dept=` — Fabrication, Welding, ShotBlast, Painting, Punching, Bending, WeldingLV or PaintingLV; it
-   names its line), on Fabrication a work centre (`?centre=`), and the period (the app's date slicer, the last 7 days by
-   default, up to 92 days within the last 180; `?from=&to=`); then, at the bar's end, three popups — **Data** (attendance
+   `explain_efficiency`; it sits in the Production section). The headline figures each read against a week ago. The
+   Production section answers *what did we make, at what efficiency, and where is the
+   gap between the effort and the output* for the bar's choice: the line, a department (Fabrication, Welding,
+   ShotBlast, Painting, Punching, Bending, WeldingLV or PaintingLV), on Fabrication a work centre, and the period
+   (the app's date slicer, the last 7 days by default, up to 92 days within the last 180); its popups — **Data** (attendance
    recorded on how many of the working days since recording began, the last recorded day, each line's output priced,
    output on days nobody booked hours, today still being logged), **Worth a look** (the unit-days with the most hours
    not earned, those unusually above the standard — over 130%, shown as they are — and what moved the efficiency) and
-   **Interventions**. The page: six tiles — earned standard hours, booked man-hours, efficiency, std-h a person-day,
+   the interventions, in the bar's one Decisions list. The section: six tiles — earned standard hours, booked man-hours, efficiency, std-h a person-day,
    attendance, overtime share — each against the equal stretch before (relative for amounts, points for ratios, N/A with
    no valid base) and each opening the rows it adds up (`?focus=`); earned against booked day by day (a click opens a
    day's rows, `?day=`); each work centre's (TR) or department's (LV) efficiency day by day (grey where nobody booked —
@@ -791,7 +795,7 @@ and Fabrication are the transformers', Punching and Bending the panels'. The ODO
    with a click. The cockpit also shows **where the work waits** between the stages over the open orders — cut and not
    welded, welded and not finished, sent back and not re-delivered, on hold — netted project by project, never a stage's
    output added to the next's (the records say where a piece stands, not since when).
-   The Production dashboard's transformer side adds **which machines stand still** (the stops still open with the time
+   The Production section's transformer side adds **which machines stand still** (the stops still open with the time
    stopped so far, the machines that lost the most unplanned hours), **quality and rework** (`lib/domain/quality.ts`,
    `lib/server/quality.ts`: while tanks are tracked piece by piece, the tanks waiting for the test, in repair and ready to
    paint, the leak test passed FIRST time over the tanks first tested in the period — every attempt is kept, so a re-test

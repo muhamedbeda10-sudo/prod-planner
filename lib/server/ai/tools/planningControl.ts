@@ -34,7 +34,7 @@ const STAGE = { type: "string", enum: [...CONTROL_STAGES], description: "cut = F
 const LINE = { type: "string", enum: ["TR"], description: "These tools model the transformers only. Give TR explicitly when asked from an LV screen about the transformers." } as const;
 /** JSON for the model: a load % against no hours at all (Infinity) would otherwise read as null — "no figure". */
 const toJson = (v: unknown) => JSON.stringify(v, (_k, x) => (x === Infinity ? BEYOND_CAPACITY : x));
-const dashboardLink = { label: "Planning dashboard", href: "/" };
+const dashboardLink = { label: "Dashboard", href: "/" };
 const orderLinks = (mos: readonly string[]) => [...new Set(mos)].slice(0, 15).map((mo) => ({ label: mo, href: traceHref({ mo, line: "TR" }) }));
 
 const BASE_ASSUMPTIONS = [
@@ -145,7 +145,7 @@ export const getLoadProfileTool: ReadTool<LoadInput> = {
         stations: profile,
         overloaded,
         coverage: coverageOf(inputs),
-        assumptions: [...BASE_ASSUMPTIONS, "Infinite loading: a week's load is what is due in it, whether or not the station can do it — the shortfall shows where it cannot.", "Available man-hours and earned standard hours are compared directly, as the Planning dashboard's capacity check does: 100% load needs the crew to work at the standard pace."],
+        assumptions: [...BASE_ASSUMPTIONS, "Infinite loading: a week's load is what is due in it, whether or not the station can do it — the shortfall shows where it cannot.", "Available man-hours and earned standard hours are compared directly, as the dashboard's capacity check does: 100% load needs the crew to work at the standard pace."],
       }),
       links: [dashboardLink],
     };

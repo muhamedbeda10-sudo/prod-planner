@@ -2,8 +2,10 @@
 
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useHrefWith } from "@/components/useSetParam";
+import { useSearchParams } from "next/navigation";
+import { useHrefWith, useSetParams } from "@/components/useSetParam";
+import { DeptFilter } from "@/components/DeptFilter";
+import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { CheckCircle2, Info } from "lucide-react";
 import { Badge, type BadgeTone } from "@/components/Badge";
 import { FilterSelect, SearchBox } from "@/components/FilterControls";
@@ -13,17 +15,18 @@ import { EmptyState } from "@/components/primitives";
 import { TONE_CELL, fmt, signed } from "@/components/charts/kit";
 import { formatDate, formatDayShort } from "@/lib/domain/format";
 import { ITEM_NAME, ITEMS } from "@/lib/domain/constants";
+import { WORK_CENTRE_LABEL } from "@/lib/domain/shifts";
 import { LV_FAMILIES, LV_FAMILY_LABEL } from "@/lib/domain/lv";
-import { LV_FLOOR_DEPTS, LV_FLOOR_DEPT_LABEL } from "@/lib/domain/lvKpis";
-import { WORK_CENTRES, WORK_CENTRE_LABEL } from "@/lib/domain/shifts";
 import {
-  FAMILY_PARAM, LOAD_STATE_LABEL, PLANNING_SCOPES, PLANNING_SCOPE_LABEL, RISK_LABEL, familyOfParam, isPlanningDetail, planningUrl, showsLv, showsTr,
+  FAMILY_PARAM, LOAD_STATE_LABEL, PLANNING_SCOPES, PLANNING_SCOPE_LABEL, RISK_LABEL, isPlanningDetail, showsLv, showsTr,
   type AtRiskRow, type LoadMatrixRow, type LoadState, type PlanningDetail, type PlanningFilters, type RiskStatus,
 } from "@/lib/domain/planningDashboard";
+import type { ProductionRequest } from "@/lib/domain/productionDashboard";
 
-// The Planning dashboard's own parts, shared by its plant figures and its two
-// line sections: the one bar of the page (the scope first, each line's
-// filters, how current the page is and its decisions at the end), the strip
+// The dashboard's plan parts, shared by its plant totals and its two line
+// sections: the one bar of the page (the line first, the department, each
+// line's filters, the floor's period, how current the page is and its popups
+// at the end), the strip
 // that says what the figures rest on, the load against the capacity day by
 // day, the lines at risk, and the popup with the rows behind a figure. Every
 // choice is written to the address (lib/domain/planningDashboard.ts), so a
@@ -52,70 +55,95 @@ export function useDetail() {
   };
 }
 
-/** Go to the page with `patch` over its filters — a popup open is closed by any other choice. */
-function useGo(f: PlanningFilters) {
-  const router = useRouter();
-  return (patch: Partial<PlanningFilters>) => router.push(planningUrl(f, { detail: null, ...patch }), { scroll: false });
+/** Go to the page with some of its parameters set (null clears one), the
+ *  rest of the address kept — a popup open is closed by any other choice. */
+/** Any choice closes the rows open over the page — the plan's figure (?detail=) and the floor's (?focus=, ?day=). */
+const CLOSE_POPUPS = { detail: null, focus: null, day: null } as const;
+
+function useGo() {
+  const setParams = useSetParams();
+  return (set: Record<string, string | null>) => setParams({ ...CLOSE_POPUPS, ...set });
 }
 
 // ---------------------------------------------------------------- the bar
 
-export function PlanningBar({ f, planNos, activePlan, asOf, actions }: {
+/** The dashboard's one bar: the line first, the department, each line's plan
+ *  filters, the floor's period — then how current the page is and its
+ *  popups (`actions`). Without the floor's figures there is no period: a
+ *  plain toolbar. */
+export function DashboardBar({ f, req, plan = true, planNos, activePlan, asOf, period, actions }: {
   f: PlanningFilters;
+  /** Whether the plan's sections are on the page — without them, their filters are not offered. */
+  plan?: boolean;
+  /** The floor's side of the same address — its line, department and centre are the bar's. */
+  req: Pick<ProductionRequest, "scope" | "trDept" | "lvDept" | "centre" | "fromISO" | "toISO">;
   /** The transformers' weekly plans, newest first, and the one on screen. */
   planNos: readonly number[];
   activePlan: number | null;
   /** The factory's clock when the page was read. */
   asOf: string;
+  /** The floor's period slicer — null when the account does not see Shifts. */
+  period: { min: string; max: string; today: string; marks: readonly string[]; defaultRange: { label: string; from: string; to: string } } | null;
   actions?: ReactNode;
 }) {
-  const go = useGo(f);
-  return (
-    <div className="no-print toolbar toolbar-row">
+  const go = useGo();
+  const hrefWith = useHrefWith();
+  const dept = req.scope === "LV" ? (req.lvDept === "all" ? "" : req.lvDept) : req.trDept === "all" ? "" : req.trDept;
+  const filters = (
+    <>
       <nav className="seg" aria-label="Line shown">
         {PLANNING_SCOPES.map((s) => (
-          <Link key={s} href={planningUrl(f, { scope: s, detail: null })} scroll={false} aria-current={f.scope === s ? "page" : undefined} className={f.scope === s ? "on" : ""}>
+          <Link key={s} scroll={false} aria-current={f.scope === s ? "page" : undefined} className={f.scope === s ? "on" : ""}
+            // a new line drops the department, which named the old one
+            href={hrefWith({ ...CLOSE_POPUPS, scope: s === "all" ? null : s, dept: null, lvDept: null, centre: null })}>
             {PLANNING_SCOPE_LABEL[s]}
           </Link>
         ))}
       </nav>
-      {showsTr(f) && (
+      <DeptFilter scope={req.scope} dept={dept} lvDept={req.scope === "all" && req.lvDept !== "all" ? req.lvDept : ""} centre={req.centre ?? ""} onChange={go} />
+      {plan && showsTr(f) && (
         <>
           {planNos.length > 1 && (
             <FilterSelect label="TR plan" value={activePlan && activePlan !== planNos[0] ? String(activePlan) : ""} allLabel={`newest (${planNos[0]})`}
-              onChange={(v) => go({ plan: v ? Number(v) : null })} options={planNos.slice(1).map((n) => ({ value: String(n), label: String(n) }))}
+              onChange={(v) => go({ plan: v || null })} options={planNos.slice(1).map((n) => ({ value: String(n), label: String(n) }))}
               title="The transformers' weekly plan — an earlier one shows its lines as they stand now" />
           )}
           <FilterSelect label="TR component" value={f.item ?? ""} onChange={(v) => go({ item: v || null })} options={ITEMS.map((i) => ({ value: i, label: ITEM_NAME[i] }))} />
-          <FilterSelect label="TR centre" value={f.centre ?? ""} onChange={(v) => go({ centre: (v || null) as PlanningFilters["centre"] })} options={WORK_CENTRES.map((c) => ({ value: c, label: WORK_CENTRE_LABEL[c] }))} />
           {/* a new address (back, a link) starts the box afresh from it */}
-          <PlanSearch key={f.q} f={f} />
+          <PlanSearch key={f.q} q={f.q} />
         </>
       )}
-      {showsLv(f) && (
-        <>
-          <FilterSelect label="LV family" value={f.family === null ? "" : FAMILY_PARAM[f.family]} onChange={(v) => go({ family: familyOfParam(v) })}
-            options={LV_FAMILIES.map((x) => ({ value: FAMILY_PARAM[x], label: LV_FAMILY_LABEL[x] }))} />
-          <FilterSelect label="LV department" value={f.lvDept ?? ""} onChange={(v) => go({ lvDept: (v || null) as PlanningFilters["lvDept"] })} options={LV_FLOOR_DEPTS.map((d) => ({ value: d, label: LV_FLOOR_DEPT_LABEL[d] }))} />
-        </>
+      {plan && showsLv(f) && (
+        <FilterSelect label="LV family" value={f.family === null ? "" : FAMILY_PARAM[f.family]} onChange={(v) => go({ family: v || null })}
+          options={LV_FAMILIES.map((x) => ({ value: FAMILY_PARAM[x], label: LV_FAMILY_LABEL[x] }))} />
       )}
-      <span className="ms-auto flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted tabnum whitespace-nowrap" title="The figures are read when the page opens — reload for the latest">
-          As of {asOf}{activePlan ? ` · TR weekly plan ${activePlan}` : ""}
-        </span>
-        {actions}
+    </>
+  );
+  const end = (
+    <span className="ms-auto flex flex-wrap items-center gap-2">
+      <span className="text-xs text-muted tabnum whitespace-nowrap" title="The figures are read when the page opens — reload for the latest">
+        As of {asOf}{activePlan ? ` · TR weekly plan ${activePlan}` : ""}
       </span>
-    </div>
+      {actions}
+    </span>
+  );
+  if (!period) return <div className="no-print toolbar toolbar-row">{filters}{end}</div>;
+  return (
+    <UrlDateSlicer
+      encoding="fromTo" from={req.fromISO} to={req.toISO} min={period.min} max={period.max} today={period.today} marks={period.marks} label="Period"
+      presets={["yesterday", "thisWeek", "last14", "thisMonth", "lastMonth", "last30", "last90"]} defaultRange={period.defaultRange}
+      start={filters} end={end}
+    />
   );
 }
 
 /** The plan's MO / BOM / SOI search: written to the address on Enter, cleared at once. */
-function PlanSearch({ f }: { f: PlanningFilters }) {
-  const go = useGo(f);
-  const [q, setQ] = useState(f.q);
+function PlanSearch({ q: start }: { q: string }) {
+  const go = useGo();
+  const [q, setQ] = useState(start);
   return (
-    <form role="search" className="max-sm:basis-full max-sm:w-full" onSubmit={(e) => { e.preventDefault(); go({ q: q.trim() }); }}>
-      <SearchBox value={q} onChange={(v) => { setQ(v); if (!v && f.q) go({ q: "" }); }} placeholder="TR plan: MO / BOM / SOI… (Enter)" wide />
+    <form role="search" className="max-sm:basis-full max-sm:w-full" onSubmit={(e) => { e.preventDefault(); go({ q: q.trim() || null }); }}>
+      <SearchBox value={q} onChange={(v) => { setQ(v); if (!v && start) go({ q: null }); }} placeholder="TR plan: MO / BOM / SOI… (Enter)" wide />
     </form>
   );
 }

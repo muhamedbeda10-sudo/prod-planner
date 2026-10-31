@@ -13,13 +13,18 @@ describe("tabs — which screens an account sees", () => {
     expect(tabForPath("/admin/users")).toBeNull();
   });
   it("sees each dashboard with the screen it reads, so nobody's access changes with the Dashboards tab", () => {
-    expect(tabForPath("/dashboards/production")?.id).toBe("shifts");
+    // the old Production address only sends to the home page, which holds its figures behind Shifts
+    expect(tabForPath("/dashboards/production")).toBeNull();
     expect(tabForPath("/dashboards/material?days=30")?.id).toBe("analytics");
     expect(tabForPath("/dashboards/consumables")?.id).toBe("consumables");
     expect(tabForPath("/dashboards/odoo")?.id).toBe("odoo");
     expect(tabForPath("/analytics")?.id).toBe("analytics");
     const hidden = parseHiddenTabs("shifts,consumables");
-    expect(canSeePath(hidden, "/dashboards/production")).toBe(false);
+    expect(canSeePath(hidden, "/shifts")).toBe(false);
+    // the home page holds Shifts' Production section: seen with either tab, closed with both off
+    expect(canSeePath(parseHiddenTabs("dashboard"), "/")).toBe(true);
+    expect(canSeePath(parseHiddenTabs("dashboard,shifts"), "/")).toBe(false);
+    expect(canSeePath(parseHiddenTabs("shifts"), "/")).toBe(true);
     expect(canSeePath(hidden, "/dashboards/consumables")).toBe(false);
     expect(canSeePath(hidden, "/dashboards/odoo")).toBe(true);
   });
@@ -27,7 +32,8 @@ describe("tabs — which screens an account sees", () => {
     const hidden = parseHiddenTabs("odoo,dashboard,nonsense");
     expect([...hidden].sort()).toEqual(["dashboard", "odoo"]);
     expect(canSeePath(hidden, "/odoo")).toBe(false);
-    expect(canSeePath(hidden, "/")).toBe(false);
+    // the home page is off, but it also holds the Production section of Shifts, still on
+    expect(canSeePath(hidden, "/")).toBe(true);
     expect(canSeePath(hidden, "/tracker")).toBe(true);
     expect(canSeePath(hidden, "/admin/users")).toBe(true);
   });
