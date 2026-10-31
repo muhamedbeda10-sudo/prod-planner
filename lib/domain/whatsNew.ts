@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-31-odoo-cancelled-not-logged",
+    dateISO: "2026-10-31",
+    title: "ODOO dashboard: a cancelled row no longer counts as logged",
+    where: "Dashboards → ODOO — the logged figures, Logged vs closed, the close rate, the burn-up and the BOM mix (the status mix still shows the cancelled rows)",
+    href: "/dashboards/odoo",
+    body: "The logged figures counted the Cancelled rows too — lines whose daily-log record was deleted or corrected to nothing — so logged stayed ahead of closed even when every real row was closed (October: 20 such rows, 110 pcs, on Transformers). A cancelled row now counts on neither side. What can still differ is real: a row logged at the end of one month and closed in the next counts as logged in the first and closed in the second.",
+  },
+  {
     id: "2026-10-29-phone-dates-counts",
     dateISO: "2026-10-29",
     title: "On a phone the date bar is one pick list, and the counts line up two by two",

@@ -3,9 +3,10 @@
 // lib/server/odoo.ts (getOdooDashboard) and the drawing
 // components/OdooDashboard.tsx.
 //
-//   funnel ...... rows logged in the period → those that carry Odoo's MO →
-//                 those Done by now
-//   status mix .. the logged rows by their status right now
+//   funnel ...... rows logged in the period (a cancelled row is void, not
+//                 logged) → those that carry Odoo's MO → those Done by now
+//   status mix .. the rows of the period by their status right now, the
+//                 cancelled ones included
 //   lead time ... logged → closed, in days, for the rows closed in the period
 //   aging ....... the logged rows still open, by how long they have waited
 //   burn-up ..... cumulative logged against cumulative closed, day by day —
@@ -14,7 +15,7 @@
 
 import { addDaysISO, daysBetweenISO } from "./dateSlicer";
 import { statusTone, type OdooTone } from "./odoo";
-import { matchesBom, matchesProduct, productSeries, shortDayLabel, type OdooPeriod, type OdooSeries, type OdooStatRow } from "./odooStats";
+import { isVoidRow, matchesBom, matchesProduct, productSeries, shortDayLabel, type OdooPeriod, type OdooSeries, type OdooStatRow } from "./odooStats";
 
 export interface OdooInsightRow extends OdooStatRow {
   /** Odoo's MO is on the row. */
@@ -68,7 +69,6 @@ const STATUS_SLOTS = 5;
 /** BOMs shown in the mix, heaviest first. */
 const BOM_SLOTS = 8;
 
-const isCancelled = (status: string) => /cancel/i.test(status);
 const inWindow = (d: string, from: string | null, to: string) => (from === null || d >= from) && d <= to;
 
 /** The value at a fraction of a sorted list, by the nearest-rank method. */
@@ -82,7 +82,11 @@ export function buildOdooInsights(all: readonly OdooInsightRow[], period: OdooPe
   const rows = all.filter((r) => matchesBom(r, bom) && matchesProduct(r, product));
   const from = period.fromISO;
   const to = period.toISO;
-  const logged = rows.filter((r) => inWindow(r.dateISO, from, to));
+  // the rows logged in the period — a void (cancelled) row is not one
+  // (odooStats' isVoidRow); the status mix alone still shows them, so the
+  // cancellations stay in sight
+  const inPeriod = rows.filter((r) => inWindow(r.dateISO, from, to));
+  const logged = inPeriod.filter((r) => !isVoidRow(r));
   const closedIn = rows.filter((r) => r.doneISO && inWindow(r.doneISO, from, to) && statusTone(r.status) === "ok");
 
   // ---- funnel + close rate
@@ -92,7 +96,7 @@ export function buildOdooInsights(all: readonly OdooInsightRow[], period: OdooPe
 
   // ---- status mix (now), the commonest first, the tail folded
   const byStatus = new Map<string, StatusSlice>();
-  for (const r of logged) {
+  for (const r of inPeriod) {
     const key = r.status.trim() || "—";
     const s = byStatus.get(key) ?? { status: key, rows: 0, qty: 0, tone: statusTone(key) };
     s.rows += 1;
@@ -129,8 +133,8 @@ export function buildOdooInsights(all: readonly OdooInsightRow[], period: OdooPe
     byProduct: [...prodLead.entries()].map(([product, a]) => ({ product, avgDays: round1(a.sum / a.n), rows: a.n })).sort((a, b) => b.avgDays - a.avgDays || a.product.localeCompare(b.product)),
   };
 
-  // ---- aging: logged in the period, still open (not done, not cancelled), age at the period's end
-  const open = logged.filter((r) => statusTone(r.status) !== "ok" && !isCancelled(r.status));
+  // ---- aging: logged in the period, still open (not done), age at the period's end
+  const open = logged.filter((r) => statusTone(r.status) !== "ok");
   const ages = open.map((r) => ({ days: Math.max(0, daysBetweenISO(r.dateISO, to)), qty: r.qty }));
   const aging = {
     buckets: AGE_BUCKETS.map((b) => {
