@@ -123,8 +123,8 @@ export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks,
     <div className="no-print date-range min-w-0">
       {/* one row: what it filters, the quick picks, then the period itself
           with the steps either side and the timeline's own switch */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-        {start}
+      <div className="date-range-row flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+        {start && <span className="date-range-start contents max-sm:order-3 max-sm:flex max-sm:flex-wrap max-sm:gap-2 max-sm:w-full">{start}</span>}
         {label && <span className="filter-label shrink-0">{label}</span>}
         {/* a phone: the quick dates are one pick list under the period, not
             rows of chips */}
@@ -143,7 +143,7 @@ export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks,
           {presets.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           {allLabel && <option value="all">{allLabel}</option>}
         </select>
-        <div className="max-sm:hidden sm:flex-1 flex flex-wrap gap-1 min-w-0" role="group" aria-label="Quick dates">
+        <div className="max-sm:hidden sm:flex-[1_1_22rem] flex flex-wrap gap-1 min-w-0" role="group" aria-label="Quick dates">
           {presets.map((p) => (
             <button key={p.key} type="button" onClick={() => onChange(p.from, p.to)} aria-pressed={activePreset === p.key} className="chip-toggle shrink-0 whitespace-nowrap">
               {p.label}
@@ -155,7 +155,7 @@ export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks,
             </button>
           )}
         </div>
-        <span className="order-1 sm:order-none ms-auto shrink-0 inline-flex items-center gap-1">
+        <span className="date-range-period order-1 sm:order-none ms-auto shrink-0 inline-flex items-center gap-1 max-sm:w-full max-sm:justify-center">
           <button type="button" className="icon-btn" onClick={() => step(-1)} disabled={showAll || a <= min} aria-label="Earlier" title={mode === "day" ? "Previous day" : `The ${len} days before`}>
             <ChevronLeft size={15} />
           </button>
@@ -170,7 +170,7 @@ export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks,
             <CalendarRange size={15} />
           </button>
         </span>
-        {end && <span className="order-1 sm:order-none shrink-0 max-w-full inline-flex flex-wrap items-center gap-2">{end}</span>}
+        {end && <span className="date-range-end order-1 sm:order-none shrink-0 max-w-full inline-flex flex-wrap items-center gap-2 max-sm:order-4 max-sm:w-full">{end}</span>}
       </div>
 
       {timelineOpen && (

@@ -59,7 +59,7 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
             name="month"
             type="month"
             required
-            className="border rounded-md px-2 py-1.5 bg-surface text-sm"
+            className="ctl"
           />
         </label>
         {/* the LV line plans two products, each on its own sheet — the
@@ -68,7 +68,7 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
         {line === "LV" && (
           <label className="inline-flex items-center gap-1.5 text-sm">
             <span className="text-muted text-xs font-semibold">Plan</span>
-            <select name="family" defaultValue="" className="border rounded-md px-2 py-1.5 bg-surface text-sm" title="Which sheet this is — each plan is revised on its own">
+            <select name="family" defaultValue="" className="ctl" title="Which sheet this is — each plan is revised on its own">
               {LV_FAMILIES.map((f) => <option key={f} value={f}>{LV_FAMILY_LABEL[f]}</option>)}
             </select>
           </label>

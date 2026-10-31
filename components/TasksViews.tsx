@@ -36,13 +36,13 @@ export function TaskFilterBar({ f, onChange, people, count, children }: { f: Tas
     <div className="flex flex-wrap items-center gap-1.5" role="search">
       <label className="relative flex-1 min-w-[10rem]">
         <Search size={14} className="absolute start-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" aria-hidden />
-        <input type="search" value={f.q} onChange={(e) => set("q", e.target.value)} placeholder="Search tasks, orders, people…" aria-label="Search tasks" className="w-full ps-8 pe-2 py-1 text-sm" dir="auto" />
+        <input type="search" value={f.q} onChange={(e) => set("q", e.target.value)} placeholder="Search tasks, orders, people…" aria-label="Search tasks" className="ctl w-full ps-8 pe-2" dir="auto" />
       </label>
-      <select value={f.due} onChange={(e) => set("due", e.target.value as DueFilter)} aria-label="Due day" className="py-1 text-sm">
+      <select value={f.due} onChange={(e) => set("due", e.target.value as DueFilter)} aria-label="Due day" className="ctl">
         {(Object.keys(DUE_LABEL) as DueFilter[]).map((d) => <option key={d} value={d}>{DUE_LABEL[d]}</option>)}
       </select>
       {people.length > 1 && (
-        <select value={f.person ?? ""} onChange={(e) => set("person", e.target.value ? Number(e.target.value) : null)} aria-label="Person" className="py-1 text-sm max-w-[11rem]">
+        <select value={f.person ?? ""} onChange={(e) => set("person", e.target.value ? Number(e.target.value) : null)} aria-label="Person" className="ctl max-w-[11rem] max-sm:max-w-none">
           <option value="">Anyone</option>
           {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>

@@ -1302,6 +1302,20 @@ main select.ctl { padding-right: 1.6rem; }
   .filter-chip > select.ctl { width: 100%; }
   .toolbar-row > select, .toolbar-row > label:has(> select) { flex: 1 1 100%; }
   .toolbar-row > label:has(> select) > select { flex: 1; min-width: 0; }
+  /* the date bar: the period reads first, the quick dates under it, then
+     the page's own controls — a line switch, a select, a view switch —
+     each the screen's width */
+  .date-range-start > *, .date-range-end > * { flex: 1 1 100%; width: 100%; min-width: 0; }
+  .date-range-start > .seg, .date-range-end > .seg, .date-range-start nav.seg, .date-range-end nav.seg { display: flex; }
+  .date-range-start > .seg > *, .date-range-end > .seg > * { flex: 1; text-align: center; }
+  .date-range-start > select, .date-range-end > select, .date-range-start .filter-chip > select, .date-range-end .filter-chip > select { width: 100%; }
+  .date-range-start > div { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  .date-range-start > div > * { flex: 1 1 100%; min-width: 0; }
+  /* buttons share a line, three to it at most; a select or a switch takes its own */
+  .date-range-start :is(button, a):not(.seg *), .date-range-end :is(button, a):not(.seg *) { flex: 1 1 30%; width: auto; justify-content: center; }
+  /* a row of chips that pick one or more of a few (Fab · Weld · Paint · Dlvd): equal shares of the line */
+  .chip-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--sp-1); width: 100%; }
+  .chip-row > .chip-toggle { width: 100%; min-width: 0; padding-inline: 0.3rem; }
 }
 .filter-chip-on > select.ctl { border-color: var(--brand) !important; background-color: color-mix(in srgb, var(--brand) 10%, var(--surface)) !important; padding-right: 2.6rem; }
 .filter-chip-x {

@@ -191,7 +191,7 @@ export function PowderScrap({ r, canRecord, isAdmin, today, earliest }: { r: Pow
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 no-print">
         {older ? <Link href={hrefOf(older)} className="btn btn-secondary btn-sm" aria-label="Previous month">◀</Link> : <span className="btn btn-secondary btn-sm opacity-40">◀</span>}
-        <select value={r.month} onChange={(e) => router.push(hrefOf(e.target.value))} aria-label="Month" className="px-2 py-1.5 text-sm font-bold">
+        <select value={r.month} onChange={(e) => router.push(hrefOf(e.target.value))} aria-label="Month" className="ctl font-bold">
           {r.months.map((m) => <option key={m} value={m}>{monthLong(m)}</option>)}
         </select>
         {newer ? <Link href={hrefOf(newer)} className="btn btn-secondary btn-sm" aria-label="Next month">▶</Link> : <span className="btn btn-secondary btn-sm opacity-40">▶</span>}

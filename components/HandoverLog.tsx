@@ -239,7 +239,7 @@ export function HandoverLog({ rows, editableDepts = [], soi, line = "TR", head }
           <b className="tabnum">{selectedVisible.length}</b> record{selectedVisible.length === 1 ? "" : "s"} selected
           <label className="inline-flex items-center gap-1.5">
             <span className="text-muted text-[11px] font-bold uppercase tracking-wide">New date</span>
-            <input type="date" value={bulkDate} onChange={(e) => setBulkDate(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm bg-surface" disabled={pending} />
+            <input type="date" value={bulkDate} onChange={(e) => setBulkDate(e.target.value)} className="ctl" disabled={pending} />
           </label>
           <button type="button" onClick={applyBulkDate} disabled={pending || !bulkDate} className="btn btn-primary btn-sm">
             {pending ? "Applying…" : "Apply to all"}

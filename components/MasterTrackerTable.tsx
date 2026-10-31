@@ -758,8 +758,8 @@ export function MasterTrackerTable({
         />
         {/* multi-pick dept toggle: show only the ticked stages' columns */}
         <div className="col-span-full flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
-          <span className="filter-label">Dept</span>
-          <div className="flex flex-wrap gap-1">
+          <span className="filter-label max-sm:hidden">Dept</span>
+          <div className="chip-row sm:flex sm:flex-wrap sm:gap-1">
             {STAGE_OPTS.map((o) => {
               const on = stages.includes(o.value);
               return (
@@ -1685,7 +1685,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                           setPushQty(Object.fromEntries(ITEMS.map((it) => [it, String(remainingFor(r, it, d))])));
                           setPushErr("");
                         }}
-                        className="border rounded-md px-2 py-1 bg-surface text-sm font-semibold"
+                        className="ctl font-semibold"
                         disabled={pending}
                       >
                         {DEPTS.map((d) => (

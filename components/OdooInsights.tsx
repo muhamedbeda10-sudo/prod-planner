@@ -71,7 +71,7 @@ export function OdooInsightsSection({ ins, colorOf }: { ins: Insights; colorOf: 
 
   return (
     <section className="space-y-3">
-      <h2 className="font-bold">How the close-out is going <span className="text-muted font-normal text-sm">· the rows logged in the period, and the closings in it</span></h2>
+      <h2>How the close-out is going<span className="explain"> · the rows logged in the period, and the closings in it</span></h2>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <ChartCard title="How long a close takes" about={lt.rows ? `From the day a row was logged to the day it went Done — ${fmt(lt.rows)} row(s) closed in the period` : "No row closed in the period"}
